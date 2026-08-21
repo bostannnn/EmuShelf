@@ -1,0 +1,89 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.OnboardingView"
+             x:DataType="vm:OnboardingViewModel">
+
+    <UserControl.Styles>
+        <!-- The controller focus ring. Buttons keep a 2px transparent border at rest so gaining focus does
+             not shift layout; the .focused class (bound to the view-model's focus flags) lights it up. This
+             is how the D-pad selection reads on the Android couch, where Avalonia's own focus visuals never
+             see the gamepad keys. -->
+        <Style Selector="Button">
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.focused">
+            <Setter Property="BorderBrush" Value="#FFFFFF" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Self-contained colours, not theme resources: this view renders before the composition root builds
+         the theme service, and DynamicResource brushes are exactly what fail to resolve on the single-view
+         Android head (see docs / DECISIONS on the couch theme trap). A fixed dark card keeps it legible. -->
+    <Border Background="#151517">
+        <Border MaxWidth="560" Margin="28" Padding="32,36"
+                VerticalAlignment="Center" HorizontalAlignment="Center"
+                CornerRadius="14" Background="#1F1F23" BorderBrush="#33FFFFFF" BorderThickness="1">
+            <StackPanel Spacing="20">
+                <TextBlock Text="Welcome to EmuShelf"
+                           FontSize="26" FontWeight="SemiBold" Foreground="#F2F2F4" />
+
+                <TextBlock Text="{Binding StatusMessage}"
+                           FontSize="15" LineHeight="22" TextWrapping="Wrap" Foreground="#C7C7CC" />
+
+                <!-- Step 1: all-files access. Collapses entirely on platforms that need no grant. -->
+                <StackPanel Spacing="10" IsVisible="{Binding RequiresPermission}">
+                    <Border Padding="16,12" CornerRadius="10" Background="#2A2A30">
+                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Text="Storage access"
+                                           FontSize="15" FontWeight="Medium" Foreground="#F2F2F4" />
+                                <TextBlock Text="Granted"
+                                           FontSize="13" Foreground="#7FD98A"
+                                           IsVisible="{Binding IsPermissionGranted}" />
+                                <TextBlock Text="Required to use your chosen folder"
+                                           FontSize="13" Foreground="#C7C7CC"
+                                           IsVisible="{Binding !IsPermissionGranted}" />
+                            </StackPanel>
+                            <Button Grid.Column="1" Content="Grant"
+                                    Padding="18,8" FontSize="15"
+                                    Background="#3A3A42" Foreground="#F2F2F4"
+                                    Classes.focused="{Binding IsGrantFocused}"
+                                    IsVisible="{Binding !IsPermissionGranted}"
+                                    Command="{Binding GrantPermissionCommand}" />
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- Step 2, primary: the one-tap recommended folder. Created by path (no document picker),
+                     so it sidesteps the picker's refusal of protected folders. Enabled once any grant holds. -->
+                <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                        Padding="20,12" FontSize="16"
+                        Background="#4C7DF0" Foreground="#FFFFFF"
+                        IsVisible="{Binding ShowRecommended}"
+                        Classes.focused="{Binding IsRecommendedFocused}"
+                        IsEnabled="{Binding CanChooseFolder}"
+                        Command="{Binding UseRecommendedCommand}">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Use recommended folder" FontWeight="SemiBold" Foreground="#FFFFFF" />
+                        <TextBlock Text="{Binding RecommendedPath}" FontSize="12" Foreground="#DCE6FF"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Button>
+
+                <!-- Step 2, secondary: pick a different folder via the system picker. -->
+                <Button Content="Choose a different folder…"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="0,12" FontSize="15"
+                        Background="#2A2A30" Foreground="#F2F2F4"
+                        Classes.focused="{Binding IsChooseFocused}"
+                        IsEnabled="{Binding CanChooseFolder}"
+                        Command="{Binding ChooseDifferentCommand}" />
+
+                <TextBlock Text="EmuShelf only writes inside the folder you choose. Your game files are never moved."
+                           FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="#8E8E93" />
+            </StackPanel>
+        </Border>
+    </Border>
+</UserControl>

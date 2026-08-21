@@ -45,6 +45,31 @@ public partial class App : Application
     /// </summary>
     public static string? BaseDirectoryOverride { get; set; }
 
+    /// <summary>
+    /// The Android head's first-run data-folder gate. When set and it reports no resolved folder yet, the
+    /// composition root shows the onboarding view instead of opening the database, and resumes composition
+    /// in-process once the user picks a folder. Desktop leaves this null and boots straight through — its
+    /// data folder is resolved from the environment. Set before Avalonia starts.
+    /// </summary>
+    public static IDataLocationBootstrap? DataLocation { get; set; }
+
+    /// <summary>
+    /// The couch controller dispatcher for the first-run onboarding screen, or null when onboarding is not
+    /// showing. The Android head points its key-event bridge at this so the D-pad and A button work on the
+    /// onboarding card too — before the shared shell (and its own dispatcher) exists. Set while onboarding
+    /// is up and cleared once a folder is chosen.
+    /// </summary>
+    public static Func<GamepadAction, bool>? OnboardingGamepadDispatch { get; private set; }
+
+    /// <summary>
+    /// Restarts the process, supplied by the Android head. Used to hand off from onboarding to the real
+    /// shell: Avalonia's Android single-view host captures its <c>MainView</c> at startup and does not
+    /// re-render when it is reassigned live, so the composed shell must come up in a fresh process — which
+    /// then resolves the just-persisted data-folder pointer and boots straight to the library. Null on
+    /// desktop, which never onboards.
+    /// </summary>
+    public static Action? RestartRequested { get; set; }
+
     public AppBootstrapper Bootstrapper { get; private set; } = null!;
     private HttpClient? _metadataHttpClient;
     private HttpClient? _webArtworkHttpClient;
@@ -74,6 +99,66 @@ public partial class App : Application
 #endif
 
     public override void OnFrameworkInitializationCompleted()
+    {
+        // First-run data-folder gate (Android). When the head reports no resolved folder, show onboarding
+        // instead of opening the database against a folder that does not exist yet; composition resumes
+        // in-process from OnDataFolderChosen once the user picks one. Desktop leaves DataLocation null.
+        if (DataLocation is { ResolvedBaseDirectory: null } bootstrap
+            && ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        {
+            StartDataFolderOnboarding(singleView, bootstrap);
+            base.OnFrameworkInitializationCompleted();
+            return;
+        }
+
+        // Resolved on Android (the head persisted a pointer previously) or desktop (null): a resolved
+        // base directory is the single source of truth for the portable root.
+        if (DataLocation?.ResolvedBaseDirectory is { } resolvedBaseDirectory)
+            BaseDirectoryOverride = resolvedBaseDirectory;
+
+        BuildAndRun();
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    /// <summary>
+    /// Shows the onboarding view as the initial single-view content. Its view-model completes by handing
+    /// back the chosen base directory, at which point <see cref="OnDataFolderChosen"/> resumes the normal
+    /// composition and swaps the real shell in over the onboarding view.
+    /// </summary>
+    private void StartDataFolderOnboarding(
+        ISingleViewApplicationLifetime singleView,
+        IDataLocationBootstrap bootstrap)
+    {
+        var onboarding = new OnboardingViewModel(
+            bootstrap,
+            bootstrap.OnboardingReason,
+            onCompleted: OnDataFolderChosen);
+        // Route the Android key-event bridge into onboarding until the real shell takes over.
+        OnboardingGamepadDispatch = onboarding.DispatchGamepadAction;
+        singleView.MainView = new Views.OnboardingView { DataContext = onboarding };
+    }
+
+    private void OnDataFolderChosen(string baseDirectory)
+    {
+        OnboardingGamepadDispatch = null;
+        BaseDirectoryOverride = baseDirectory;
+
+        // The bootstrap has already persisted the pointer, so a restart re-runs the composition root, which
+        // resolves it and boots straight to the library. This is required on Android because the single-view
+        // host will not swap in a live-reassigned MainView; where no restarter is supplied (desktop, which
+        // never onboards), compose in-process.
+        if (RestartRequested is { } restart)
+            restart();
+        else
+            BuildAndRun();
+    }
+
+    /// <summary>
+    /// Builds the composition root and shows the platform shell. Runs once per process — either straight
+    /// from <see cref="OnFrameworkInitializationCompleted"/> when a data folder is already resolved, or
+    /// after first-run onboarding picks one.
+    /// </summary>
+    private void BuildAndRun()
     {
         Bootstrapper = new AppBootstrapper(BaseDirectoryOverride);
 
@@ -118,8 +203,6 @@ public partial class App : Application
                 $"Unhandled process exception (terminating: {args.IsTerminating}).",
                 exception);
         };
-
-        base.OnFrameworkInitializationCompleted();
     }
 
     /// <summary>
