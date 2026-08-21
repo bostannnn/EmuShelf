@@ -210,22 +210,36 @@ are unset.
 
 | System | Emulator | Status | What it needs |
 |---|---|---|---|
-| PS1 | DuckStation | ✅ **Wired, verified syncing** | nothing (auto-root) |
+| PS1 | DuckStation | 🟡 **Wired, but partially readable** | see the owner-only note below — new per-game cards don't sync |
 | GameCube | Dolphin | ✅ **Wired, verified syncing** (`gamecube/gci/a/GYQE01`, `…/GC6E01` round-tripped) | nothing (auto-root) |
 | Wii | Dolphin | ✅ **Wired** (auto-root; `wii/title/…` uploads seen) | nothing (auto-root) |
-| PS2 | ARMSX2 | ⬜ **Not wired** | set Save folder → ARMSX2 user dir (`…/User/ARMSX2/`, has `memcards/`) |
-| PSP | PPSSPP | ⬜ **Not wired** | set Save folder → PPSSPP `PSP/SAVEDATA` |
-| 3DS | Azahar | ⬜ **Not wired** | set Save folder → Azahar user dir (contains `sdmc`) |
-| Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | ⬜ **Not wired, and blocked** | see RetroArch note below |
+| PS2 | ARMSX2 | ⬜ **Not wired (wireable now)** | set Save folder → `/storage/emulated/0/User/ARMSX2/` (verified: readable, `PCSX2-Android.ini` + `memcards/Mcdf01.ps2`). Card is `Mcdf01.ps2`; desktop uses `Mcd001.ps2`, so rename to match before it cross-syncs |
+| PSP | PPSSPP | ⬜ **Not set up on device** | PPSSPP has no save dir on the Thor yet (`PSP/SAVEDATA` absent) — install/run PPSSPP first, then set its Save folder |
+| 3DS | Azahar | ⬜ **Not set up on device** | Azahar has no `Android/data/org.azahar_emu.azahar/files` yet — install/run Azahar first, then set its Save folder |
+| Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | ⬜ **Not wired — fix landed, needs device rebuild** | see RetroArch note below |
 | PS3 | RPCS3 | ❌ **Not syncable** | no Android emulator exists — cloud keeps `playstation3/…`, desktop-only |
 
-**RetroArch systems are blocked upstream by a launch-config bug (not a save-sync bug).** RetroArch
-launched *via EmuShelf* is not loading its own configuration, so it writes battery saves **next to the
-ROM** (`/storage/…/roms/<system>/<core>/<game>.srm`, e.g. `roms/gbc/mGBA/Metal Gear Solid (USA).srm`)
-instead of a stable `saves/` tree. Until that is fixed, the RetroArch save folder is a moving target, so
-pointing EmuShelf's Save folder at it is premature. **Sequence:** fix the RetroArch launch-config bug →
-confirm RetroArch writes each system's saves to one predictable folder → set that folder per system in
-the gamepad Saves UI → verify the sync. PS2/PSP/3DS do **not** depend on this bug and can be wired now.
+**PS1 (DuckStation) owner-only cards — new saves don't sync.** EmuShelf reaches `Android/data` via the
+`ext_data_rw` group, so it reads DuckStation's **group-readable** (`-rw-rw----`) cards but not
+**owner-only** (`-rw-------`) ones (the known all-files limit — DECISIONS 2026-08-20). On the Thor
+(2026-08-21) this is worse than the "odd couple" that note describes: the cards the *current* DuckStation
+build (uid `u0_a119`) created — `Crash Bandicoot (USA)_1.mcd` (skipped this session), `Metal Gear Solid
+(USA) (Rev 1)_1.mcd`, `Disney's Donald Duck…_1.mcd` — are all owner-only, while every group-readable card
+is from the *old* uid (`u0_a109`, pre-reinstall). So **newly-created** per-game cards on this DuckStation
+build are unreadable and silently skipped, i.e. PS1 sync degrades toward zero as the player makes new
+saves. It is unfixable without root from EmuShelf's side (an app cannot chmod another app's files); the
+only clean path is a SAF/DocumentsProvider read of `Android/data` (whether that bypasses the owner-only
+mode is unverified) — the SAF `ILocalSaveEndpoint` the plan deferred. Tracked as an S-milestone item.
+
+**RetroArch systems — the launch-config fix has landed; the device needs a rebuild.** RetroArch launched
+*via EmuShelf* wasn't loading its config, so it wrote saves next to the ROM
+(`/storage/…/roms/<system>/<core>/<game>.srm`, e.g. `roms/gbc/mGBA/Metal Gear Solid (USA).srm`) instead
+of a stable `saves/` tree. Fixed in **PR #171 (`Android: send RetroArch CONFIGFILE so user settings
+load`), merged to main** — but the Thor still runs the pre-#171 build. **Sequence:** rebuild+install the
+Android head with #171 → confirm RetroArch writes each system's saves to one predictable folder → set that
+folder per system in the gamepad Saves UI → verify the sync.
+
+**PS2 can be wired now** (path verified above); PSP and 3DS aren't set up on the device yet.
 
 ## Implementation sequence (slices)
 
