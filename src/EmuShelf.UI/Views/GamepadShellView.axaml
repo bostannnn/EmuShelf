@@ -1028,6 +1028,7 @@
                              overlays stay pixel-for-pixel where they were (Row 0 is empty for them). -->
                         <ScrollViewer x:Name="GamepadOverlayOptionsScroller" Grid.Row="1" Classes="gamepad-scroll"
                                       VerticalScrollBarVisibility="Auto"
+                                      MinHeight="{Binding GamepadOverlayOptionsMinHeight}"
                                       IsVisible="{Binding ShowsGamepadOverlayOptions}">
                         <!-- Right inset reserves the scroll gutter for BOTH the picker and the options, so
                              the thumb never overlaps the rightmost picker card when the menu scrolls. -->

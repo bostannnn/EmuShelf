@@ -3,11 +3,12 @@
 Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned; **delivered and
 driven over USB ADB as of 2026-08-18** (`adb -s 2fd555f4`; see "Milestone 0b — first device facts").
 Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status
-(2026-08-20): **0a, A0, 0b, A1/A2, and the core of D and B are built and verified on the Thor** — the app
-imports a library, launches real games in their emulators from the couch, and runs post-play completion on
-return (surviving process death). What remains is Android controller/IME polish (C), the save data to
-actually sync (E-android), one real desktop Google sign-in (E-desktop), and packaging (F). See
-**"Current status and what's next"** under Sequencing for the milestone-by-milestone checklist.
+(2026-08-21): **0a, A0, 0b, A1/A2, D (done for Thor), and the core of B are built and verified on the Thor** —
+the app imports a real SD-card library without a keyboard (all-files grant UX + a 41-game scan verified),
+launches real games in their emulators from the couch, and runs post-play completion on return (surviving
+process death). What remains is Android controller/IME polish (C), the save data to actually sync
+(E-android), one real desktop Google sign-in (E-desktop), and packaging (F). See **"Current status and
+what's next"** under Sequencing for the milestone-by-milestone checklist.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -822,6 +823,30 @@ DECISIONS 2026-08-20. **Still open:** the all-files runtime grant UX (directing 
 toggle), a SAF-backed reader fallback for providers with no local path, the per-API-level AVD matrix, and
 verifying `FolderScanner`/availability against real Android storage.
 
+**Landed 2026-08-21, verified on the Thor.**
+
+- **All-files runtime grant UX — provided by D2 onboarding (below).** The grant this milestone needs is
+  secured by the same-day first-run onboarding + `IStoragePermissionService` (D2): once the user grants
+  all-files there, EmuShelf reads the SD-card library by real path, so no separate grant flow was needed.
+  (Field note for future Android storage work: `appops get` prints a per-package line that can read `deny`
+  while the effective **uid** app-op is `allow` — the uid mode is what `Environment.IsExternalStorageManager`
+  returns, so trust the API, not the per-package line.)
+- **`FolderScanner`/availability over real Android storage.** Driven end-to-end on the Thor against the real
+  SD library: an SAF pick of `/storage/AE6A-1092/roms/psx` (all-files held → translated to a real path) fed the
+  shared `FolderScanner`, which recursed the folder — nested multi-disc game subfolders **and** loose
+  single-file `.chd`s — and imported **41 games**; they render as available cards with Play enabled, i.e.
+  `FileAvailabilityChecker` stats the real `/storage/…` paths correctly. So the two shared readers work
+  unchanged over Android shared storage under all-files, no SAF-reader fallback needed for the Thor.
+- **Couch import chooser density-collapse fixed (shared UI, Android-scoped).** Driving the import surfaced a
+  Thor-only defect: the gamepad "Add games — choose system" overlay rendered its title and hints but the
+  system list collapsed to zero height, so nothing was pickable. Fixed with
+  `MainViewModel.GamepadOverlayOptionsMinHeight` (a 240-dip floor on Android only; 0 on desktop, snapshots
+  unchanged). See DECISIONS 2026-08-21 and the Milestone S entry.
+
+**Still open in D (deferred, owner call, not Thor blockers):** the **SAF-backed reader fallback** for a device
+without all-files (a portability item, same posture as the SAF save-endpoint in E) and the **per-API-level
+AVD matrix** (30/31/34 — verification-only; the Thor is 33).
+
 #### D2 — user-chosen external data folder (first-run onboarding) — 2026-08-21
 
 **Decision (owner):** on Android, EmuShelf's own data (`Data/library.db`, `Covers/`, `Cache/`, `Logs/`,
@@ -1146,6 +1171,21 @@ bugs the feature checklist does not track:
   the whole UI to fit the Thor's ~833×468 dip) interacting badly with `MediaShelf3DControl`'s geometry
   and/or grid virtualization during a scroll animation. This is the "populated-library visual pass at the
   new density" the A2 notes flagged as open and deferred as cosmetic — it is neither cosmetic nor optional.
+- **The "Add games — choose system" chooser rendered no system list on the Thor.** ✅ **Fixed 2026-08-21,
+  verified on the Thor.** Found driving a real import on device: the `GamepadOverlayKind.ImportSystem`
+  overlay showed its title and the D-pad/A/B hint legend but the option list between them collapsed to
+  ~0px, so no system was visible to pick (import could only be completed by counting D-pad presses blind,
+  landing off-by-one and tagging PS1 discs as PS2). The options collection *was* populated and the styles
+  innocent; the collapse is the shared overlay's centred, content-sized Border giving its option
+  ScrollViewer no height when the system-menu picker header (the only thing propping the body open) is
+  absent — which it is for every option-list overlay except the system menu. **It does not reproduce in
+  desktop headless** (a repro test proved the desktop list renders at 780px and scrolls when short — the
+  classic "won't reproduce here, it's device/density-specific" case), so the fix is platform-scoped: a new
+  `MainViewModel.GamepadOverlayOptionsMinHeight` gives the option ScrollViewer a 240-dip floor **on Android
+  only** (0 on the desktop targets, so the pinned snapshot pixel-heights are byte-identical). On the Thor
+  the chooser now shows the full scrollable list and scroll-follows the selector; PlayStation imports as
+  PlayStation. Desktop-regression guard is `GamepadImportChooserLayoutTests`; full App Release suite (906)
+  green. See DECISIONS 2026-08-21.
 - **(more to catalogue.)** The owner reported "many others" not yet enumerated; the first stabilization
   pass with a staged library is where they get written down.
 
@@ -1157,7 +1197,7 @@ bugs the feature checklist does not track:
 | A0 — desktop split | ✅ done | — |
 | 0b — device facts + handoff matrix | ✅ done | PS3 (aPS3e) never measured — out of v1 scope |
 | A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
-| **D — storage & permissions** | 🟡 core done; user-chosen data folder (D2) landed off-device | D2 first-run onboarding + Settings change wired (resolver/store/VM unit-tested, head wiring on-device pending); still: SAF-backed reader fallback (providers with no local path); per-API-level AVD matrix; verify `FolderScanner`/availability on real Android storage |
+| **D — storage & permissions** | ✅ done for Thor (2026-08-21) | grant secured via D2 first-run onboarding (`IStoragePermissionService`, verified on Thor); D2 user-chosen data folder verified end-to-end on Thor; `FolderScanner`/availability verified on the real SD library (41 games); the couch import chooser density-collapse found here is fixed. **Deferred (owner call, not Thor blockers):** SAF-backed reader fallback (portability, a device without all-files) and the per-API-level AVD matrix (verification-only). D2 Settings folder-change is the one remaining follow-up |
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
 | C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |

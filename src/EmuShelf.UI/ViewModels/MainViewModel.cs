@@ -1055,6 +1055,17 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
         GamepadOverlayKind.ImportSystem;
+    /// <summary>
+    /// A floor, in DIP, for the option-list scroll region — <b>Android only</b>. The overlay Border is
+    /// vertically centred and sizes to its content; on the Thor the option ScrollViewer contributes no
+    /// height to that measure, so an option-list overlay <em>without</em> the system-menu picker header to
+    /// prop it open (the import/actions/disc choosers) collapses its list to zero and shows nothing to pick
+    /// — reproduced only on device, never in desktop headless (the plan's Milestone S chooser bug). This
+    /// forces a real viewport so the list is visible and scrollable. Zero on the desktop targets, where the
+    /// list already measures far taller and the pinned pixel-height snapshots must not move.
+    /// </summary>
+    public double GamepadOverlayOptionsMinHeight =>
+        OperatingSystem.IsAndroid() && ShowsGamepadOverlayOptions ? 240 : 0;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
     // bodies and footers, so the shared option-button list and default hint legend are hidden for them.
     // (Hotkeys keeps the chrome title — it just needs its own body and hints, not a fresh header.)
@@ -3234,6 +3245,7 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
+        OnPropertyChanged(nameof(GamepadOverlayOptionsMinHeight));
         OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
     }

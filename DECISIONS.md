@@ -9844,6 +9844,36 @@ sticks unread on Android (blocks 3D-cover rotation and every stick interaction �
 3D shelf covers resize while scrolling (A2 density override × `MediaShelf3DControl` geometry/virtualization),
 plus "many others" to catalogue in the first pass. See docs/android-port-plan.md "Milestone S".
 
+## 2026-08-21 — Android storage Milestone D done for the Thor: real-storage scan verified + couch import chooser fix
+
+Milestone D (Android storage & permissions) is complete for the Thor. The **all-files runtime grant UX** it
+called for is provided by the same-day first-run onboarding + `IStoragePermissionService` (see the
+"user-chosen external data folder" entry): once onboarding secures `MANAGE_EXTERNAL_STORAGE`, EmuShelf reads
+the user's SD-card games by real path, so no separate grant flow is needed. (Field note kept for future
+Android storage work: `appops get` prints a per-package line that can read `deny` while the effective **uid**
+app-op is `allow` — the uid mode is what `Environment.IsExternalStorageManager` returns, so trust the API,
+not the per-package line.) Two further D outcomes:
+
+- **`FolderScanner`/availability verified over real Android storage.** An SAF pick of
+  `/storage/AE6A-1092/roms/psx` (all-files held → translated to a real path) fed the shared `FolderScanner`,
+  which recursed nested multi-disc game folders and loose `.chd`s and imported 41 games, rendered available
+  with Play enabled. The shared readers work unchanged over Android shared storage under all-files.
+- **Deferred (owner call, not Thor blockers):** the SAF-backed reader fallback (only needed on a device
+  without all-files — a portability item for a second device, same posture as the SAF save-endpoint in
+  E-android) and the per-API-level AVD matrix (30/31/34 — verification-only; the Thor is 33).
+
+- **Couch import chooser density-collapse fixed (shared UI, Android-scoped).** Driving the import on the
+  Thor surfaced a real defect: the gamepad "Add games — choose system" overlay (`ImportSystem`) rendered
+  its title and hint legend but the option list between them collapsed to zero height, so no system was
+  visible to pick. Cause: the shared overlay Border is vertically centred and content-sized, and its option
+  `ScrollViewer` contributes no height to that measure when the system-menu picker header — the only
+  option-list overlay that has one — is absent. It does **not** reproduce in desktop headless (a repro test
+  proved the desktop list renders at 780px and scrolls when short), so the fix is platform-scoped:
+  `MainViewModel.GamepadOverlayOptionsMinHeight` gives the option scroller a 240-dip floor on Android only
+  (0 on desktop → pinned snapshot pixel-heights unchanged). Verified on the Thor: the chooser shows the full
+  scrollable list, scroll-follows the selector, and PlayStation imports as PlayStation (41 games).
+  `GamepadImportChooserLayoutTests` guards the desktop path; full App Release suite (906) green.
+
 ## 2026-08-21 — Android: EmuShelf's own data lives in a user-chosen external folder, not app-private storage
 
 On Android, EmuShelf's data layout (`Data/library.db`, `Covers/`, `Cache/`, `Logs/`, `Settings/`, `Saves/`)

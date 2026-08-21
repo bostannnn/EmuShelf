@@ -1969,10 +1969,17 @@ breaks the whole-solution macOS build/test loop.
         recovered from Cocoon's live launch log + NeoStation's DB. Strategy 4 (each emulator holds its own
         SAF tree grant) confirmed live. `Android/data` saves reachable **without root** via CX File Manager;
         per-emulator save mapping recorded. See the plan's "Milestone 0b" / E save table.
-  - [x] **D — storage & permissions (core)** (2026-08-20). `AndroidExternalStorageUri` (shared, tested)
-        owns SAF tree/document URI ↔ `/storage` translation; game paths stored absolute on Android
-        (`IAppPaths.UsesPortableStorage`); `allowBackup=false`. Remaining: all-files grant UX, SAF-reader
-        fallback, per-API-level AVD matrix (see plan).
+  - [x] **D — storage & permissions (done for Thor)** (2026-08-21, verified on Thor). `AndroidExternalStorageUri`
+        (shared, tested) owns SAF tree/document URI ↔ `/storage` translation; game paths stored absolute on
+        Android (`IAppPaths.UsesPortableStorage`); `allowBackup=false`. The **all-files runtime grant UX** is
+        provided by D2's first-run onboarding + `IStoragePermissionService` (below) — once onboarding secures
+        all-files, EmuShelf reads the SD library by real path. Verified here: **`FolderScanner`/availability
+        over the real SD library** (41-game import from `/storage/AE6A-1092/roms/psx`, rendered available).
+        The couch import chooser's Thor-only density-collapse found while doing this is fixed
+        (`MainViewModel.GamepadOverlayOptionsMinHeight`, Android-only 240-dip floor; 0 on desktop, snapshots
+        unchanged; `GamepadImportChooserLayoutTests` guards it). **Deferred (owner call, not Thor blockers):**
+        SAF-backed reader fallback (device without all-files) and the per-API-level AVD matrix
+        (verification-only). See DECISIONS 2026-08-21.
   - [x] **B — launching (core)** (2026-08-20, verified on Thor). Per-emulator intent data + pure
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
