@@ -40,6 +40,12 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         global::EmuShelf.App.App.SingleViewShellFactory =
             (lifetime, boot, deps) => new SingleViewShell(lifetime, boot, deps);
 
+        // Analog-stick input for the shared poll loop. SDL (the desktop reader) cannot read Android input,
+        // so the head supplies a MotionEvent-fed reader; the Activity feeds it via AndroidGamepadReader.Current.
+        var gamepadReader = new AndroidGamepadReader();
+        AndroidGamepadReader.Current = gamepadReader;
+        global::EmuShelf.App.App.GamepadReaderFactory = () => gamepadReader;
+
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()
             // Pin EGL explicitly. The default [Egl, Software] list lets a failed EGL init fall back to
