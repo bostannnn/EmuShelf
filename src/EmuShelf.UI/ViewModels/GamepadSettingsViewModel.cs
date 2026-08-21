@@ -1125,6 +1125,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
         OnPropertyChanged(nameof(IsWorkingInSection));
+
+        // A shape change replaced the Rows collection wholesale. The view renders these into an
+        // ItemsRepeater that does not re-realize its virtualized children on a bare collection reset;
+        // it only relays out when a FocusRevision bump drives RevealGamepadOverlayFocus. D-pad rebuilds
+        // bump it themselves, but async rebuilds (e.g. a folder import refreshing a platform's remembered
+        // folders) reach RebuildRows through OnSettingsPropertyChanged, which does not — so without this
+        // the new rows stay blank until the section is re-entered. Bump here so every structural rebuild
+        // forces the repeater to re-lay-out, regardless of what triggered it.
+        if (!sameShape)
+            FocusRevision++;
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRows()
