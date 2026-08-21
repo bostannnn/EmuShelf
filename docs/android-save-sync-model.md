@@ -205,19 +205,24 @@ save-provider wiring already exists in the shared code, so "slice 3" is smaller 
 
 Sync participation is per-system. A folder-configurable system with **no Save folder set**
 (`DirectoryOverride: null`) has no provider — `CanSyncSystem` returns false and the launch/exit sync
-is a **silent no-op**. On the Thor right now only the two auto-wired emulators actually sync; the rest
-are unset.
+is a **silent no-op**. As of the 2026-08-21 session, the fixed-root emulators plus PS2/PSP/3DS are wired;
+the RetroArch systems await a device rebuild.
 
-| System | Emulator | Status | What it needs |
+| System | Emulator | Status | Notes |
 |---|---|---|---|
-| PS1 | DuckStation | 🟡 **Wired, but partially readable** | see the owner-only note below — new per-game cards don't sync |
-| GameCube | Dolphin | ✅ **Wired, verified syncing** (`gamecube/gci/a/GYQE01`, `…/GC6E01` round-tripped) | nothing (auto-root) |
-| Wii | Dolphin | ✅ **Wired** (auto-root; `wii/title/…` uploads seen) | nothing (auto-root) |
-| PS2 | ARMSX2 | ⬜ **Not wired (wireable now)** | set Save folder → `/storage/emulated/0/User/ARMSX2/` (verified: readable, `PCSX2-Android.ini` + `memcards/Mcdf01.ps2`). Card is `Mcdf01.ps2`; desktop uses `Mcd001.ps2`, so rename to match before it cross-syncs |
-| PSP | PPSSPP | ⬜ **Not set up on device** | PPSSPP has no save dir on the Thor yet (`PSP/SAVEDATA` absent) — install/run PPSSPP first, then set its Save folder |
-| 3DS | Azahar | ⬜ **Not set up on device** | Azahar has no `Android/data/org.azahar_emu.azahar/files` yet — install/run Azahar first, then set its Save folder |
+| PS1 | DuckStation | 🟡 **Wired, but partially readable** | auto-root; owner-only cards don't sync — see note below |
+| GameCube | Dolphin | ✅ **Wired, verified syncing** (`gamecube/gci/a/GYQE01`, `…/GC6E01` round-tripped) | auto-root |
+| Wii | Dolphin | ✅ **Wired** (auto-root; `wii/title/…` uploads seen) | auto-root |
+| PS2 | ARMSX2 | 🟡 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/ARMSX2/` (readable, `PCSX2-Android.ini` + `memcards/`). `mcd002.ps2` uploads; see the two PS2 notes below (card-name/slot alignment, and the single-file re-upload cost) |
+| PSP | PPSSPP | 🟢 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/ppsspp/` (has `PSP/SAVEDATA`); on-device round-trip pending a play test |
+| 3DS | Azahar | 🟢 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/Azahar/` (has `sdmc`); on-device round-trip pending a play test |
 | Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | ⬜ **Not wired — fix landed, needs device rebuild** | see RetroArch note below |
 | PS3 | RPCS3 | ❌ **Not syncable** | no Android emulator exists — cloud keeps `playstation3/…`, desktop-only |
+
+The PS2/PSP/3DS overrides were written directly into the Thor's `settings.json` over ADB (their
+`/storage/emulated/0/User/<Emulator>/` dirs are all group-readable shared storage) and the app reloaded
+them cleanly. They do **not** depend on RetroArch's #171 fix, so they sync on the currently-installed
+build. All three save dirs live under a consistent user-set `/storage/emulated/0/User/<Emulator>/` layout.
 
 **PS1 (DuckStation) owner-only cards — new saves don't sync.** EmuShelf reaches `Android/data` via the
 `ext_data_rw` group, so it reads DuckStation's **group-readable** (`-rw-rw----`) cards but not
@@ -239,7 +244,35 @@ load`), merged to main** — but the Thor still runs the pre-#171 build. **Seque
 Android head with #171 → confirm RetroArch writes each system's saves to one predictable folder → set that
 folder per system in the gamepad Saves UI → verify the sync.
 
-**PS2 can be wired now** (path verified above); PSP and 3DS aren't set up on the device yet.
+**PS2 restore is gated by the emulator's slot filename, not the file on disk.** The Pcsx2 provider
+resolves a card by the enabled `SlotN_Filename` in `PCSX2-Android.ini`, so a cloud card downloads only
+when a slot is *enabled with that exact filename* (an enabled-but-absent file card is a valid download
+target — that is the restore-on-new-device path). On the Thor the desktop's `playstation2/Mcd001.ps2`
+was skipped as "no place for this save" even after the user renamed the on-disk card to `Mcd001.ps2`,
+because `Slot1_Filename` still read `Mcdf01_converted.ps2`. **To pull a cloud card: set the emulator's
+slot to that filename (all three of INI slot, on-disk name, and cloud key must agree), and for a clean
+download rather than a conflict, have no local file present.** The cloud's `playstation2/Mcdf01.ps2/…`
+entries are *folder-card* saves and only restore into a `Mcdf01.ps2` that is a directory, so they stay
+skipped against a single-file card of the same name.
+
+**Single-file `.ps2` cards re-upload wholesale — a real per-run cost.** Sync only transfers on a content
+change, but a single-file card is one blob and the PS2 BIOS rewrites its system area
+(`B<region>DATA-SYSTEM`) on essentially every boot — the same churn `IsPs2SystemDirectory` excludes for
+*folder* cards is unavoidably inside a *file* card. So a file card's hash changes almost every run and
+the whole card re-uploads (the Drive transport copies whole files; no delta/rsync). At 34 MB that is a
+few seconds each run. This is the size cost of the model's "single-file `.ps2` is the universal currency"
+choice; mitigations are a standard **8 MB** card (4× smaller, keeps interop) or **folder cards** (tiny
+per-game deltas, but they do not cross-sync with a desktop single-file card). Recorded so it is a known
+tradeoff, not a surprise.
+
+**Getting a new build onto the Thor.** The device runs a **CI release-signed** APK (versionCode 628,
+in-place upgradeable). A local dev build is versionCode 2 and signed with a different key, so it can only
+be installed by **uninstalling first** (resets onboarding; app data under `/storage/emulated/0/User/
+EmuShelf` survives). The clean path is a green CI main build (release-signed, higher versionCode) →
+`adb install -r`. **Blocker (2026-08-21): main CI is red** — the #171 merge build failed on unrelated
+#168 import tests (`GameBoyAdvanceFolderImport…` / `NintendoDsFolderImport…`, `Assert.Single()` empty),
+so no post-#171 signed artifact exists yet. Fix main CI (or accept a supervised local reinstall) to ship
+#171 — the prerequisite for the RetroArch systems.
 
 ## Implementation sequence (slices)
 
