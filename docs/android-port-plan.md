@@ -1122,6 +1122,20 @@ client-embedded build from silently running the browser OAuth behind that rclone
    Thor export/restore remains the acceptance gate. Remaining: DuckStation shared/global cards and the
    folder-configurable override picker/wiring.
 
+   **Per-system wiring status on the Thor (verified over ADB, 2026-08-21) — what is yet to wire.** Sync
+   is per-system, and a folder-configurable system with no Save folder set is a silent no-op
+   (`CanSyncSystem` false). Full table + the exact folder each needs is under "Per-system wiring status"
+   in [android-save-sync-model.md](android-save-sync-model.md); summary:
+   - ✅ **Wired & syncing (auto-root, no setup):** PS1 (DuckStation), GameCube + Wii (Dolphin). GameCube
+     round-trip verified end-to-end over real Google Drive (`gamecube/gci/a/GYQE01`, `…/GC6E01`).
+   - ⬜ **Not wired — just need their Save folder set once:** PS2 (ARMSX2), PSP (PPSSPP), 3DS (Azahar).
+   - ⬜ **Not wired — blocked upstream:** all RetroArch systems (Mega Drive, SNES, NDS, GBA, GBC, NES,
+     Dreamcast, Arcade) + melonDS DS. Blocked by a **RetroArch launch-config bug** — RetroArch launched
+     via EmuShelf isn't loading its config, so it writes saves next to the ROM
+     (`roms/<system>/<core>/…srm`) instead of a stable `saves/` tree. Fix that first, then set each
+     system's Save folder.
+   - ❌ **Not syncable:** PS3 (RPCS3) — no Android emulator.
+
 **Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
 root** (the Thor is not rooted); do not read these rows as requiring root. Battery/memory-card
 saves only; save states are out of scope and the providers already exclude the `states` namespace
