@@ -72,6 +72,23 @@ public class AndroidIntentFactoryTests
     }
 
     [Fact]
+    public void RetroArch_CarriesConfigEnvironmentExtras()
+    {
+        // Without these RetroActivityFuture ignores the user's retroarch.cfg (hotkeys, gamepad, settings).
+        // Confirmed on the Thor: the config only loads when CONFIGFILE points at the app's external files.
+        const string romPath = "/storage/AE6A-1092/roms/gba/game.gba";
+        const string corePath = "/data/data/com.retroarch.aarch64/cores/mgba_libretro_android.so";
+
+        var intent = AndroidIntentFactory.Build(AndroidEmulatorLaunchProfiles.RetroArch, romPath, corePath);
+
+        const string external = "/storage/emulated/0/Android/data/com.retroarch.aarch64/files";
+        Assert.Equal($"{external}/retroarch.cfg", intent.StringExtras[AndroidIntentFactory.RetroArchConfigExtra]);
+        Assert.Equal("/data/user/0/com.retroarch.aarch64", intent.StringExtras[AndroidIntentFactory.RetroArchDataDirExtra]);
+        Assert.Equal("/storage/emulated/0", intent.StringExtras[AndroidIntentFactory.RetroArchSdcardExtra]);
+        Assert.Equal(external, intent.StringExtras[AndroidIntentFactory.RetroArchExternalExtra]);
+    }
+
+    [Fact]
     public void RetroArch_WithoutCorePath_Throws()
     {
         Assert.Throws<ArgumentException>(() =>
