@@ -1136,14 +1136,16 @@ client-embedded build from silently running the browser OAuth behind that rclone
    is per-system, and a folder-configurable system with no Save folder set is a silent no-op
    (`CanSyncSystem` false). Full table + the exact folder each needs is under "Per-system wiring status"
    in [android-save-sync-model.md](android-save-sync-model.md); summary:
-   - ✅ **Wired & syncing (auto-root, no setup):** PS1 (DuckStation), GameCube + Wii (Dolphin). GameCube
-     round-trip verified end-to-end over real Google Drive (`gamecube/gci/a/GYQE01`, `…/GC6E01`).
-   - ⬜ **Not wired — just need their Save folder set once:** PS2 (ARMSX2), PSP (PPSSPP), 3DS (Azahar).
-   - ⬜ **Not wired — blocked upstream:** all RetroArch systems (Mega Drive, SNES, NDS, GBA, GBC, NES,
-     Dreamcast, Arcade) + melonDS DS. Blocked by a **RetroArch launch-config bug** — RetroArch launched
-     via EmuShelf isn't loading its config, so it writes saves next to the ROM
-     (`roms/<system>/<core>/…srm`) instead of a stable `saves/` tree. Fix that first, then set each
-     system's Save folder.
+   - ✅ **Wired & syncing (auto-root, no setup):** PS1 (DuckStation — but owner-only cards don't sync,
+     see model doc), GameCube + Wii (Dolphin). GameCube round-trip verified end-to-end over real Google
+     Drive (`gamecube/gci/a/GYQE01`, `…/GC6E01`).
+   - 🟡 **Wired this session (Save folder set on Thor):** PS2 (ARMSX2), PSP (PPSSPP), 3DS (Azahar) — all at
+     `/storage/emulated/0/User/<Emulator>/`, verified readable; PS2 has card-name/slot and single-file
+     re-upload caveats (model doc). Not RetroArch-dependent, so they sync on the installed build.
+   - ⬜ **Not wired — fix landed, needs device rebuild:** all RetroArch systems (Mega Drive, SNES, NDS,
+     GBA, GBC, NES, Dreamcast, Arcade) + melonDS DS. The launch-config fix (RetroArch wrote saves next to
+     the ROM instead of a `saves/` tree) merged as **PR #171**, but the Thor still runs the pre-#171
+     build; a green-CI signed rebuild is the prerequisite (main CI currently red on #168 import tests).
    - ❌ **Not syncable:** PS3 (RPCS3) — no Android emulator.
 
 **Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
