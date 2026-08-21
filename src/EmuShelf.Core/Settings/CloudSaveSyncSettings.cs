@@ -110,6 +110,15 @@ public sealed record CloudSaveSyncSettings
     public IReadOnlyDictionary<string, SaveLocationSettings> SaveLocations { get; init; } =
         new Dictionary<string, SaveLocationSettings>(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Whether this machine has already run the one-time re-key of cloud battery saves from the old
+    /// emulator-scoped namespace to the new system-scoped one (see DECISIONS 2026-08-21). Set once, after
+    /// a successful copy-only pass, so the migration never runs again. Defaults to false so an existing
+    /// settings.json triggers it on the first sync after upgrade; a fresh install has nothing to migrate
+    /// and flips it on its first pass at effectively no cost.
+    /// </summary>
+    public bool BatteryNamespaceMigrated { get; init; }
+
     /// <summary>The explicit save-location override for one system, or null when none is set.</summary>
     public string? GetOverride(string systemId) => OverrideOf(GetLocationByKey(systemId));
 
@@ -285,6 +294,7 @@ public sealed record CloudSaveSyncSettings
             TransportKind != other.TransportKind ||
             RemoteName != other.RemoteName ||
             CloudFolder != other.CloudFolder ||
+            BatteryNamespaceMigrated != other.BatteryNamespaceMigrated ||
             Pcsx2ConfigDirectory != other.Pcsx2ConfigDirectory ||
             PpssppMemoryStickDirectory != other.PpssppMemoryStickDirectory)
         {
@@ -302,6 +312,7 @@ public sealed record CloudSaveSyncSettings
         TransportKind,
         RemoteName,
         CloudFolder,
+        BatteryNamespaceMigrated,
         Pcsx2ConfigDirectory,
         PpssppMemoryStickDirectory,
         SafeSaveLocations.Count(entry => entry.Value is not null));

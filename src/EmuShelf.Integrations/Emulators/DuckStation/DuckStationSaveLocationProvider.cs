@@ -65,7 +65,11 @@ public sealed class DuckStationSaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => "playstation";
 
-    public string UnitIdPrefix => "duckstation/";
+    // Battery saves key by the system ("playstation/"); save states keep the emulator-scoped namespace
+    // so DuckStation and RetroArch PS1 states never collide.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => "duckstation/";
 
     /// <summary>Returns DuckStation's effective user-data root.</summary>
     public Task<string> GetUserDirectoryAsync(CancellationToken cancellationToken = default) =>

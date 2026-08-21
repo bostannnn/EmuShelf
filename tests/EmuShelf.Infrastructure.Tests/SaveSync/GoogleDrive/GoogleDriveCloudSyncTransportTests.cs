@@ -27,12 +27,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/shared/Mcd001.ps2", "hash-a", Modified, "file-card")]));
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/shared/Mcd001.ps2", "hash-a", Modified, "file-card")]));
 
         var units = await Transport(drive).ListAsync(Cancellation);
 
         var unit = Assert.Single(units);
-        Assert.Equal("pcsx2/shared/Mcd001.ps2", unit.UnitId);
+        Assert.Equal("playstation2/shared/Mcd001.ps2", unit.UnitId);
         Assert.Equal("hash-a", unit.ContentHash);
         Assert.Equal("file-card", unit.Compatibility);
     }
@@ -47,13 +47,13 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
 
         await transport.ListAsync(Cancellation);
         await transport.UploadAsync(
-            "pcsx2/shared/Mcd001.ps2", Bytes("save"), "hash-a", Modified, Cancellation);
+            "playstation2/shared/Mcd001.ps2", Bytes("save"), "hash-a", Modified, Cancellation);
         await transport.FlushAsync(cancellationToken: Cancellation);
 
-        Assert.Contains($"{CloudFolder}/pcsx2/shared", drive.Folders);
-        Assert.Contains($"{CloudFolder}/pcsx2/shared/Mcd001.ps2.payload", drive.Files.Keys);
+        Assert.Contains($"{CloudFolder}/playstation2/shared", drive.Folders);
+        Assert.Contains($"{CloudFolder}/playstation2/shared/Mcd001.ps2.payload", drive.Files.Keys);
         Assert.Contains($"{CloudFolder}/{CloudSaveIndex.FileName}", drive.Files.Keys);
-        Assert.Equal("save", Text(drive.Files[$"{CloudFolder}/pcsx2/shared/Mcd001.ps2.payload"]));
+        Assert.Equal("save", Text(drive.Files[$"{CloudFolder}/playstation2/shared/Mcd001.ps2.payload"]));
     }
 
     [Fact]
@@ -63,15 +63,15 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var transport = Transport(drive);
 
         await transport.ListAsync(Cancellation);
-        await transport.UploadAsync("pcsx2/a", Bytes("one"), "hash-a", Modified, Cancellation, "file-card");
-        await transport.UploadAsync("duckstation/b", Bytes("two"), "hash-b", Modified.AddHours(1), Cancellation);
+        await transport.UploadAsync("playstation2/a", Bytes("one"), "hash-a", Modified, Cancellation, "file-card");
+        await transport.UploadAsync("playstation/b", Bytes("two"), "hash-b", Modified.AddHours(1), Cancellation);
         await transport.FlushAsync(cancellationToken: Cancellation);
 
         var index = CloudSaveIndex.Parse(drive.Files[$"{CloudFolder}/{CloudSaveIndex.FileName}"]);
         Assert.Equal(2, index.Count);
-        Assert.Equal("hash-a", index["pcsx2/a"].ContentHash);
-        Assert.Equal("file-card", index["pcsx2/a"].Compatibility);
-        Assert.Equal(Modified.AddHours(1), index["duckstation/b"].ModifiedUtc);
+        Assert.Equal("hash-a", index["playstation2/a"].ContentHash);
+        Assert.Equal("file-card", index["playstation2/a"].Compatibility);
+        Assert.Equal(Modified.AddHours(1), index["playstation/b"].ModifiedUtc);
     }
 
     [Fact]
@@ -80,12 +80,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         var writer = Transport(drive);
         await writer.ListAsync(Cancellation);
-        await writer.UploadAsync("pcsx2/shared/Mcd001.ps2", Bytes("payload-bytes"), "hash", Modified, Cancellation);
+        await writer.UploadAsync("playstation2/shared/Mcd001.ps2", Bytes("payload-bytes"), "hash", Modified, Cancellation);
         await writer.FlushAsync(cancellationToken: Cancellation);
 
         var reader = Transport(drive);
         await reader.ListAsync(Cancellation);
-        await using var content = await reader.DownloadAsync("pcsx2/shared/Mcd001.ps2", Cancellation);
+        await using var content = await reader.DownloadAsync("playstation2/shared/Mcd001.ps2", Cancellation);
 
         using var streamReader = new StreamReader(content);
         Assert.Equal("payload-bytes", await streamReader.ReadToEndAsync(Cancellation));
@@ -99,17 +99,17 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         var first = Transport(drive);
         await first.ListAsync(Cancellation);
-        await first.UploadAsync("pcsx2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
+        await first.UploadAsync("playstation2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
         await first.FlushAsync(cancellationToken: Cancellation);
 
         var second = Transport(drive);
         await second.ListAsync(Cancellation);
-        await second.DownloadAsync("pcsx2/a", Cancellation);
-        await second.UploadAsync("pcsx2/a", Bytes("v2"), "hash-2", Modified.AddHours(1), Cancellation);
+        await second.DownloadAsync("playstation2/a", Cancellation);
+        await second.UploadAsync("playstation2/a", Bytes("v2"), "hash-2", Modified.AddHours(1), Cancellation);
         await second.FlushAsync(cancellationToken: Cancellation);
 
-        Assert.Single(drive.Files.Keys, path => path.EndsWith("pcsx2/a.payload", StringComparison.Ordinal));
-        Assert.Equal("v2", Text(drive.Files[$"{CloudFolder}/pcsx2/a.payload"]));
+        Assert.Single(drive.Files.Keys, path => path.EndsWith("playstation2/a.payload", StringComparison.Ordinal));
+        Assert.Equal("v2", Text(drive.Files[$"{CloudFolder}/playstation2/a.payload"]));
     }
 
     [Fact]
@@ -122,15 +122,15 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, "card")]));
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, "card")]));
         // The newer blob is added — and therefore listed — first. "First writer wins" would pick it;
         // oldest-wins must pick the older one added second.
-        drive.AddDuplicateFile($"{CloudFolder}/pcsx2/a.payload", "newer", Modified.AddHours(1));
-        drive.AddDuplicateFile($"{CloudFolder}/pcsx2/a.payload", "older", Modified);
+        drive.AddDuplicateFile($"{CloudFolder}/playstation2/a.payload", "newer", Modified.AddHours(1));
+        drive.AddDuplicateFile($"{CloudFolder}/playstation2/a.payload", "older", Modified);
 
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
-        await using var content = await transport.DownloadAsync("pcsx2/a", Cancellation);
+        await using var content = await transport.DownloadAsync("playstation2/a", Cancellation);
 
         using var reader = new StreamReader(content);
         Assert.Equal("older", await reader.ReadToEndAsync(Cancellation));
@@ -139,28 +139,28 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
     [Fact]
     public async Task Download_FindsUnitsAcrossDuplicateProviderFolders_NotOnlyTheOldestFolder()
     {
-        // Two machines can each create the `pcsx2` folder (Drive permits duplicate names, the transport
-        // never deletes) and upload *different* units into their own copy. A unit that only ever landed
-        // in the newer folder must still be discoverable — descending only the oldest folder would
-        // orphan it and then prune its index entry.
+        // Two machines can each create the `playstation2` folder (Drive permits duplicate names, the
+        // transport never deletes) and upload *different* units into their own copy. A unit that only
+        // ever landed in the newer folder must still be discoverable — descending only the oldest folder
+        // would orphan it and then prune its index entry.
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
             CloudSaveIndex.Serialize(
             [
-                new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, "card"),
-                new SaveUnitSnapshot("pcsx2/b", "hash-b", Modified, "card"),
+                new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, "card"),
+                new SaveUnitSnapshot("playstation2/b", "hash-b", Modified, "card"),
             ]));
-        var olderFolder = drive.AddDuplicateFolder($"{CloudFolder}/pcsx2", Modified);
+        var olderFolder = drive.AddDuplicateFolder($"{CloudFolder}/playstation2", Modified);
         drive.AddFileUnder(olderFolder, "a.payload", "in-older", Modified);
-        var newerFolder = drive.AddDuplicateFolder($"{CloudFolder}/pcsx2", Modified.AddHours(1));
+        var newerFolder = drive.AddDuplicateFolder($"{CloudFolder}/playstation2", Modified.AddHours(1));
         drive.AddFileUnder(newerFolder, "b.payload", "in-newer", Modified);
 
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
 
-        await using var a = await transport.DownloadAsync("pcsx2/a", Cancellation);
-        await using var b = await transport.DownloadAsync("pcsx2/b", Cancellation);
+        await using var a = await transport.DownloadAsync("playstation2/a", Cancellation);
+        await using var b = await transport.DownloadAsync("playstation2/b", Cancellation);
         using var readerA = new StreamReader(a);
         using var readerB = new StreamReader(b);
         Assert.Equal("in-older", await readerA.ReadToEndAsync(Cancellation));
@@ -177,16 +177,16 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         var first = Transport(drive);
         await first.ListAsync(Cancellation);
-        await first.UploadAsync("pcsx2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
+        await first.UploadAsync("playstation2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
         await first.FlushAsync(cancellationToken: Cancellation);
 
         var second = Transport(drive);
         await second.ListAsync(Cancellation);
-        await second.UploadAsync("pcsx2/a", Bytes("v2"), "hash-2", Modified.AddHours(1), Cancellation);
+        await second.UploadAsync("playstation2/a", Bytes("v2"), "hash-2", Modified.AddHours(1), Cancellation);
         await second.FlushAsync(cancellationToken: Cancellation);
 
-        Assert.Single(drive.Files.Keys, path => path.EndsWith("pcsx2/a.payload", StringComparison.Ordinal));
-        Assert.Equal("v2", Text(drive.Files[$"{CloudFolder}/pcsx2/a.payload"]));
+        Assert.Single(drive.Files.Keys, path => path.EndsWith("playstation2/a.payload", StringComparison.Ordinal));
+        Assert.Equal("v2", Text(drive.Files[$"{CloudFolder}/playstation2/a.payload"]));
     }
 
     [Fact]
@@ -195,12 +195,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         var first = Transport(drive);
         await first.ListAsync(Cancellation);
-        await first.UploadAsync("pcsx2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
+        await first.UploadAsync("playstation2/a", Bytes("v1"), "hash-1", Modified, Cancellation);
         await first.FlushAsync(cancellationToken: Cancellation);
 
         var second = Transport(drive);
         await second.ListAsync(Cancellation);
-        await second.UploadAsync("pcsx2/b", Bytes("v2"), "hash-2", Modified, Cancellation);
+        await second.UploadAsync("playstation2/b", Bytes("v2"), "hash-2", Modified, Cancellation);
         await second.FlushAsync(cancellationToken: Cancellation);
 
         Assert.Single(drive.Files.Keys, path => path.EndsWith(CloudSaveIndex.FileName, StringComparison.Ordinal));
@@ -215,12 +215,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, null)]));
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, null)]));
 
         var transport = Transport(drive, cloudFolderId: "id-that-no-longer-exists");
         var units = await transport.ListAsync(Cancellation);
 
-        Assert.Equal(["pcsx2/a"], units.Select(unit => unit.UnitId));
+        Assert.Equal(["playstation2/a"], units.Select(unit => unit.UnitId));
         Assert.NotEqual("id-that-no-longer-exists", transport.CloudFolderId);
     }
 
@@ -232,12 +232,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, null)]));
-        drive.AddFile($"{CloudFolder}/pcsx2/a.payload", "recovered-bytes");
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, null)]));
+        drive.AddFile($"{CloudFolder}/playstation2/a.payload", "recovered-bytes");
 
         var transport = Transport(drive, cloudFolderId: "id-that-no-longer-exists");
         await transport.ListAsync(Cancellation);
-        await using var content = await transport.DownloadAsync("pcsx2/a", Cancellation);
+        await using var content = await transport.DownloadAsync("playstation2/a", Cancellation);
 
         using var reader = new StreamReader(content);
         Assert.Equal("recovered-bytes", await reader.ReadToEndAsync(Cancellation));
@@ -263,7 +263,7 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var folderId = drive.AddFolder(CloudFolder);
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, null)]));
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, null)]));
 
         var transport = Transport(drive, cloudFolderId: folderId);
         await transport.ListAsync(Cancellation);
@@ -279,12 +279,12 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
-            CloudSaveIndex.Serialize([new SaveUnitSnapshot("pcsx2/a", "hash", Modified, null)]));
+            CloudSaveIndex.Serialize([new SaveUnitSnapshot("playstation2/a", "hash", Modified, null)]));
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
 
         await Assert.ThrowsAsync<CloudPayloadMissingException>(
-            () => transport.DownloadAsync("pcsx2/a", Cancellation));
+            () => transport.DownloadAsync("playstation2/a", Cancellation));
     }
 
     [Fact]
@@ -296,19 +296,19 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
             CloudSaveIndex.Serialize([
-                new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, null),
-                new SaveUnitSnapshot("pcsx2/b", "hash-b", Modified, null),
+                new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, null),
+                new SaveUnitSnapshot("playstation2/b", "hash-b", Modified, null),
             ]));
-        drive.AddFile($"{CloudFolder}/pcsx2/b.payload", "kept");
+        drive.AddFile($"{CloudFolder}/playstation2/b.payload", "kept");
 
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
-        await Assert.ThrowsAsync<CloudPayloadMissingException>(() => transport.DownloadAsync("pcsx2/a", Cancellation));
+        await Assert.ThrowsAsync<CloudPayloadMissingException>(() => transport.DownloadAsync("playstation2/a", Cancellation));
         await transport.FlushAsync(cancellationToken: Cancellation);
 
         var index = CloudSaveIndex.Parse(drive.Files[$"{CloudFolder}/{CloudSaveIndex.FileName}"]);
-        Assert.False(index.ContainsKey("pcsx2/a"));
-        Assert.True(index.ContainsKey("pcsx2/b"));
+        Assert.False(index.ContainsKey("playstation2/a"));
+        Assert.True(index.ContainsKey("playstation2/b"));
     }
 
     [Fact]
@@ -318,15 +318,15 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
             CloudSaveIndex.Serialize([
-                new SaveUnitSnapshot("pcsx2/a", "hash-a", Modified, null),
-                new SaveUnitSnapshot("pcsx2/b", "hash-b", Modified, null),
+                new SaveUnitSnapshot("playstation2/a", "hash-a", Modified, null),
+                new SaveUnitSnapshot("playstation2/b", "hash-b", Modified, null),
             ]));
-        drive.AddFile($"{CloudFolder}/pcsx2/b.payload", "kept");
+        drive.AddFile($"{CloudFolder}/playstation2/b.payload", "kept");
 
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
 
-        Assert.Equal(["pcsx2/a"], await transport.FindMissingPayloadsAsync(Cancellation));
+        Assert.Equal(["playstation2/a"], await transport.FindMissingPayloadsAsync(Cancellation));
     }
 
     [Fact]
@@ -338,7 +338,7 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var transport = Transport(drive);
 
         await transport.ListAsync(Cancellation);
-        await transport.UploadAsync("pcsx2/a", Bytes("one"), "hash-a", Modified, Cancellation);
+        await transport.UploadAsync("playstation2/a", Bytes("one"), "hash-a", Modified, Cancellation);
         await transport.FlushAsync(cancellationToken: Cancellation);
 
         var payloadWrite = drive.WrittenNames.IndexOf("a.payload");
@@ -353,7 +353,7 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
         for (var i = 0; i < 3; i++)
-            await transport.UploadAsync($"pcsx2/{i}", Bytes("x"), $"hash-{i}", Modified, Cancellation);
+            await transport.UploadAsync($"playstation2/{i}", Bytes("x"), $"hash-{i}", Modified, Cancellation);
 
         var reports = new SynchronousProgress<SaveTransferProgress>();
         await transport.FlushAsync(reports, Cancellation);
@@ -383,7 +383,7 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var drive = new FakeDriveServer();
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
-        await transport.UploadAsync("pcsx2/a", Bytes("one"), "hash-a", Modified, Cancellation);
+        await transport.UploadAsync("playstation2/a", Bytes("one"), "hash-a", Modified, Cancellation);
 
         await transport.FlushAsync(cancellationToken: Cancellation);
 
@@ -399,19 +399,19 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
             CloudSaveIndex.Serialize([
-                new SaveUnitSnapshot("pcsx2/a", "h", Modified, null),
-                new SaveUnitSnapshot("pcsx2/b", "h", Modified, null),
-                new SaveUnitSnapshot("duckstation/c", "h", Modified, null),
+                new SaveUnitSnapshot("playstation2/a", "h", Modified, null),
+                new SaveUnitSnapshot("playstation2/b", "h", Modified, null),
+                new SaveUnitSnapshot("playstation/c", "h", Modified, null),
             ]));
-        drive.AddFile($"{CloudFolder}/pcsx2/a.payload", "a");
-        drive.AddFile($"{CloudFolder}/pcsx2/b.payload", "b");
-        drive.AddFile($"{CloudFolder}/duckstation/c.payload", "c");
+        drive.AddFile($"{CloudFolder}/playstation2/a.payload", "a");
+        drive.AddFile($"{CloudFolder}/playstation2/b.payload", "b");
+        drive.AddFile($"{CloudFolder}/playstation/c.payload", "c");
 
         var transport = Transport(drive);
         await transport.ListAsync(Cancellation);
         var afterList = drive.ListCalls;
 
-        foreach (var unitId in new[] { "pcsx2/a", "pcsx2/b", "duckstation/c" })
+        foreach (var unitId in new[] { "playstation2/a", "playstation2/b", "playstation/c" })
             (await transport.DownloadAsync(unitId, Cancellation)).Dispose();
 
         // One walk of root + the two emulator folders, and nothing per additional unit.
@@ -428,11 +428,11 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         var transport = Transport(new FakeDriveServer());
 
         await Assert.ThrowsAsync<ArgumentException>(
-            () => transport.UploadAsync("pcsx2/../escape", Bytes("x"), "hash", Modified, Cancellation));
+            () => transport.UploadAsync("playstation2/../escape", Bytes("x"), "hash", Modified, Cancellation));
     }
 
     [Theory]
-    [InlineData("pcsx2/shared/Mcd001.ps2.payload", "pcsx2/shared", "Mcd001.ps2.payload")]
+    [InlineData("playstation2/shared/Mcd001.ps2.payload", "playstation2/shared", "Mcd001.ps2.payload")]
     [InlineData("index.json", "", "index.json")]
     public void PathHelpers_SplitAtTheLastSeparator(string path, string parent, string leaf)
     {

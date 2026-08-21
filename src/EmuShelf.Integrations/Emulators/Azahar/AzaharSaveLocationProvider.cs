@@ -51,7 +51,9 @@ public sealed class AzaharSaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => "3ds";
 
-    public string UnitIdPrefix => "azahar/";
+    // Battery saves key by the system ("3ds/"). Azahar does not sync save states, so it keeps no
+    // separate emulator-scoped state namespace.
+    public string UnitIdPrefix => SystemId + "/";
 
     /// <summary>The resolved local console folder, or the SD-card root when no console exists yet.</summary>
     public Task<string> GetSaveDataDirectoryAsync(CancellationToken cancellationToken = default) =>

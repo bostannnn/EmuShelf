@@ -15,9 +15,9 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
     private const string IniFileName = "PCSX2.ini";
     // ARMSX2 (the ARM Android PCSX2 fork) writes the identical version-1 INI format under this name
     // at the user-directory root — no "inis" subfolder. Reading it lets the Android PS2 save provider
-    // reuse this class verbatim and therefore emit the same "pcsx2/" unit ids, so an ARMSX2 memory
-    // card syncs 1:1 with desktop PCSX2 when both use single-file .ps2 cards with matching names.
-    // See docs/android-save-sync-model.md.
+    // reuse this class verbatim and therefore emit the same "playstation2/" system unit ids, so an
+    // ARMSX2 memory card syncs 1:1 with desktop PCSX2 when both use single-file .ps2 cards with matching
+    // names. See docs/android-save-sync-model.md.
     private const string AndroidIniFileName = "PCSX2-Android.ini";
     private const string IniSubdirectory = "inis";
     private const string FolderIndexFileName = "_pcsx2_index";
@@ -34,7 +34,10 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => "playstation2";
 
-    public string UnitIdPrefix => "pcsx2/";
+    // Battery cards key by the system ("playstation2/"); save states keep the emulator-scoped namespace.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => "pcsx2/";
 
     /// <summary>Configured roots for portable content stored outside the memory cards folder.</summary>
     public Task<Pcsx2ContentDirectories> GetContentDirectoriesAsync(CancellationToken cancellationToken = default) =>
@@ -119,7 +122,7 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
                     if (IsSaveDirectory(saveName))
                     {
                         units.Add(new SaveUnit(
-                            $"pcsx2/{cardName}/{saveName}",
+                            $"{UnitIdPrefix}{cardName}/{saveName}",
                             $"{cardName} — {saveName}",
                             SaveUnitKind.Folder));
                     }
@@ -127,7 +130,7 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
             }
             else if (File.Exists(entry) && Path.GetExtension(cardName).Equals(".ps2", StringComparison.OrdinalIgnoreCase))
             {
-                units.Add(new SaveUnit($"pcsx2/{cardName}", cardName, SaveUnitKind.File));
+                units.Add(new SaveUnit($"{UnitIdPrefix}{cardName}", cardName, SaveUnitKind.File));
             }
         }
 

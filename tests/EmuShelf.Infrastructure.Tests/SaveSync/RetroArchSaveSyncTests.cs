@@ -33,9 +33,9 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.False(info.SortedByCore);
         Assert.Equal(
             [
-                new SaveUnit("retroarch/gba/Metroid Fusion (USA).srm", "Metroid Fusion (USA).srm", SaveUnitKind.File),
+                new SaveUnit("gba/Metroid Fusion (USA).srm", "Metroid Fusion (USA).srm", SaveUnitKind.File),
                 new SaveUnit(
-                    "retroarch/gba/Super Mario All-Stars (USA).srm",
+                    "gba/Super Mario All-Stars (USA).srm",
                     "Super Mario All-Stars (USA).srm",
                     SaveUnitKind.File),
             ],
@@ -62,18 +62,18 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.False((await gba.GetSaveInfoAsync()).IsExclusive);
         Assert.Equal(
-            ["retroarch/gba/Metroid Fusion (USA).srm"],
+            ["gba/Metroid Fusion (USA).srm"],
             (await gba.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
         Assert.Equal(
-            ["retroarch/nds/Contra 4 (USA).srm"],
+            ["nds/Contra 4 (USA).srm"],
             (await nds.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
 
         // The same rule guards a remote-only unit: a save for a game this machine's library does
         // not have is never written into the shared folder under this system's name.
-        Assert.NotNull(gba.ResolveUnit("retroarch/gba/Metroid Fusion (USA).srm"));
-        Assert.Null(gba.ResolveUnit("retroarch/gba/Contra 4 (USA).srm"));
+        Assert.NotNull(gba.ResolveUnit("gba/Metroid Fusion (USA).srm"));
+        Assert.Null(gba.ResolveUnit("gba/Contra 4 (USA).srm"));
         Assert.Null(CreateProvider("gba", "mgba_libretro.dll", installation).ResolveUnit(
-            "retroarch/gba/Metroid Fusion (USA).srm"));
+            "gba/Metroid Fusion (USA).srm"));
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(sorted, info.SaveDirectory);
         Assert.True(info.SortedByCore);
         Assert.Equal(
-            ["retroarch/nds/Pokemon - Black Version (USA).sav"],
+            ["nds/Pokemon - Black Version (USA).sav"],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
     }
 
@@ -134,14 +134,14 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         var gbc = SharedCoreProvider("gbc", installation, ["Wario Land 3 (World) (En,Ja)"]);
 
         Assert.Equal(
-            ["retroarch/gba/Metroid Fusion (USA).srm"],
+            ["gba/Metroid Fusion (USA).srm"],
             (await gba.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
         Assert.Equal(
-            ["retroarch/gbc/Wario Land 3 (World) (En,Ja).srm"],
+            ["gbc/Wario Land 3 (World) (En,Ja).srm"],
             (await gbc.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
         // Not exclusive, so a cross-system download of the other system's save is refused too.
-        Assert.NotNull(gba.ResolveUnit("retroarch/gba/Metroid Fusion (USA).srm"));
-        Assert.Null(gba.ResolveUnit("retroarch/gba/Wario Land 3 (World) (En,Ja).srm"));
+        Assert.NotNull(gba.ResolveUnit("gba/Metroid Fusion (USA).srm"));
+        Assert.Null(gba.ResolveUnit("gba/Wario Land 3 (World) (En,Ja).srm"));
     }
 
     [Fact]
@@ -248,7 +248,7 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
             "nds", "desmume_libretro.dll", installation, gameFileNames: ["Contra 4 (USA)"]);
 
         Assert.Equal(
-            ["retroarch/nds/Contra 4 (USA).dsv", "retroarch/nds/Contra 4 (USA).srm"],
+            ["nds/Contra 4 (USA).dsv", "nds/Contra 4 (USA).srm"],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
     }
 
@@ -434,16 +434,16 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateProvider(
             "snes", "snes9x_libretro.dll", installation, gameFileNames: ["Chrono Trigger (USA)"]);
 
-        var location = provider.ResolveUnit("retroarch/snes/Chrono Trigger (USA).srm");
+        var location = provider.ResolveUnit("snes/Chrono Trigger (USA).srm");
 
         Assert.NotNull(location);
         Assert.Equal(
             Path.Combine(installation, "saves", "Chrono Trigger (USA).srm"),
             location.Path);
         Assert.Equal(SaveUnitKind.File, location.Kind);
-        Assert.Null(provider.ResolveUnit("retroarch/snes/../states/Chrono Trigger (USA).srm"));
-        Assert.Null(provider.ResolveUnit("retroarch/snes/Chrono Trigger (USA).state"));
-        Assert.Null(provider.ResolveUnit("retroarch/gba/Metroid Fusion (USA).srm"));
+        Assert.Null(provider.ResolveUnit("snes/../states/Chrono Trigger (USA).srm"));
+        Assert.Null(provider.ResolveUnit("snes/Chrono Trigger (USA).state"));
+        Assert.Null(provider.ResolveUnit("gba/Metroid Fusion (USA).srm"));
         Assert.Null(provider.ResolveUnit("retroarch/Chrono Trigger (USA).srm"));
     }
 

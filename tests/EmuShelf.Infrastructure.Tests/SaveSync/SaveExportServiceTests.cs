@@ -18,8 +18,8 @@ public sealed class SaveExportServiceTests
     [Fact]
     public async Task Device_ExportsFileAndFolderUnits_WithReadmeAndManifest()
     {
-        var card = new SaveUnit("pcsx2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
-        var folder = new SaveUnit("pcsx2/folder/SLUS-20552", "God of War", SaveUnitKind.Folder);
+        var card = new SaveUnit("playstation2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
+        var folder = new SaveUnit("playstation2/folder/SLUS-20552", "God of War", SaveUnitKind.Folder);
         _local.Seed(card.UnitId, Bytes("card-bytes"), T0);
         _local.Seed(folder.UnitId, Zip(("save.bin", Bytes("AAA")), ("sub/icon.ico", Bytes("BBBB"))), T0);
         var provider = new FakeSaveLocationProvider("playstation2", card, folder);
@@ -42,15 +42,15 @@ public sealed class SaveExportServiceTests
     [Fact]
     public async Task DeviceAndCloud_AddsCloudOnlyUnit_AndPrefersDeviceOnConflict()
     {
-        var card = new SaveUnit("pcsx2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
+        var card = new SaveUnit("playstation2/Mcd001.ps2", "Memory Card 1", SaveUnitKind.File);
         _local.Seed(card.UnitId, Bytes("local-copy"), T0);
         var provider = new FakeSaveLocationProvider("playstation2", card);
-        provider.ResolvableUnitKinds["pcsx2/Mcd002.ps2"] = SaveUnitKind.File;
+        provider.ResolvableUnitKinds["playstation2/Mcd002.ps2"] = SaveUnitKind.File;
 
         // The remote holds a different version of the device's card (a conflict) and one card the
         // device does not have.
         _remote.Seed(card.UnitId, Bytes("CLOUD-copy"), T0);
-        _remote.Seed("pcsx2/Mcd002.ps2", Bytes("cloud-only"), T0);
+        _remote.Seed("playstation2/Mcd002.ps2", Bytes("cloud-only"), T0);
 
         var result = await Service().ExportAsync(
             [new SaveExportTarget(provider, _local, "PlayStation 2")], _remote, _sink);
@@ -86,8 +86,8 @@ public sealed class SaveExportServiceTests
     [Fact]
     public async Task CloudUnit_WithNoOwningPlatform_IsSkipped()
     {
-        var provider = new FakeSaveLocationProvider("playstation2", new SaveUnit("pcsx2/Mcd001.ps2", "c", SaveUnitKind.File));
-        _local.Seed("pcsx2/Mcd001.ps2", Bytes("card"), T0);
+        var provider = new FakeSaveLocationProvider("playstation2", new SaveUnit("playstation2/Mcd001.ps2", "c", SaveUnitKind.File));
+        _local.Seed("playstation2/Mcd001.ps2", Bytes("card"), T0);
         _remote.Seed("otheremu/foreign.sav", Bytes("nope"), T0);
 
         var result = await Service().ExportAsync(
@@ -103,9 +103,11 @@ public sealed class SaveExportServiceTests
     [Fact]
     public async Task CloudCheatsAndPatches_UnderAKnownPlatform_AreIgnoredSilently()
     {
-        // Older builds uploaded thousands of cheats/patches under a platform's prefix; a platform does
-        // not own them, so they must be ignored quietly rather than flooding the skipped list.
-        var provider = new FakeSaveLocationProvider("playstation2");
+        // Older builds uploaded thousands of cheats/patches under the EMULATOR-scoped prefix (pcsx2/),
+        // which is the provider's StateNamespacePrefix now that battery saves are system-scoped. A
+        // platform does not own them, so they must be ignored quietly rather than flooding the skipped
+        // list — even though they no longer sit under the system-scoped UnitIdPrefix.
+        var provider = new FakeSaveLocationProvider("playstation2") { StateNamespacePrefixOverride = "pcsx2/" };
         _remote.Seed("pcsx2/cheats/SLUS-20552.pnach", Bytes("cheat"), T0);
         _remote.Seed("pcsx2/patches/SLUS-20552.pnach", Bytes("patch"), T0);
 
@@ -118,12 +120,51 @@ public sealed class SaveExportServiceTests
     }
 
     [Fact]
+    public async Task CloudFrozenOldNamespaceBatteryKey_IsIgnoredSilently_NotFloodedAsSkipped()
+    {
+        // The copy-only migration leaves the old emulator-scoped battery key frozen in the cloud beside
+        // its new system-scoped twin. It is owned by no current provider, but it must be ignored quietly
+        // (MapToSystemKey recognizes it) rather than reported as "no matching platform".
+        var provider = new FakeSaveLocationProvider("playstation2") { StateNamespacePrefixOverride = "pcsx2/" };
+        _remote.Seed("pcsx2/Mcd001.ps2", Bytes("frozen-old-copy"), T0);
+
+        var result = await Service().ExportAsync(
+            [new SaveExportTarget(provider, _local, "PlayStation 2")], _remote, _sink);
+
+        Assert.Equal(SaveExportStatus.NothingToExport, result.Status);
+        Assert.Empty(result.Skipped);
+        Assert.Equal(0, _remote.Downloads);
+    }
+
+    [Fact]
+    public async Task DeviceSaveState_ExportsUnderStatesTail_NotTheRawEmulatorPrefix()
+    {
+        // A save state lives under the emulator-scoped StateNamespacePrefix, not the system-scoped
+        // UnitIdPrefix; the archive path must still read "PlayStation 2/states/…", not leak "pcsx2/".
+        var state = new SaveUnit("pcsx2/states/Final Fantasy X.p2s", "state", SaveUnitKind.File);
+        var provider = new FakeSaveLocationProvider("playstation2", state)
+        {
+            // Divergent prefixes: battery is system-scoped, state is emulator-scoped.
+            UnitIdPrefixOverride = "playstation2/",
+            StateNamespacePrefixOverride = "pcsx2/",
+        };
+        _local.Seed("pcsx2/states/Final Fantasy X.p2s", Bytes("state-bytes"), T0);
+
+        var result = await Service().ExportAsync(
+            [new SaveExportTarget(provider, _local, "PlayStation 2")], _remote, _sink);
+
+        Assert.Equal(SaveExportStatus.Completed, result.Status);
+        Assert.Equal(Bytes("state-bytes"), _sink.Entry("PlayStation 2/states/Final Fantasy X.p2s"));
+        Assert.False(_sink.Has("PlayStation 2/pcsx2/states/Final Fantasy X.p2s"));
+    }
+
+    [Fact]
     public async Task CloudUnit_OwnedButUnresolvable_IsSkippedWithoutDownloading()
     {
-        // No local units (the zero-unit provider still resolves the "pcsx2/" prefix), so pcsx2/Mcd009
+        // No local units (the zero-unit provider still resolves the "playstation2/" prefix), so playstation2/Mcd009
         // is owned by the prefix but not resolvable here.
         var provider = new FakeSaveLocationProvider("playstation2");
-        _remote.Seed("pcsx2/Mcd009.ps2", Bytes("orphan"), T0);
+        _remote.Seed("playstation2/Mcd009.ps2", Bytes("orphan"), T0);
 
         var result = await Service().ExportAsync(
             [new SaveExportTarget(provider, _local, "PlayStation 2")], _remote, _sink);

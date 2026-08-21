@@ -34,7 +34,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var units = await provider.GetSaveUnitsAsync();
 
         var unit = Assert.Single(units);
-        Assert.Equal(new SaveUnit("pcsx2/Mcd001.ps2", "Mcd001.ps2", SaveUnitKind.File), unit);
+        Assert.Equal(new SaveUnit("playstation2/Mcd001.ps2", "Mcd001.ps2", SaveUnitKind.File), unit);
         Assert.Equal(_memoryCardsDirectory, await provider.GetMemoryCardsDirectoryAsync());
     }
 
@@ -51,7 +51,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         var unit = Assert.Single(await new Pcsx2SaveLocationProvider(_configurationDirectory).GetSaveUnitsAsync());
 
-        Assert.Equal("pcsx2/Custom Card.ps2", unit.UnitId);
+        Assert.Equal("playstation2/Custom Card.ps2", unit.UnitId);
     }
 
     [Fact]
@@ -59,7 +59,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
     {
         // Ground truth pulled from the AYN Thor: ARMSX2 writes the identical PCSX2 v1 INI as
         // "PCSX2-Android.ini" at the user-directory root (no "inis" subfolder) with single-file .ps2
-        // cards under "memcards". The same provider must read it and emit "pcsx2/" ids so the cards
+        // cards under "memcards". The same provider must read it and emit "playstation2/" ids so the cards
         // sync with desktop PCSX2. See docs/android-save-sync-model.md.
         var userDirectory = Path.Combine(BaseDirectory, "armsx2-user");
         var cards = Path.Combine(userDirectory, "memcards");
@@ -76,12 +76,12 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var provider = new Pcsx2SaveLocationProvider(userDirectory);
         var units = (await provider.GetSaveUnitsAsync()).OrderBy(unit => unit.UnitId, StringComparer.Ordinal).ToList();
 
-        Assert.Equal("pcsx2/", provider.UnitIdPrefix);
+        Assert.Equal("playstation2/", provider.UnitIdPrefix);
         Assert.Equal(cards, await provider.GetMemoryCardsDirectoryAsync());
         Assert.Equal(
             [
-                new SaveUnit("pcsx2/Mcdf01_converted.ps2", "Mcdf01_converted.ps2", SaveUnitKind.File),
-                new SaveUnit("pcsx2/mcd002.ps2", "mcd002.ps2", SaveUnitKind.File),
+                new SaveUnit("playstation2/Mcdf01_converted.ps2", "Mcdf01_converted.ps2", SaveUnitKind.File),
+                new SaveUnit("playstation2/mcd002.ps2", "mcd002.ps2", SaveUnitKind.File),
             ],
             units);
     }
@@ -108,7 +108,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var provider = new Pcsx2SaveLocationProvider(userDirectory);
         var unit = Assert.Single(await provider.GetSaveUnitsAsync());
 
-        Assert.Equal("pcsx2/Desktop.ps2", unit.UnitId);
+        Assert.Equal("playstation2/Desktop.ps2", unit.UnitId);
         Assert.Equal(Path.Combine(userDirectory, "desktop-cards"), await provider.GetMemoryCardsDirectoryAsync());
     }
 
@@ -125,8 +125,8 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Equal(
             [
-                new SaveUnit("pcsx2/Mcd001/SLES-12345", "Mcd001 — SLES-12345", SaveUnitKind.Folder),
-                new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder),
+                new SaveUnit("playstation2/Mcd001/SLES-12345", "Mcd001 — SLES-12345", SaveUnitKind.Folder),
+                new SaveUnit("playstation2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder),
             ],
             units);
     }
@@ -162,16 +162,16 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         var provider = new Pcsx2SaveLocationProvider(_configurationDirectory);
 
-        Assert.NotNull(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
-        Assert.Null(provider.ResolveUnit("pcsx2/Mcd001.ps2/SLUS-20552"));
+        Assert.NotNull(provider.ResolveUnit("playstation2/Mcd001.ps2"));
+        Assert.Null(provider.ResolveUnit("playstation2/Mcd001.ps2/SLUS-20552"));
     }
 
     [Theory]
-    [InlineData("pcsx2/..")]
-    [InlineData("pcsx2/.")]
-    [InlineData("pcsx2/../SLUS-20552")]
-    [InlineData("pcsx2/./Mcd001.ps2")]
-    [InlineData("pcsx2/Mcd001/..")]
+    [InlineData("playstation2/..")]
+    [InlineData("playstation2/.")]
+    [InlineData("playstation2/../SLUS-20552")]
+    [InlineData("playstation2/./Mcd001.ps2")]
+    [InlineData("playstation2/Mcd001/..")]
     public void Provider_RejectsDotAndDotDotSegments_SoAUnitIdCannotEscapeItsRoot(string unitId)
     {
         // Path.GetFileName("..") == ".." (and "." == "."), so the round-trip name check alone would
@@ -185,7 +185,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         Assert.Null(provider.ResolveUnit(unitId));
         // Control: a legitimate card id under the same root still resolves.
-        Assert.NotNull(provider.ResolveUnit("pcsx2/Mcd001.ps2"));
+        Assert.NotNull(provider.ResolveUnit("playstation2/Mcd001.ps2"));
     }
 
     [Fact]
@@ -202,7 +202,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(cardRoot, "_pcsx2_index"), "index");
         WriteIni(autoManageFolderCards: false);
 
-        var snapshot = await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552");
+        var snapshot = await _endpoint.SnapshotAsync("playstation2/Mcd001/SLUS-20552");
 
         Assert.NotNull(snapshot);
         Assert.True(Directory.Exists(live));
@@ -221,7 +221,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(_memoryCardsDirectory, "Mcd001", "_pcsx2_index"), "index");
         WriteIni(autoManageFolderCards: false);
 
-        Assert.Null(await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552"));
+        Assert.Null(await _endpoint.SnapshotAsync("playstation2/Mcd001/SLUS-20552"));
     }
 
     [Fact]
@@ -236,7 +236,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(save, "nested", "icon.sys"), "icon");
         await File.WriteAllTextAsync(Path.Combine(_memoryCardsDirectory, "Mcd001", "_pcsx2_index"), "index");
         WriteIni(autoManageFolderCards: false);
-        var unit = new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder);
+        var unit = new SaveUnit("playstation2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder);
         var remote = new InMemoryCloudSyncTransport();
         var service = new SaveSyncService(_endpoint, remote, new JsonSaveSyncManifestStore(AppPaths));
 
@@ -278,10 +278,10 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var index = Path.Combine(_memoryCardsDirectory, "Mcd001", "_pcsx2_index");
         await File.WriteAllTextAsync(index, "first ordering");
 
-        var first = await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552");
+        var first = await _endpoint.SnapshotAsync("playstation2/Mcd001/SLUS-20552");
         await File.WriteAllTextAsync(index, "different timestamp/order only");
         File.SetLastWriteTimeUtc(index, DateTime.UtcNow.AddHours(1));
-        var second = await _endpoint.SnapshotAsync("pcsx2/Mcd001/SLUS-20552");
+        var second = await _endpoint.SnapshotAsync("playstation2/Mcd001/SLUS-20552");
 
         Assert.NotNull(first);
         Assert.Equal(first, second);
@@ -294,9 +294,9 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         var cardPath = Path.Combine(_memoryCardsDirectory, "Mcd001.ps2");
         await File.WriteAllTextAsync(cardPath, "before-overwrite");
 
-        await _endpoint.BackupLocalAsync("pcsx2/Mcd001.ps2", "test conflict");
+        await _endpoint.BackupLocalAsync("playstation2/Mcd001.ps2", "test conflict");
 
-        var backupRoot = Path.Combine(AppPaths.SavesDirectory, "conflicts", "pcsx2", "Mcd001.ps2");
+        var backupRoot = Path.Combine(AppPaths.SavesDirectory, "conflicts", "playstation2", "Mcd001.ps2");
         var timestampDirectory = Assert.Single(Directory.EnumerateDirectories(backupRoot));
         Assert.Equal("before-overwrite", await File.ReadAllTextAsync(Path.Combine(timestampDirectory, "Mcd001.ps2")));
         Assert.Equal("test conflict", await File.ReadAllTextAsync(Path.Combine(timestampDirectory, "reason.txt")));
@@ -311,8 +311,8 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllBytesAsync(cardPath, [1, 2, 3, 4]);
         File.SetLastWriteTimeUtc(cardPath, timestamp);
 
-        _ = await _endpoint.SnapshotAsync("pcsx2/Mcd001.ps2");
-        await using var content = await _endpoint.ReadAsync("pcsx2/Mcd001.ps2");
+        _ = await _endpoint.SnapshotAsync("playstation2/Mcd001.ps2");
+        await using var content = await _endpoint.ReadAsync("playstation2/Mcd001.ps2");
         using var result = new MemoryStream();
         await content.CopyToAsync(result);
 
@@ -329,7 +329,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(localCard, "local save");
         var remote = new InMemoryCloudSyncTransport();
         var service = new SaveSyncService(_endpoint, remote, new JsonSaveSyncManifestStore(AppPaths));
-        var unit = new SaveUnit("pcsx2/Mcd001.ps2", "Mcd001.ps2", SaveUnitKind.File);
+        var unit = new SaveUnit("playstation2/Mcd001.ps2", "Mcd001.ps2", SaveUnitKind.File);
 
         var upload = await service.SyncAsync(new FakeSaveLocationProvider("playstation2", [unit]));
         Assert.Equal(1, upload.Uploaded);
@@ -350,7 +350,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(source, "nested", "icon.sys"), "icon payload");
         var cardRoot = Path.Combine(_memoryCardsDirectory, "Mcd001");
         await File.WriteAllTextAsync(Path.Combine(cardRoot, "_pcsx2_index"), "card index");
-        var unitId = "pcsx2/Mcd001/SLUS-20552";
+        var unitId = "playstation2/Mcd001/SLUS-20552";
         var original = await _endpoint.SnapshotAsync(unitId);
 
         await using var payload = await _endpoint.ReadAsync(unitId);
@@ -372,7 +372,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await using var payload = new MemoryStream(Encoding.UTF8.GetBytes("corrupt payload"));
 
         await Assert.ThrowsAsync<InvalidDataException>(() => _endpoint.WriteAsync(
-            "pcsx2/Mcd001.ps2",
+            "playstation2/Mcd001.ps2",
             payload,
             InMemoryLocalSaveEndpoint.Hash(Encoding.UTF8.GetBytes("expected payload")),
             DateTimeOffset.UtcNow));
@@ -385,7 +385,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
     {
         var store = new JsonSaveSyncManifestStore(AppPaths);
         var baseline = new SaveUnitBaseline(
-            "pcsx2/Mcd001.ps2",
+            "playstation2/Mcd001.ps2",
             "ABC",
             DateTimeOffset.UtcNow,
             3,
@@ -413,7 +413,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
 
         var unit = Assert.Single(await new Pcsx2SaveLocationProvider(_configurationDirectory).GetSaveUnitsAsync());
 
-        Assert.Equal(new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder), unit);
+        Assert.Equal(new SaveUnit("playstation2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder), unit);
     }
 
     private sealed class RootResolvingProvider(string root) : ISaveLocationProvider
@@ -457,7 +457,7 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         await File.WriteAllTextAsync(Path.Combine(memcardsA, "Mcd001", "_pcsx2_index"), "card index");
 
         var transport = new InMemoryCloudSyncTransport();
-        var unit = new SaveUnit("pcsx2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder);
+        var unit = new SaveUnit("playstation2/Mcd001/SLUS-20552", "Mcd001 — SLUS-20552", SaveUnitKind.Folder);
 
         // Machine A uploads the per-game folder as a deterministic ZIP payload.
         var serviceA = new SaveSyncService(
@@ -516,8 +516,8 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(Path.Combine(pcsx2, "sstates"), content.SaveStates);
         Assert.Equal(
             [
-                new SaveUnit("pcsx2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
-                new SaveUnit("pcsx2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
+                new SaveUnit("playstation2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
+                new SaveUnit("playstation2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());
     }
@@ -536,8 +536,8 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(Path.GetFullPath(memcards), await provider.GetMemoryCardsDirectoryAsync());
         Assert.Equal(
             [
-                new SaveUnit("pcsx2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
-                new SaveUnit("pcsx2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
+                new SaveUnit("playstation2/Mcd002.ps2", "Mcd002.ps2", SaveUnitKind.File),
+                new SaveUnit("playstation2/Mcdf01.ps2/BASCUS-97399GodOfWar", "Mcdf01.ps2 — BASCUS-97399GodOfWar", SaveUnitKind.Folder),
             ],
             await provider.GetSaveUnitsAsync());
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => provider.GetContentDirectoriesAsync());

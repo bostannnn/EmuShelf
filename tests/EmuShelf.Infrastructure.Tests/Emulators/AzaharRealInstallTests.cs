@@ -22,7 +22,7 @@ public sealed class AzaharRealInstallTests
         Assert.NotEmpty(units);
         Assert.All(units, unit =>
         {
-            Assert.StartsWith("azahar/", unit.UnitId);
+            Assert.StartsWith("3ds/", unit.UnitId);
             var location = saves.ResolveUnit(unit.UnitId);
             Assert.NotNull(location);
             Assert.True(Directory.Exists(location!.Path), $"missing save path for {unit.UnitId}");

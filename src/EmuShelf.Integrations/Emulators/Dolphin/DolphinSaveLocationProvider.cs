@@ -70,7 +70,11 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => _systemId;
 
-    public string UnitIdPrefix => _systemId == "gamecube" ? "dolphin/gc/" : "dolphin/wii/";
+    // Battery saves key by the system ("gamecube/" or "wii/"). Save states (GameCube + Wii share one
+    // folder, synced from the GameCube row) keep the former emulator-scoped namespace.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => _systemId == "gamecube" ? "dolphin/gc/" : "dolphin/wii/";
 
     public Task<string> GetUserDirectoryAsync(CancellationToken cancellationToken = default) =>
         Task.Run(() => GetUserDirectory(cancellationToken), cancellationToken);
@@ -319,7 +323,7 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
             : units
                 .Select(unit => (Unit: unit, Location: ResolveGameCubeUnit(state, unit.UnitId)))
                 .Where(item => item.Location is not null)
-                .Select(item => item.Unit.UnitId.StartsWith("dolphin/gc/gci/", StringComparison.Ordinal)
+                .Select(item => item.Unit.UnitId.StartsWith($"{UnitIdPrefix}gci/", StringComparison.Ordinal)
                     ? item.Location!.RootPath
                     : item.Location!.Path)
                 .Distinct(PathComparer)
@@ -959,14 +963,17 @@ public sealed class DolphinSaveLocationProvider : ISaveLocationProvider
     private static bool IsGciIdentity(string value) =>
         value.Length == 16 && value.All(char.IsAsciiHexDigit) && value.All(character => !char.IsAsciiLetter(character) || char.IsUpper(character));
 
-    private static string RawUnitId(char slot, string region, string? variant) =>
+    // Battery-save unit ids key by the system (UnitIdPrefix is "gamecube/" or "wii/"). The card mode
+    // (raw vs gci) and slot stay in the localId, so raw-vs-GCI is disambiguated within the one system
+    // namespace. Save states use the separate emulator-scoped StateNamespacePrefix.
+    private string RawUnitId(char slot, string region, string? variant) =>
         variant is null
-            ? $"dolphin/gc/raw/{slot}/{region}"
-            : $"dolphin/gc/raw/{slot}/{region}/{variant}";
-    private static string GciUnitId(char slot, string gameId) => $"dolphin/gc/gci/{slot}/{gameId}";
-    private static string GciUnitId(char slot, string gameId, string identity) =>
+            ? $"{UnitIdPrefix}raw/{slot}/{region}"
+            : $"{UnitIdPrefix}raw/{slot}/{region}/{variant}";
+    private string GciUnitId(char slot, string gameId) => $"{UnitIdPrefix}gci/{slot}/{gameId}";
+    private string GciUnitId(char slot, string gameId, string identity) =>
         $"{GciUnitId(slot, gameId)}/{identity}";
-    private static string WiiUnitId(string titleId) => $"dolphin/wii/title/00010000/{titleId}";
+    private string WiiUnitId(string titleId) => $"{UnitIdPrefix}title/00010000/{titleId}";
 
     private static StringComparer PathComparer => FilePathComparison.Comparer;
 

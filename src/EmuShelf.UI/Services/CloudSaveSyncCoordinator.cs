@@ -601,6 +601,12 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             using var sink = new ZipSaveExportSink(destinationZipPath);
             IVerifiableCloudSyncTransport? transport =
                 includeCloud ? await CreateTransportAsync(cancellationToken) : null;
+            // A device+cloud export taken before the first sync after upgrade would otherwise miss every
+            // cloud-only save still under an old emulator-scoped key (no provider owns it). Run the same
+            // one-time, idempotent re-key here so those saves are present under their new system key and
+            // get exported; the leftover old keys are then quietly ignored by the export's own guard.
+            if (transport is not null)
+                await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
 
             var result = await new SaveExportService().ExportAsync(
                 targets, transport, sink, progress, cancellationToken);
@@ -718,6 +724,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             var elapsed = Stopwatch.StartNew();
             var transport = await CreateTransportAsync(cancellationToken);
+            await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
             var service = new SaveSyncService(
                 target.LocalEndpoint,
                 transport,
@@ -811,6 +818,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
             var elapsed = Stopwatch.StartNew();
             var transport = await CreateTransportAsync(cancellationToken);
+            await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
             if (verifyRemote)
             {
                 await transport.ListAsync(cancellationToken);
@@ -877,6 +885,51 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             RecordOutcome([systemId], error: null, report: outcome.Report);
         else if (outcome.Status == CloudSaveSyncStatus.Failed)
             RecordOutcome([systemId], outcome.Message);
+    }
+
+    // Runs the one-time copy-only re-key of cloud battery saves from the old emulator-scoped namespace
+    // to the new system-scoped one, once per machine, guarded by a persisted flag. Best-effort: a
+    // failure leaves the flag unset so the next pass retries, and the idempotent migration skips
+    // anything already copied. The old-key entries are never deleted (the transport has no delete), so
+    // nothing is at risk if this is interrupted. See DECISIONS 2026-08-21.
+    private async Task EnsureBatteryNamespaceMigratedAsync(
+        ICloudSyncTransport transport,
+        CancellationToken cancellationToken)
+    {
+        if (_settings.CloudSaveSync.BatteryNamespaceMigrated)
+            return;
+
+        try
+        {
+            var copied = await new BatterySaveNamespaceMigration(transport).RunAsync(cancellationToken);
+            if (copied > 0)
+            {
+                _logger.Information(
+                    $"Migrated {copied} cloud battery save(s) to the system-scoped namespace; the old " +
+                    "emulator-scoped copies were left in the cloud untouched.");
+            }
+
+            // Re-key the local baseline manifest to match, so this machine's first post-migration sync
+            // sees a baseline under each new key and reconciles cleanly instead of conflict-backing-up.
+            var manifestStore = new JsonSaveSyncManifestStore(_paths);
+            var manifest = await manifestStore.LoadAsync(cancellationToken);
+            var rekeyed = BatterySaveNamespaceMigration.RekeyManifestBaselines(manifest);
+            if (!ReferenceEquals(rekeyed, manifest))
+                await manifestStore.SaveAsync(rekeyed, cancellationToken);
+
+            Persist(_settings.CloudSaveSync with { BatteryNamespaceMigrated = true });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (
+            ex is IOException or HttpRequestException or InvalidDataException or InvalidOperationException)
+        {
+            _logger.Warning(
+                "Cloud battery-save namespace migration did not complete; it will retry on the next " +
+                $"sync. The old saves remain in the cloud untouched: {ex.Message}");
+        }
     }
 
     private GoogleDriveCloudSyncTransport CreateGoogleDriveTransport() => new(
@@ -1215,14 +1268,16 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
     // platform whose row will show it.
     private string? DescribeSkipped(string systemId, SaveSyncReport? report)
     {
-        // Unit ids are namespaced by provider, not by system id, so ask the registry's own provider
-        // for the prefix that belongs to this platform. Build the provider once for the whole report
-        // rather than once per skipped unit.
+        // Battery saves are namespaced by system id and save states by the emulator, so this platform
+        // owns two prefixes; match either. Build the provider once for the whole report rather than
+        // once per skipped unit.
         if (report is null || CreateBaseProvider(systemId) is not { } provider)
             return null;
 
         var skipped = report.Skipped
-            .Where(result => result.UnitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal))
+            .Where(result =>
+                result.UnitId.StartsWith(provider.UnitIdPrefix, StringComparison.Ordinal) ||
+                result.UnitId.StartsWith(provider.StateNamespacePrefix, StringComparison.Ordinal))
             .ToList();
         if (skipped.Count == 0)
             return null;

@@ -514,6 +514,40 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
             Directory.Delete(_root, recursive: true);
     }
 
+    [Fact]
+    public async Task DivergentPrefixes_BatteryIsSystemScoped_StatesStayEmulatorScoped()
+    {
+        // A provider whose battery namespace (playstation/) differs from its state namespace
+        // (duckstation/) — the exact split this change introduces. The auxiliary wrapper must key states
+        // off StateNamespacePrefix, keep owning the system-scoped battery unit, and NOT re-claim the old
+        // emulator-scoped battery key left frozen by the migration.
+        var states = Directory.CreateDirectory(Path.Combine(_root, "divergent-states")).FullName;
+        WriteState(states, "GAME.state1", 1);
+        var provider = new AuxiliarySyncProvider(
+            new DivergentProvider(),
+            [new("states", _ => states, path => path.Contains(".state", StringComparison.Ordinal))],
+            new StateCompatibility("duckstation-1-0-x64", "1.0 · x64"));
+
+        // Emitted state ids hang off the emulator-scoped StateNamespacePrefix, not the battery prefix.
+        var units = await provider.GetSaveUnitsAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(units, unit => unit.UnitId.StartsWith("duckstation/states/", StringComparison.Ordinal));
+        Assert.DoesNotContain(units, unit => unit.UnitId.StartsWith("playstation/states/", StringComparison.Ordinal));
+
+        Assert.True(provider.OwnsUnit("playstation/shared/card1"));       // system-scoped battery
+        Assert.True(provider.OwnsUnit("duckstation/states/GAME.state1")); // emulator-scoped state
+        Assert.False(provider.OwnsUnit("duckstation/shared/card1"));      // frozen old battery key: inert
+
+        var selected = provider.SelectRemoteUnits(new[]
+        {
+            new SaveUnitSnapshot("playstation/shared/card1", "h1", default, null),
+            new SaveUnitSnapshot("duckstation/states/GAME.state1", "h2", default, "duckstation-1-0-x64"),
+            new SaveUnitSnapshot("duckstation/shared/card1", "h3", default, null),
+        }).Select(snapshot => snapshot.UnitId).ToArray();
+        Assert.Contains("playstation/shared/card1", selected);
+        Assert.Contains("duckstation/states/GAME.state1", selected);
+        Assert.DoesNotContain("duckstation/shared/card1", selected);
+    }
+
     private sealed class EmptyProvider : ISaveLocationProvider
     {
         public string SystemId => "test";
@@ -521,6 +555,20 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<SaveUnit>>([]);
         public SaveUnitLocation? ResolveUnit(string unitId) => null;
+    }
+
+    // Battery namespace (system-scoped) deliberately differs from the state namespace (emulator-scoped).
+    private sealed class DivergentProvider : ISaveLocationProvider
+    {
+        public string SystemId => "playstation";
+        public string UnitIdPrefix => "playstation/";
+        public string StateNamespacePrefix => "duckstation/";
+        public Task<IReadOnlyList<SaveUnit>> GetSaveUnitsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<SaveUnit>>([new("playstation/shared/card1", "Card", SaveUnitKind.File)]);
+        public SaveUnitLocation? ResolveUnit(string unitId) =>
+            unitId == "playstation/shared/card1"
+                ? new SaveUnitLocation(Path.Combine(Path.GetTempPath(), "card"), Path.GetTempPath(), SaveUnitKind.File)
+                : null;
     }
 
     private sealed class OneSaveProvider : ISaveLocationProvider

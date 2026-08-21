@@ -97,7 +97,10 @@ public sealed class Rpcs3SaveLocationProvider : ISaveLocationProvider
 
     public string SystemId => "playstation3";
 
-    public string UnitIdPrefix => "rpcs3/";
+    // Battery saves key by the system ("playstation3/"); save states keep the emulator-scoped namespace.
+    public string UnitIdPrefix => SystemId + "/";
+
+    public string StateNamespacePrefix => "rpcs3/";
 
     /// <summary>RPCS3-owned roots for its patch database and manually created save states.</summary>
     public Task<Rpcs3ContentDirectories> GetContentDirectoriesAsync(CancellationToken cancellationToken = default) =>
