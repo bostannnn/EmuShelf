@@ -197,8 +197,35 @@ save-provider wiring already exists in the shared code, so "slice 3" is smaller 
 - Fixed-root (DuckStation, Dolphin): auto-supplied roots, verified reaching real saves. **Done.**
 - Folder-configurable (PS2→`playstation2/`, DS→`nds/`, PSP, 3DS, the RetroArch systems): the
   descriptors already resolve to the correct provider and system key; they only need a **per-system
-  save-folder override**, which the user cannot set yet because the gamepad Saves UI is rclone-only.
-  So the real remaining blocker for these is the **gamepad Saves rebuild (slice 4)**, not more wiring.
+  save-folder override**, which the gamepad Saves UI can now set (slice 4 is built — the earlier
+  "rclone-only" claim was stale). So the remaining work is per-device *setup*, not code — plus one
+  upstream bug for the RetroArch systems (below).
+
+### Per-system wiring status (Thor, verified over ADB 2026-08-21) — what is yet to wire
+
+Sync participation is per-system. A folder-configurable system with **no Save folder set**
+(`DirectoryOverride: null`) has no provider — `CanSyncSystem` returns false and the launch/exit sync
+is a **silent no-op**. On the Thor right now only the two auto-wired emulators actually sync; the rest
+are unset.
+
+| System | Emulator | Status | What it needs |
+|---|---|---|---|
+| PS1 | DuckStation | ✅ **Wired, verified syncing** | nothing (auto-root) |
+| GameCube | Dolphin | ✅ **Wired, verified syncing** (`gamecube/gci/a/GYQE01`, `…/GC6E01` round-tripped) | nothing (auto-root) |
+| Wii | Dolphin | ✅ **Wired** (auto-root; `wii/title/…` uploads seen) | nothing (auto-root) |
+| PS2 | ARMSX2 | ⬜ **Not wired** | set Save folder → ARMSX2 user dir (`…/User/ARMSX2/`, has `memcards/`) |
+| PSP | PPSSPP | ⬜ **Not wired** | set Save folder → PPSSPP `PSP/SAVEDATA` |
+| 3DS | Azahar | ⬜ **Not wired** | set Save folder → Azahar user dir (contains `sdmc`) |
+| Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | ⬜ **Not wired, and blocked** | see RetroArch note below |
+| PS3 | RPCS3 | ❌ **Not syncable** | no Android emulator exists — cloud keeps `playstation3/…`, desktop-only |
+
+**RetroArch systems are blocked upstream by a launch-config bug (not a save-sync bug).** RetroArch
+launched *via EmuShelf* is not loading its own configuration, so it writes battery saves **next to the
+ROM** (`/storage/…/roms/<system>/<core>/<game>.srm`, e.g. `roms/gbc/mGBA/Metal Gear Solid (USA).srm`)
+instead of a stable `saves/` tree. Until that is fixed, the RetroArch save folder is a moving target, so
+pointing EmuShelf's Save folder at it is premature. **Sequence:** fix the RetroArch launch-config bug →
+confirm RetroArch writes each system's saves to one predictable folder → set that folder per system in
+the gamepad Saves UI → verify the sync. PS2/PSP/3DS do **not** depend on this bug and can be wired now.
 
 ## Implementation sequence (slices)
 
@@ -243,8 +270,13 @@ Ordered so each slice is independently testable and the safe/shared ones land fi
      connect — both come with the gamepad Saves rebuild (slice 4); then **one on-device sign-in on the
      Thor** to confirm loopback works there. Hardening (not a blocker): an Android Keystore
      `IProtectedTextStore` for the refresh token (the obfuscated fallback works meanwhile).
-6. **On-device acceptance** — export/restore round-trips on the Thor per system (Dolphin GC/Wii is the
-   pending gate; DuckStation already verified).
+6. **On-device acceptance** — export/restore round-trips on the Thor per system. **Verified with real
+   OAuth over Google Drive (2026-08-21):** the system-scoped migration ran on desktop (362 battery saves
+   re-keyed) and on the Thor DuckStation (PS1) and Dolphin **GameCube round-trip cleanly** — a save made
+   on the Thor (`gamecube/gci/a/GYQE01`, `…/GC6E01`) uploads under the new key. **Still pending:** PS2,
+   PSP, 3DS (need their Save folder set — see the per-system wiring table above), and the RetroArch
+   systems (blocked on the RetroArch launch-config bug, also above). Wii uploads seen but a full
+   restore-to-second-device pass is not yet done.
 
 ## On-device verification (Thor, 2026-08-21)
 
