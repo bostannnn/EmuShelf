@@ -33,6 +33,10 @@ internal static partial class EmbeddedSecrets
 
     public static string? GoogleOAuthClientSecret => Decode(GoogleOAuthClientSecretEncoded);
 
+    // Android uses a second, secret-less OAuth client bound to the package name and signing
+    // certificate (Google issues one client per platform type); PKCE secures the exchange.
+    public static string? GoogleOAuthAndroidClientId => Decode(GoogleOAuthAndroidClientIdEncoded);
+
     internal static string? Decode(string encoded)
     {
         if (string.IsNullOrEmpty(encoded))

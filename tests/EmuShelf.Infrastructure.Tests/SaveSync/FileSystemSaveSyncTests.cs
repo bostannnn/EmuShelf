@@ -55,6 +55,64 @@ public sealed class FileSystemSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task Provider_ReadsArmsx2AndroidIni_EmittingSharedPcsx2UnitIds()
+    {
+        // Ground truth pulled from the AYN Thor: ARMSX2 writes the identical PCSX2 v1 INI as
+        // "PCSX2-Android.ini" at the user-directory root (no "inis" subfolder) with single-file .ps2
+        // cards under "memcards". The same provider must read it and emit "pcsx2/" ids so the cards
+        // sync with desktop PCSX2. See docs/android-save-sync-model.md.
+        var userDirectory = Path.Combine(BaseDirectory, "armsx2-user");
+        var cards = Path.Combine(userDirectory, "memcards");
+        Directory.CreateDirectory(cards);
+        await File.WriteAllTextAsync(Path.Combine(cards, "Mcdf01_converted.ps2"), "converted-file-card");
+        await File.WriteAllTextAsync(Path.Combine(cards, "mcd002.ps2"), "second-file-card");
+        await File.WriteAllTextAsync(
+            Path.Combine(userDirectory, "PCSX2-Android.ini"),
+            "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = memcards\n[EmuCore]\n" +
+            "McdFolderAutoManage = false\n[MemoryCards]\n" +
+            "Slot1_Enable = true\nSlot1_Filename = Mcdf01_converted.ps2\n" +
+            "Slot2_Enable = true\nSlot2_Filename = mcd002.ps2\n");
+
+        var provider = new Pcsx2SaveLocationProvider(userDirectory);
+        var units = (await provider.GetSaveUnitsAsync()).OrderBy(unit => unit.UnitId, StringComparer.Ordinal).ToList();
+
+        Assert.Equal("pcsx2/", provider.UnitIdPrefix);
+        Assert.Equal(cards, await provider.GetMemoryCardsDirectoryAsync());
+        Assert.Equal(
+            [
+                new SaveUnit("pcsx2/Mcdf01_converted.ps2", "Mcdf01_converted.ps2", SaveUnitKind.File),
+                new SaveUnit("pcsx2/mcd002.ps2", "mcd002.ps2", SaveUnitKind.File),
+            ],
+            units);
+    }
+
+    [Fact]
+    public async Task Provider_PrefersRealPcsx2IniOverArmsx2AndroidIni_WhenBothExist()
+    {
+        // Locks in the ordering the ARMSX2 change documents ("a real desktop PCSX2.ini always wins if
+        // both somehow exist"): the desktop card must be read, not the Android one.
+        var userDirectory = Path.Combine(BaseDirectory, "coexist");
+        Directory.CreateDirectory(Path.Combine(userDirectory, "desktop-cards"));
+        Directory.CreateDirectory(Path.Combine(userDirectory, "android-cards"));
+        await File.WriteAllTextAsync(Path.Combine(userDirectory, "desktop-cards", "Desktop.ps2"), "desktop");
+        await File.WriteAllTextAsync(Path.Combine(userDirectory, "android-cards", "Android.ps2"), "android");
+        await File.WriteAllTextAsync(
+            Path.Combine(userDirectory, "PCSX2.ini"),
+            "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = desktop-cards\n[EmuCore]\n" +
+            "McdFolderAutoManage = false\n[MemoryCards]\nSlot1_Enable = true\nSlot1_Filename = Desktop.ps2\n");
+        await File.WriteAllTextAsync(
+            Path.Combine(userDirectory, "PCSX2-Android.ini"),
+            "[UI]\nSettingsVersion = 1\n[Folders]\nMemoryCards = android-cards\n[EmuCore]\n" +
+            "McdFolderAutoManage = false\n[MemoryCards]\nSlot1_Enable = true\nSlot1_Filename = Android.ps2\n");
+
+        var provider = new Pcsx2SaveLocationProvider(userDirectory);
+        var unit = Assert.Single(await provider.GetSaveUnitsAsync());
+
+        Assert.Equal("pcsx2/Desktop.ps2", unit.UnitId);
+        Assert.Equal(Path.Combine(userDirectory, "desktop-cards"), await provider.GetMemoryCardsDirectoryAsync());
+    }
+
+    [Fact]
     public async Task Provider_EnumeratesOneFolderUnitPerGameSerial()
     {
         var cardDirectory = Path.Combine(_memoryCardsDirectory, "Mcd001");

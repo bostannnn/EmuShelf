@@ -16,8 +16,16 @@ public static class GoogleOAuthClientSource
     /// <summary>
     /// The credentials for this platform, or <see langword="null"/> when the build embeds none.
     /// </summary>
-    public static GoogleOAuthClientCredentials? Resolve() =>
-        Resolve(EmbeddedSecrets.GoogleOAuthClientId, EmbeddedSecrets.GoogleOAuthClientSecret);
+    public static GoogleOAuthClientCredentials? Resolve()
+    {
+        var desktop = Resolve(EmbeddedSecrets.GoogleOAuthClientId, EmbeddedSecrets.GoogleOAuthClientSecret);
+        // Android reuses the desktop client over the same loopback redirect (HttpListener is swapped for
+        // a TcpListener there — see OAuthRedirectHandlerFactory), so no separate client is required. A
+        // build that embeds a dedicated public Android client id is still honoured, and takes precedence.
+        return OperatingSystem.IsAndroid()
+            ? ResolveAndroid(EmbeddedSecrets.GoogleOAuthAndroidClientId) ?? desktop
+            : desktop;
+    }
 
     /// <summary>Whether this build can offer the managed transport at all.</summary>
     public static bool IsConfigured => Resolve() is not null;
@@ -39,4 +47,14 @@ public static class GoogleOAuthClientSource
 
         return new GoogleOAuthClientCredentials(embeddedClientId.Trim(), embeddedClientSecret.Trim());
     }
+
+    /// <summary>
+    /// The Android client is public (no secret): Google binds it to the package name and signing
+    /// certificate instead, and PKCE secures the code exchange. So only the id is required, and it is
+    /// carried in its own embedded field rather than the desktop id/secret pair.
+    /// </summary>
+    internal static GoogleOAuthClientCredentials? ResolveAndroid(string? embeddedAndroidClientId) =>
+        string.IsNullOrWhiteSpace(embeddedAndroidClientId)
+            ? null
+            : new GoogleOAuthClientCredentials(embeddedAndroidClientId.Trim(), ClientSecret: null);
 }

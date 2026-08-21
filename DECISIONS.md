@@ -9964,3 +9964,96 @@ the D-pad steps the selector in all directions. See docs/android-port-plan.md "M
 Process note: two of C's bugs (this and R3-launches-game) were device-only and slipped past unit tests,
 the desktop suite, and static reasoning — both hinge on what the physical controller actually emits. C is
 not "done" until driven by hand on the Thor.
+
+## 2026-08-21 — Android save-sync model finalized (battery payload + gated states, no converters)
+
+Decided the full save-sync data model for E-android after checking two shipping solutions
+(NeoStation/NeoSync and RetroArch's own cloud sync), which agree: sync the console-native save payload,
+gate the risky restores, never delete, and make the user align a little emulator config for the cases
+that genuinely diverge — **nobody converts save formats.** Full write-up in
+[docs/android-save-sync-model.md](docs/android-save-sync-model.md); the decisions:
+
+- **Battery saves** sync by the existing per-emulator `UnitIdPrefix` + game id. Same-emulator systems
+  (PS1/GC/Wii/PSP/3DS + the nine RetroArch systems) sync 1:1 because the Android provider declares the
+  same prefix as desktop. The two cross-emulator systems use **namespace adoption**: ARMSX2 (PS2) emits
+  `pcsx2/` ids and WatermelonDS (DS) emits `retroarch/nds/` ids, so they meet the desktop saves in the
+  cloud. This is a deliberate small semantic stretch (a WatermelonDS provider under the `retroarch/`
+  namespace) — do **not** "fix" it to `watermelonds/`, that orphans synced saves.
+- **Config alignment, not conversion**, for the container systems, enforced by the per-emulator setup
+  checklist (Milestone B): PS2 single-file `.ps2` card (folder cards do not sync — the `.ps2` file is the
+  cross-emulator "universal currency"); DS WatermelonDS `.srm`-not-`.sav` toggle; GameCube **GCI folder,
+  slot A** (a raw single-file card is a different unit-id shape — `dolphin/gc/raw/...` vs
+  `dolphin/gc/gci/...` — and never matches). The Dolphin provider already absorbs the path-depth
+  difference (desktop `GC/USA/` vs Android `GC/USA/Card A/`); it does not absorb raw-vs-GCI.
+- **PS2 folder-card ⇄ `.ps2` conversion and any cross-emulator converter are out of v1** (own feature,
+  owner's call).
+- **Save states** keep the existing model: separate opt-in `states` namespace, tagged
+  `st1|<emulatorId>|<arch>|<version>`, gated by `StateCompatibility.AreCompatible` (same emulator/core id
+  and CPU arch required; version enforced only when both sides recorded an authoritative one). The arch
+  token is read from the emulator binary → `arm64` on Android, which is why the gate already correctly
+  blocks a Windows-x86 mGBA state on the Thor.
+- **Arch-portable refinement** for the cores whose states *are* arch-independent (the snes9x case): a
+  small curated allowlist for which `AreCompatible` skips the architecture check (auto-restore), seeded
+  with **snes9x only**; plus a general **user-override manual restore** for anything else, built with the
+  gamepad Saves rebuild. Safe because sync never deletes and the emulator refuses a genuinely broken
+  state on load. The always-hard-gate stays for every id not on the allowlist (e.g. `genesis_plus_gx`).
+
+Two invariants the whole model leans on: **sync never deletes**, and **the emulator is the final judge**
+on load — so a too-lax match degrades to "declined," never to a corrupted save.
+
+## 2026-08-21 — Android reuses the desktop Google OAuth client (no second client)
+
+The Android save-sync plan called for a second, secret-less Google OAuth client with a custom URI
+scheme, on the premise that Android "cannot bind a port for the browser to reach." That premise is
+false — an Android app binds a loopback TCP port with no permission, and the system browser's redirect
+to `http://127.0.0.1:port/` reaches it (the standard AppAuth loopback pattern). The only real obstacle
+was that .NET's `HttpListener` (used by the desktop `LoopbackOAuthRedirectHandler`) is **unsupported on
+Android**.
+
+So Android **reuses the desktop OAuth client** over the same loopback redirect, and the platform-specific
+part is the *listener*, not the client:
+- `TcpLoopbackOAuthRedirectHandler` (Infrastructure, portable) implements the loopback redirect on a raw
+  `TcpListener` instead of `HttpListener` — same state validation (fixed-time compare), same
+  favicon/prefetch tolerance, cancellable. Unit-tested on the dev host by driving a real HTTP GET at its
+  loopback port (TcpListener works on every platform, so the test runs on macOS).
+- `OAuthRedirectHandlerFactory.Create` returns the `HttpListener` handler on desktop (unchanged, verified
+  working) and the `TcpListener` handler on Android. `CloudSaveSyncCoordinator` calls the factory.
+- `GoogleOAuthClientSource.Resolve()` returns the desktop client on Android too; a dedicated public
+  Android client (`EMUSHELF_GOOGLE_OAUTH_ANDROID_CLIENT_ID`, secret-less, PKCE) is still honoured if a
+  build embeds one, but none is required for v1.
+
+Tradeoff accepted: the desktop client secret ships inside the APK. Google treats desktop/installed-app
+secrets as non-confidential (the existing `EmbeddedSecrets` comment says so) and the desktop release
+binary already embeds it, so Android is no worse. This removes the only external (Google Cloud Console)
+dependency that was blocking the transport. Final confirmation still needs one on-device sign-in on the
+Thor. See docs/android-save-sync-model.md.
+
+## 2026-08-21 — Android save-sync: multi-agent code review + fixes
+
+Three parallel review agents went over the session's save-sync/OAuth/UI changes. No blockers; the
+substantive findings were fixed and covered by tests:
+
+- **snes9x arch-portable relaxation was inert (major).** Android RetroArch cores are named
+  `<core>_libretro_android.so`, so `RetroArchCoreId` produced `snes9x_android` while desktop produced
+  `snes9x` — the save-state compat-id gate rejected the cross-platform state before the architecture skip
+  ran, so slice 1's whole point (snes9x restores desktop↔Thor) did nothing. Fixed by stripping the
+  trailing `_android` build tag in `RetroArchCoreId` (used only for the compat id). New test
+  `RetroArchStateCompat_AndroidCoreIdMatchesDesktop_…` drives the real derivation (x64 `.dll` vs arm64
+  `_android.so`) instead of a hardcoded id, and asserts they reconcile.
+- **`TcpLoopbackOAuthRedirectHandler` robustness (three majors).** (1) single unbounded read could
+  truncate the code/state on a partial TCP segment → now reads in a loop until the request line is
+  complete or a 16 KB cap; (2) no read timeout let a stalled local peer block the accept loop (Android
+  shares 127.0.0.1 across apps) → per-connection 10 s deadline; (3) a peer reset aborted the whole
+  sign-in → read errors now yield a tolerated junk connection like a favicon. Also stopped passing the
+  cancellation token to the confirmation-page write so a race can't discard an already-obtained code. New
+  tests: split-segment request, junk-connection tolerance, loopback-only per-instance binding.
+- **OAuth URL escaping (minor, desktop + Android).** Both sign-in openers used `uri.ToString()`, which
+  can unescape the query's percent-encoded `redirect_uri`/`scope`/`state`; switched to `uri.AbsoluteUri`.
+- **Android intent (minor/nit).** `OpenExternalUri` now throws if no context is available (so the caller
+  cancels instead of hanging) and disposes the Java `Uri`.
+
+Left as noted, not fixed: the view-model reading `App.ExternalUriOpener` as a static is the lone
+service-locator read among the platform hooks (accepted to avoid threading through the large MainViewModel
+ctor; reset in test teardown if a test ever sets it); and verifying a *real* captured ARMSX2
+`PCSX2-Android.ini` round-trips the strict v1 adapter (the Thor disconnected mid-review — synthetic INI is
+tested, real-file check pending device).

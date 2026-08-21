@@ -55,6 +55,14 @@ public partial class App : Application
     public static Func<IOnScreenKeyboardService>? OnScreenKeyboardFactory { get; set; }
 
     /// <summary>
+    /// Opens an external URI (the Google sign-in consent page) in the system browser. Desktop leaves
+    /// this null and the settings view model uses <c>Process.Start(UseShellExecute)</c>, which throws on
+    /// Android (no shell, W^X); the Android head sets it to fire an <c>ACTION_VIEW</c> intent, without
+    /// which the managed Google Drive sign-in cannot open a browser. Set before Avalonia starts.
+    /// </summary>
+    public static Action<Uri>? ExternalUriOpener { get; set; }
+
+    /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
     /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
     /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the

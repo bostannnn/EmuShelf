@@ -346,6 +346,51 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
     }
 
     [Fact]
+    public void RetroArchStateCompat_AndroidCoreIdMatchesDesktop_SoSnes9xStateRestoresAcrossPlatforms()
+    {
+        // End-to-end for the arch-portable relaxation, driving the REAL core-id derivation (not a
+        // hardcoded literal). Android RetroArch cores are named "<core>_libretro_android.so"; the
+        // "_android" build tag must be stripped so the compat id is "retroarch:snes9x" on both platforms
+        // — otherwise the id gate rejects a cross-platform state before architecture is even considered,
+        // and the snes9x allowlist never gets a chance. See docs/android-save-sync-model.md.
+        Directory.CreateDirectory(_root);
+        var desktopCore = WriteElfCore(Path.Combine(_root, "snes9x_libretro.dll"), machine: ElfMachineX86_64);
+        var androidCore = WriteElfCore(Path.Combine(_root, "snes9x_libretro_android.so"), machine: ElfMachineAArch64);
+        var descriptor = SaveProviderRegistry.Find("snes")!;
+
+        string? KeyFor(string corePath)
+        {
+            var context = new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: _root,
+                IsFlatpak: false,
+                Paths: new AppPaths(_root),
+                CorePath: corePath,
+                StateDirectoryOverride: _root);
+            var provider = (AuxiliarySyncProvider)SaveProviderRegistry.WithOptionalContent(
+                descriptor,
+                descriptor.CreateProvider(context)!,
+                context,
+                includeSaveStates: true,
+                includeBaseSaves: false);
+            return provider.GetCompatibility("retroarch/snes/states/game.state");
+        }
+
+        var desktopKey = KeyFor(desktopCore);
+        var androidKey = KeyFor(androidCore);
+        Assert.NotNull(desktopKey);
+        Assert.NotNull(androidKey);
+        // Same core id on both platforms (the "_android" tag stripped), and different architectures.
+        Assert.Contains("|retroarch_snes9x|", desktopKey);
+        Assert.Contains("|retroarch_snes9x|", androidKey);
+        Assert.Contains("|x64|", desktopKey);
+        Assert.Contains("|arm64|", androidKey);
+        // And because snes9x is arch-portable, the two reconcile despite the x64↔arm64 difference.
+        Assert.True(StateCompatibility.AreCompatible(desktopKey!, androidKey!));
+        Assert.True(StateCompatibility.AreCompatible(androidKey!, desktopKey!));
+    }
+
+    [Fact]
     public void StateCompat_UnknownVersionMatchesOnCoreAndArch_KnownVersionsAreGuarded()
     {
         var deck = StateCompatibility.Create("retroarch:genesis_plus_gx", null, "x64")!;
@@ -375,6 +420,30 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         Assert.True(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-abc123"));
         Assert.False(StateCompatibility.AreCompatible("retroarch-1-0-x64-abc123", "retroarch-1-0-x64-def456"));
         Assert.False(StateCompatibility.AreCompatible(deck.Key, "retroarch-1-0-x64-abc123"));
+    }
+
+    [Fact]
+    public void StateCompat_ArchPortableCores_RestoreCrossArchitecture_OthersStillGate()
+    {
+        // snes9x save states are architecture-independent, so a Windows-x64 state restores on an
+        // Android-arm64 machine and back. See docs/android-save-sync-model.md.
+        var windows = StateCompatibility.Create("retroarch:snes9x", null, "x64")!;
+        var android = StateCompatibility.Create("retroarch:snes9x", null, "arm64")!;
+        Assert.True(StateCompatibility.AreCompatible(windows.Key, android.Key));
+        Assert.True(StateCompatibility.AreCompatible(android.Key, windows.Key));
+
+        // The arch-portable relaxation does not weaken the id gate or the known-version guard.
+        Assert.False(StateCompatibility.AreCompatible(
+            windows.Key, StateCompatibility.Create("retroarch:mgba", null, "arm64")!.Key));
+        Assert.False(StateCompatibility.AreCompatible(
+            StateCompatibility.Create("retroarch:snes9x", "1.62.3", "x64")!.Key,
+            StateCompatibility.Create("retroarch:snes9x", "1.63.0", "arm64")!.Key));
+
+        // A core NOT on the allowlist keeps the hard cross-architecture gate (mGBA is the counter-case:
+        // its states are build/arch-sensitive and must not auto-restore across platforms).
+        Assert.False(StateCompatibility.AreCompatible(
+            StateCompatibility.Create("retroarch:mgba", null, "x64")!.Key,
+            StateCompatibility.Create("retroarch:mgba", null, "arm64")!.Key));
     }
 
     [Fact]
@@ -415,7 +484,10 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
 
     // A minimal little-endian x86-64 ELF header, enough for the architecture reader to identify it.
     // padTo lets a test create two cores that read as the same architecture but differ in byte length.
-    private static string WriteElfCore(string path, int padTo = 20)
+    private const byte ElfMachineX86_64 = 0x3e; // EM_X86_64 (62)
+    private const byte ElfMachineAArch64 = 0xb7; // EM_AARCH64 (183)
+
+    private static string WriteElfCore(string path, int padTo = 20, byte machine = ElfMachineX86_64)
     {
         var bytes = new byte[Math.Max(20, padTo)];
         bytes[0] = 0x7f;
@@ -424,7 +496,7 @@ public sealed class AuxiliarySyncProviderTests : IDisposable
         bytes[3] = (byte)'F';
         bytes[4] = 0x02; // EI_CLASS = 64-bit
         bytes[5] = 0x01; // EI_DATA = little-endian
-        bytes[18] = 0x3e; // e_machine = EM_X86_64 (62)
+        bytes[18] = machine; // e_machine
         File.WriteAllBytes(path, bytes);
         return path;
     }
