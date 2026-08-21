@@ -46,6 +46,15 @@ public partial class App : Application
     public static Func<IGamepadReader>? GamepadReaderFactory { get; set; }
 
     /// <summary>
+    /// Builds the on-screen keyboard the couch text-entry flow requests once a text field has focus.
+    /// Desktop leaves this null and the composition root uses <see cref="PlatformOnScreenKeyboardService"/>
+    /// (Windows TabTip/osk); the Android head sets it to a service that raises the system IME through
+    /// <c>InputMethodManager</c>, without which gamepad search / rename cannot type. Set before Avalonia
+    /// starts.
+    /// </summary>
+    public static Func<IOnScreenKeyboardService>? OnScreenKeyboardFactory { get; set; }
+
+    /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
     /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
     /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the
@@ -426,7 +435,7 @@ public partial class App : Application
             artworkDownloader: webArtworkDownloader,
             artworkSearch: webArtworkSearch,
             settingsService: Bootstrapper.SettingsService,
-            onScreenKeyboard: new PlatformOnScreenKeyboardService(),
+            onScreenKeyboard: OnScreenKeyboardFactory?.Invoke() ?? new PlatformOnScreenKeyboardService(),
             gameDetails: Bootstrapper.GameDetailsStore,
             appPaths: Bootstrapper.Paths,
             updates: updateCoordinator,

@@ -11,12 +11,20 @@ namespace EmuShelf.App.Android.Services;
 /// is the head's couch input surface. <see cref="SingleViewShell"/> points <see cref="Dispatch"/> at the
 /// live <c>MainViewModel.DispatchGamepadAction</c> once the view is shown; the Activity calls it on the
 /// Android main thread (the same thread Avalonia's UI runs on), so no marshalling is needed. Analog-stick
-/// reading over <c>MotionEvent</c> and an IME are the rest of Milestone C.
+/// motion takes a separate path (<c>AndroidGamepadReader</c> via <c>DispatchGenericMotionEvent</c>).
 /// </summary>
 public static class AndroidGamepadInput
 {
     /// <summary>Routes a mapped controller action to the view model; returns true if it was handled.</summary>
     public static Func<GamepadAction, bool>? Dispatch { get; set; }
+
+    /// <summary>
+    /// Handles the Android system Back button / gesture: returns true when a couch overlay was closed
+    /// (Back is consumed), false at the root library so the Activity lets the platform exit. Distinct from
+    /// <see cref="Dispatch"/> because the library-level Cancel swallows B, which would otherwise trap Back.
+    /// <see cref="SingleViewShell"/> points this at <c>MainViewModel.DispatchBackButton</c>.
+    /// </summary>
+    public static Func<bool>? DispatchBack { get; set; }
 
     /// <summary>The logical couch action for an Android keycode, or null if it is not a couch button.</summary>
     public static GamepadAction? Map(Keycode keycode) => keycode switch
@@ -25,8 +33,8 @@ public static class AndroidGamepadInput
         Keycode.DpadDown => GamepadAction.NavigateDown,
         Keycode.DpadLeft => GamepadAction.NavigateLeft,
         Keycode.DpadRight => GamepadAction.NavigateRight,
-        // A / D-pad-centre / Enter all confirm; B / Escape cancel. Android BACK is deliberately left to
-        // the system (back-gesture vs B-button arbitration is Milestone C), so it still exits normally.
+        // A / D-pad-centre / Enter all confirm; B / Escape cancel. Android BACK is handled separately in
+        // the Activity (back-vs-B arbitration via DispatchBack), so it is deliberately absent here.
         Keycode.ButtonA or Keycode.DpadCenter or Keycode.Enter or Keycode.NumpadEnter => GamepadAction.Confirm,
         Keycode.ButtonB or Keycode.Escape => GamepadAction.Cancel,
         Keycode.ButtonX => GamepadAction.Search,
@@ -35,6 +43,9 @@ public static class AndroidGamepadInput
         // LB / RB switch platform, matching the couch rail's shoulder-button affordances.
         Keycode.ButtonL1 => GamepadAction.PreviousPlatform,
         Keycode.ButtonR1 => GamepadAction.NextPlatform,
+        // R3 (right-stick click) recentres the 3D hero, matching the desktop native-pad mapping. The stick
+        // click is a digital button, so it arrives here even though the stick motion goes through the reader.
+        Keycode.ButtonThumbr => GamepadAction.ResetRotation,
         _ => null,
     };
 }

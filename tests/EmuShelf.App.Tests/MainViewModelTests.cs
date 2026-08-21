@@ -1731,6 +1731,37 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void DispatchBackButton_ClosesOpenOverlayButLetsRootLibraryExit()
+    {
+        // The Android head calls this for the system Back button/gesture. It must close an open couch
+        // overlay (returning true, consuming Back) but do nothing at the root library (returning false) so
+        // the platform can exit — the library-level Cancel swallows B, which would otherwise trap Back.
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        // Root library, nothing open → not consumed here.
+        Assert.False(vm.DispatchBackButton());
+
+        // Open the system menu; Back now closes it and is consumed.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+        Assert.True(vm.DispatchBackButton());
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+
+        // Back at the root once more → still not consumed.
+        Assert.False(vm.DispatchBackButton());
+    }
+
+    [AvaloniaFact]
+    public void DispatchBackButton_IsNotConsumedOutsideGamepadMode()
+    {
+        var mode = new RecordingInterfaceModeService(InterfaceMode.Desktop);
+        var vm = CreateViewModel(interfaceModeService: mode);
+
+        Assert.False(vm.DispatchBackButton());
+    }
+
+    [AvaloniaFact]
     public async Task GamepadShell_WithoutDesktopMode_HidesSwitchToDesktopAndWordsHandoffsHonestly()
     {
         // Android: the mode service reports no Desktop shell exists. Every "switch to Desktop"

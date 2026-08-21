@@ -6,9 +6,10 @@ Architecture targets Android arm64 handhelds generally; every acceptance gate is
 (2026-08-21): **0a, A0, 0b, A1/A2, D (done for Thor), and the core of B are built and verified on the Thor** —
 the app imports a real SD-card library without a keyboard (all-files grant UX + a 41-game scan verified),
 launches real games in their emulators from the couch, and runs post-play completion on return (surviving
-process death). What remains is Android controller/IME polish (C), the save data to actually sync
-(E-android), one real desktop Google sign-in (E-desktop), and packaging (F). See **"Current status and
-what's next"** under Sequencing for the milestone-by-milestone checklist.
+process death). Controller input is now complete too — analog sticks, IME, and back-vs-B all verified on
+the Thor (C). What remains is the save data to actually sync (E-android), one real desktop Google sign-in
+(E-desktop), and packaging (F). See **"Current status and what's next"** under Sequencing for the
+milestone-by-milestone checklist.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -998,11 +999,46 @@ checklist** (does the emulator hold a tree grant covering the game's folder?), p
   confirmed left-stick navigation and right-stick 3D-cover rotation respond. (Bring-up note: a plain
   `dotnet build` + `adb install` did **not** repackage the signed APK, so the analog-stick code wasn't
   actually on device until a `-t:Clean` + `-t:Install` — verify APK mtime after building the head.)
-- An Android on-screen keyboard implementation of `IOnScreenKeyboardService`, without which gamepad
-  search and rename do not work. **(Still open — the next C item.)**
-- Back-gesture vs B-button arbitration. **(Still open.)**
-- Map the Thor's controls against the existing navigation model. (D-pad + face buttons already mapped in
-  A1; analog sticks now mapped; R3→reset-rotation is not yet on the key map — a small follow-up.)
+- **An Android on-screen keyboard implementation of `IOnScreenKeyboardService`. ✅ done + verified on the
+  Thor (2026-08-21).** `AndroidOnScreenKeyboardService` raises the system IME through
+  `InputMethodManager.ShowSoftInput` on the focused view — which is Avalonia's own text-input target once a
+  couch `TextBox` has focus, so characters route back into the field. It is injected via a new
+  `App.OnScreenKeyboardFactory` hook mirroring `GamepadReaderFactory` (desktop keeps
+  `PlatformOnScreenKeyboardService`/Windows osk). The explicit request matters because gamepad-driven
+  (directional) focus does not auto-raise the IME the way a screen tap does; hiding it again is Avalonia's
+  job when the text client loses focus. This is what makes gamepad search / rename usable. Reaches the live
+  activity through a `MainActivity.Current` holder (set on resume, cleared on destroy). **Verified on the
+  Thor:** opening Search from the couch (X) raised Gboard (`dumpsys input_method` → `mInputShown=true`),
+  injected text landed in the field (the suggestion strip reflected the composing text), and Back dismissed
+  the keyboard while leaving the overlay up.
+- **Back-gesture vs B-button arbitration. ✅ done + verified on the Thor (2026-08-21).** The Activity
+  handles `Keycode.Back` on key-up separately from the button map, routing it to a new
+  `MainViewModel.DispatchBackButton`: it closes an open couch overlay/menu (consuming Back, like B) but
+  returns false at the root library so the platform exits. Kept *off* the shared `DispatchGamepadAction`
+  path on purpose — the library-level Cancel deliberately swallows B, which would otherwise trap Back and
+  make the app impossible to leave. When the soft keyboard is showing, Android dismisses it on Back before
+  the event ever reaches the activity, so IME dismissal stays the system's job. Unit-tested on desktop
+  (`DispatchBackButton_ClosesOpenOverlayButLetsRootLibraryExit`, and the not-in-gamepad-mode no-op).
+  **Verified on the Thor:** Back over the open system menu closed it and stayed in EmuShelf; a second Back
+  at the root library dropped to the launcher; Back with the keyboard up dismissed only the keyboard.
+- **Map the Thor's controls against the existing navigation model. ✅ (2026-08-21) — and this surfaced two
+  real bugs.** (Face buttons mapped in A1; analog sticks mapped in PR #163.)
+  - **R3→reset-rotation** — `Keycode.ButtonThumbr` → the existing `GamepadAction.ResetRotation`, matching
+    the desktop native-pad mapping, so the right-stick click recentres the 3D hero. **The bug it fixed:**
+    before this mapping, R3 (`BUTTON_THUMBR`) was *unmapped*, so it fell through to Avalonia — and on a real
+    gamepad-source press Avalonia activated the focused library item, i.e. **R3 launched the focused game.**
+    Reproduced on the Thor with `input gamepad keyevent 107` (Dolphin booted "1080 Avalanche"); after the
+    mapping the same injection is consumed and the couch stays put. Source-sensitive: a keyboard-source
+    `input keyevent 107` did **not** launch — only the gamepad source did — so injection tests must set the
+    gamepad source to reproduce pad behaviour.
+  - **The D-pad did nothing.** On the Thor's controller the D-pad is a hat *axis* (`ABS_HAT0X/Y`), delivered
+    as a joystick `MotionEvent` — **there are no D-pad key events at all** (confirmed by `getevent`: only
+    `ABS_HAT0*`, zero `EV_KEY`). So the A1 `DispatchKeyEvent` map never saw it, and PR #163's
+    `DispatchGenericMotionEvent` *consumed* the hat event while `AndroidGamepadReader` read only the stick
+    axes (X/Y/Z/Rz) — the D-pad fell into the gap. Fixed by reading `Axis.HatX/HatY` in the reader and
+    surfacing them as the `Dpad*` buttons, so the shared `GamepadNavigationController` drives D-pad nav with
+    the same auto-repeat as the sticks. No double-fire risk because this device emits no D-pad key events.
+    **Verified on the Thor 2026-08-21:** the D-pad steps the couch selector in all directions.
 - ~~**Drop the SDL2 native payload from the APK.**~~ **✅ Already clean — nothing to drop (verified
   2026-08-21).** The APK's native libs are `lib/arm64-v8a/…` only; there is **no `libSDL2.so`** and no SDL
   managed assembly, and **no XA0141** warning fires. The plan assumed `ppy.SDL2-CS`'s `runtimes/linux-x64`
@@ -1210,11 +1246,11 @@ bugs the feature checklist does not track:
 | A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
 | **D — storage & permissions** | ✅ done for Thor (2026-08-21) | grant secured via D2 first-run onboarding (`IStoragePermissionService`, verified on Thor); D2 user-chosen data folder verified end-to-end on Thor; `FolderScanner`/availability verified on the real SD library (41 games); the couch import chooser density-collapse found here is fixed. **Deferred (owner call, not Thor blockers):** SAF-backed reader fallback (portability, a device without all-files) and the per-API-level AVD matrix (verification-only). D2 Settings folder-change is the one remaining follow-up |
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
-| C — controller input & text entry | 🟡 in progress | analog-stick `MotionEvent` reading **done + verified on Thor** (nav + 3D rotation); SDL-drop **verified moot** (no SDL in APK). Still open: **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; R3→reset-rotation key mapping |
+| C — controller input & text entry | ✅ done, verified on Thor | left stick + **D-pad** (hat-axis, fixed 2026-08-21) nav, 3D rotation, SDL-drop (moot), **IME, back-vs-B arbitration, R3→reset-rotation — all verified on the Thor 2026-08-21**. Two device-only bugs found & fixed during the hands-on pass: R3 launched the focused game (unmapped → Avalonia activation), and the D-pad did nothing (reported as a hat axis the reader ignored). Optional follow-up: an API-<29 path is not needed (Thor is 33) |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
 | E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
 | F — packaging & release | 🟡 in progress | APK CI job **done** and attached to releases; release-signing **wired** (activates once the owner runs the keystore setup — DECISIONS 2026-08-20); remaining: owner runs keystore setup, developer-verification/install docs |
-| **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: analog-stick input (blocks 3D rotation), 3D covers resize on scroll, "many others" TBD — see "Milestone S" above |
+| **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: 3D covers resize on scroll, "many others" TBD (analog-stick input is now fixed, PR #163) — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
 signal + deferred post-play completion (survives process death). RetroArch-backed systems now have a
@@ -1248,17 +1284,18 @@ concern for a hypothetical second device, not v1 work.
 
 **Strategy (owner, 2026-08-20): finish the feature milestones to a working core, *then* stabilize —
 repeatedly.** Do not interleave the on-device bug/polish work into the feature milestones; land the
-remaining features (C, E-android, F, and E-desktop in parallel) so the core imports, launches, returns and
-syncs end to end, then switch to **Milestone S** — the repeated stabilization passes above — and iterate
-until it feels finished. The known-issues backlog (analog-stick input, 3D-covers-resize-on-scroll, …) is
+remaining features (E-android, F, and E-desktop in parallel; C is now done and verified on the Thor) so the
+core imports, launches, returns and syncs end to end, then switch to **Milestone S** — the repeated
+stabilization passes above — and iterate
+until it feels finished. The known-issues backlog (3D-covers-resize-on-scroll, …) is
 deliberately parked for S rather than fixed piecemeal now.
 
 **Recommended next step among the features:** **E-android**, so post-play auto-sync actually moves saves —
 it is the milestone that turns "launches games" into "launches games and keeps your saves in the cloud",
-and the exit-signal plumbing it plugs into is already in place. **C** (native analog-stick input + IME) is
-the other high-value one — it is what makes the couch actually driveable (the sticks do nothing today) and
-its analog-input half is the first thing Milestone S would otherwise have to fix. Order C and E-android by
-whichever matters more for the "working core" bar; both must land before the first stabilization pass.
+and the exit-signal plumbing it plugs into is already in place. **C is done and verified on the Thor**
+(2026-08-21): analog sticks + D-pad nav, 3D rotation, IME, back-vs-B, and R3→reset-rotation all driven by
+hand on device — so the remaining feature work is E-android, plus E-desktop and F in parallel. With C
+closed, controller input is no longer a gate on the first stabilization pass; E-android is.
 
 E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
 download steps from `build.yml` and a bundled binary from all three artifacts.
