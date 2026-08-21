@@ -70,6 +70,14 @@ public sealed record RetroArchCore(string FileName, string? Name)
 
         var fileName = Path.GetFileName(corePath.Trim());
         var coreId = Path.GetFileNameWithoutExtension(fileName);
+        // RetroArch's Android cores are "<core>_libretro_android.so"; the "_android" build tag is not
+        // part of the core identity (desktop is "<core>_libretro.so/.dll"), so drop it before the
+        // shared "_libretro" strip. Without this the id stays "mgba_libretro_android", matches neither
+        // an info entry ("mgba_libretro.info") nor KnownCoreNames, leaving the core unnamed — and a
+        // sorted-by-core save folder that cannot be named syncs nothing. See docs/android-save-sync-model.md.
+        const string androidTag = "_android";
+        if (coreId.EndsWith(androidTag, StringComparison.OrdinalIgnoreCase))
+            coreId = coreId[..^androidTag.Length];
         const string suffix = "_libretro";
         if (coreId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             coreId = coreId[..^suffix.Length];

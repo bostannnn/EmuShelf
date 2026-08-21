@@ -118,6 +118,33 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task AndroidCoreFileNameStillNamesTheSortedByCoreSaveFolder()
+    {
+        // RetroArch's Android cores are "<core>_libretro_android.so". The "_android" build tag must be
+        // dropped when naming the core, or the sorted-by-core folder cannot be resolved and every
+        // RetroArch system on Android silently syncs nothing (measured on the Thor). See
+        // docs/android-save-sync-model.md.
+        var installation = Path.Combine(BaseDirectory, "RetroArch-android");
+        WriteConfig(installation, savefileDirectory: ":\\saves", extra: ["sort_savefiles_enable = \"true\""]);
+        var sorted = Path.Combine(installation, "saves", "mGBA");
+        Directory.CreateDirectory(sorted);
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Metroid Fusion (USA).srm"), "gba save");
+
+        var provider = CreateProvider(
+            "gba",
+            "/data/data/com.retroarch.aarch64/cores/mgba_libretro_android.so",
+            installation);
+        var info = await provider.GetSaveInfoAsync();
+
+        Assert.Equal("mGBA", info.Core.Name);
+        Assert.Equal(sorted, info.SaveDirectory);
+        Assert.True(info.SortedByCore);
+        Assert.Equal(
+            ["gba/Metroid Fusion (USA).srm"],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+    }
+
+    [Fact]
     public async Task ASharedCoreFolderClaimsOnlyThisSystemsLibrarySavesEvenWhenSortedByCore()
     {
         // mGBA serves both Game Boy Advance and Game Boy Color, so with "sort saves by core" on both

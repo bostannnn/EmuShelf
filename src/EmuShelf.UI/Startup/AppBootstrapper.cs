@@ -240,7 +240,7 @@ public sealed class AppBootstrapper
     // they report a null directory and rely on the provider's documented Flatpak layout instead.
     private SaveEmulatorInstallation? ResolveConfiguredEmulator(string systemId) =>
         OperatingSystem.IsAndroid()
-            ? ResolveAndroidEmulator(systemId)
+            ? ResolveAndroidEmulator(systemId, EmulatorConfigurations.Get(systemId))
             : BuildInstallation(EmulatorConfigurations.Get(systemId));
 
     // Batched form of the above: one database read for every requested system, used by the cloud-sync
@@ -251,8 +251,10 @@ public sealed class AppBootstrapper
         var result = new Dictionary<string, SaveEmulatorInstallation?>(StringComparer.Ordinal);
         if (OperatingSystem.IsAndroid())
         {
+            var androidConfigurations = EmulatorConfigurations.GetAll(systemIds);
             foreach (var systemId in systemIds)
-                result[systemId] = ResolveAndroidEmulator(systemId);
+                result[systemId] = ResolveAndroidEmulator(
+                    systemId, androidConfigurations.GetValueOrDefault(systemId));
             return result;
         }
 
@@ -265,12 +267,16 @@ public sealed class AppBootstrapper
     // On Android there is no configured executable path to derive a save location from. The
     // fixed-location emulators keep their saves at a package-derived path under Android/data, which
     // EmuShelf reads directly under all-files access (DECISIONS 2026-08-20), so their installation is
-    // synthesised from the package name here — no user pick. The folder-configurable emulators (PPSSPP,
-    // Azahar, WatermelonDS, RetroArch) store their save folder wherever the user chose, in the emulator's
-    // own unreadable private config, so they cannot be auto-located: they return null and rely on the
-    // per-system save-location override the user sets once. DuckStation and Dolphin are fixed-root
-    // emulators; the registry adapts each root to the provider's on-disk layout.
-    internal static SaveEmulatorInstallation? ResolveAndroidEmulator(string systemId) => systemId switch
+    // synthesised from the package name here — no user pick. DuckStation and Dolphin are fixed-root
+    // emulators; the registry adapts each root to the provider's on-disk layout. RetroArch is
+    // auto-located too (below): its retroarch.cfg lives in the same package Android/data files dir and
+    // is group-readable, so EmuShelf can read the configured savefile_directory itself. PPSSPP and
+    // Azahar remain folder-configurable (their save folder is chosen by the user and recorded only in
+    // the emulator's own unreadable private config), so they return null and rely on the per-system
+    // save-location override the user sets once.
+    internal static SaveEmulatorInstallation? ResolveAndroidEmulator(
+        string systemId,
+        EmulatorConfiguration? configuration) => systemId switch
     {
         "playstation" => new SaveEmulatorInstallation(
             AndroidExternalStorageUri.ExternalAppFilesDirectory(
@@ -282,8 +288,32 @@ public sealed class AppBootstrapper
                 AndroidEmulatorLaunchProfiles.Dolphin.PackageName),
             IsFlatpak: false,
             EmulatorId: "dolphin"),
-        _ => null,
+        _ => ResolveAndroidRetroArch(configuration),
     };
+
+    // A RetroArch system auto-locates like the fixed-root emulators: retroarch.cfg lives in the
+    // package's Android/data files dir (group-readable — measured on the Thor), and its
+    // savefile_directory there points at a normal shared-storage folder EmuShelf reads. So the package
+    // files dir is the "installation" the provider reads the config from, and the DB-configured core is
+    // carried through so the provider can name the per-core save folder and, for a core shared by two
+    // systems (mGBA → GBA and GBC), claim only this system's own saves. Systems whose emulator is not
+    // RetroArch (or that have no emulator configured) stay null. See docs/android-save-sync-model.md.
+    private static SaveEmulatorInstallation? ResolveAndroidRetroArch(EmulatorConfiguration? configuration)
+    {
+        if (configuration is null ||
+            !string.Equals(configuration.EmulatorId, "retroarch", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return new SaveEmulatorInstallation(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.RetroArch.PackageName),
+            IsFlatpak: false,
+            CorePath: configuration.CorePath,
+            LaunchArguments: configuration.LaunchArguments,
+            EmulatorId: configuration.EmulatorId);
+    }
 
     private static SaveEmulatorInstallation? BuildInstallation(EmulatorConfiguration? configuration)
     {

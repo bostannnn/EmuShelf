@@ -1,5 +1,6 @@
 using EmuShelf.App.Services;
 using EmuShelf.App.Startup;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Storage.Android;
 using EmuShelf.Integrations.Emulators.DuckStation;
@@ -84,7 +85,7 @@ public class SaveProviderRegistryTests
     [InlineData("wii")]
     public void AndroidDolphinSystems_ResolveTheSamePackageDerivedFilesRoot(string systemId)
     {
-        var installation = AppBootstrapper.ResolveAndroidEmulator(systemId);
+        var installation = AppBootstrapper.ResolveAndroidEmulator(systemId, configuration: null);
 
         Assert.NotNull(installation);
         Assert.Equal("dolphin", installation!.EmulatorId);
@@ -98,7 +99,56 @@ public class SaveProviderRegistryTests
     [Fact]
     public void AndroidFolderConfigurableEmulator_StillRequiresAUserOverride()
     {
-        Assert.Null(AppBootstrapper.ResolveAndroidEmulator("psp"));
+        // PSP (PPSSPP) is not a RetroArch system and has no fixed package-derived save root, so it
+        // stays null even with a configuration present — the user must pick its Memory Stick folder.
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator(
+            "psp",
+            new EmulatorConfiguration("psp", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = "ppsspp",
+            }));
+    }
+
+    [Theory]
+    [InlineData("gba", "/data/data/com.retroarch.aarch64/cores/mgba_libretro_android.so")]
+    [InlineData("snes", "/data/data/com.retroarch.aarch64/cores/snes9x_libretro_android.so")]
+    public void AndroidRetroArchSystem_AutoLocatesThePackageFilesRootWithItsConfiguredCore(
+        string systemId,
+        string corePath)
+    {
+        // RetroArch's config is readable in its own Android/data files dir, so a RetroArch system
+        // auto-locates there (no user override) and carries the DB-configured core so the provider can
+        // name the per-core save folder.
+        var installation = AppBootstrapper.ResolveAndroidEmulator(
+            systemId,
+            new EmulatorConfiguration(systemId, ExecutablePath: null, LaunchArguments: "-L \"{CorePath}\" \"{GamePath}\"")
+            {
+                EmulatorId = "retroarch",
+                CorePath = corePath,
+            });
+
+        Assert.NotNull(installation);
+        Assert.Equal("retroarch", installation!.EmulatorId);
+        Assert.False(installation.IsFlatpak);
+        Assert.Equal(corePath, installation.CorePath);
+        Assert.Equal(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.RetroArch.PackageName),
+            installation.Directory);
+    }
+
+    [Fact]
+    public void AndroidRetroArchSystem_WithNoConfiguredEmulator_StaysNull()
+    {
+        // A RetroArch-served system whose emulator is not configured (or is a non-RetroArch emulator)
+        // has no auto-located save root — the provider must not be handed the RetroArch package dir.
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator("gba", configuration: null));
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator(
+            "nds",
+            new EmulatorConfiguration("nds", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = "watermelonds",
+            }));
     }
 
     [Fact]

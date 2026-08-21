@@ -10130,3 +10130,26 @@ import-time evidence would suppress the SHA-1 the catalogue keys on. The small r
 (NES/SNES/GBC/Mega Drive) keep their import-time hash: a few-MB read is negligible and it preserves
 hash-based relocation detection on folder replacement. Accepted cost: a DS/GBA folder replacement no
 longer verifies moved files by hash before enrichment runs — the same limitation Dreamcast already has.
+
+## 2026-08-21 — RetroArch save sync auto-locates its config on Android (no manual folder)
+
+On Android, EmuShelf never read RetroArch's `retroarch.cfg`, so every RetroArch system
+(`AppBootstrapper.ResolveAndroidEmulator`) returned a null installation and `CanSyncSystem` was false —
+a launch/exit sync was a silent no-op. The plan was to have the user set each RetroArch system's save
+folder by hand in the gamepad Saves UI. Measured on the Thor (Android 13, `com.retroarch.aarch64`) this
+is unnecessary: RetroArch keeps `retroarch.cfg` in its package files dir
+(`/storage/emulated/0/Android/data/<pkg>/files/retroarch.cfg`), the file is **group-readable**
+(`-rw-rw---- ext_data_rw`, verified readable by a non-owner), and its `savefile_directory` points at a
+normal shared-storage folder (`/storage/emulated/0/RetroArch/saves`) EmuShelf reads freely.
+
+So RetroArch now auto-locates like the fixed-root emulators: `ResolveAndroidEmulator` hands the provider
+RetroArch's package files dir as the installation directory (so `ResolveConfigPath` finds the real cfg)
+plus the DB-configured core, and the existing provider logic resolves the per-core save folder, filters a
+shared core (mGBA → GBA and GBC) by the system's own library file names, and emits **system-scoped**
+battery keys (`gba/<game>.srm` — never core- or emulator-scoped). No per-system folder override is
+needed. Two supporting fixes: `RetroArchCore.ForCorePath` drops the `_android` build tag from
+`<core>_libretro_android.so` (otherwise the core is unnameable and a sorted-by-core folder resolves to
+nothing), and the Android installation carries `CorePath` so `IsCoreSharedAcrossSystems` can pair GBA/GBC.
+A RetroArch-served system with no configured core (e.g. `nds` left empty) still sits out until its core is
+set. Requires a device rebuild to take effect; supersedes the "RetroArch cannot be auto-located — set the
+folder manually" note in docs/android-save-sync-model.md.
