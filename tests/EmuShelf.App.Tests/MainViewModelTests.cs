@@ -23,6 +23,7 @@ using EmuShelf.Infrastructure.Metadata;
 using EmuShelf.Infrastructure.Persistence;
 using EmuShelf.Infrastructure.Storage;
 using EmuShelf.Integrations.Importing;
+using EmuShelf.Integrations.Metadata;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Rendering;
 
@@ -143,6 +144,7 @@ public class MainViewModelTests : IDisposable
         byte[] bytes,
         string expectedTitle,
         string expectedGameCode,
+        IGameIdentifierExtractor deferredIdentifierExtractor,
         GameTitleOrigin expectedTitleOrigin = GameTitleOrigin.Embedded)
     {
         var folder = Path.Combine(_baseDirectory, system.Id);
@@ -159,6 +161,14 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(expectedTitle, game.Title);
         Assert.Equal(expectedTitleOrigin, game.TitleOrigin);
         Assert.True(game.IsAvailable);
+
+        // DS and GBA are the large raw-cartridge outliers, so import stays as cheap as AnalyzeFile
+        // and defers the whole-file SHA-1 (and the header game code) to the gated metadata-enrichment
+        // pass (DECISIONS 2026-08-21). Import therefore persists no identifiers; enrichment then runs
+        // the extractor and stores the exact evidence the catalogue keys on.
+        Assert.Empty(_metadataStore.GetIdentifiers(game.Id));
+        _metadataStore.ReplaceIdentifiers(game.Id, deferredIdentifierExtractor.Extract(game));
+
         var identifiers = _metadataStore.GetIdentifiers(game.Id);
         var gameCode = Assert.Single(identifiers, identifier => identifier.Kind == GameIdentifierKind.TitleId);
         Assert.Equal(expectedGameCode, gameCode.Value);
@@ -325,6 +335,7 @@ public class MainViewModelTests : IDisposable
             CreateNintendoDsRom("Example DS", "ABCE"),
             "Example DS",
             "ABCE",
+            new NintendoDsRomIdentifierExtractor(),
             GameTitleOrigin.Filename);
 
     [AvaloniaFact]
@@ -335,6 +346,7 @@ public class MainViewModelTests : IDisposable
             CreateGameBoyAdvanceRom("Example GBA", "ABCE"),
             "Example GBA",
             "ABCE",
+            new GameBoyAdvanceRomIdentifierExtractor(),
             GameTitleOrigin.Filename);
 
     [AvaloniaFact]
