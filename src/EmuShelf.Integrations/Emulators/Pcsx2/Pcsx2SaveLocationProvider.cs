@@ -13,6 +13,12 @@ public sealed record Pcsx2ContentDirectories(string Cheats, string Patches, stri
 public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
 {
     private const string IniFileName = "PCSX2.ini";
+    // ARMSX2 (the ARM Android PCSX2 fork) writes the identical version-1 INI format under this name
+    // at the user-directory root — no "inis" subfolder. Reading it lets the Android PS2 save provider
+    // reuse this class verbatim and therefore emit the same "pcsx2/" unit ids, so an ARMSX2 memory
+    // card syncs 1:1 with desktop PCSX2 when both use single-file .ps2 cards with matching names.
+    // See docs/android-save-sync-model.md.
+    private const string AndroidIniFileName = "PCSX2-Android.ini";
     private const string IniSubdirectory = "inis";
     private const string FolderIndexFileName = "_pcsx2_index";
 
@@ -234,6 +240,9 @@ public sealed class Pcsx2SaveLocationProvider : ISaveLocationProvider
         {
             Path.Combine(_configurationDirectory, IniSubdirectory, IniFileName),
             Path.Combine(_configurationDirectory, IniFileName),
+            // ARMSX2 (Android): same format, at the root, under a different name. Tried last so a real
+            // desktop PCSX2.ini always wins if both somehow exist.
+            Path.Combine(_configurationDirectory, AndroidIniFileName),
         };
         return candidates.FirstOrDefault(File.Exists);
     }

@@ -73,4 +73,23 @@ public class EmbeddedCredentialResolutionTests
         // nothing usable must report that rather than attempt a sign-in that cannot succeed.
         Assert.Null(GoogleOAuthClientSource.Resolve(id, secret));
     }
+
+    [Fact]
+    public void GoogleAndroidClient_IsPublic_UsingOnlyTheEmbeddedIdWithNoSecret()
+    {
+        // Android's client is bound to package name + signing cert, not a secret, and PKCE secures the
+        // exchange — so only the id is required and the resulting client is public.
+        var resolved = GoogleOAuthClientSource.ResolveAndroid(" android-id ");
+
+        Assert.Equal("android-id", resolved!.ClientId);
+        Assert.Null(resolved.ClientSecret);
+        Assert.True(resolved.IsPublicClient);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void GoogleAndroidClient_ReturnsNullWithoutAnEmbeddedId(string? id) =>
+        Assert.Null(GoogleOAuthClientSource.ResolveAndroid(id));
 }

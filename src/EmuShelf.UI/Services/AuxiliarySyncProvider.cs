@@ -20,6 +20,18 @@ internal sealed record StateCompatibility(string Key, string Description)
     // reader tell a structured key from a legacy opaque one and compare them component-wise.
     private const string FormatTag = "st1";
 
+    // Emulator/core ids whose save-state format is known to be CPU-architecture-independent, so a state
+    // written on x86 restores on arm64 (and back) for the same id. For these, AreCompatible skips the
+    // architecture equality check; the version rules still apply. Kept deliberately tiny and curated:
+    // a wrong entry auto-restores a state the emulator then rejects on load — harmless (sync never
+    // deletes, the emulator is the final judge) but noisy — so only ids with a strong, verified record
+    // of portable states go here. Seeded with snes9x (verified cross-platform). Everything else stays a
+    // hard arch gate. See docs/android-save-sync-model.md.
+    // Stored in the same sanitized form the key uses (Create runs the id through Sanitize, so ':'
+    // becomes '_'), matched against the parsed local id which is likewise sanitized.
+    private static readonly HashSet<string> ArchPortableEmulatorIds =
+        new(new[] { "retroarch:snes9x" }.Select(Sanitize), StringComparer.Ordinal);
+
     /// <param name="emulatorId">The emulator or "retroarch:&lt;coreId&gt;" identity.</param>
     /// <param name="authoritativeVersion">
     /// A real, cross-machine-comparable build version (a core's display_version, an executable's
@@ -44,12 +56,14 @@ internal sealed record StateCompatibility(string Key, string Description)
 
     /// <summary>
     /// Whether a state written under <paramref name="remoteKey"/> can be restored on a machine whose
-    /// current identity is <paramref name="localKey"/>. Same emulator/core id and CPU architecture are
-    /// always required; the build version is enforced only when BOTH sides recorded an authoritative
-    /// one, so an unknown-version state (bare core, unversioned Flatpak) restores across machines while
-    /// two known-but-different versions are still kept apart. Keys that predate this format (or are
-    /// otherwise unparseable) fall back to exact-string equality, so already-uploaded legacy states
-    /// keep their prior, stricter behavior.
+    /// current identity is <paramref name="localKey"/>. Same emulator/core id is always required; CPU
+    /// architecture is required too, except for ids on <see cref="ArchPortableEmulatorIds"/> whose state
+    /// format is architecture-independent (snes9x), for which a cross-arch state restores. The build
+    /// version is enforced only when BOTH sides recorded an authoritative one, so an unknown-version
+    /// state (bare core, unversioned Flatpak) restores across machines while two known-but-different
+    /// versions are still kept apart. Keys that predate this format (or are otherwise unparseable) fall
+    /// back to exact-string equality, so already-uploaded legacy states keep their prior, stricter
+    /// behavior.
     /// </summary>
     public static bool AreCompatible(string localKey, string? remoteKey)
     {
@@ -57,7 +71,10 @@ internal sealed record StateCompatibility(string Key, string Description)
             return false;
         if (Parse(localKey) is not { } local || Parse(remoteKey) is not { } remote)
             return string.Equals(localKey, remoteKey, StringComparison.Ordinal);
-        if (!string.Equals(local.EmulatorId, remote.EmulatorId, StringComparison.Ordinal) ||
+        if (!string.Equals(local.EmulatorId, remote.EmulatorId, StringComparison.Ordinal))
+            return false;
+        // Architecture is a hard gate, except for cores whose states are known arch-independent.
+        if (!ArchPortableEmulatorIds.Contains(local.EmulatorId) &&
             !string.Equals(local.Architecture, remote.Architecture, StringComparison.Ordinal))
             return false;
         // Both known and equal, or at least one unknown: compatible. Both known and different: not.

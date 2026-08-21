@@ -52,6 +52,12 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         global::EmuShelf.App.App.OnScreenKeyboardFactory =
             () => new AndroidOnScreenKeyboardService(() => MainActivity.Current);
 
+        // The managed Google Drive sign-in opens its consent page in the browser. The shared settings
+        // view model does this with Process.Start(UseShellExecute), which throws on Android — so fire an
+        // ACTION_VIEW intent instead. The browser then redirects to the loopback listener
+        // (TcpLoopbackOAuthRedirectHandler) the transport binds.
+        global::EmuShelf.App.App.ExternalUriOpener = OpenExternalUri;
+
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()
             // Pin EGL explicitly. The default [Egl, Software] list lets a failed EGL init fall back to
@@ -63,6 +69,28 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
             {
                 RenderingMode = [AndroidRenderingMode.Egl],
             });
+    }
+
+    // Opens a URL in the system browser via an ACTION_VIEW intent. Uses the live Activity when there is
+    // one (a real Activity context); falls back to the application context with NEW_TASK otherwise.
+    private void OpenExternalUri(System.Uri uri)
+    {
+        // AbsoluteUri, not ToString(): the OAuth URL's query carries percent-encoded redirect_uri/scope/
+        // state, and Uri.ToString() can unescape them; AbsoluteUri stays round-trip-safe.
+        using var data = global::Android.Net.Uri.Parse(uri.AbsoluteUri);
+        using var intent = new global::Android.Content.Intent(global::Android.Content.Intent.ActionView, data);
+        if (MainActivity.Current is { } activity)
+        {
+            activity.StartActivity(intent);
+            return;
+        }
+        // From a non-Activity context NEW_TASK is required. If there is no context at all, throw rather
+        // than silently no-op — the caller (LaunchSignIn) cancels the connect on a throw, so the sign-in
+        // fails fast instead of hanging on a redirect that will never come.
+        intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+        var context = ApplicationContext
+            ?? throw new global::System.InvalidOperationException("No Android context is available to open the sign-in page.");
+        context.StartActivity(intent);
     }
 
     // Resolves the data folder (or triggers onboarding) and sets the matching App hook. Split out of

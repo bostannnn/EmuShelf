@@ -277,7 +277,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         try
         {
             var oauth = new GoogleOAuthClient(GoogleHttpClient, GoogleOAuthClientSource.Resolve()!);
-            using var redirect = new LoopbackOAuthRedirectHandler(_logger);
+            using var redirect = OAuthRedirectHandlerFactory.Create(_logger);
             var request = oauth.CreateAuthorizationRequest(redirect.RedirectUri);
 
             openBrowser(request.AuthorizationUri);

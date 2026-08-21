@@ -503,7 +503,9 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _texturePacks = texturePacks;
         _hotkeys = hotkeys;
         _steamTemplateInstaller = steamTemplateInstaller ?? new SteamInputTemplateInstaller();
-        _openSignInUri = openSignInUri ?? DefaultOpenSignInUri;
+        // Prefer an explicit injection (tests), then the platform hook the head sets (Android fires an
+        // ACTION_VIEW intent — Process.Start throws there), then the desktop shell-open default.
+        _openSignInUri = openSignInUri ?? App.ExternalUriOpener ?? DefaultOpenSignInUri;
         HotkeySchemeSummary = hotkeys?.SchemeSummary ?? string.Empty;
         _updates = updates;
         IsUpdateAvailable = updates?.HasAvailableUpdate ?? false;
@@ -1461,7 +1463,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     {
         using var process = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
         {
-            FileName = uri.ToString(),
+            // AbsoluteUri keeps the OAuth query's percent-encoding intact; ToString() can unescape it.
+            FileName = uri.AbsoluteUri,
             UseShellExecute = true,
         });
     }

@@ -1052,7 +1052,9 @@ into Milestone 0.
 
 ### E — Cloud sync
 
-Detail in `docs/cloud-sync-portability-plan.md`.
+Transport detail in `docs/cloud-sync-portability-plan.md`; the finalized **save-sync data model**
+(battery saves vs save states, cross-emulator handling, no converters) is in
+`docs/android-save-sync-model.md` (DECISIONS 2026-08-21).
 
 **Status.** The managed Drive transport (Phase 1) and its coordinator wiring plus the **desktop
 settings UI** (Phase 2) are now on this branch, brought over from the unmerged

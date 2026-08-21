@@ -623,8 +623,16 @@ public static class SaveProviderRegistry
     {
         if (string.IsNullOrWhiteSpace(corePath))
             return "core";
-        return Path.GetFileNameWithoutExtension(corePath)
+        var id = Path.GetFileNameWithoutExtension(corePath)
             .Replace("_libretro", string.Empty, StringComparison.OrdinalIgnoreCase);
+        // RetroArch's Android cores are named "<core>_libretro_android.so", leaving a trailing
+        // "_android" here that the desktop "<core>_libretro.dll/.so" does not. That is a build-platform
+        // tag, not part of the core identity, so strip it — otherwise a save-state's compatibility id
+        // reads "snes9x_android" on the Thor and "snes9x" on desktop and the two never reconcile (the
+        // id gate rejects before architecture is even considered). See docs/android-save-sync-model.md.
+        if (id.EndsWith("_android", StringComparison.OrdinalIgnoreCase))
+            id = id[..^"_android".Length];
+        return id;
     }
 
     private static AuxiliaryFileSource State(
