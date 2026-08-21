@@ -2763,6 +2763,36 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_ReplacesTheSyncingProgressToastWhenTheBackgroundSyncFinishes()
+    {
+        // The Android post-exit (deferred) path raises the "Syncing saves…" progress toast, which never
+        // auto-dismisses — it must be replaced with a result when the background sync completes, or it
+        // lingers on screen and reads as a stuck sync. Regression guard for that.
+        var events = new List<string>();
+        var sync = new RecordingGameSaveSyncService(events, CompletedSync(SaveSyncAction.Upload));
+        var path = Path.Combine(_baseDirectory, "Lumines-deferred.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var vm = CreateViewModel(gameSaveSync: sync);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+        var game = vm.Games.Single();
+
+        // The state the deferred path finds after the game exits: a syncing progress toast on screen.
+        vm.StatusText = "Syncing saves…";
+        vm.StatusSeverity = StatusSeverity.Progress;
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromMinutes(2));
+
+        Assert.Equal("sync:psp", Assert.Single(events));
+        // The progress toast was replaced by a real, self-dismissing result.
+        Assert.NotEqual(StatusSeverity.Progress, vm.StatusSeverity);
+        Assert.Equal(StatusSeverity.Info, vm.StatusSeverity);
+        Assert.Contains("Lumines finished", vm.StatusText, StringComparison.Ordinal);
+        Assert.Contains("1 uploaded", vm.StatusText, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
     public void PhysicalShelf_SaveSyncUsesTheNonModalStatusToast()
     {
         var vm = CreateViewModel();

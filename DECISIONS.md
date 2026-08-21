@@ -10113,3 +10113,20 @@ four from the target package name using fixed Android conventions (external file
 `/storage/emulated/0`), keeping the factory pure and desktop-testable rather than querying the OS. `APK`/
 `IME` are omitted as install/device-specific and not load-bearing — verified on the Thor that the
 four-extra launch loads the config and resolves the correct save/state/system folders.
+## 2026-08-21 — DS/GBA import defers the full-file SHA-1 to enrichment
+
+Adding a folder ran `FileImportRules.ReadImportMetadata` once per game on the import thread; for the
+raw-cartridge systems that meant a full-file SHA-1. Nintendo DS (up to 512 MB) and Game Boy Advance
+(up to 32 MB) are the large outliers, so re-adding those libraries stalled — badly off the handheld's
+microSD — while the disc systems (which read only a small serial/header, or nothing) stayed quick. The
+same SHA-1 was then recomputed a second time by `NintendoDsRomIdentifierExtractor` /
+`GameBoyAdvanceRomIdentifierExtractor` during metadata enrichment.
+
+DS and GBA now follow the Dreamcast contract: `ReadImportMetadata` returns `GameImportMetadata.Empty`
+and the whole-file read happens only in the gated, progress-reporting enrichment pass. Import stays as
+cheap as `AnalyzeFile`, and the double-hash is gone. Returning `Empty` (rather than a header-only game
+code) is deliberate — enrichment only runs the extractor when no identifiers are stored yet, so any
+import-time evidence would suppress the SHA-1 the catalogue keys on. The small raw-ROM systems
+(NES/SNES/GBC/Mega Drive) keep their import-time hash: a few-MB read is negligible and it preserves
+hash-based relocation detection on folder replacement. Accepted cost: a DS/GBA folder replacement no
+longer verifies moved files by hash before enrichment runs — the same limitation Dreamcast already has.
