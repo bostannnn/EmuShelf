@@ -1,7 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.Importing;
-using EmuShelf.Core.Metadata;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Systems;
 
@@ -40,23 +39,10 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("gba"));
         Assert.Equal(["gba"], analysis.SuggestedSystems.Select(system => system.Id));
         Assert.True(_rules.IsFolderCandidate(path, System("gba")));
-        Assert.Null(metadata.EmbeddedTitle);
-        Assert.Collection(
-            metadata.Identifiers,
-            identifier =>
-            {
-                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
-                Assert.Equal("ABCE", identifier.Value);
-                Assert.Equal("Game Boy Advance header", identifier.Source);
-                Assert.False(identifier.IsPrimary);
-            },
-            identifier =>
-            {
-                Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
-                Assert.Equal(evidence.Sha1, identifier.Value);
-                Assert.Equal("Game Boy Advance ROM", identifier.Source);
-                Assert.True(identifier.IsPrimary);
-            });
+        // Import is deferred: the whole-file SHA-1 identity is produced by
+        // GameBoyAdvanceRomIdentifierExtractor during metadata enrichment (see IdentifierExtractorTests),
+        // so ReadImportMetadata does no full read and reports no evidence here.
+        Assert.Same(GameImportMetadata.Empty, metadata);
         Assert.Equal(beforeBytes, File.ReadAllBytes(path));
         Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
     }
@@ -120,10 +106,14 @@ public sealed class GameBoyAdvanceRomReaderTests : TempAppDirectoryTestBase
         bytes[0xBD] = CalculateHeaderChecksum(bytes);
         File.WriteAllBytes(path, bytes);
 
+        var header = GameBoyAdvanceRomReader.TryRecognize(path);
         var metadata = _rules.ReadImportMetadata(path, System("gba"));
 
-        Assert.Null(metadata.EmbeddedTitle);
-        Assert.Contains(metadata.Identifiers, identifier => identifier.Kind == GameIdentifierKind.Sha1);
+        // A malformed header title is never surfaced as a display title, and import evidence is
+        // deferred to enrichment regardless.
+        Assert.NotNull(header);
+        Assert.Null(header.Title);
+        Assert.Same(GameImportMetadata.Empty, metadata);
     }
 
     [Fact]
