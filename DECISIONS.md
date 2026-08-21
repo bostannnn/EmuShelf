@@ -9843,3 +9843,35 @@ they went unnoticed until the app was played. Seeded S backlog (owner's first Th
 sticks unread on Android (blocks 3D-cover rotation and every stick interaction — the core of Milestone C),
 3D shelf covers resize while scrolling (A2 density override × `MediaShelf3DControl` geometry/virtualization),
 plus "many others" to catalogue in the first pass. See docs/android-port-plan.md "Milestone S".
+
+## 2026-08-21 — Android: EmuShelf's own data lives in a user-chosen external folder, not app-private storage
+
+On Android, EmuShelf's data layout (`Data/library.db`, `Covers/`, `Cache/`, `Logs/`, `Settings/`, `Saves/`)
+no longer lives in app-private `FilesDir`. On first launch an onboarding step asks the user to pick a folder,
+and the layout is created under `<picked>/EmuShelf`; the folder is changeable later in Settings. Android-only
+— desktop keeps portable-beside-exe / macOS Application Support. This formally breaks the CLAUDE.md "data
+lives beside the executable (portable)" rule *for Android*, which has no beside-the-executable location
+anyway; the user explicitly wants their library, saves, logs and scraped media on shared/removable storage
+that survives *Clear data* and uninstall.
+
+The data folder is a **real `/storage/…` path**, not a SAF content URI: SQLite (`library.db`), the log
+writer, and the cover cache need real filesystem paths with random access, and a SAF-stream rewrite of the
+storage layer was the one budgeted genuine rewrite (avoided). So the feature is deliberately coupled to the
+`MANAGE_EXTERNAL_STORAGE` (all-files) grant, which is what lets `File`/`Directory`/SQLite work by path. The
+Android 12+ `File.Open` restriction applies only to *other apps'* `Android/data/<pkg>` dirs, not to an
+ordinary shared-storage folder, so a normal folder (microSD or primary) is fully read/write; the picker
+rejects `Android/data/*` targets.
+
+The base directory cannot be known before the composition root runs and cannot be stored inside the data
+folder, so a bootstrap pointer (`data-location.json` in app-private `FilesDir`, the one always-writable
+place) records the chosen base path and source SAF tree URI. `DataLocationResolver` (Core, pure) returns
+`Resolved(basePath)` or `Onboarding(reason)` (FirstRun / StoragePermissionMissing / LocationUnavailable).
+On completion onboarding persists the pointer and **restarts the process** (ProcessPhoenix-style: start the
+launch activity while foreground, then `System.exit`) so the composition root re-runs and boots to the
+library — Avalonia's Android single-view host does not re-render a live-reassigned `MainView` (verified on
+the Thor). The common path is a one-tap **recommended folder** (`<primary>/EmuShelf`) created by path with no
+document picker, because SAF refuses Download/Documents/root; a "choose a different folder" SAF option
+remains. Changing the folder in Settings re-points and restarts, leaving old data in place (owner's choice).
+Seams: `IStoragePermissionService`, `IDataLocationStore`/`JsonDataLocationStore`, `DataLocationResolver`,
+`IDataLocationBootstrap` + `App.DataLocation`/`App.RestartRequested` hooks — all inert on desktop. Verified
+end-to-end on the Thor 2026-08-21. See docs/android-port-plan.md "D2".

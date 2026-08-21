@@ -822,6 +822,70 @@ DECISIONS 2026-08-20. **Still open:** the all-files runtime grant UX (directing 
 toggle), a SAF-backed reader fallback for providers with no local path, the per-API-level AVD matrix, and
 verifying `FolderScanner`/availability against real Android storage.
 
+#### D2 — user-chosen external data folder (first-run onboarding) — 2026-08-21
+
+**Decision (owner):** on Android, EmuShelf's own data (`Data/library.db`, `Covers/`, `Cache/`, `Logs/`,
+`Settings/`, `Saves/`) does **not** live in app-private `FilesDir` anymore. On first launch an onboarding
+step asks the user to pick a folder, and the whole layout is created under `<picked>/EmuShelf`. The folder
+can be changed later in Settings. This is Android-only; desktop keeps its portable-beside-exe / macOS
+Application Support behaviour untouched. It formally breaks the "data lives beside the executable" rule for
+Android (there is no beside-the-executable there) — see DECISIONS 2026-08-21.
+
+**Why a real path, not SAF content URIs.** SQLite (`library.db`) needs a real filesystem path with random
+access, as do the log writer and cover cache — a SAF-stream rewrite of the whole storage layer was the one
+budgeted "genuine rewrite" and is avoided here. So the data folder is a real `/storage/…` path and the
+feature is deliberately **coupled to the `MANAGE_EXTERNAL_STORAGE` (all-files) grant**, which is what makes
+`File`/`Directory`/SQLite work by path. The `File.Open` restriction on Android 12+ applies only to *other
+apps'* `Android/data/<pkg>` dirs, not to an ordinary shared-storage folder — so a normal folder (e.g.
+`/storage/AE6A-1092/EmuShelf` on the microSD, or `/storage/emulated/0/EmuShelf`) is fully read/write. The
+picker rejects `Android/data/*` targets.
+
+**The startup chicken-and-egg.** The composition root opens the DB/logger/settings from a fixed base
+directory *before* any `TopLevel` exists, but the chosen folder can only be picked from the UI and cannot be
+stored inside the data folder itself. Resolved with a **bootstrap pointer** — a tiny `data-location.json`
+kept in app-private `FilesDir`, the one always-writable place — recording the chosen base path (plus the
+source SAF tree URI for display/re-validation). Startup flow:
+
+1. `DataLocationResolver` (Core, pure) reads the pointer, checks the all-files grant, and write-probes the
+   folder. It returns either `Resolved(basePath)` or `Onboarding(reason)` where reason ∈ {`FirstRun`,
+   `StoragePermissionMissing`, `LocationUnavailable`} (pointer present but grant lost or SD card gone).
+2. Resolved → the head sets `App.BaseDirectoryOverride` to `<picked>` and boots normally.
+3. Onboarding → the shared composition root shows an **onboarding-only** view (no `AppBootstrapper`, no DB).
+   The user either accepts the **recommended folder** (`<primary>/EmuShelf`, created by path — no document
+   picker, which is what sidesteps SAF's refusal of Download/Documents/root) or picks a different folder via
+   SAF. On success it persists the pointer and **restarts the process** (ProcessPhoenix-style: start the
+   launch activity while still foreground, then `System.exit`), which re-runs the composition root, resolves
+   the pointer, and boots straight to the library. A restart — not a live view swap — because Avalonia's
+   Android single-view host captures its `MainView` at startup and does **not** re-render a live-reassigned
+   one (verified on the Thor: the pointer was written but the screen stayed on onboarding until relaunch).
+
+**Changing the folder in Settings** re-runs the grant+pick flow, writes the new pointer, and **restarts**
+the app (same relaunch helper; services are already open against the old path). Old data is **left in place** (owner's choice) —
+the user re-picks the old folder to keep the existing library, or starts fresh. The restart is a small
+Android relaunch helper (PendingIntent + `Process.killProcess`). **This row is a follow-up:** it threads a
+folder-change action + the relaunch through the 2084-line gamepad settings system and the shared
+`MainViewModel`, a device-only cross-cutting change. First-run onboarding does not depend on it and lands
+first; the pointer store, pick/validate, and resolver it reuses are already in place.
+
+**Seams (all cross-platform-safe; desktop path byte-identical when the hooks are unset):**
+- `IStoragePermissionService` (Core) — `RequiresGrant`/`IsGranted`/`RequestGrant`. Desktop: granted no-op
+  (`GrantedStoragePermissionService`); Android: `Environment.IsExternalStorageManager` +
+  `ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION`, re-checked on the existing `OnTopResumedActivityChanged`
+  return signal.
+- `IDataLocationStore` + `DataLocation` (Core) with `JsonDataLocationStore` (Infrastructure, `AtomicFile`).
+- `DataLocationResolver` (Core) — the pure decision, unit-tested with fakes.
+- `IDataLocationBootstrap` (App) + `App.DataLocation` hook — the onboarding gate; null on desktop.
+- `OnboardingViewModel` + onboarding view (shared UI). `AndroidDataLocationBootstrap` in the head drives the
+  SAF picker (via `SingleViewDialogService`, translated with `AndroidExternalStorageUri`) and the grant.
+
+**Verification:** the resolver, the JSON store, and the onboarding view-model are unit-tested on desktop.
+The Android head wiring was **verified end-to-end on the Thor (2026-08-21)**: fresh install → gamepad-driven
+Grant → all-files toggle → grant detected on return (process not even killed) → one-tap recommended folder
+→ auto-restart → library shelf, with `library.db`/`settings.json` and all six folders created under
+`/storage/emulated/0/EmuShelf`. Findings folded in from that pass: the SAF picker refuses Download/Documents/
+root (hence the recommended-folder path); a live `MainView` swap doesn't render (hence the restart handoff);
+and the double-`EmuShelf` nesting when the picked folder is already named EmuShelf is avoided.
+
 ### B — Launching games
 
 - `AndroidIntentLauncher` behind `ITrackedProcessRunner`, plus honest handling for the other 16
@@ -1093,7 +1157,7 @@ bugs the feature checklist does not track:
 | A0 — desktop split | ✅ done | — |
 | 0b — device facts + handoff matrix | ✅ done | PS3 (aPS3e) never measured — out of v1 scope |
 | A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
-| **D — storage & permissions** | 🟡 core done | all-files runtime grant UX; SAF-backed reader fallback (providers with no local path); per-API-level AVD matrix; verify `FolderScanner`/availability on real Android storage |
+| **D — storage & permissions** | 🟡 core done; user-chosen data folder (D2) landed off-device | D2 first-run onboarding + Settings change wired (resolver/store/VM unit-tested, head wiring on-device pending); still: SAF-backed reader fallback (providers with no local path); per-API-level AVD matrix; verify `FolderScanner`/availability on real Android storage |
 | **B — launching** | 🟡 core done + verified | see "What's left in B" below |
 | C — controller input & text entry | ⬜ partial (on-device key routing pulled forward in A1) | native analog-stick `MotionEvent` reading; **IME** (gamepad search/rename unusable without it); back-vs-B arbitration; drop the SDL native payload from the APK |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
