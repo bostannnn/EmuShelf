@@ -10101,3 +10101,15 @@ the two versions — neither claims the other's key, so the cloud carries both a
 machine upgrades. Nothing is corrupted or deleted (sync never deletes; the conflict path backs up
 losers), and the migration-before-first-sync ordering makes a cloud-only newer save hard to shadow. This
 is the accepted cost of a one-time re-key over a read-alias; it is transient and self-heals on upgrade.
+
+## 2026-08-21 — Android RetroArch launch carries CONFIGFILE and env extras
+
+The Android RetroArch intent originally sent only `ROM`+`LIBRETRO`, so `RetroActivityFuture` started with a
+default config and never loaded the user's `retroarch.cfg` — hotkeys, gamepad autoconfig and settings were
+missing (user-reported; other frontends were fine). Working frontends (Cocoon, NeoStation) send the extra
+tail `CONFIGFILE`/`DATADIR`/`SDCARD`/`EXTERNAL` (+ `APK`/`IME`). `AndroidIntentFactory` now builds those
+four from the target package name using fixed Android conventions (external files at
+`Android/data/<pkg>/files`, config `retroarch.cfg` there, data dir `/data/user/0/<pkg>`, internal storage
+`/storage/emulated/0`), keeping the factory pure and desktop-testable rather than querying the OS. `APK`/
+`IME` are omitted as install/device-specific and not load-bearing — verified on the Thor that the
+four-extra launch loads the config and resolves the correct save/state/system folders.

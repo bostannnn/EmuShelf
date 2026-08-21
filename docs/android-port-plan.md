@@ -442,7 +442,17 @@ emulator table in `/sdcard/User/Neostation/data.sqlite` (`app_emulators` → `an
 | PSP / PPSSPP | `org.ppsspp.ppsspp/.PpssppActivity` | `VIEW` | content URI **as intent DATA** (no extra) |
 | 3DS / Azahar | `org.azahar_emu.azahar/org.citra.citra_emu.activities.EmulationActivity` | `VIEW` | content URI **as intent DATA** |
 | DS / WatermelonDS | `me.magnum.melondualds/me.magnum.melonds.ui.emulator.EmulatorActivity` | `me.magnum.melondualds.LAUNCH_ROM` | **extra `uri`** = content URI |
-| RetroArch | `com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture` | `VIEW` | extras `ROM` (path) + `LIBRETRO` (core `.so`) + DATADIR/SDCARD/… |
+| RetroArch | `com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture` | `VIEW` | extras `ROM` (path) + `LIBRETRO` (core `.so`) + `CONFIGFILE`/`DATADIR`/`SDCARD`/`EXTERNAL` (+ `APK`/`IME`) |
+
+> **`CONFIGFILE` is load-bearing (2026-08-21).** Cocoon's log records its RetroArch intent extras as
+> `DATADIR, SDCARD, EXTERNAL, APK, IME, ROM, CONFIGFILE, LIBRETRO`. EmuShelf originally sent only
+> `ROM`+`LIBRETRO`, so RetroArch launched with a default config — the user's hotkeys, gamepad autoconfig
+> and settings never loaded (matched a user report). Verified on the Thor by firing both intents: with
+> only `ROM`+`LIBRETRO` the parse log emits no "Config file" line; adding `CONFIGFILE` (=
+> `/storage/emulated/0/Android/data/com.retroarch.aarch64/files/retroarch.cfg`) plus `DATADIR`/`SDCARD`/
+> `EXTERNAL` makes it load the real config and resolve the correct save/state/system folders. Now built
+> in `AndroidIntentFactory` from the target package; `APK`/`IME` are omitted (install/device-specific and
+> not load-bearing — the four-extra launch loaded everything correctly).
 
 Every URI is the tree-scoped `…/tree/<TREE>/document/<DOC>` form. Three distinct payload conventions
 (extra-named vs intent-DATA vs custom-action-plus-extra) confirm the plan's core thesis: **the handoff is
