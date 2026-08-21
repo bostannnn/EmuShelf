@@ -2,7 +2,6 @@ using System.Buffers.Binary;
 using System.Security.Cryptography;
 using System.Text;
 using EmuShelf.Core.Importing;
-using EmuShelf.Core.Metadata;
 using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Systems;
 
@@ -41,23 +40,10 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
         Assert.Equal(GameFileMatch.Compatible, analysis.MatchFor("nds"));
         Assert.Equal(["nds"], analysis.SuggestedSystems.Select(system => system.Id));
         Assert.True(_rules.IsFolderCandidate(path, System("nds")));
-        Assert.Null(metadata.EmbeddedTitle);
-        Assert.Collection(
-            metadata.Identifiers,
-            identifier =>
-            {
-                Assert.Equal(GameIdentifierKind.TitleId, identifier.Kind);
-                Assert.Equal("ABCE", identifier.Value);
-                Assert.Equal("Nintendo DS header", identifier.Source);
-                Assert.False(identifier.IsPrimary);
-            },
-            identifier =>
-            {
-                Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
-                Assert.Equal(evidence.Sha1, identifier.Value);
-                Assert.Equal("Nintendo DS ROM", identifier.Source);
-                Assert.True(identifier.IsPrimary);
-            });
+        // Import is deferred: the whole-file SHA-1 identity is produced by
+        // NintendoDsRomIdentifierExtractor during metadata enrichment (see IdentifierExtractorTests),
+        // so ReadImportMetadata does no full read and reports no evidence here.
+        Assert.Same(GameImportMetadata.Empty, metadata);
         Assert.Equal(beforeBytes, File.ReadAllBytes(path));
         Assert.Equal(beforeTimestamp, File.GetLastWriteTimeUtc(path));
     }
@@ -68,15 +54,18 @@ public sealed class NintendoDsRomReaderTests : TempAppDirectoryTestBase
         var path = WriteRom("Homebrew.nds", "Homebrew", "####", homebrew: true);
 
         var header = NintendoDsRomReader.TryRecognize(path);
+        var evidence = NintendoDsRomReader.TryRead(path);
         var metadata = _rules.ReadImportMetadata(path, System("nds"));
 
         Assert.NotNull(header);
         Assert.True(header.IsHomebrew);
         Assert.Null(header.GameCode);
-        Assert.Null(metadata.EmbeddedTitle);
-        var identifier = Assert.Single(metadata.Identifiers);
-        Assert.Equal(GameIdentifierKind.Sha1, identifier.Kind);
-        Assert.True(identifier.IsPrimary);
+        // Homebrew has no shared game code to lean on, so its only identity is the raw SHA-1 —
+        // computed by the extractor at enrichment time. Import itself stays evidence-free.
+        Assert.NotNull(evidence);
+        Assert.Null(evidence.GameCode);
+        Assert.NotEmpty(evidence.Sha1);
+        Assert.Same(GameImportMetadata.Empty, metadata);
     }
 
     [Fact]

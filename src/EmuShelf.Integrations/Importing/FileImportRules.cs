@@ -368,19 +368,19 @@ public sealed class FileImportRules : IGameImportRules
                     IsPrimary: true)]);
         }
 
-        if (system.Id == NintendoDsId && NintendoDsRomReader.TryRead(path) is { } nintendoDsEvidence)
-            return CreateCartridgeMetadata(
-                nintendoDsEvidence.GameCode,
-                "Nintendo DS header",
-                nintendoDsEvidence.Sha1,
-                "Nintendo DS ROM");
-
-        if (system.Id == GameBoyAdvanceId && GameBoyAdvanceRomReader.TryRead(path) is { } gameBoyAdvanceEvidence)
-            return CreateCartridgeMetadata(
-                gameBoyAdvanceEvidence.GameCode,
-                "Game Boy Advance header",
-                gameBoyAdvanceEvidence.Sha1,
-                "Game Boy Advance ROM");
+        // Nintendo DS and Game Boy Advance identity is the full-file SHA-1, and their cartridges are
+        // the large outliers among the raw-ROM systems (up to 512 MB and 32 MB respectively). Like
+        // Dreamcast, that whole-file read is deferred to the gated, progress-reporting metadata
+        // enrichment pass — NintendoDsRomIdentifierExtractor / GameBoyAdvanceRomIdentifierExtractor
+        // recompute the identical evidence — so adding a folder stays as cheap as AnalyzeFile instead
+        // of hashing every ROM on the import thread (painfully slow off the handheld's microSD).
+        // Returning Empty (not a header-only game code) is deliberate: enrichment only runs the
+        // extractor when no identifiers are stored yet, so any evidence written here would suppress
+        // the SHA-1 the catalogue keys on. The small raw-ROM systems keep their import-time hash;
+        // reading a few-MB NES/SNES/GBC/Mega Drive ROM is negligible and preserves relocation
+        // detection on folder replacement.
+        if (system.Id is NintendoDsId or GameBoyAdvanceId)
+            return GameImportMetadata.Empty;
 
         // 3DS carries no cheap whole-file hash (dumps are multi-gigabyte). Uncompressed NCSD/NCCH
         // dumps supply a plaintext product code and title id; compressed, CIA, and homebrew files
