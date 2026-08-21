@@ -37,6 +37,41 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
             return false;
         }
 
+        // FLAG_GRANT_READ_URI_PERMISSION only grants the intent's data URI, and Android rejects the whole
+        // startActivity with a SecurityException if we ask to pass a grant for a URI we do not ourselves
+        // hold. Under the shipped all-files model the ROM URI is synthesized from a MANAGE_EXTERNAL_STORAGE
+        // path (never obtained via SAF), so we hold no grantable permission — attach the flag only when a
+        // CheckUriPermission proves we do. Dropping it is safe: every scoped-storage emulator here reads
+        // through its own persisted roms/<system> tree grant, so it needs no grant from us.
+        var withGrant = request.GrantReadUriPermission && CanGrantDataUri(ctx, request.DataUri);
+
+        if (TryStart(ctx, request, withGrant))
+            return true;
+
+        // Safety net: if the grant slipped through the CheckUriPermission gate and startActivity still
+        // rejected it, retry once without the flag rather than reporting the game as unlaunchable.
+        if (withGrant && TryStart(ctx, request, withGrant: false))
+            return true;
+
+        return false;
+    }
+
+    // True only when EmuShelf itself holds a read grant for the data URI, so passing it on will not be
+    // rejected. False for a synthesized all-files URI (no SAF grant) or when there is no data URI to grant.
+    private static bool CanGrantDataUri(Context ctx, string? dataUri)
+    {
+        if (string.IsNullOrEmpty(dataUri))
+            return false;
+
+        return ctx.CheckUriPermission(
+            global::Android.Net.Uri.Parse(dataUri),
+            global::Android.OS.Process.MyPid(),
+            global::Android.OS.Process.MyUid(),
+            ActivityFlags.GrantReadUriPermission) == global::Android.Content.PM.Permission.Granted;
+    }
+
+    private bool TryStart(Context ctx, AndroidIntentRequest request, bool withGrant)
+    {
         using var intent = new Intent();
         intent.SetComponent(new ComponentName(request.PackageName, request.ActivityName));
 
@@ -52,7 +87,7 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         foreach (var (key, value) in request.BoolExtras)
             intent.PutExtra(key, value);
 
-        if (request.GrantReadUriPermission)
+        if (withGrant)
             intent.AddFlags(ActivityFlags.GrantReadUriPermission);
 
         // The emulator runs as its own task and becomes the top-resumed activity; NEW_TASK is required
@@ -69,6 +104,15 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         catch (ActivityNotFoundException ex)
         {
             logger.Error($"Could not launch {request.Component}: activity not found.", ex);
+            return false;
+        }
+        catch (Java.Lang.SecurityException ex) when (withGrant)
+        {
+            // We asked to pass a read grant for a URI we cannot grant. This is expected under the all-files
+            // model; the caller retries without the flag, so log at a lower level and let it fall through.
+            logger.Warning(
+                $"Cannot pass a read grant to {request.Component} (EmuShelf does not hold the URI permission); " +
+                $"retrying without it: {ex.Message}");
             return false;
         }
         catch (Exception ex)
