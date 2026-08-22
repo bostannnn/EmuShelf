@@ -138,20 +138,17 @@ public class SaveProviderRegistryTests
     }
 
     [Fact]
-    public void AndroidPlayStation_DefaultsToDuckStationButHonorsAConfiguredRetroArchCore()
+    public void AndroidPlayStation_HasNoDuckStationProvider_SyncsOnlyViaBeetlePsx()
     {
-        // Default (no RetroArch configured) → DuckStation's package files root.
-        var duckStation = AppBootstrapper.ResolveAndroidEmulator(
+        // DuckStation configured → no installation. Its Android memory cards are owner-only (0600) and
+        // unreadable by EmuShelf, so there is no Android DuckStation save provider and PS1-via-DuckStation
+        // does not sync on Android (DECISIONS 2026-08-20 / -08-22, docs/android-save-sync-model.md).
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator(
             "playstation",
             new EmulatorConfiguration("playstation", ExecutablePath: null, LaunchArguments: null)
             {
                 EmulatorId = "duckstation",
-            });
-        Assert.Equal("duckstation", duckStation!.EmulatorId);
-        Assert.Equal(
-            AndroidExternalStorageUri.ExternalAppFilesDirectory(
-                AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
-            duckStation.Directory);
+            }));
 
         // Configured for a RetroArch PS1 core (Beetle PSX) → routes to the RetroArch package root with
         // the core carried, so PS1 saves sync through the readable RetroArch provider.
