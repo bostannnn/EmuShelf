@@ -62,9 +62,21 @@ public static class PerfTrace
         if (_timer is not null || Sink is null)
             return;
 
+        // Drain the GL counters and re-baseline alloc/GC so the first sample covers only the second after
+        // enabling. RecordGlFrame runs every frame from launch, so without this the first line would report
+        // every frame drawn since startup as one second's worth — a nonsense glfps and an all-time worst ms.
+        Interlocked.Exchange(ref _glFrames, 0);
+        Interlocked.Exchange(ref _maxRenderTicks, 0);
         _lastAllocBytes = GC.GetTotalAllocatedBytes();
         _lastGen0 = GC.CollectionCount(0);
         _timer = new Timer(_ => Sample(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    /// <summary>Stops the perf sampler if running, so the log goes quiet when the diagnostics are switched off. Idempotent.</summary>
+    public static void StopSampling()
+    {
+        _timer?.Dispose();
+        _timer = null;
     }
 
     private static void Sample()
