@@ -27,6 +27,7 @@ public sealed class AndroidEmulatorLaunchService(
     AndroidGameLauncher launcher,
     IEmulatorConfigurationStore configurations,
     IPendingPlaySessionStore pendingSessions,
+    IGameLibrary library,
     IAppLogger logger) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
@@ -53,6 +54,11 @@ public sealed class AndroidEmulatorLaunchService(
         if (candidates.Count == 0)
             return new GameLaunchResult(false, $"Cannot launch {title}: no Android emulator supports this system.");
 
+        // Scope the launch URI's tree to the folder the game was imported from — normally the same folder
+        // the emulator was granted (e.g. roms/psx). Without this, the resolver falls back to the game's own
+        // sub-folder, which a nested multi-disc game's emulator has no grant to, and the launch is denied.
+        var grantRoot = AndroidLibraryGrantRoot.ForGame(library.GetLibraryFolders(game.SystemId), game.Path);
+
         AndroidLaunchResolution? lastFailure = null;
         foreach (var candidate in candidates)
         {
@@ -60,7 +66,8 @@ public sealed class AndroidEmulatorLaunchService(
                 game.SystemId,
                 game.Path,
                 preferredEmulatorId: candidate.Id,
-                retroArchCorePath: configuration?.CorePath);
+                retroArchCorePath: configuration?.CorePath,
+                emulatorGrantRoot: grantRoot);
 
             if (!resolution.Success)
             {

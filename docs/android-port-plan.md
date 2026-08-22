@@ -956,9 +956,11 @@ installed to the Thor, all-files re-granted, a single-file PS1 game (Castlevania
 library, and a gamepad Confirm from the couch produced `Launching DuckStation for Castlevania SotN` →
 DuckStation foreground in its `EmulationActivity`, then a clean return to EmuShelf (the `isOneShot` flag).
 This exercised the verified tree path (single-file game whose parent folder *is* the emulator's grant
-folder). The nested-multi-disc tree question (a game in a subfolder below the grant folder) is still the
-open on-device item — provide the emulator grant root via the setup checklist, or verify the parent-folder
-fallback boots.
+folder). **The nested-multi-disc tree question is now resolved (2026-08-22):** a game in a sub-folder below
+the grant folder failed with a `SecurityException` when the launch URI's tree was scoped to the sub-folder
+(reproduced live on the Thor), and booted when scoped to the emulator's grant folder (`roms/psx`). The
+launch service now supplies that grant root from the game's remembered import folder
+(`AndroidLibraryGrantRoot`). See "What's left in B" and DECISIONS 2026-08-22.
 
 **Exit signal + deferred completion landed and verified on the Thor (2026-08-20).** Because the Android
 launch is fire-and-forget, the "returned from the game" work (play-time accrual, post-play save sync) is
@@ -985,13 +987,13 @@ measured per-emulator intents (DuckStation/ARMSX2/Dolphin/PPSSPP/Azahar/Watermel
 selection) → a concrete `AndroidIntentRequest`, asserted against the exact shapes that booted MGS and Auto
 Modellista on the Thor; the `<queries>` manifest block lists every emulator package (kept in sync with the
 profiles by a test); `AndroidGameLauncher` in the head converts the request to a framework `Intent` and
-fires it (head compiles). **Still open, and a design choice to make together:** how the Android launch path
-plugs into `IEmulatorLaunchService` — the shared pipeline is built around a `ProcessStartSpec`
-(executable + args + exit code) that an intent does not fit, so either a dedicated Android
-`IEmulatorLaunchService` or an `ITrackedProcessRunner` that speaks intents. Also still open (device-gated):
-the **exit signal** (`onTopResumedActivityChanged`, surviving process death), the **per-emulator setup
-checklist** (does the emulator hold a tree grant covering the game's folder?), promoting
-`GameLaunchDependencyResolver` to a primary path, and dropping the SDL native payload from the APK.
+fires it (head compiles). **All of these later landed:** the Android path plugs in as a dedicated
+`IEmulatorLaunchService` (`AndroidEmulatorLaunchService` via `IPlatformShell.LaunchService`); the **exit
+signal** (`onTopResumedActivityChanged`, surviving process death) and deferred completion are in and
+verified; the **nested-multi-disc/grant-folder** case is fixed by scoping the launch URI to the game's
+import folder (2026-08-22); the SDL native payload is excluded structurally (Avalonia.Desktop is kept out
+of the head). `GameLaunchDependencyResolver` promotion is desktop/Flatpak-only and out of Android scope
+(the emulator resolves the `.m3u` itself). See "What's left in B".
 
 ### C — Controller input and text entry
 
@@ -1264,7 +1266,7 @@ bugs the feature checklist does not track:
 - **(more to catalogue.)** The owner reported "many others" not yet enumerated; the first stabilization
   pass with a staged library is where they get written down.
 
-### Current status and what's next (2026-08-21)
+### Current status and what's next (2026-08-22)
 
 | Milestone | State | What remains |
 |---|---|---|
@@ -1273,11 +1275,11 @@ bugs the feature checklist does not track:
 | 0b — device facts + handoff matrix | ✅ done | PS3 (aPS3e) never measured — out of v1 scope |
 | A1/A2 — skeleton, gamepad import, couch responsiveness | ✅ done, on Thor | populated-library visual pass at the new density — **moved to Milestone S** (it is the "covers resize on scroll" bug, not cosmetic) |
 | **D — storage & permissions** | ✅ done for Thor (2026-08-21) | grant secured via D2 first-run onboarding (`IStoragePermissionService`, verified on Thor); D2 user-chosen data folder verified end-to-end on Thor; `FolderScanner`/availability verified on the real SD library (41 games); the couch import chooser density-collapse found here is fixed. **Deferred (owner call, not Thor blockers):** SAF-backed reader fallback (portability, a device without all-files) and the per-API-level AVD matrix (verification-only). D2 Settings folder-change is the one remaining follow-up |
-| **B — launching** | 🟡 core done + verified | see "What's left in B" below |
+| **B — launching** | ✅ done (2026-08-22) | nested multi-disc fixed; #3 is desktop-only (not an Android item), #4 is old-Android-only (Thor is 33), #1 is unimplementable-as-specified and moot on a granted device — see "What's left in B" below |
 | C — controller input & text entry | ✅ done, verified on Thor | left stick + **D-pad** (hat-axis, fixed 2026-08-21) nav, 3D rotation, SDL-drop (moot), **IME, back-vs-B arbitration, R3→reset-rotation — all verified on the Thor 2026-08-21**. Two device-only bugs found & fixed during the hands-on pass: R3 launched the focused game (unmapped → Avalonia activation), and the D-pad did nothing (reported as a hat axis the reader ignored). Optional follow-up: an API-<29 path is not needed (Thor is 33) |
 | E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
 | E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
-| F — packaging & release | 🟡 in progress | APK CI job **done** and attached to releases; release-signing **wired** (activates once the owner runs the keystore setup — DECISIONS 2026-08-20); remaining: owner runs keystore setup, developer-verification/install docs |
+| F — packaging & release | ✅ done | APK CI job done + attached to releases; **release-signing is live** — all four `ANDROID_KEYSTORE_*`/`ANDROID_KEY_*` secrets are set (2026-08-20), so tagged builds are release-signed (verified via `gh secret list`); Android OAuth client-id accessor (`GoogleOAuthAndroidClientId`) + `EMUSHELF_GOOGLE_OAUTH_CLIENT_*` secrets present; user install/sideload docs written (`docs/android-install.md`); stale `package-android` needs-comment fixed. **Only non-engineering remainder:** register a Google developer-verification identity — region/time-gated (enforcement starts 30 Sep 2026), not blocking. |
 | **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: 3D covers resize on scroll, "many others" TBD (analog-stick input is now fixed, PR #163) — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
@@ -1285,11 +1287,39 @@ signal + deferred post-play completion (survives process death). RetroArch-backe
 controller-native per-system selector: it offers compatible known core filenames, persists the selected
 app-private path, activates RetroArch for that system, and makes the launcher honor that choice before its
 fallbacks. EmuShelf does not install or inspect cores; the matching core must already be installed in
-RetroArch. Still open: (1) the **per-emulator setup checklist** — does the emulator hold a SAF tree grant
-covering the game's folder? — which also fixes (2) the **nested-multi-disc tree** question (a game in a
-subfolder below the grant folder; single-file games on the grant folder are verified); (3) promoting
-`GameLaunchDependencyResolver` to a primary path with a softened failure mode; (4) an API-<29 `OnResume`
-fallback for the return signal (the Thor is 33).
+RetroArch.
+
+**(2) Nested-multi-disc tree — FIXED (2026-08-22).** A game in its own sub-folder (a per-game `.m3u` beside
+its `Disc 1`/`Disc 2` — MGS, Xenogears, Twin Snakes, Shadow Hearts Covenant) would not launch, while
+single files in the same system folder did. Reproduced live on the Thor: EmuShelf hands the emulator a
+`content://` **tree/document** URI, and Android matches the URI's *tree* against a tree the emulator was
+granted. Each emulator holds a persisted **prefix** grant to its whole system folder (DuckStation →
+`roms/psx`, Dolphin → `roms/ngc`+`roms/wii`, …), so a URI re-rooted at the game's sub-folder matches no
+grant and the emulator is denied (`SecurityException` from `ExternalStorageProvider`). The launch service
+now scopes the tree to the game's remembered **import folder** via `AndroidLibraryGrantRoot.ForGame`,
+which in the normal setup equals the emulator's grant folder. Single-file games are unchanged (same URI as
+before). See DECISIONS 2026-08-22.
+
+**(1) Per-emulator setup checklist — reframed, and largely moot on a set-up device.** The original idea
+("does the emulator hold a grant covering the game's folder, with a verify step") is **not implementable
+as EmuShelf reading the grant**: a normal app cannot enumerate another app's persisted SAF permissions
+(the grant list is only visible via shell `dumpsys`). And EmuShelf cannot detect a failed launch either —
+`startActivity` succeeds; the read `SecurityException` happens *inside the emulator's* process. So EmuShelf
+must *infer* the grant folder (it does — the import folder), and cannot surface a precise "grant this
+emulator access" error at launch. What remains as an option, if the inference proves too fragile in the
+field, is for EmuShelf to hold its **own** persisted SAF grant to the library folders and delegate read via
+`FLAG_GRANT_READ_URI_PERMISSION` at launch — removing the dependency on each emulator's own grant. That is
+a larger change overlapping the deferred SAF-storage work in Milestone D and is **not built**; on a device
+where each emulator is already granted (the Thor), it is unnecessary.
+
+**(3) `GameLaunchDependencyResolver` promotion — NOT an Android item.** On Android the *emulator* opens the
+`.m3u` and resolves its own disc files (verified: DuckStation opened `…(Disc 1).chd` from the m3u). The
+resolver only runs on the desktop Flatpak launch path, where the frontend must pre-list files for the
+portal handoff. Tracked as a desktop-only improvement, out of the Android port's scope.
+
+**(4) API-<29 `OnResume` return-signal fallback — NOT needed for supported hardware.** The return signal
+(`onTopResumedActivityChanged`) is API 29+. The Thor is API 33. A fallback only matters for Android ≤ 9,
+which the experimental sideload does not target; deferred indefinitely.
 
 **What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
 signal calls it) but no-ops because Android has nothing to sync yet. **The single biggest item shrank on
@@ -1312,18 +1342,18 @@ concern for a hypothetical second device, not v1 work.
 
 **Strategy (owner, 2026-08-20): finish the feature milestones to a working core, *then* stabilize —
 repeatedly.** Do not interleave the on-device bug/polish work into the feature milestones; land the
-remaining features (E-android, F, and E-desktop in parallel; C is now done and verified on the Thor) so the
-core imports, launches, returns and syncs end to end, then switch to **Milestone S** — the repeated
-stabilization passes above — and iterate
-until it feels finished. The known-issues backlog (3D-covers-resize-on-scroll, …) is
-deliberately parked for S rather than fixed piecemeal now.
+remaining feature (E-android; E-desktop in parallel) so the core imports, launches, returns and syncs end
+to end, then switch to **Milestone S** — the repeated stabilization passes above — and iterate until it
+feels finished. The known-issues backlog (3D-covers-resize-on-scroll, …) is deliberately parked for S
+rather than fixed piecemeal now.
 
 **Recommended next step among the features:** **E-android**, so post-play auto-sync actually moves saves —
 it is the milestone that turns "launches games" into "launches games and keeps your saves in the cloud",
-and the exit-signal plumbing it plugs into is already in place. **C is done and verified on the Thor**
-(2026-08-21): analog sticks + D-pad nav, 3D rotation, IME, back-vs-B, and R3→reset-rotation all driven by
-hand on device — so the remaining feature work is E-android, plus E-desktop and F in parallel. With C
-closed, controller input is no longer a gate on the first stabilization pass; E-android is.
+and the exit-signal plumbing it plugs into is already in place. **B, C and F are done and verified on the
+Thor** (C 2026-08-21: analog sticks + D-pad nav, 3D rotation, IME, back-vs-B, R3→reset-rotation; B
+2026-08-22: nested multi-disc launch; F 2026-08-22: release-signed CI + install docs) — so the only
+remaining feature work is E-android, with E-desktop parallel. E-android is the sole gate on the first
+stabilization pass.
 
 E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
 download steps from `build.yml` and a bundled binary from all three artifacts.
