@@ -11,6 +11,7 @@ using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
 using EmuShelf.Infrastructure.Launching;
+using EmuShelf.Infrastructure.Settings;
 
 namespace EmuShelf.App.Android.Services;
 
@@ -63,16 +64,29 @@ public sealed class SingleViewShell : IPlatformShell
             boot.Logger);
         _logger = boot.Logger;
 
+        _secondScreen = new SecondScreenController(
+            new FileSecondScreenDockStore(
+                Path.Combine(boot.Paths.SettingsDirectory, "second-screen-dock.json"),
+                boot.Logger),
+            boot.RetroAchievementsReadStore,
+            deps.RetroAchievementsDetails,
+            deps.RetroAchievementsAccount,
+            deps.RetroAchievementsBadges,
+            boot.GameDetailsStore,
+            boot.Logger);
+
         LaunchService = new AndroidEmulatorLaunchService(
             gameLauncher,
             boot.EmulatorConfigurations,
             _pendingSessions,
             boot.Library,
-            boot.Logger);
+            boot.Logger,
+            _secondScreen.GameStarted);
     }
 
     private readonly IPendingPlaySessionStore _pendingSessions;
     private readonly IAppLogger _logger;
+    private readonly SecondScreenController _secondScreen;
     private bool _completingSession;
 
     public IInterfaceModeService InterfaceMode { get; }
@@ -83,6 +97,7 @@ public sealed class SingleViewShell : IPlatformShell
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
+        _secondScreen.Start(viewModel);
         // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
         // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and
         // sampler are started in the Android application; this supplies the "what" for the "how fast".
@@ -103,7 +118,11 @@ public sealed class SingleViewShell : IPlatformShell
         // Point the Activity's return signal at deferred play-session completion. This fires on every
         // return to the foreground (including the first, cold-start one), which is exactly what recovers a
         // session interrupted by process death: if a pending record exists, complete it; otherwise no-op.
-        AndroidActivityLifecycle.ReturnedToForeground = () => CompletePendingSession(viewModel);
+        AndroidActivityLifecycle.ReturnedToForeground = () =>
+        {
+            _secondScreen.ReturnedToBrowse();
+            CompletePendingSession(viewModel);
+        };
 
         // Opened must run exactly ONCE per process — the shared contract, honoured on desktop by
         // Window.Opened. AttachedToVisualTree is a *recurring* event: with the factory below a NEW view

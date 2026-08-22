@@ -66,6 +66,7 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnResume();
         Current = this;
+        AndroidActivityLifecycle.NotifyActivityAvailable(this);
     }
 
     /// <summary>
@@ -104,6 +105,7 @@ public class MainActivity : AvaloniaMainActivity
 
     protected override void OnDestroy()
     {
+        AndroidActivityLifecycle.NotifyActivityDestroyed(this, IsFinishing);
         if (ReferenceEquals(Current, this))
             Current = null;
         base.OnDestroy();
@@ -225,6 +227,7 @@ public class MainActivity : AvaloniaMainActivity
     public override void OnTopResumedActivityChanged(bool isTopResumedActivity)
     {
         base.OnTopResumedActivityChanged(isTopResumedActivity);
+        AndroidActivityLifecycle.NotifyTopResumedChanged(isTopResumedActivity);
         if (isTopResumedActivity)
             AndroidActivityLifecycle.ReturnedToForeground?.Invoke();
     }

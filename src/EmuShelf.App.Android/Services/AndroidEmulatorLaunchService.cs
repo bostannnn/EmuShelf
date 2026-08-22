@@ -18,7 +18,7 @@ namespace EmuShelf.App.Android.Services;
 ///
 /// First cut, by design: it is fire-and-forget. There is no process to await, so it returns as soon as the
 /// emulator is started (<see cref="GameLaunchResult.ProcessExited"/> is false, so the caller neither accrues
-/// play time nor runs post-play save sync). The pre-launch <paramref name="beforeStart"/> hook still runs, so
+/// play time nor runs post-play save sync). The pre-launch hook supplied to <see cref="LaunchAsync"/> still runs, so
 /// a cloud-save <em>pull</em> happens before the emulator reads the save. Automatic return detection
 /// (<c>onTopResumedActivityChanged</c>, surviving process death) and push-on-return are the next Milestone B
 /// step — until then, post-play sync is manual.
@@ -28,7 +28,8 @@ public sealed class AndroidEmulatorLaunchService(
     IEmulatorConfigurationStore configurations,
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
-    IAppLogger logger) : IEmulatorLaunchService
+    IAppLogger logger,
+    Action<Game, string>? gameStarted = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
         Game game,
@@ -72,6 +73,16 @@ public sealed class AndroidEmulatorLaunchService(
                 game.Id,
                 title,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            try
+            {
+                gameStarted?.Invoke(game, title);
+            }
+            catch (Exception ex)
+            {
+                // Companion chrome is optional. Once the emulator has started and the durable session
+                // exists, a notification/Presentation failure must not turn the launch into a false error.
+                logger.Warning("The game launched, but the second-screen session could not start.", ex);
+            }
             return new GameLaunchResult(true, $"Launched {title} in {profile.DisplayName}");
         }
 
