@@ -65,7 +65,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
             ViewGroup.LayoutParams.MatchParent,
             Dp(112)));
 
-        _bottomBar.AddView(CreateChromeButton("☰", "Open all apps", (_, _) => _controller.OpenDrawer()),
+        _bottomBar.AddView(CreateChromeButton("☰", "Toggle all apps", (_, _) => _controller.ToggleDrawer()),
             Weighted(width: 0.7f));
 
         _dock = new LinearLayout(Context)
@@ -75,7 +75,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         _dock.SetGravity(GravityFlags.Center);
         _bottomBar.AddView(_dock, Weighted(width: 5));
 
-        _bottomBar.AddView(CreateChromeButton("★", "Open achievements", (_, _) => _controller.OpenAchievements()),
+        _bottomBar.AddView(CreateChromeButton("★", "Toggle achievements", (_, _) => _controller.ToggleAchievements()),
             Weighted(width: 0.7f));
 
         _idleLayer = new FrameLayout(Context);

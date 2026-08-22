@@ -89,19 +89,28 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     internal void GameStarted(Game game, string title)
     {
-        _runningGameId = game.Id;
-        _runningGameTitle = title;
-        var artworkGeneration = ++_gameArtworkGeneration;
-        _navigation = _navigation.StartGame();
-        ResetAchievementTarget();
+        // All companion state lives on the main thread. GameStarted runs on the launch continuation,
+        // which is not guaranteed to be the main thread, so marshal the whole transition — field
+        // mutation, presentation update, and the artwork-load kickoff — onto it so nothing races the
+        // main-thread readers (OpenAchievementsCore, RenderRestingSurface, ViewModelPropertyChanged).
         RunOnMain(() =>
         {
+            _runningGameId = game.Id;
+            _runningGameTitle = title;
+            var artworkGeneration = ++_gameArtworkGeneration;
+            _navigation = _navigation.StartGame();
+            ResetAchievementTarget();
             _presentation?.ShowGameIdle(title);
             StartKeepAliveIfNeeded();
+            LoadIdleArtwork(game, title, artworkGeneration);
         });
+    }
 
-        // Resolve and sample the clear-logo/cover entirely off the UI thread. The generation check
-        // prevents a slow lookup for one game from replacing a later game's artwork.
+    // Resolve and sample the clear-logo/cover entirely off the UI thread. The generation check
+    // prevents a slow lookup for one game from replacing a later game's artwork. Kicked off from the
+    // main thread so the captured generation matches the state set in GameStarted.
+    private void LoadIdleArtwork(Game game, string title, long artworkGeneration)
+    {
         _ = Task.Run(() =>
         {
             Bitmap? bitmap = null;
@@ -143,19 +152,27 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     internal void ReturnedToBrowse()
     {
-        _runningGameId = null;
-        _runningGameTitle = null;
-        _gameArtworkGeneration++;
-        _navigation = _navigation.ReturnToBrowse();
-        ResetAchievementTarget();
         RunOnMain(() =>
         {
+            _runningGameId = null;
+            _runningGameTitle = null;
+            _gameArtworkGeneration++;
+            _navigation = _navigation.ReturnToBrowse();
+            ResetAchievementTarget();
             _presentation?.ShowBrowseHome();
             StopKeepAlive();
         });
     }
 
-    internal void OpenDrawer() => ShowDrawer(pickSlot: null);
+    internal void ToggleDrawer()
+    {
+        // The chrome ☰ button is a toggle: a second press on an open all-apps drawer closes it back
+        // to the resting surface rather than re-opening the same drawer.
+        if (_navigation.Overlay == SecondScreenOverlay.AppDrawer)
+            CloseOverlay();
+        else
+            ShowDrawer(pickSlot: null);
+    }
 
     internal void ActivateDockSlot(int slot)
     {
@@ -171,7 +188,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     internal void EditDockSlot(int slot) => ShowDrawer(slot);
 
-    internal void OpenAchievements() => OpenAchievementsCore(forceRefresh: false);
+    internal void ToggleAchievements()
+    {
+        // The chrome ★ button is a toggle, mirroring the drawer: a second press closes the panel.
+        if (_navigation.Overlay == SecondScreenOverlay.Achievements)
+            CloseOverlay();
+        else
+            OpenAchievementsCore(forceRefresh: false);
+    }
 
     internal void RefreshAchievements() => OpenAchievementsCore(forceRefresh: true);
 
