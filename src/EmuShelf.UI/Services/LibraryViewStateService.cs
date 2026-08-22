@@ -1,3 +1,4 @@
+using System.Linq;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Settings;
 
@@ -47,6 +48,13 @@ public sealed class LibraryViewStateService : ILibraryViewStateService
 
     public void Save(LibraryViewSettings state)
     {
+        // Skip the read-merge-rewrite of settings.json when nothing this service owns has changed since
+        // our last save. LibraryView is written only here, so our cached snapshot is authoritative for
+        // it and skipping cannot drop another service's section. This turns browsing that lands back on
+        // the same view (or a change event that carries no real change) into zero disk writes.
+        if (IsUnchanged(state, _settings.LibraryView))
+            return;
+
         try
         {
             _settings = _settingsService.Update(latest => latest with { LibraryView = state });
@@ -58,6 +66,18 @@ public sealed class LibraryViewStateService : ILibraryViewStateService
             _logger.Warning($"Could not persist the library view state: {ex.Message}");
         }
     }
+
+    // A single shared empty list so the record comparison below sees the same reference on both sides.
+    private static readonly IReadOnlyList<LibraryColumnSetting> SharedEmptyColumns = [];
+
+    // LibraryViewSettings is a record, but ListColumns is an IReadOnlyList whose default equality is by
+    // reference — and each BuildLibraryViewState() hands over a fresh list — so a plain `==` would treat
+    // two otherwise-identical states as different. Compare the scalar fields via record equality (which
+    // covers any field added later for free) by first normalising both lists to one shared reference,
+    // then compare the columns structurally.
+    private static bool IsUnchanged(LibraryViewSettings a, LibraryViewSettings b) =>
+        a with { ListColumns = SharedEmptyColumns } == b with { ListColumns = SharedEmptyColumns }
+        && a.ListColumns.SequenceEqual(b.ListColumns);
 }
 
 internal sealed class NullLibraryViewStateService : ILibraryViewStateService

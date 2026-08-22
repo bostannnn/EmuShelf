@@ -103,6 +103,26 @@ public sealed class AppBootstrapper
         Logger = new FileAppLogger(Paths);
         Logger.Information("EmuShelf startup began.");
 
+        // Android indexes shared storage into MediaStore, and EmuShelf's data root lives there (not in
+        // app-private storage). Without a marker, Covers/ leaks into the system gallery and every
+        // transient settings temp file gets scanned, producing a constant stream of MediaProvider churn.
+        // A .nomedia at the root tells the scanner to skip this folder and all its subfolders. It only
+        // matters on Android, so it's only paid for there. Runs per data folder — a fresh pick rebuilds
+        // this bootstrapper — so a folder chosen later gets the marker too.
+        if (OperatingSystem.IsAndroid())
+        {
+            try
+            {
+                var noMediaMarker = Path.Combine(Paths.BaseDirectory, ".nomedia");
+                if (!File.Exists(noMediaMarker))
+                    File.WriteAllText(noMediaMarker, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Could not write the .nomedia marker to the data root: {ex.Message}");
+            }
+        }
+
         PathResolver = new RelativePathResolver(Paths);
 
         SettingsService = new JsonSettingsService(Paths, Logger);

@@ -38,7 +38,13 @@ namespace EmuShelf.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
-    private const int ViewStateSaveDebounceMs = 500;
+    // Every platform/scope/layout/sort/column change rewrites the whole settings.json (temp-write +
+    // rename). Browsing platform-to-platform at 500 ms coalescing meant dozens of full rewrites a minute
+    // — needless flash wear on a handheld, and on Android it also fed MediaStore/FUSE scan churn. A few
+    // seconds coalesces active browsing into a handful of writes; the resting selection is what matters,
+    // and it's still captured. Nothing is lost on app close: the shell flushes any pending save on
+    // background/close (see FlushPendingLibraryViewStateSave).
+    private const int ViewStateSaveDebounceMs = 2500;
     // Fast LB/RB cycling changes the selected platform many times a second; each change used to run a
     // full clear-and-rebuild of the grid (BeginScopeChange + a fresh DB query + hundreds of new
     // GameViewModels), which is what blanked covers, dropped the selector and reset focus mid-scroll.
