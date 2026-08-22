@@ -2,6 +2,7 @@ using System;
 using Android.Content;
 using Android.OS;
 using Android.Provider;
+using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Storage;
 using AndroidEnvironment = Android.OS.Environment;
 using Uri = Android.Net.Uri;
@@ -16,7 +17,8 @@ namespace EmuShelf.App.Android.Services;
 /// <see cref="IsGranted"/>. On API &lt; 30 there is no manage-all-files concept; the legacy storage model
 /// applies and the gate reports as unconditionally granted (the manifest keeps the legacy read permission).
 /// </summary>
-public sealed class AndroidStoragePermissionService(Func<Context?> context) : IStoragePermissionService
+public sealed class AndroidStoragePermissionService(Func<Context?> context, IAppLogger? logger = null)
+    : IStoragePermissionService
 {
     // MANAGE_EXTERNAL_STORAGE exists only on Android 11 (R, API 30) and later. Below that the resolver must
     // not treat a missing grant as a reason to re-onboard.
@@ -31,18 +33,28 @@ public sealed class AndroidStoragePermissionService(Func<Context?> context) : IS
 
         var ctx = context();
         if (ctx is null)
+        {
+            logger?.Warning(
+                "All-files access requested before an Android context was available; cannot open the grant screen.");
             return;
+        }
 
         // Prefer the package-scoped screen (drops the user straight onto EmuShelf's own toggle); fall back
         // to the global all-files list if the scoped intent cannot be resolved on this firmware.
-        if (!TryStart(ctx, Settings.ActionManageAppAllFilesAccessPermission,
+        if (TryStart(ctx, Settings.ActionManageAppAllFilesAccessPermission,
                 Uri.Parse("package:" + ctx.PackageName)))
-        {
-            TryStart(ctx, Settings.ActionManageAllFilesAccessPermission, data: null);
-        }
+            return;
+        if (TryStart(ctx, Settings.ActionManageAllFilesAccessPermission, data: null))
+            return;
+
+        // Both failed: the user tapped "grant access" and nothing opened. Leave a diagnostic in the
+        // pre-boot log (readable via adb even before a data folder is chosen) so this isn't silent.
+        logger?.Warning(
+            "Could not open the all-files access Settings screen: neither the package-scoped nor the " +
+            "global MANAGE_ALL_FILES_ACCESS intent could be started on this firmware.");
     }
 
-    private static bool TryStart(Context ctx, string action, Uri? data)
+    private bool TryStart(Context ctx, string action, Uri? data)
     {
         try
         {
@@ -51,12 +63,16 @@ public sealed class AndroidStoragePermissionService(Func<Context?> context) : IS
             // new task is required.
             intent.AddFlags(ActivityFlags.NewTask);
             if (intent.ResolveActivity(ctx.PackageManager!) is null)
+            {
+                logger?.Information($"All-files grant intent '{action}' has no activity to resolve on this firmware.");
                 return false;
+            }
             ctx.StartActivity(intent);
             return true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            logger?.Error($"Failed to start the all-files grant intent '{action}'.", ex);
             return false;
         }
     }

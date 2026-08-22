@@ -117,7 +117,7 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // even before a folder is picked. FileAppLogger swallows its own I/O errors, so this is safe.
         var prebootLogger = new FileAppLogger(new AppPaths(appPrivateFilesDir));
         var store = new JsonDataLocationStore(Path.Combine(appPrivateFilesDir, "data-location.json"), prebootLogger);
-        var permission = new AndroidStoragePermissionService(() => ApplicationContext);
+        var permission = new AndroidStoragePermissionService(() => ApplicationContext, prebootLogger);
         var resolver = new DataLocationResolver(store, permission, DirectoryWritability.IsWritable);
         var resolution = resolver.Resolve();
 

@@ -1192,8 +1192,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
-        // folder too, and so the two surfaces' general.* field sets stay in parity.
-        if (_settings.HasDataDirectory)
+        // folder too, and so the two surfaces' general.* field sets stay in parity. Hidden on Android:
+        // there is no reliable "open this folder" file-manager intent, and the reveal command throws
+        // (PlatformNotSupportedException) rather than doing anything — a dead row on the handheld.
+        if (_settings.HasDataDirectory && !OperatingSystem.IsAndroid())
         {
             yield return ActionRow(
                 "general.open-data-folder",
@@ -1224,7 +1226,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
             if (_androidRetroArchCores.TryGetValue(row.SystemId, out var cores) && cores.Count > 0)
                 yield return AndroidRetroArchCoreRow(row, cores);
-            if (row.HasSyncLibrary)
+            // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
+            // the sync always dead-ends — hide the row on the handheld (the import overlay already
+            // filters playstation3 the same way).
+            if (row.HasSyncLibrary && !OperatingSystem.IsAndroid())
             {
                 // Same command and stable id as Desktop's PS3-row "Sync RPCS3 library" button. PS3 is
                 // skipped by "Rescan all consoles" and imported only from RPCS3's game list, so this is
@@ -1723,7 +1728,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.ExportDeviceAndCloudSavesCommand,
             _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null));
 
-        if (_settings.HasSyncLog)
+        // Hidden on Android: opening the log reveals it in a desktop file manager, which throws on the
+        // handheld — so the row would do nothing there.
+        if (_settings.HasSyncLog && !OperatingSystem.IsAndroid())
         {
             // Actionable (opens the log in the OS viewer) rather than a dead read-only row where A
             // did nothing. Desktop exposes this as a hyperlink, so it is excluded from field parity.

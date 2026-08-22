@@ -863,17 +863,20 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// </remarks>
     private IReadOnlyDictionary<long, IImage?[]> ResolveArtworkMap(IReadOnlyList<MediaShelfRenderItem> items)
     {
+        // Fast path: on a glide's position-only publishes the visible keys and generation are unchanged,
+        // so compare in place against the cached keys rather than allocating a probe array every 16 ms
+        // tick just to run SequenceEqual. Only a real cache miss builds (and keeps) a new key array.
+        if (_artworkCache is not null &&
+            _artworkCacheGeneration == _artworkGeneration &&
+            KeysMatch(_artworkCacheKeys, items))
+        {
+            return _artworkCache;
+        }
+
         var keys = new long[items.Count];
         for (var index = 0; index < items.Count; index++)
         {
             keys[index] = items[index].Key;
-        }
-
-        if (_artworkCache is not null &&
-            _artworkCacheGeneration == _artworkGeneration &&
-            _artworkCacheKeys.AsSpan().SequenceEqual(keys))
-        {
-            return _artworkCache;
         }
 
         var artwork = new Dictionary<long, IImage?[]>(items.Count);
@@ -897,6 +900,25 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         _artworkCacheKeys = keys;
         _artworkCacheGeneration = _artworkGeneration;
         return artwork;
+    }
+
+    /// <summary>Whether the cached key order still matches the current items, without allocating.</summary>
+    private static bool KeysMatch(long[] cachedKeys, IReadOnlyList<MediaShelfRenderItem> items)
+    {
+        if (cachedKeys.Length != items.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < items.Count; index++)
+        {
+            if (cachedKeys[index] != items[index].Key)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Marks the resolved-artwork cache stale, so the next publish rebuilds it.</summary>
@@ -1070,8 +1092,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
         }
 
-        // Evict whole games, but measure the budget in textures: one game can be holding three.
-        var uploadedTextures = _uploadedCovers.Values.Sum(cover => cover.UploadedFaceCount);
+        // Evict whole games, but measure the budget in textures: one game can be holding three. Summed
+        // with a manual loop rather than LINQ so this per-frame accounting allocates nothing.
+        var uploadedTextures = 0;
+        foreach (var cover in _uploadedCovers.Values)
+        {
+            uploadedTextures += cover.UploadedFaceCount;
+        }
         while (uploadedTextures > CoverTextureBudget && _coverLru.Last is { } oldest)
         {
             if (_uploadedCovers.Remove(oldest.Value, out var evicted))
@@ -1869,8 +1896,23 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         /// </remarks>
         public IImage?[] Faces { get; } = new IImage?[MediaShellRenderer.MaxArtworkFaces];
 
-        /// <summary>How many of this game's faces are actually uploaded, for the texture budget.</summary>
-        public int UploadedFaceCount => Faces.Count(face => face is not null);
+        /// <summary>How many of this game's faces are actually uploaded, for the texture budget. A manual
+        /// loop, not LINQ: this is read once per cover on every scene frame, so a delegate + enumerator
+        /// allocation here would churn the GC during a scroll.</summary>
+        public int UploadedFaceCount
+        {
+            get
+            {
+                var count = 0;
+                foreach (var face in Faces)
+                {
+                    if (face is not null)
+                        count++;
+                }
+
+                return count;
+            }
+        }
 
         public LinkedListNode<long> Node { get; } = node;
     }

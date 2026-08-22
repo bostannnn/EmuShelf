@@ -1406,10 +1406,22 @@ public sealed class MediaShellRenderer : IDisposable
     internal static (Vector2 Centre, Vector2 Extent) ShadowPlane(
         IReadOnlyList<ShadowFootprint> footprints)
     {
-        var minX = footprints.Min(footprint => footprint.Centre.X - (footprint.Radius.X * ShadowPlaneCoverage));
-        var maxX = footprints.Max(footprint => footprint.Centre.X + (footprint.Radius.X * ShadowPlaneCoverage));
-        var minZ = footprints.Min(footprint => footprint.Centre.Y - (footprint.Radius.Y * ShadowPlaneCoverage));
-        var maxZ = footprints.Max(footprint => footprint.Centre.Y + (footprint.Radius.Y * ShadowPlaneCoverage));
+        // One manual pass over the footprints rather than four LINQ Min/Max passes: this runs every
+        // shelf frame, so the four delegates + enumerators would allocate on the render hot path. The
+        // arithmetic is identical to the previous Min/Max for a non-empty list.
+        var first = footprints[0];
+        var minX = first.Centre.X - (first.Radius.X * ShadowPlaneCoverage);
+        var maxX = first.Centre.X + (first.Radius.X * ShadowPlaneCoverage);
+        var minZ = first.Centre.Y - (first.Radius.Y * ShadowPlaneCoverage);
+        var maxZ = first.Centre.Y + (first.Radius.Y * ShadowPlaneCoverage);
+        for (var i = 1; i < footprints.Count; i++)
+        {
+            var footprint = footprints[i];
+            minX = MathF.Min(minX, footprint.Centre.X - (footprint.Radius.X * ShadowPlaneCoverage));
+            maxX = MathF.Max(maxX, footprint.Centre.X + (footprint.Radius.X * ShadowPlaneCoverage));
+            minZ = MathF.Min(minZ, footprint.Centre.Y - (footprint.Radius.Y * ShadowPlaneCoverage));
+            maxZ = MathF.Max(maxZ, footprint.Centre.Y + (footprint.Radius.Y * ShadowPlaneCoverage));
+        }
 
         // The floors keep the plane at the size it has always been for a row of packaging, where
         // the footprints alone would ask for a strip a few centimetres deep.

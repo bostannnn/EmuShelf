@@ -161,6 +161,9 @@ public sealed class SingleViewShell : IPlatformShell
             try
             {
                 await viewModel.CompleteDeferredPlaySessionAsync(session.GameId, duration);
+                // Clear only on success, so an in-process failure — not just a process-death crash —
+                // leaves the session for the next return/startup to retry, matching the stated intent.
+                _pendingSessions.Clear();
             }
             catch (Exception ex)
             {
@@ -168,9 +171,7 @@ public sealed class SingleViewShell : IPlatformShell
             }
             finally
             {
-                // Clear only after completion so a crash mid-completion leaves the session for the next
-                // return/startup to retry.
-                _pendingSessions.Clear();
+                // Always release the in-flight guard, even on failure, so a later return can retry.
                 _completingSession = false;
             }
         });

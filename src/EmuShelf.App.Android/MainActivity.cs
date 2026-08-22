@@ -35,10 +35,18 @@ namespace EmuShelf.App.Android;
     // landscape the handheld is used in. SensorLandscape pins landscape while still allowing a 180°
     // flip for a clamshell held either way.
     ScreenOrientation = ScreenOrientation.SensorLandscape,
+    // Keyboard/KeyboardHidden/Navigation are handled in-process too: attaching or removing a game
+    // controller registers a navigation/keyboard input device, which raises CONFIG_NAVIGATION/
+    // CONFIG_KEYBOARD. Without these flags Android would destroy and recreate the Activity — tearing
+    // down and rebuilding the EGL surface and the whole Avalonia tree mid-session (a visible flash) —
+    // every time a pad connects or disconnects.
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize
         | ConfigChanges.UiMode
-        | ConfigChanges.Density)]
+        | ConfigChanges.Density
+        | ConfigChanges.Keyboard
+        | ConfigChanges.KeyboardHidden
+        | ConfigChanges.Navigation)]
 public class MainActivity : AvaloniaMainActivity
 {
     // The couch shell is laid out in device-independent pixels tuned for the Steam Deck's 1280×800.
