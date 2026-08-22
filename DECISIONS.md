@@ -10485,3 +10485,20 @@ false, launch/exit sync a silent no-op) until the user selects Beetle PSX. Trade
 DuckStation still writes group-readable cards (e.g. a pre-reinstall install) loses that best-effort sync;
 the reliable, non-degrading path is Beetle. Save states were never wired for the Android DuckStation
 provider, so nothing is lost there.
+
+## 2026-08-23 — Android launch ignores a stale "RetroArch, no core" selection
+
+A pre-WatermelonDS Nintendo DS row (and any similar legacy selection) can persist `EmulatorId = "retroarch"`
+with no core path — a pair that cannot launch. The Settings picker already migrates such a row's *display*
+to the system's maintained-first default (WatermelonDS for DS), on the assumption, stated in its own comment,
+that "the launch service would actually fall back to" that default. It did not: `AndroidLaunchResolver`
+honoured the stored `retroarch` preference, found no core, and dead-ended on "Select an installed RetroArch
+core first." — even though the user saw WatermelonDS selected and never deliberately chose RetroArch (a real
+core pick always carries a core path).
+
+Decision: the resolver now drops an unusable RetroArch-no-core preference and falls back to the system's
+natural maintained-first default *when that default is a standalone needing no core*. When RetroArch is
+itself the maintained default (PS1: DuckStation is frozen, RetroArch sorts first), `candidates[0]` is
+RetroArch again, so the core prompt still stands — the deprioritised standalone is not silently substituted.
+The fix lives in the pure resolver so the desktop suite covers it; the launch service is unchanged and reads
+`resolution.Profile` for the install check, so it targets the fallback emulator, not the discarded RetroArch.
