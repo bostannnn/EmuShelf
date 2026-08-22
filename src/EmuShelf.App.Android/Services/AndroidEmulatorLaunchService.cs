@@ -29,7 +29,8 @@ public sealed class AndroidEmulatorLaunchService(
     IEmulatorConfigurationStore configurations,
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
-    IAppLogger logger) : IEmulatorLaunchService
+    IAppLogger logger,
+    Action<Game, string>? gameStarted = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
         Game game,
@@ -73,6 +74,16 @@ public sealed class AndroidEmulatorLaunchService(
                 game.Id,
                 title,
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            try
+            {
+                gameStarted?.Invoke(game, title);
+            }
+            catch (Exception ex)
+            {
+                // Companion chrome is optional. Once the emulator has started and the durable session
+                // exists, a notification/Presentation failure must not turn the launch into a false error.
+                logger.Warning("The game launched, but the second-screen session could not start.", ex);
+            }
             return new GameLaunchResult(true, $"Launched {title} in {profile.DisplayName}");
         }
 

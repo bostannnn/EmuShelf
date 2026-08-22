@@ -10442,6 +10442,40 @@ emulator, so switching cores reuses one RetroArch draft and switching to a stand
 discard it. A configured core that is temporarily missing remains visible rather than being silently
 replaced. No flow reads, modifies or deletes ROMs or emulator-owned configuration.
 
+## 2026-08-22 — Android second screen: coexist with AYN; keep alive only during gameplay
+
+The SS0 Thor spike resolved the lifetime unknown from the earlier second-screen decision. A native
+`Android.App.Presentation` can own Screen-2 while AYN's `com.odin.dualscreen.assistant` remains installed
+and enabled; no package disabling or other device mutation is required. The Presentation also stays alive
+when a real emulator (ARMSX2) takes display 0. EmuShelf therefore treats AYN as a coexisting fallback and
+only attaches/dismisses its own window with the Android activity/display lifecycle.
+
+The process is pinned with a low-importance foreground service only for an active game session and only
+when the Presentation exists. Android 14+ declares the narrowly described `specialUse` service type; Thor's
+Android 13 uses the base foreground-service permission. Returning to EmuShelf stops the service immediately,
+so ordinary library browsing has no persistent notification. Companion startup and the optional
+game-started callback are best-effort: a second-screen failure must never turn a successful emulator launch
+into a reported launch failure.
+
+The companion navigation is a Core-tested base-surface + overlay state machine. `BrowseHome` and
+`GameIdle` are retained beneath `AppDrawer`, `DockPicker`, and `Achievements`, so closing an overlay during
+gameplay restores the game's idle artwork rather than browse. Each transition has a monotonically increasing
+revision; asynchronous app, artwork, badge, and achievement results are applied only to the still-current
+surface/game. This prevents late I/O from repainting a newer screen. Cached achievements remain visible when
+a refresh is offline or rate-limited, with the error shown as status instead of replacing useful data.
+
+App and achievement collections use native recycled `GridView`/`ListView` adapters rather than eagerly
+inflating every row. Image selection and sampled bitmap decoding run off the main thread; recycled rows and
+surface changes invalidate late badge work and dispose replaced bitmaps. The five dock component names are
+stored as an immutable normalized snapshot in portable `Settings/second-screen-dock.json`.
+
+Verified in a self-contained Release APK on Thor: AYN coexistence, real ARMSX2 handoff, running-game clear
+logo, touch-to-reveal controls, virtualized drawer, Clock launched on display 4 while ARMSX2 stayed on display
+0, Home returning to the live companion, Close restoring game idle, dock persistence across reinstall/cold
+launch, achievements no-link/Close, return-to-browse, and foreground-service teardown. No matching crash or
+second-screen error appeared in the run log. All 2,205 local tests plus the focused second-screen tests and
+Release Android publish passed.
+
 ## 2026-08-22 — Library rescan removes games whose files were deleted
 
 A rescan of a remembered folder now deletes the library rows for games the scan no longer finds on

@@ -11,6 +11,18 @@ namespace EmuShelf.App.Android.Services;
 /// </summary>
 public static class AndroidActivityLifecycle
 {
+    /// <summary>The single Activity became usable for Presentation/window work.</summary>
+    public static event Action<MainActivity>? ActivityAvailable;
+
+    /// <summary>The current Activity is being destroyed; the flag distinguishes app exit from recreation.</summary>
+    public static event Action<MainActivity, bool>? ActivityDestroyed;
+
+    /// <summary>
+    /// Both edges of Android's top-resumed signal, retained for SS0 diagnostics and Presentation
+    /// lifetime handling. The existing return callback below remains the post-play completion seam.
+    /// </summary>
+    public static event Action<bool>? TopResumedChanged;
+
     /// <summary>
     /// Invoked when EmuShelf becomes the top-resumed activity again — i.e. the user returned from a
     /// launched emulator. Deliberately uses <c>onTopResumedActivityChanged(true)</c> rather than
@@ -19,4 +31,11 @@ public static class AndroidActivityLifecycle
     /// shown; may be null before then and after teardown.
     /// </summary>
     public static Action? ReturnedToForeground { get; set; }
+
+    internal static void NotifyActivityAvailable(MainActivity activity) => ActivityAvailable?.Invoke(activity);
+
+    internal static void NotifyActivityDestroyed(MainActivity activity, bool finishing) =>
+        ActivityDestroyed?.Invoke(activity, finishing);
+
+    internal static void NotifyTopResumedChanged(bool topResumed) => TopResumedChanged?.Invoke(topResumed);
 }

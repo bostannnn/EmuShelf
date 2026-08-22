@@ -1203,7 +1203,7 @@ user root, so it does not need a divergent parser or cloud-id model.
   runs with `fail_on_unmatched_files: true`, so an Android failure would block the Windows, macOS and
   Linux release.
 
-### SS — Second screen (Thor dual-screen companion)
+### SS — Second screen (Thor dual-screen companion) ✅ complete on Thor (2026-08-22)
 
 The Thor's bottom panel, decided (2026-08-22, owner) after being parked as "revisit as its own item"
 in 0b. It is a live standard `Presentation` display — `displayId=4`, "Screen-2", 1240×1080 landscape,
@@ -1265,6 +1265,16 @@ achievements panel later if native re-rendering proves not worth it.
 **Testing.** Pure logic (dock store, target-game/RA-id resolution) → desktop unit tests, matching the
 port's "Android logic in a `net10.0` assembly" rule. The Presentation and native rendering are
 Thor-verified over adb; there is no headless equivalent for Android Views on macOS.
+
+**Completion evidence (2026-08-22).** SS0–SS6 are implemented in a Release APK and verified on the real
+Thor. EmuShelf's Presentation owns Screen-2 without disabling AYN's assistant and remains visible while
+ARMSX2 owns display 0. The game-idle surface rendered the running game's clear logo; touch revealed the
+bar; the virtualized all-apps drawer launched Clock on display 4; Home returned to the still-live drawer;
+and Close restored game idle. Returning to EmuShelf restored browse and stopped the foreground service.
+Dock pinning survived an in-place Release reinstall and cold launch. The achievements no-link state and
+Close path were also exercised. The keep-alive service was present and foreground only during gameplay,
+and the verification log contained no EmuShelf crash or second-screen error. Local gates: Core and Android
+builds, Release publish, 8 focused second-screen tests, and all 2,205 tests passed.
 
 ## Sequencing
 
@@ -1341,7 +1351,7 @@ bugs the feature checklist does not track:
 | E-desktop — managed Drive transport | ✅ done | rclone removed; built-in Google Drive is the sole transport (`10cdc4e`); one real Google sign-in proven on the Thor (same OAuth client/loopback serves desktop). Automated tests still use an in-memory fake Drive by design |
 | **E-android — cloud sync** | ✅ done, verified on Thor over real Drive | managed connect + per-system Save-folder picker in the **gamepad** Saves UI (`740b4d6`); Android OAuth reuses the loopback (`TcpLoopbackOAuthRedirectHandler`, single client — no custom-scheme handler needed); token via `PortableObfuscatedTextStore` (no Keystore — deliberate). PS1/GC/Wii round-tripped; PS2/PSP/3DS + RetroArch systems (fix ships in signed v1.5.8) await only an on-device play-test. **Known limits → S:** PS1 owner-only cards, PS2 single-file `.ps2` churn — see E |
 | F — packaging & release | ✅ done | APK CI job done + attached to releases; **release-signing is live** — all four `ANDROID_KEYSTORE_*`/`ANDROID_KEY_*` secrets are set (2026-08-20), so tagged builds are release-signed (verified via `gh secret list`); Android OAuth client-id accessor (`GoogleOAuthAndroidClientId`) + `EMUSHELF_GOOGLE_OAUTH_CLIENT_*` secrets present; user install/sideload docs written (`docs/android-install.md`); stale `package-android` needs-comment fixed. **Only non-engineering remainder:** register a Google developer-verification identity — region/time-gated (enforcement starts 30 Sep 2026), not blocking. |
-| **SS — second screen** | ⬜ not started | Thor bottom panel as a companion surface (dock, app drawer, RA panel, game-logo idle); decided 2026-08-22, gated on the **SS0** Presentation-lifetime + AYN-coexistence spike — see "Milestone SS" above |
+| **SS — second screen** | ✅ done, verified on Thor (2026-08-22) | SS0–SS6 complete: native Presentation companion, 5-slot persisted dock, virtualized app drawer and achievements list, Screen-2 app launch, cache-first RA panel, game-logo idle, and gameplay-only foreground keep-alive. AYN coexists without being disabled; real ARMSX2 handoff/return passed. |
 | **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: 3D covers resize on scroll, "many others" TBD (analog-stick input is now fixed, PR #163) — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
