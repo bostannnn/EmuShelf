@@ -6717,11 +6717,18 @@ public partial class MainViewModel : ViewModelBase
     private HotkeySettingsContext? CreateHotkeySettingsContext() => _hotkeys?.CreateSettingsContext();
 
     private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
-        // Titles come from the whole library, not the visible collection: a Dolphin pack must
-        // still name the GameCube game it matched while the user is viewing PS1.
-        _texturePacks?.CreateSettingsContext(
-            BuildLibraryTitleLookup,
-            RefreshTexturePacksAsync);
+        // Detection is a desktop-shaped feature: the resolvers walk emulator user directories in the
+        // Documents/.config/Library layouts that do not exist on Android, and the handful of Android
+        // emulators that do support texture packs (Dolphin, PPSSPP) keep them under Android/data in a
+        // shape those resolvers cannot read. Rather than show a Texture Packs section that reports
+        // every platform as unconfigured, omit it on Android until an Android-native resolver exists.
+        OperatingSystem.IsAndroid()
+            ? null
+            // Titles come from the whole library, not the visible collection: a Dolphin pack must
+            // still name the GameCube game it matched while the user is viewing PS1.
+            : _texturePacks?.CreateSettingsContext(
+                BuildLibraryTitleLookup,
+                RefreshTexturePacksAsync);
 
     private ScreenScraperSettingsContext? CreateScreenScraperSettingsContext() =>
         _screenScraperAccount is null
@@ -6881,16 +6888,39 @@ public partial class MainViewModel : ViewModelBase
         var shouldFetch = _metadataPreferences.AutomaticallyFetchAfterImport;
         if (!shouldFetch && !_metadataPreferences.ConsentPromptShown)
         {
-            var choice = await _dialogs.PromptForMetadataConsentAsync(addedGameIds.Count);
-            shouldFetch = choice is MetadataConsentChoice.FetchOnce or MetadataConsentChoice.Always;
-            try
+            if (OperatingSystem.IsAndroid())
             {
-                await _metadataPreferences.RecordConsentAsync(choice);
+                // The one-time consent prompt is a Desktop dialog; the gamepad shell has no consent
+                // overlay, so the injected dialog service is a no-op that always declines. Rather than
+                // silently swallow that, point the user at the toggle that controls this on Android and
+                // record the choice so the hint shows once, not after every import. Turning the toggle
+                // on later takes over through AutomaticallyFetchAfterImport above.
+                SetStatus(
+                    "Imported. To fetch artwork and details automatically, turn on "
+                    + "Settings → Artwork & Metadata → “Fetch after import”.",
+                    StatusSeverity.Info);
+                try
+                {
+                    await _metadataPreferences.RecordConsentAsync(MetadataConsentChoice.NotNow);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not persist the metadata consent preference.", ex);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                _logger.Warning("Could not persist the metadata consent preference.", ex);
-                SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
+                var choice = await _dialogs.PromptForMetadataConsentAsync(addedGameIds.Count);
+                shouldFetch = choice is MetadataConsentChoice.FetchOnce or MetadataConsentChoice.Always;
+                try
+                {
+                    await _metadataPreferences.RecordConsentAsync(choice);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not persist the metadata consent preference.", ex);
+                    SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
+                }
             }
         }
 
