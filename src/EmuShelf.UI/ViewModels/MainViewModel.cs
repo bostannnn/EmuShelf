@@ -924,6 +924,14 @@ public partial class MainViewModel : ViewModelBase
     public double ShelfFillScale => OperatingSystem.IsAndroid() ? 1.5 : 1.0;
 
     /// <summary>
+    /// True on Android, where the view drops GPU-expensive per-tile decoration (blurred drop shadows and
+    /// their overdraw) from the grid. Those effects recomposite every frame while the library scrolls; on
+    /// a handheld GPU that is the dominant grid cost (the fan-on-scroll investigation), and desktop keeps
+    /// them. Bound as a style class on the couch root, so it is a one-line reach for any effect to gate.
+    /// </summary>
+    public bool IsReducedEffectsPlatform => OperatingSystem.IsAndroid();
+
+    /// <summary>
     /// The games the 3D scene draws, or nothing outside the shelf layout.
     /// </summary>
     /// <remarks>
@@ -6750,14 +6758,28 @@ public partial class MainViewModel : ViewModelBase
 
     // Reads each configured emulator's hotkey config to build the section state; the caller runs it
     // on a worker so opening Settings never does file IO on the UI thread.
-    private HotkeySettingsContext? CreateHotkeySettingsContext() => _hotkeys?.CreateSettingsContext();
+    //
+    // Android has no hotkeys section: the feature writes a *keyboard* hotkey scheme into each desktop
+    // emulator's own config so it can be driven by Steam Input. On Android there is no Steam Input, and
+    // the emulators are sandboxed apps whose config EmuShelf cannot rewrite — so the whole section is
+    // inert there. Returning null drops SettingsSection.Hotkeys (gated on a non-empty context) and, with
+    // it, HasHotkeys — which also disables the gamepad hotkey-editor overlay entry.
+    private HotkeySettingsContext? CreateHotkeySettingsContext() =>
+        OperatingSystem.IsAndroid() ? null : _hotkeys?.CreateSettingsContext();
 
     private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
-        // Titles come from the whole library, not the visible collection: a Dolphin pack must
-        // still name the GameCube game it matched while the user is viewing PS1.
-        _texturePacks?.CreateSettingsContext(
-            BuildLibraryTitleLookup,
-            RefreshTexturePacksAsync);
+        // Detection is a desktop-shaped feature: the resolvers walk emulator user directories in the
+        // Documents/.config/Library layouts that do not exist on Android, and the handful of Android
+        // emulators that do support texture packs (Dolphin, PPSSPP) keep them under Android/data in a
+        // shape those resolvers cannot read. Rather than show a Texture Packs section that reports
+        // every platform as unconfigured, omit it on Android until an Android-native resolver exists.
+        OperatingSystem.IsAndroid()
+            ? null
+            // Titles come from the whole library, not the visible collection: a Dolphin pack must
+            // still name the GameCube game it matched while the user is viewing PS1.
+            : _texturePacks?.CreateSettingsContext(
+                BuildLibraryTitleLookup,
+                RefreshTexturePacksAsync);
 
     private ScreenScraperSettingsContext? CreateScreenScraperSettingsContext() =>
         _screenScraperAccount is null
@@ -6917,16 +6939,39 @@ public partial class MainViewModel : ViewModelBase
         var shouldFetch = _metadataPreferences.AutomaticallyFetchAfterImport;
         if (!shouldFetch && !_metadataPreferences.ConsentPromptShown)
         {
-            var choice = await _dialogs.PromptForMetadataConsentAsync(addedGameIds.Count);
-            shouldFetch = choice is MetadataConsentChoice.FetchOnce or MetadataConsentChoice.Always;
-            try
+            if (OperatingSystem.IsAndroid())
             {
-                await _metadataPreferences.RecordConsentAsync(choice);
+                // The one-time consent prompt is a Desktop dialog; the gamepad shell has no consent
+                // overlay, so the injected dialog service is a no-op that always declines. Rather than
+                // silently swallow that, point the user at the toggle that controls this on Android and
+                // record the choice so the hint shows once, not after every import. Turning the toggle
+                // on later takes over through AutomaticallyFetchAfterImport above.
+                SetStatus(
+                    "Imported. To fetch artwork and details automatically, turn on "
+                    + "Settings → Artwork & Metadata → “Fetch after import”.",
+                    StatusSeverity.Info);
+                try
+                {
+                    await _metadataPreferences.RecordConsentAsync(MetadataConsentChoice.NotNow);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not persist the metadata consent preference.", ex);
+                }
             }
-            catch (Exception ex)
+            else
             {
-                _logger.Warning("Could not persist the metadata consent preference.", ex);
-                SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
+                var choice = await _dialogs.PromptForMetadataConsentAsync(addedGameIds.Count);
+                shouldFetch = choice is MetadataConsentChoice.FetchOnce or MetadataConsentChoice.Always;
+                try
+                {
+                    await _metadataPreferences.RecordConsentAsync(choice);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning("Could not persist the metadata consent preference.", ex);
+                    SetStatus(StatusText + " — metadata preference could not be saved", StatusSeverity.Error);
+                }
             }
         }
 

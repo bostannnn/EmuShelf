@@ -10233,6 +10233,51 @@ from a folder *different* from the one they granted the emulator (e.g. imported 
 `roms/psx`), the tree still will not match; that narrower case is what a future grant-root verification
 step would cover.
 
+## 2026-08-22 — Android launch fails loudly; no emulator fallback
+
+When the emulator the user intends for a system (their configured choice, else the maintained-first
+default) cannot run a game, the Android launch path stops and says exactly why — "X is not installed",
+"select a RetroArch core first", "not on shared storage" — rather than silently trying the next
+maintained emulator. Cascading to a different emulator would launch with a *different* save format
+(e.g. RetroArch's Beetle memcard vs DuckStation's), so a "helpful" fallback reads as lost saves. This
+reverses the earlier RetroArch-missing-core fallback: that case now asks the user to configure a core
+instead of quietly substituting a standalone emulator. `AndroidEmulatorLaunchService` now resolves a
+single intended emulator and preflight-checks installation (`AndroidGameLauncher.IsInstalled`, backed by
+the manifest `<queries>` block) before doing any work. The IO-bound preflight (SD-card stat, SQLite
+reads, intent resolution) runs on a worker thread; the cloud-save pull runs once, only when a launch is
+actually going ahead.
+
+## 2026-08-22 — Texture-pack detection is hidden on Android, not ported
+
+The texture-pack detection pipeline is desktop-shaped: its resolvers walk emulator user directories in
+`Documents` / `~/.config` / `~/Library` layouts that do not exist on Android, and the two Android
+emulators that genuinely support texture packs (Dolphin, PPSSPP) keep them under `Android/data` in a
+shape those resolvers cannot read — and reading another app's `Android/data` only works on permissive
+firmware anyway. Rather than show a Texture Packs settings section that reports every platform as
+unconfigured, `CreateTexturePackSettingsContext` returns null on Android so the section is omitted. A
+future Android-native resolver (scoped to Dolphin + PPSSPP) can re-enable it; PS2/DS/RetroArch texture
+packs are out of scope because those Android builds do not support replacement.
+
+## 2026-08-22 — Android 3D-shelf render budget diverges from desktop
+
+The physical-media shelf renderer is tuned per platform for the handheld GPU: supersampling drops from
+2x to native (1x) — the single largest fan/battery cost, and the small on-screen media do not show the
+silhouette aliasing the desktop hero does; key-shadow maps drop from 1024² to 512²; and the per-item
+self-shadow pass is capped to the focused medium and its two immediate neighbours instead of every
+visible item, cutting render-target switches on a tiled mobile GPU. All three are gated on
+`OperatingSystem.IsAndroid()`, so desktop rendering (and its visual snapshot tests) is unchanged. The
+on-device visual result of the shadow cap is pending verification on the Thor. Deliberately *not* done:
+back-face culling — the shells are authored double-sided (open cases, cartridge lips), so culling would
+drop inner faces including in the shadow pass.
+
+## 2026-08-22 — Compiled bindings adopted for the hot couch templates only
+
+The couch grid tile and shelf-strip `DataTemplate`s (recycled constantly during scroll/glide) opt into
+`x:CompileBindings="True"` against their already-declared `GameViewModel` data type, dropping the
+per-binding reflection the rest of the shell still pays. Kept scoped rather than flipping the global
+`AvaloniaUseCompiledBindingsByDefault`: many templates lack an `x:DataType`, and a blanket flip silently
+blanks their bindings and complicates trimming. Converting the remaining templates is a separate
+follow-up.
 ## 2026-08-22 — Android: `.nomedia` at the data root, and view-state saved less eagerly
 
 Two fixes to the same symptom — EmuShelf's data root lives in MediaStore-scanned shared storage on
@@ -10299,3 +10344,45 @@ than `QUERY_ALL_PACKAGES`: it returns every launchable app, stays Play-policy-sa
 existing narrow per-emulator `<queries>` block. Dock pins persist to a portable
 `Settings/second-screen-dock.json` (the pattern `pending-play-session.json` already uses), with the
 model and store in Core so the desktop suite tests them.
+## 2026-08-22 — Android: auto-update via the system package installer; hotkeys hidden; grid tile shadow dropped
+
+Four Milestone-S (stabilization) fixes from a Thor pass. Each is Android-only or a no-op off Android, so
+desktop behaviour and snapshots are unchanged.
+
+1. **Auto-update works on Android — but it is assisted, not silent.** The question was "is it possible?".
+   It is: CI already publishes a release-signed `EmuShelf-android-arm64.apk` and its `.sha256`, so the
+   shared check → download → checksum-verify path (`GitHubUpdateService`) needed only the Android asset
+   name in `UpdatePlatform.CurrentAssetName()`. What differs from desktop is the *apply* step: an Android
+   app cannot overwrite its own installed APK, so there is no in-place file-swap. A new
+   `AndroidUpdateApplier` (in the head) copies the verified APK into the app-internal cache, mints a
+   `content://` URI with a `FileProvider`, and fires `ACTION_VIEW`
+   (`application/vnd.android.package-archive`) at the system package installer, which shows the user a
+   confirmation. It is wired through a new `App.UpdateApplierFactoryOverride` hook (mirroring
+   `ExternalUriOpener`/`OnScreenKeyboardFactory`), so the shared `UpdateApplierFactory` stays desktop-only.
+   Manifest gains `REQUEST_INSTALL_PACKAGES` and the `com.emushelf.app.updateprovider` provider
+   (`Resources/xml/emushelf_update_paths.xml`, `<cache-path>`). **Two constraints, both inherent to
+   Android and surfaced to the user by the installer, not silently:** the new APK must be signed with the
+   same key as the running build (the CI release keystore — a locally/debug-signed sideload will not
+   accept the CI APK; uninstall-first is required), and the user must allow "install unknown apps" the
+   first time. The PackageInstaller Session API was considered and rejected for now: it avoids the
+   FileProvider but needs a BroadcastReceiver + PendingIntent status dance for the same user-facing
+   confirmation, i.e. more surface for no behavioural gain.
+
+2. **Hotkeys section hidden on Android.** The hotkeys feature writes a uniform *keyboard* scheme into each
+   *desktop* emulator's own config so it can be driven by *Steam Input*. On Android there is no Steam
+   Input and the emulators are sandboxed apps whose config EmuShelf cannot rewrite, so the whole section
+   is inert. `MainViewModel.CreateHotkeySettingsContext()` returns null on Android, which drops
+   `SettingsSection.Hotkeys` (gated on a non-empty context) and, via `HasHotkeys`, also disables the
+   gamepad hotkey-editor overlay entry. Gated in the view model, not in `EmulatorSettingsViewModel`, so
+   the desktop unit tests that inject a hotkey context directly are unaffected.
+
+3. **Removed the redundant "ScreenScraper" header** in the gamepad Artwork & Metadata section. It stacked
+   directly above the "Sign in to ScreenScraper" / "ScreenScraper account" sub-header, so it only cost
+   couch vertical space; the sub-headers already name the provider.
+
+4. **Grid tile drop-shadow dropped on Android.** A 20 px blurred `BoxShadow` on every one of the ~40
+   realized grid tiles is recomposited each frame while the library scrolls, and on a handheld GPU that is
+   the dominant grid cost (the fan-on-scroll investigation). A `reduced-effects` style class, bound on the
+   couch root to `MainViewModel.IsReducedEffectsPlatform` (true only on Android), sets the shadow
+   sibling's `IsVisible` to false — removing both the blur and one full-tile overdraw layer. Desktop and
+   desktop-gamepad mode keep the depth.

@@ -2051,3 +2051,21 @@ breaks the whole-solution macOS build/test loop.
         rotating the 3D cover, and every stick interaction — really Milestone C), 3D shelf covers resize
         while scrolling (A2 density × shelf geometry/virtualization), plus "many others" to catalogue in the
         first pass. See the plan's "Milestone S — Stabilization passes".
+    - [x] **S1 — Android auto-update + grid/settings polish** (2026-08-22, four Thor-pass fixes;
+          on-device verification pending device return). (1) **In-app auto-update now works on Android.**
+          CI already publishes a signed `EmuShelf-android-arm64.apk` + `.sha256`, so the shared
+          check/download/checksum-verify path just needed the Android asset name (`UpdatePlatform`); a new
+          `AndroidUpdateApplier` (injected via `App.UpdateApplierFactoryOverride`) hands the verified APK
+          to the system package installer through a `FileProvider` content URI. It is not silent —
+          Android has no in-place file-swap for an installed app — and the update only installs when the
+          new APK is signed with the same key as the running build (the CI release keystore). Adds
+          `REQUEST_INSTALL_PACKAGES` + the provider to the manifest. (2) **Hotkeys section hidden on
+          Android.** The feature writes a *keyboard* scheme into desktop emulator configs for Steam Input;
+          neither exists on Android, so `MainViewModel.CreateHotkeySettingsContext` returns null there,
+          dropping the section and the gamepad hotkey-editor overlay. (3) **Removed the redundant
+          "ScreenScraper" header** in the gamepad Artwork & Metadata section — it stacked directly above
+          the "Sign in to ScreenScraper" sub-header and only ate couch vertical space. (4) **Grid scroll
+          no longer fans/chops on Android:** the per-tile 20 px blurred `BoxShadow` (recomposited every
+          frame for ~40 tiles — the dominant grid cost in the fan-on-scroll investigation) is dropped via
+          a `reduced-effects` class gated on `IsReducedEffectsPlatform`, which also collapses one overdraw
+          layer. Desktop keeps the depth. See DECISIONS 2026-08-22.

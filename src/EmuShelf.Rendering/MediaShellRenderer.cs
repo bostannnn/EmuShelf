@@ -24,7 +24,14 @@ public sealed class MediaShellRenderer : IDisposable
     /// a large, slowly rotating object against a flat backdrop, which is the worst case for stair
     /// stepping along its silhouette; 2x2 is the cheapest supersample that removes it.
     /// </summary>
-    private const float MaximumSupersampleFactor = 2f;
+    /// <remarks>
+    /// Forced to 1x (native) on Android. A 2x2 supersample shades four times the fragments every
+    /// frame, and during a glide the whole shelf re-runs the full PBR + IBL + shadow shader at that
+    /// rate — the single largest fan/battery cost on a handheld GPU. The shelf's media are small on a
+    /// handheld screen and do not show the silhouette stair-stepping the desktop hero does, so native
+    /// resolution is the right trade there. Desktop and the preview tool keep the 2x supersample.
+    /// </remarks>
+    private static readonly float MaximumSupersampleFactor = OperatingSystem.IsAndroid() ? 1f : 2f;
 
     // Bound the off-screen scene independently of display resolution. At 1080p this selects 1.33x
     // (3.7 MP rather than 8.3 MP); at 1280x800 it still reaches 1.8x, where silhouette filtering is
@@ -203,7 +210,55 @@ public sealed class MediaShellRenderer : IDisposable
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
-    private const uint KeyShadowSize = 1024;
+    // Android drops to 512px: at native handheld resolution the on-screen case is far smaller than
+    // the desktop TV-scale hero, so 1024 is oversampled, and each pass clears and samples a quarter
+    // of the area — a per-frame saving that compounds across the (already capped) self-shadow passes.
+    private static readonly uint KeyShadowSize = OperatingSystem.IsAndroid() ? 512u : 1024u;
+
+    // Uniform names that carry an array or sampler index used to be interpolated ($"uPanelOrigin[{i}]")
+    // on every panel of every shell every frame — up to three panels across seven shells is hundreds of
+    // throwaway strings a frame, allocated purely to key the shader-location cache and discarded once the
+    // lookup hits. The names are fixed for the program's lifetime, so build them once at type load.
+    private static readonly string[] PanelOriginNames = IndexedUniforms("uPanelOrigin", MaxPanels);
+    private static readonly string[] PanelUEdgeNames = IndexedUniforms("uPanelUEdge", MaxPanels);
+    private static readonly string[] PanelVEdgeNames = IndexedUniforms("uPanelVEdge", MaxPanels);
+    private static readonly string[] PanelNormalNames = IndexedUniforms("uPanelNormal", MaxPanels);
+    private static readonly string[] PanelTintNames = IndexedUniforms("uPanelTint", MaxPanels);
+    private static readonly string[] PanelAspectNames = IndexedUniforms("uPanelAspect", MaxPanels);
+    private static readonly string[] PanelCornerRadiusNames = IndexedUniforms("uPanelCornerRadius", MaxPanels);
+    private static readonly string[] PanelCutCornerNames = IndexedUniforms("uPanelCutCorner", MaxPanels);
+    private static readonly string[] PanelMaxDepthNames = IndexedUniforms("uPanelMaxDepth", MaxPanels);
+    private static readonly string[] PanelHasArtNames = IndexedUniforms("uPanelHasArt", MaxPanels);
+    private static readonly string[] PanelArtScaleNames = IndexedUniforms("uPanelArtScale", MaxPanels);
+    private static readonly string[] PanelArtOffsetNames = IndexedUniforms("uPanelArtOffset", MaxPanels);
+    private static readonly string[] PanelEnabledNames = IndexedUniforms("uPanelEnabled", MaxPanels);
+    private static readonly string[] PanelArtSamplerNames = SamplerUniforms("uPanelArt", MaxPanels);
+    private static readonly string[] ShadowFootprintNames = IndexedUniforms("uShadowFootprint", 7);
+    private static readonly string[] ShadowOpacityNames = IndexedUniforms("uShadowOpacity", 7);
+
+    // "uPrefix[0]", "uPrefix[1]", … — GLSL array elements are addressed by index in the name.
+    private static string[] IndexedUniforms(string prefix, int count)
+    {
+        var names = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            names[index] = $"{prefix}[{index}]";
+        }
+
+        return names;
+    }
+
+    // "uPrefix0", "uPrefix1", … — the panel-art samplers are distinct uniforms, not an array element.
+    private static string[] SamplerUniforms(string prefix, int count)
+    {
+        var names = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            names[index] = $"{prefix}{index}";
+        }
+
+        return names;
+    }
 
     private readonly GL _gl;
     private readonly GlProgram _program;
@@ -636,15 +691,29 @@ public sealed class MediaShellRenderer : IDisposable
         var shadowScale = fillScale > 1f ? ShelfShadowScale : 1f;
         DrawShelfShadows(_shelfDrawItems, viewProjection, shadowDrop, shadowScale);
 
-        foreach (var item in _shelfDrawItems)
+        // On desktop, visibility — not focus — is the quality boundary: removing the depth pass as an
+        // item left centre made its moulding flatten while it was still plainly on screen, so every
+        // visible medium gets its own pass. On a handheld that means up to seven render-target switches
+        // and depth clears a frame, which is the costliest thing to repeat on a tiled mobile GPU. The
+        // edge neighbours' self-shadowing barely reads at native handheld scale, so Android restricts
+        // the self-shadow pass to the focused medium and its two immediate neighbours; the rest keep
+        // the cheaper contact shadow from DrawShelfShadows. SelfShadowWindowCentre returns -1 off
+        // Android, leaving the desktop behaviour untouched.
+        var selfShadowCentre = SelfShadowWindowCentre(_shelfDrawItems);
+        for (var index = 0; index < _shelfDrawItems.Count; index++)
         {
-            // Visibility, not focus, is the quality boundary. Removing the depth pass as an item
-            // left centre made its moulding flatten while it was still plainly on screen. The
-            // scene is already bounded to seven submitted items; games outside that window incur
-            // no pass at all, while every visible medium retains identical material depth.
-            var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
-            DrawShelfItem(
-                item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
+            var item = _shelfDrawItems[index];
+            if (selfShadowCentre < 0 || Math.Abs(index - selfShadowCentre) <= 1)
+            {
+                var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
+                DrawShelfItem(
+                    item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
+            }
+            else
+            {
+                DrawShelfItem(
+                    item, viewProjection, cameraPosition, Matrix4x4.Identity, hasKeyShadow: false);
+            }
         }
 
         foreach (var disc in _discDrawItems)
@@ -658,6 +727,34 @@ public sealed class MediaShellRenderer : IDisposable
         }
 
         Present(targetFramebuffer, width, height);
+    }
+
+    /// <summary>
+    /// The index in <paramref name="items"/> to centre the self-shadow window on, or -1 to shadow
+    /// every item. Off Android it is always -1 (desktop shadows all visible media); on Android it is
+    /// the index of the most-focused item, so the caller can restrict the self-shadow pass to that
+    /// item and its immediate neighbours. FocusAmount peaks at the selection centre and falls off to
+    /// either side, so a single linear scan finds the window centre without sorting or allocating.
+    /// </summary>
+    private static int SelfShadowWindowCentre(IReadOnlyList<ShelfDrawItem> items)
+    {
+        if (!OperatingSystem.IsAndroid() || items.Count == 0)
+        {
+            return -1;
+        }
+
+        var centre = 0;
+        var best = items[0].Item.FocusAmount;
+        for (var index = 1; index < items.Count; index++)
+        {
+            if (items[index].Item.FocusAmount > best)
+            {
+                best = items[index].Item.FocusAmount;
+                centre = index;
+            }
+        }
+
+        return centre;
     }
 
     /// <summary>
@@ -1190,7 +1287,7 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var scope = resources.Panels[index].MaterialIndex;
             _program.Set(
-                $"uPanelEnabled[{index}]", scope < 0 || scope == materialIndex ? 1f : 0f);
+                PanelEnabledNames[index], scope < 0 || scope == materialIndex ? 1f : 0f);
         }
     }
 
@@ -1297,7 +1394,7 @@ public sealed class MediaShellRenderer : IDisposable
         for (var index = 0; index < MaxPanels; index++)
         {
             _whitePixel.Bind((uint)(5 + index));
-            _program.Set($"uPanelArt{index}", 5 + index);
+            _program.Set(PanelArtSamplerNames[index], 5 + index);
         }
     }
 
@@ -1375,9 +1472,9 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var footprint = footprints[index];
             _shadowProgram.Set(
-                $"uShadowFootprint[{index}]",
+                ShadowFootprintNames[index],
                 new Vector4(footprint.Centre, footprint.Radius.X, footprint.Radius.Y));
-            _shadowProgram.Set($"uShadowOpacity[{index}]", footprint.Opacity);
+            _shadowProgram.Set(ShadowOpacityNames[index], footprint.Opacity);
         }
 
         _gl.Enable(EnableCap.Blend);
@@ -1470,22 +1567,22 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var panel = panels[i];
             var placement = panel.Placement;
-            _program.Set($"uPanelOrigin[{i}]", placement.Origin);
-            _program.Set($"uPanelUEdge[{i}]", placement.UEdge);
-            _program.Set($"uPanelVEdge[{i}]", placement.VEdge);
-            _program.Set($"uPanelNormal[{i}]", placement.Normal);
-            _program.Set($"uPanelTint[{i}]", tint);
+            _program.Set(PanelOriginNames[i], placement.Origin);
+            _program.Set(PanelUEdgeNames[i], placement.UEdge);
+            _program.Set(PanelVEdgeNames[i], placement.VEdge);
+            _program.Set(PanelNormalNames[i], placement.Normal);
+            _program.Set(PanelTintNames[i], tint);
             _program.Set(
-                $"uPanelAspect[{i}]",
+                PanelAspectNames[i],
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
-            _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
-            _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
+            _program.Set(PanelCornerRadiusNames[i], panel.Panel.CornerRadius);
+            _program.Set(PanelCutCornerNames[i], panel.Panel.CutCorner);
             // The shell's allowance is authored against its thickness on this axis, so one figure
             // covers a 6mm cartridge and a 14mm keep case without being retuned per shell. A panel
             // that has been measured against its own face overrides it outright, in the same
             // object-space units.
             _program.Set(
-                $"uPanelMaxDepth[{i}]",
+                PanelMaxDepthNames[i],
                 panel.Panel.MaxSurfaceDepth
                 ?? definition.PanelDepthFraction
                     * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
@@ -1496,23 +1593,23 @@ public sealed class MediaShellRenderer : IDisposable
             var art = definition.TakesScrapedArtwork
                 ? _activePanelArt?.Get(panel.ArtIndex)
                 : null;
-            _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
+            _program.Set(PanelHasArtNames[i], art is not null ? 1f : 0f);
 
             // Fit the artwork to the whole printed sheet first, then hand this panel its slice of
             // it. For every flat panel the slice is the whole sheet and this is the old centred
             // sub-rectangle; for a folded label it is what keeps the crease continuous.
             var crop = ArtCrop(panel.Panel.ArtFit, panel.SheetAspect, art?.Aspect ?? 1f);
             _program.Set(
-                $"uPanelArtScale[{i}]", new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
+                PanelArtScaleNames[i], new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
             _program.Set(
-                $"uPanelArtOffset[{i}]",
+                PanelArtOffsetNames[i],
                 new Vector2(
                     (1f - crop.X) * 0.5f,
                     ((1f - crop.Y) * 0.5f) + (crop.Y * panel.ArtSpanOffset)));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
-            _program.Set($"uPanelArt{i}", 5 + i);
+            _program.Set(PanelArtSamplerNames[i], 5 + i);
             // On for the whole shell unless a scoped panel turns it off again per mesh below.
-            _program.Set($"uPanelEnabled[{i}]", 1f);
+            _program.Set(PanelEnabledNames[i], 1f);
         }
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
@@ -1520,7 +1617,7 @@ public sealed class MediaShellRenderer : IDisposable
         for (var i = panels.Count; i < MaxPanels; i++)
         {
             _whitePixel.Bind((uint)(5 + i));
-            _program.Set($"uPanelArt{i}", 5 + i);
+            _program.Set(PanelArtSamplerNames[i], 5 + i);
         }
     }
 

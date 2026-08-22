@@ -323,6 +323,15 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     public string DataDirectory => _maintenance?.DataDirectory ?? string.Empty;
     public bool HasDataDirectory => !string.IsNullOrWhiteSpace(_maintenance?.DataDirectory);
 
+    /// <summary>
+    /// Whether revealing a folder or file in an OS file manager is possible here. The reveal commands
+    /// shell out through <see cref="System.Diagnostics.Process"/> with <c>UseShellExecute</c>, which
+    /// every desktop OS honours but Android does not — there is no file manager to hand a path to, so
+    /// the call throws. Surfaces gate their "open folder / open log" affordances on this so a controller
+    /// user is not offered a button that can only fail.
+    /// </summary>
+    public bool CanRevealFiles => !OperatingSystem.IsAndroid();
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDataFolderStatus))]
     public partial string DataFolderStatusText { get; set; } = string.Empty;

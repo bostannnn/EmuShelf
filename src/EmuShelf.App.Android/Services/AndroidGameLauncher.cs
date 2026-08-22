@@ -22,6 +22,25 @@ namespace EmuShelf.App.Android.Services;
 public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logger)
 {
     /// <summary>
+    /// True when <paramref name="packageName"/> is installed and visible to EmuShelf. Lets the caller
+    /// fail loudly with "X is not installed" before attempting a launch, instead of firing an intent
+    /// and interpreting a generic failure. Every emulator package is declared in the Android head's
+    /// <c>&lt;queries&gt;</c> block, so visibility resolves on API 30+; without that declaration this
+    /// would report a false negative. Returns null-safe false when there is no context yet.
+    /// </summary>
+    public bool IsInstalled(string packageName)
+    {
+        if (string.IsNullOrEmpty(packageName))
+            return false;
+
+        var manager = context()?.PackageManager;
+        // GetLaunchIntentForPackage returns null when the package is absent — the emulators here all
+        // have a launcher activity, so a present package always yields a non-null intent. Preferred
+        // over GetPackageInfo because it needs no exception path for the not-installed case.
+        return manager?.GetLaunchIntentForPackage(packageName) is not null;
+    }
+
+    /// <summary>
     /// Fires <paramref name="request"/> at its emulator. Returns false (without throwing) when there is no
     /// context to start from or the target activity cannot be resolved — e.g. the emulator is not
     /// installed, which the caller should have caught with a package-visibility check first.

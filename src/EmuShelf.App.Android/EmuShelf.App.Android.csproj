@@ -33,6 +33,10 @@
     <!-- Avalonia.Android only. Avalonia.Desktop must NOT reach the head: it has no android asset but
          restores via lib/net10.0 and would silently ship Win32/X11/Native backends into the APK. -->
     <PackageReference Include="Avalonia.Android" Version="12.1.0" />
+    <!-- FileProvider for the in-app update installer (AndroidUpdateApplier). Already present transitively
+         via Avalonia.Android → AppCompat → Core; referenced explicitly at the resolved version so the
+         AndroidX.Core.Content.FileProvider type is a first-class compile dependency, not an incidental one. -->
+    <PackageReference Include="Xamarin.AndroidX.Core" Version="1.17.0.2" />
   </ItemGroup>
 
   <ItemGroup>
