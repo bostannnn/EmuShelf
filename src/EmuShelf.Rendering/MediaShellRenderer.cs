@@ -38,6 +38,16 @@ public sealed class MediaShellRenderer : IDisposable
     /// on the near corner reads as a toy; ~22 degrees keeps the case's edges close to parallel.</summary>
     private const float FieldOfViewDegrees = 22f;
 
+    /// <summary>
+    /// The enlarged (handheld) shelf uses a narrower, more telephoto field of view. Because the camera
+    /// distance scales with each medium's physical size, the default FOV frames a small cartridge from
+    /// close up — strong perspective, the card "pops" and its shadow crowds the title — while a big keep
+    /// case sits far and flat. A tighter FOV pulls every camera back, flattening perspective uniformly so
+    /// the systems read alike (closer to the flatter keep-case look) and shadows project deeper. Desktop
+    /// keeps <see cref="FieldOfViewDegrees"/>.
+    /// </summary>
+    private const float EnlargedShelfFieldOfViewDegrees = 15f;
+
     // Perspective makes the corner nearest the camera project larger than the diagonal radius at
     // the origin. Keep enough headroom for combined yaw and pitch so a controller-driven turn never
     // clips a cartridge's rim against the render surface.
@@ -50,8 +60,9 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
 
-    /// <summary>How far the enlarged shelf drops the cast shadow below the model's base, in shelf units,
-    /// to open air between the two. Desktop keeps the tight contact shadow (drop 0).</summary>
+    /// <summary>How far the enlarged shelf drops the cast shadow below the model's base to open air
+    /// between the two, as a fraction of the framed extent (so the on-screen gap is the same for every
+    /// system, small cartridge or large case). Desktop keeps the tight contact shadow (drop 0).</summary>
     private const float ShelfShadowDrop = 0.12f;
 
     /// <summary>How much wider the enlarged shelf's dropped shadow spreads, so it reads as a soft ground
@@ -616,8 +627,12 @@ public sealed class MediaShellRenderer : IDisposable
         }
         // On the enlarged (handheld) shelf, drop the contact shadow lower and spread it wider so it reads
         // as a grounding shadow with air between it and the model, rather than a dark line hugging the
-        // base. Desktop (fillScale == 1) keeps the tight contact shadow its composition is tuned for.
-        var shadowDrop = fillScale > 1f ? ShelfShadowDrop : 0f;
+        // base. The drop is scaled by the framed extent (the same measure the camera distance scales by),
+        // so the gap projects to the SAME on-screen distance for every system — otherwise an absolute drop
+        // is a big gap under a small cartridge and a tiny one under a large case. Desktop (fillScale == 1)
+        // keeps the tight contact shadow its composition is tuned for.
+        var shadowExtent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
+        var shadowDrop = fillScale > 1f ? ShelfShadowDrop * shadowExtent : 0f;
         var shadowScale = fillScale > 1f ? ShelfShadowScale : 1f;
         DrawShelfShadows(_shelfDrawItems, viewProjection, shadowDrop, shadowScale);
 
@@ -1025,7 +1040,8 @@ public sealed class MediaShellRenderer : IDisposable
     {
         var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
         var extent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
-        var fovY = FieldOfViewDegrees * MathF.PI / 180f;
+        var fovDegrees = fillScale > 1f ? EnlargedShelfFieldOfViewDegrees : FieldOfViewDegrees;
+        var fovY = fovDegrees * MathF.PI / 180f;
         var tanY = MathF.Tan(fovY * 0.5f);
 
         // The fill scale enlarges the framed media above the desktop-tuned fills (1.0 = desktop, >1 pulls
