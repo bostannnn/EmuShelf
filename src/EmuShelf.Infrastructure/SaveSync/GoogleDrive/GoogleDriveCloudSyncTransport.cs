@@ -397,16 +397,34 @@ public sealed class GoogleDriveCloudSyncTransport : IVerifiableCloudSyncTranspor
             return;
         }
 
+        // Under the drive.file scope EmuShelf sees only its own files, so one flat listing is the whole
+        // saves tree. Grouping it by parent and walking locally replaces a listing per folder — on a
+        // phone's link that per-folder walk was ~20s of every sync — with a single round-trip. The
+        // duplicate handling below is unchanged; only where the children come from moved.
+        var childrenByParent = new Dictionary<string, List<DriveFile>>(StringComparer.Ordinal);
+        foreach (var file in await _api.ListAllAsync(cancellationToken))
+        {
+            foreach (var parent in file.Parents ?? [])
+            {
+                if (!childrenByParent.TryGetValue(parent, out var siblings))
+                    childrenByParent[parent] = siblings = [];
+                siblings.Add(file);
+            }
+        }
+
         var pending = new Queue<(string Path, string Id)>();
         pending.Enqueue((string.Empty, rootId));
+        var descended = new HashSet<string>(StringComparer.Ordinal) { rootId };
         while (pending.Count > 0)
         {
             var (path, id) = pending.Dequeue();
+            if (!childrenByParent.TryGetValue(id, out var siblings))
+                continue;
             // Order children the way FindChildAsync resolves a duplicate name — oldest first, then by
             // id — so the walk's "first writer wins" is genuinely oldest-wins rather than whatever
             // order Drive listed them in. Without this, two machines could cache different ids for the
             // same duplicated name and never converge, since the transport never deletes the extra.
-            var children = (await _api.ListChildrenAsync(id, cancellationToken))
+            var children = siblings
                 .OrderBy(child => child.ModifiedTime ?? DateTimeOffset.MaxValue)
                 .ThenBy(child => child.Id, StringComparer.Ordinal);
             foreach (var child in children)
@@ -422,7 +440,12 @@ public sealed class GoogleDriveCloudSyncTransport : IVerifiableCloudSyncTranspor
                     // the oldest-wins leaf tiebreak below) is what keeps a blob from being orphaned and
                     // then pruned from the index.
                     _folderIds.TryAdd(childPath, child.Id);
-                    pending.Enqueue((childPath, child.Id));
+                    // Descend each distinct folder id once. Same-named duplicates have distinct ids and
+                    // are all still descended (merging their contents, as before); the guard only stops
+                    // a malformed parent chain from looping now that the walk is a local map, not the
+                    // API's inherently acyclic per-folder listing.
+                    if (descended.Add(child.Id))
+                        pending.Enqueue((childPath, child.Id));
                 }
                 else
                 {

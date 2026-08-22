@@ -119,6 +119,39 @@ public sealed class GoogleDriveApiClient
     }
 
     /// <summary>
+    /// Lists every file the app can see in one paginated pass, each carrying its parents. Under the
+    /// <c>drive.file</c> scope this is exactly EmuShelf's own files, so a caller can rebuild the whole
+    /// saves folder tree from it without a listing per folder — one round-trip instead of one per
+    /// folder, which on a phone's link is the difference between a fast sync and a ~20-second one.
+    /// </summary>
+    public async Task<IReadOnlyList<DriveFile>> ListAllAsync(CancellationToken cancellationToken = default)
+    {
+        var files = new List<DriveFile>();
+        string? pageToken = null;
+        do
+        {
+            var query = new StringBuilder("files?spaces=drive&pageSize=1000")
+                .Append("&fields=").Append(Uri.EscapeDataString("nextPageToken,files(id,name,mimeType,modifiedTime,parents)"))
+                .Append("&q=").Append(Uri.EscapeDataString("trashed=false"));
+            if (pageToken is not null)
+                query.Append("&pageToken=").Append(Uri.EscapeDataString(pageToken));
+
+            using var response = await SendAsync(
+                () => new HttpRequestMessage(HttpMethod.Get, new Uri(_apiBase, query.ToString())),
+                cancellationToken);
+            await ThrowIfFailedAsync(response, "list cloud files", cancellationToken);
+
+            var page = await ReadJsonAsync<DriveFileList>(response, cancellationToken);
+            if (page?.Files is { } pageFiles)
+                files.AddRange(pageFiles);
+            pageToken = string.IsNullOrEmpty(page?.NextPageToken) ? null : page.NextPageToken;
+        }
+        while (pageToken is not null);
+
+        return files;
+    }
+
+    /// <summary>
     /// The named child of a folder, or null when it does not exist. Drive permits duplicate names in
     /// one folder, so the oldest match wins — deterministically, and in favour of the copy that has
     /// been there longest rather than whichever the listing happened to return first.

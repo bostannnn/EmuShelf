@@ -10198,6 +10198,17 @@ build). Other card schemes (title = DuckStation's DB title; serial) do not bridg
 migration is written: pre-existing RetroArch-PS1 `.srm` cloud keys (unlikely — PS1-via-RetroArch was
 blocked on Android) stay in the cloud untouched under sync-never-deletes rather than being re-keyed.
 
+## 2026-08-22 — Drive save-sync walks the tree in one flat listing, not per folder
+
+Every cloud sync spent ~20s in the "walk" that maps the saves folder tree to Drive file ids — the
+transport BFS-listed one folder at a time (`'<id>' in parents`), and Drive has no recursive listing, so
+the system-scoped layout's many per-game subfolders meant dozens of round-trips on the Thor's link (a
+27–53s sync was mostly this). Because EmuShelf holds only the `drive.file` scope it sees just its own
+files, so `GoogleDriveApiClient.ListAllAsync` fetches the entire tree in one paginated `files.list`
+(carrying each file's `parents`), and `LoadTreeAsync` groups by parent and walks locally. The duplicate
+handling is unchanged (oldest-wins per name; all same-named folders still merged), with an id-visited
+guard added since the walk is now a local map rather than the API's inherently acyclic per-folder
+listing. One round-trip instead of one per folder; the flush's nested walk shrinks with it.
 ## 2026-08-22 — Android launch scopes the SAF URI to the game's import folder, not its own sub-folder
 
 Nested multi-disc games (a per-game sub-folder holding `Disc 1`/`Disc 2` + an `.m3u`, e.g. Metal Gear

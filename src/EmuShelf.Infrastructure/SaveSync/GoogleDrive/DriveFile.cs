@@ -19,6 +19,12 @@ public sealed record DriveFile
     [JsonPropertyName("modifiedTime")]
     public DateTimeOffset? ModifiedTime { get; init; }
 
+    /// <summary>The file's parent folder ids. Drive gives a file a single parent since 2020, but the
+    /// field is a list; a flat listing carries it so the folder tree can be rebuilt without a listing
+    /// per folder.</summary>
+    [JsonPropertyName("parents")]
+    public IReadOnlyList<string>? Parents { get; init; }
+
     public bool IsFolder => string.Equals(MimeType, FolderMimeType, StringComparison.Ordinal);
 }
 

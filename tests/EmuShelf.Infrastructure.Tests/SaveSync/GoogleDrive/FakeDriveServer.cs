@@ -126,17 +126,22 @@ internal class FakeDriveServer : HttpMessageHandler
     private HttpResponseMessage List(string query)
     {
         ListCalls++;
-        var parentId = ParentFromQuery(query);
-        var files = _entries.Values
-            .Where(entry => string.Equals(entry.ParentId, parentId, StringComparison.Ordinal))
-            .Select(entry => new
-            {
-                id = entry.Id,
-                name = entry.Name,
-                mimeType = entry.MimeType,
-                size = entry.IsFolder ? (long?)null : entry.Content.Length,
-                modifiedTime = entry.ModifiedTime,
-            });
+        // A "'<id>' in parents" query lists one folder; a flat query (no parents clause) lists every
+        // file, as the real drive.file scope does, so the transport can rebuild the tree in one call.
+        var flat = !query.Contains("in parents", StringComparison.Ordinal);
+        var matches = flat
+            ? _entries.Values.AsEnumerable()
+            : _entries.Values.Where(entry =>
+                string.Equals(entry.ParentId, ParentFromQuery(query), StringComparison.Ordinal));
+        var files = matches.Select(entry => new
+        {
+            id = entry.Id,
+            name = entry.Name,
+            mimeType = entry.MimeType,
+            size = entry.IsFolder ? (long?)null : entry.Content.Length,
+            modifiedTime = entry.ModifiedTime,
+            parents = new[] { entry.ParentId },
+        });
         return Json(new { files });
     }
 
