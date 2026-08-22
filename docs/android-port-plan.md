@@ -75,7 +75,9 @@ the hardware black on the device the port exists for. Decide before A1: nothing 
 now-playing. "Nothing" is an acceptable answer, stated. **(0b, 2026-08-18: the `Presentation` surface is
 confirmed present and available to third-party apps on-device — `displayId=4`, `FLAG_PRESENTATION`,
 1240×1080, 120 Hz. Now a pure product choice, not gated on a hardware unknown. A0/A1 shipped before this
-was decided, so the second screen is currently unused — revisit as its own item.)**
+was decided, so the second screen is currently unused — revisit as its own item.)** **DECIDED
+(2026-08-22): a companion surface — app dock, all-apps drawer, RetroAchievements panel, dimmed
+game-logo idle. Scoped as [Milestone SS](#ss--second-screen-thor-dual-screen-companion).**
 
 ## What Android v1 is, and when to stop
 
@@ -1201,9 +1203,74 @@ user root, so it does not need a divergent parser or cloud-id model.
   runs with `fail_on_unmatched_files: true`, so an Android failure would block the Windows, macOS and
   Linux release.
 
+### SS — Second screen (Thor dual-screen companion)
+
+The Thor's bottom panel, decided (2026-08-22, owner) after being parked as "revisit as its own item"
+in 0b. It is a live standard `Presentation` display — `displayId=4`, "Screen-2", 1240×1080 landscape,
+120 Hz, `FLAG_PRESENTATION` (measured 0b) — that AYN's own `com.odin.dualscreen.assistant`
+default-drives. EmuShelf takes it over while it is the active frontend and turns it into a companion
+surface: an **app dock**, an **all-apps drawer**, a **RetroAchievements panel**, and a **dimmed
+game-logo idle** while a game plays on the main screen.
+
+**Product decisions (owner):**
+- **Active whenever EmuShelf is open**, not only in-game. While browsing the library, Screen-2 shows
+  the dock + drawer/achievements affordances; when a game launches it switches to the dim+logo idle.
+  Handed back to AYN's assistant on EmuShelf exit.
+- **Dock/drawer-launched apps open on Screen-2** (beside the running game — the Cocoon dual-screen
+  pattern), via `ActivityOptions.setLaunchDisplayId(4)` + `NEW_TASK`. Some target apps may ignore the
+  launch display; that is an accepted per-app limitation, not a blocker.
+- **Achievements = the running game, else the selected game.** Cache-first, **pull only on the icon
+  press** — reuse the existing `IRetroAchievementsDetailsService` / details store and the shipped
+  5-minute staleness gate so re-presses do not hammer RA. No timer, no polling. There is no new RA
+  path.
+
+**Architecture.** The second screen is **native C# Android Views inside an `Android.App.Presentation`**,
+not a second Avalonia surface. It is launcher chrome (app icons, dock) that reads the *shared Core
+services in-process* — the achievements stores are framework-neutral and the badge cache returns a
+file path, so an `ImageView` renders it directly. A second Avalonia `TopLevel` on a Presentation is
+unproven and the wrong tool here; keep the option open only to embed an `AvaloniaView` for the
+achievements panel later if native re-rendering proves not worth it.
+
+- **SS0 — Presentation-lifetime + AYN-coexistence spike (gating; do first).** The one genuine unknown:
+  does a `Presentation` on display 4 survive when EmuShelf is backgrounded as an emulator takes the
+  main screen (a multi-resume device — the head already relies on `OnTopResumedActivityChanged`)? Stand
+  up a placeholder Presentation, launch a real game, watch it over adb. Also answer: **must AYN's
+  `com.odin.dualscreen.assistant` be disabled/dismissed for our Presentation to own Screen-2, or do we
+  coexist** (who wins the display, and how it is handed back on exit). Output: the confirmed keep-alive
+  mechanism (almost certainly a foreground service pinning the process — Thor is SDK 33, so the
+  notification-permission escalation stays dormant) and the AYN hand-off behavior. Everything below
+  assumes SS0's answers. Measure on device, per the "instrument, don't guess" rule.
+- **SS1 — second-screen host.** `SecondScreenController` in the head: find the `FLAG_PRESENTATION`
+  display via `DisplayManager`, create/attach the Presentation, tear down on display-removed and app
+  exit. Shown from the frontend-shown hook (`SingleViewShell.Show`). Root = a `FrameLayout` with two
+  layers (Browse chrome / Game-idle) plus a shared bottom bar.
+- **SS2 — bottom bar.** Drawer icon (bottom-left), achievements icon (bottom-right), 5-slot dock
+  (centre). Native layout.
+- **SS3 — app drawer.** Add a `<queries><intent>` for `ACTION_MAIN`+`CATEGORY_LAUNCHER` to the manifest
+  (Play-policy-safe, mirrors the existing narrow `<queries>`, avoids `QUERY_ALL_PACKAGES`).
+  `PackageManager.queryIntentActivities` → a grid of every launchable app; tap launches it on Screen-2.
+- **SS4 — dock pinning.** Tap an empty slot / long-press a filled one → drawer in pick-mode → pin.
+  Persist 5 component names in a portable `Settings/second-screen-dock.json` (the pattern
+  `pending-play-session.json` already uses); model + store live in Core so the desktop suite tests
+  them. Tapping a pinned slot launches on Screen-2.
+- **SS5 — achievements panel (cache-first, pull-on-press).** Achievements icon → resolve the target
+  game (running session's game, else `MainViewModel.FocusedGame`), map local→RA id via
+  `IRetroAchievementsReadStore.GetAllLinks()`, render the cached details snapshot natively (badge via
+  `IRetroAchievementsBadgeCache.GetBadgePathAsync`). One manual refresh on open, gated by the existing
+  5-minute staleness check, plus an explicit Refresh; honors the shipped rate-limit/offline handling.
+- **SS6 — game-idle state.** On game launch, switch to the idle layer: dim + the running game's logo
+  (scraped clear-logo if present, else cover, else title text), centred. 3 s no-touch → dim; any touch
+  → reveal the bottom bar, then re-dim after a timeout (`Handler.postDelayed` state machine).
+
+**Testing.** Pure logic (dock store, target-game/RA-id resolution) → desktop unit tests, matching the
+port's "Android logic in a `net10.0` assembly" rule. The Presentation and native rendering are
+Thor-verified over adb; there is no headless equivalent for Android Views on macOS.
+
 ## Sequencing
 
-**0a → A0 → 0b → A1 → D → B → C → E-android → F → S (repeat)**, with E-desktop parallel throughout.
+**0a → A0 → 0b → A1 → D → B → C → E-android → F → SS → S (repeat)**, with E-desktop parallel throughout.
+Second screen (SS) is a self-contained feature milestone gated only on its SS0 spike; it can slot
+before or interleave with S.
 
 Changes from the first draft: A0 is new and comes first among the engineering work; **D moves before
 B** because D produces B's input; the GL and pad probes move into Milestone 0, because each can end
@@ -1274,6 +1341,7 @@ bugs the feature checklist does not track:
 | E-desktop — managed Drive transport | ✅ done | rclone removed; built-in Google Drive is the sole transport (`10cdc4e`); one real Google sign-in proven on the Thor (same OAuth client/loopback serves desktop). Automated tests still use an in-memory fake Drive by design |
 | **E-android — cloud sync** | ✅ done, verified on Thor over real Drive | managed connect + per-system Save-folder picker in the **gamepad** Saves UI (`740b4d6`); Android OAuth reuses the loopback (`TcpLoopbackOAuthRedirectHandler`, single client — no custom-scheme handler needed); token via `PortableObfuscatedTextStore` (no Keystore — deliberate). PS1/GC/Wii round-tripped; PS2/PSP/3DS + RetroArch systems (fix ships in signed v1.5.8) await only an on-device play-test. **Known limits → S:** PS1 owner-only cards, PS2 single-file `.ps2` churn — see E |
 | F — packaging & release | ✅ done | APK CI job done + attached to releases; **release-signing is live** — all four `ANDROID_KEYSTORE_*`/`ANDROID_KEY_*` secrets are set (2026-08-20), so tagged builds are release-signed (verified via `gh secret list`); Android OAuth client-id accessor (`GoogleOAuthAndroidClientId`) + `EMUSHELF_GOOGLE_OAUTH_CLIENT_*` secrets present; user install/sideload docs written (`docs/android-install.md`); stale `package-android` needs-comment fixed. **Only non-engineering remainder:** register a Google developer-verification identity — region/time-gated (enforcement starts 30 Sep 2026), not blocking. |
+| **SS — second screen** | ⬜ not started | Thor bottom panel as a companion surface (dock, app drawer, RA panel, game-logo idle); decided 2026-08-22, gated on the **SS0** Presentation-lifetime + AYN-coexistence spike — see "Milestone SS" above |
 | **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: 3D covers resize on scroll, "many others" TBD (analog-stick input is now fixed, PR #163) — see "Milestone S" above |
 
 **What's left in B (launching):** the launch path is wired and boots real games on the Thor, plus the exit
@@ -1371,7 +1439,9 @@ Answer these before writing Android code against assumptions. **Most are answere
 - ✅ **"Run script as Root"** — present, but a one-shot script runner, not a persistent grant. v1 is
   no-root; capability model corrected.
 - ✅ **The second screen** — a live `Presentation` display available to third-party apps
-  (`FLAG_PRESENTATION`); default behavior is AYN's own dual-screen assistant.
+  (`FLAG_PRESENTATION`); default behavior is AYN's own dual-screen assistant. Product use now decided:
+  [Milestone SS](#ss--second-screen-thor-dual-screen-companion). One open sub-question moved into SS0:
+  whether AYN's `com.odin.dualscreen.assistant` must be dismissed for our Presentation to own Screen-2.
 - ⬜ **Wireless ADB pairing**, so the `adb install` / `logcat` / `screencap` loop survives unplugging.
   Currently on USB. Still to set up.
 - ⬜ **How the ROM library gets onto the device**, in practice, at size. `/sdcard/ROMs` is empty today.
@@ -1476,7 +1546,7 @@ which matters more than the emulator.
 ## Roadmap integration
 
 M41–M43 are taken (M43 is Playtime tracking); there are already two M40s. Android is the **M44**
-umbrella in [ROADMAP.md](../ROADMAP.md), with the plan's sections (0a, A0, A1, D, B, C, E, F) as its
+umbrella in [ROADMAP.md](../ROADMAP.md), with the plan's sections (0a, A0, A1, D, B, C, E, F, SS) as its
 phases. Note that [ROADMAP.md:522](../ROADMAP.md:522) states M24 is a product-hardening gate to be
 completed "before adding new end-user features" and its Phase 0 is entirely unchecked — starting
 Android is a decision to set that aside, which is fine if made knowingly.
