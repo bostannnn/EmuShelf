@@ -94,6 +94,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     public static readonly StyledProperty<Visual?> ChromeSourceProperty =
         AvaloniaProperty.Register<MediaShelf3DControl, Visual?>(nameof(ChromeSource));
 
+    /// <summary>
+    /// Multiplies the desktop-tuned framing fill so the media reads larger on a handheld. 1.0 is the
+    /// desktop composition; the Android head raises it. See <see cref="MediaShellRenderer.ShelfCamera"/>.
+    /// </summary>
+    public static readonly StyledProperty<double> FrameFillScaleProperty =
+        AvaloniaProperty.Register<MediaShelf3DControl, double>(nameof(FrameFillScale), 1.0);
+
     private readonly List<LayoutEntry> _layout = [];
     private readonly Dictionary<long, GameViewModel> _gamesByKey = [];
     private readonly HashSet<GameViewModel> _observedGames = [];
@@ -273,6 +280,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         set => SetValue(ChromeSourceProperty, value);
     }
 
+    /// <inheritdoc cref="FrameFillScaleProperty"/>
+    public double FrameFillScale
+    {
+        get => GetValue(FrameFillScaleProperty);
+        set => SetValue(FrameFillScaleProperty, value);
+    }
+
     /// <summary>
     /// Hands the newest couch-UI capture to the renderer, if one has arrived since the last frame.
     /// </summary>
@@ -412,6 +426,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             || change.Property == PitchProperty
             || change.Property == DeparturePoseProperty
             || change.Property == LaunchPoseProperty
+            || change.Property == FrameFillScaleProperty
             || change.Property == BoundsProperty)
         {
             PublishFrame();
@@ -658,6 +673,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             && width == _lastRenderedWidth
             && height == _lastRenderedHeight;
 
+        // Per-frame render cost, for the log-based perf sampler (PerfTrace). Cheap timestamp pair; only
+        // frames that actually draw reach here (the empty/no-op frames returned above).
+        var perfStart = System.Diagnostics.Stopwatch.GetTimestamp();
+
         try
         {
             _renderer.Crt = crt.IsActive && frame is not null
@@ -704,7 +723,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                     frame?.SceneMediaWidth ?? 1f,
                     (uint)fb,
                     width,
-                    height);
+                    height,
+                    (float)(frame?.FillScale ?? 1.0));
 
                 _lastRenderedSnapshot = frame;
                 _lastRenderedWidth = width;
@@ -754,6 +774,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             {
                 RequestNextFrameRendering();
             }
+
+            EmuShelf.App.Diagnostics.PerfTrace.RecordGlFrame(
+                System.Diagnostics.Stopwatch.GetTimestamp() - perfStart);
         }
         catch (Exception exception)
         {
@@ -824,7 +847,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             // Only the tube consumes the backdrop, and resolving it means a theme-brush lookup up the
             // visual tree; a shelf with the effect off has no use for it.
             crt.IsActive ? ResolveBackdrop(accent) : default,
-            TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0);
+            TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0,
+            FrameFillScale);
         RequestNextFrameRendering();
     }
 
@@ -1833,7 +1857,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         IReadOnlyDictionary<long, IImage?[]> Artwork,
         CrtPresentation Crt,
         Vector3 Backdrop,
-        double RenderScaling);
+        double RenderScaling,
+        double FillScale);
 
     private sealed class UploadedCover(LinkedListNode<long> node)
     {

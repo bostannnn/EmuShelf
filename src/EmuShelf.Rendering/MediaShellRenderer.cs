@@ -24,7 +24,14 @@ public sealed class MediaShellRenderer : IDisposable
     /// a large, slowly rotating object against a flat backdrop, which is the worst case for stair
     /// stepping along its silhouette; 2x2 is the cheapest supersample that removes it.
     /// </summary>
-    private const float MaximumSupersampleFactor = 2f;
+    /// <remarks>
+    /// Forced to 1x (native) on Android. A 2x2 supersample shades four times the fragments every
+    /// frame, and during a glide the whole shelf re-runs the full PBR + IBL + shadow shader at that
+    /// rate — the single largest fan/battery cost on a handheld GPU. The shelf's media are small on a
+    /// handheld screen and do not show the silhouette stair-stepping the desktop hero does, so native
+    /// resolution is the right trade there. Desktop and the preview tool keep the 2x supersample.
+    /// </remarks>
+    private static readonly float MaximumSupersampleFactor = OperatingSystem.IsAndroid() ? 1f : 2f;
 
     // Bound the off-screen scene independently of display resolution. At 1080p this selects 1.33x
     // (3.7 MP rather than 8.3 MP); at 1280x800 it still reaches 1.8x, where silhouette filtering is
@@ -38,6 +45,16 @@ public sealed class MediaShellRenderer : IDisposable
     /// on the near corner reads as a toy; ~22 degrees keeps the case's edges close to parallel.</summary>
     private const float FieldOfViewDegrees = 22f;
 
+    /// <summary>
+    /// The enlarged (handheld) shelf uses a narrower, more telephoto field of view. Because the camera
+    /// distance scales with each medium's physical size, the default FOV frames a small cartridge from
+    /// close up — strong perspective, the card "pops" and its shadow crowds the title — while a big keep
+    /// case sits far and flat. A tighter FOV pulls every camera back, flattening perspective uniformly so
+    /// the systems read alike (closer to the flatter keep-case look) and shadows project deeper. Desktop
+    /// keeps <see cref="FieldOfViewDegrees"/>.
+    /// </summary>
+    private const float EnlargedShelfFieldOfViewDegrees = 15f;
+
     // Perspective makes the corner nearest the camera project larger than the diagonal radius at
     // the origin. Keep enough headroom for combined yaw and pitch so a controller-driven turn never
     // clips a cartridge's rim against the render surface.
@@ -49,6 +66,15 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfBaselineY = -0.50f;
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
+
+    /// <summary>How far the enlarged shelf drops the cast shadow below the model's base to open air
+    /// between the two, as a fraction of the framed extent (so the on-screen gap is the same for every
+    /// system, small cartridge or large case). Desktop keeps the tight contact shadow (drop 0).</summary>
+    private const float ShelfShadowDrop = 0.12f;
+
+    /// <summary>How much wider the enlarged shelf's dropped shadow spreads, so it reads as a soft ground
+    /// shadow rather than a hard outline. Desktop keeps scale 1.</summary>
+    private const float ShelfShadowScale = 1.25f;
 
     /// <summary>
     /// Fraction of the viewport height the framed medium's equal-area square fills, when height is
@@ -124,8 +150,26 @@ public sealed class MediaShellRenderer : IDisposable
     /// </remarks>
     private const float ShelfFrameWidthFill = 0.311f;
 
+    /// <summary>
+    /// The most of the viewport height a medium's own silhouette is ever allowed to fill, leaving room
+    /// for its turn. The framing above measures an equal-area square, which for a portrait medium sits
+    /// well below the medium's true height — so a large fill can leave the square comfortably inside the
+    /// frame while the case itself runs off the top and bottom. This caps the fill by the true height so
+    /// that cannot happen. It only bites once the fill is pushed high (the handheld's enlarged shelf); at
+    /// the desktop fill it is slack, so desktop framing and its tests are unchanged.
+    /// </summary>
+    private const float MaxMediaHeightFill = 0.56f;
+
     /// <summary>How far the camera sits above the media band's centre, as a fraction of distance.</summary>
     private const float ShelfCameraElevation = 0.075f;
+
+    /// <summary>
+    /// How far up the frame the media is lifted on the enlarged shelf, as a fraction of the frame's
+    /// half-height. The scene fills all the way to the bottom so the shadow can flow behind the title,
+    /// which would otherwise centre the media too low; this restores it to its intended height without
+    /// re-clipping the shadow. Desktop (fillScale == 1) stays centred.
+    /// </summary>
+    private const float ShelfMediaRise = 0.13f;
 
     /// <summary>How far the focused medium steps toward the camera.</summary>
     /// <remarks>
@@ -166,7 +210,55 @@ public sealed class MediaShellRenderer : IDisposable
     // Each visible item receives its own self-shadow pass. 1024px resolves cartridge-scale moulding
     // more finely than the former 2048px map stretched across the whole seven-item row, avoids one
     // tall case blacking out a neighbour, and keeps the aggregate clear/sample cost reasonable.
-    private const uint KeyShadowSize = 1024;
+    // Android drops to 512px: at native handheld resolution the on-screen case is far smaller than
+    // the desktop TV-scale hero, so 1024 is oversampled, and each pass clears and samples a quarter
+    // of the area — a per-frame saving that compounds across the (already capped) self-shadow passes.
+    private static readonly uint KeyShadowSize = OperatingSystem.IsAndroid() ? 512u : 1024u;
+
+    // Uniform names that carry an array or sampler index used to be interpolated ($"uPanelOrigin[{i}]")
+    // on every panel of every shell every frame — up to three panels across seven shells is hundreds of
+    // throwaway strings a frame, allocated purely to key the shader-location cache and discarded once the
+    // lookup hits. The names are fixed for the program's lifetime, so build them once at type load.
+    private static readonly string[] PanelOriginNames = IndexedUniforms("uPanelOrigin", MaxPanels);
+    private static readonly string[] PanelUEdgeNames = IndexedUniforms("uPanelUEdge", MaxPanels);
+    private static readonly string[] PanelVEdgeNames = IndexedUniforms("uPanelVEdge", MaxPanels);
+    private static readonly string[] PanelNormalNames = IndexedUniforms("uPanelNormal", MaxPanels);
+    private static readonly string[] PanelTintNames = IndexedUniforms("uPanelTint", MaxPanels);
+    private static readonly string[] PanelAspectNames = IndexedUniforms("uPanelAspect", MaxPanels);
+    private static readonly string[] PanelCornerRadiusNames = IndexedUniforms("uPanelCornerRadius", MaxPanels);
+    private static readonly string[] PanelCutCornerNames = IndexedUniforms("uPanelCutCorner", MaxPanels);
+    private static readonly string[] PanelMaxDepthNames = IndexedUniforms("uPanelMaxDepth", MaxPanels);
+    private static readonly string[] PanelHasArtNames = IndexedUniforms("uPanelHasArt", MaxPanels);
+    private static readonly string[] PanelArtScaleNames = IndexedUniforms("uPanelArtScale", MaxPanels);
+    private static readonly string[] PanelArtOffsetNames = IndexedUniforms("uPanelArtOffset", MaxPanels);
+    private static readonly string[] PanelEnabledNames = IndexedUniforms("uPanelEnabled", MaxPanels);
+    private static readonly string[] PanelArtSamplerNames = SamplerUniforms("uPanelArt", MaxPanels);
+    private static readonly string[] ShadowFootprintNames = IndexedUniforms("uShadowFootprint", 7);
+    private static readonly string[] ShadowOpacityNames = IndexedUniforms("uShadowOpacity", 7);
+
+    // "uPrefix[0]", "uPrefix[1]", … — GLSL array elements are addressed by index in the name.
+    private static string[] IndexedUniforms(string prefix, int count)
+    {
+        var names = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            names[index] = $"{prefix}[{index}]";
+        }
+
+        return names;
+    }
+
+    // "uPrefix0", "uPrefix1", … — the panel-art samplers are distinct uniforms, not an array element.
+    private static string[] SamplerUniforms(string prefix, int count)
+    {
+        var names = new string[count];
+        for (var index = 0; index < count; index++)
+        {
+            names[index] = $"{prefix}{index}";
+        }
+
+        return names;
+    }
 
     private readonly GL _gl;
     private readonly GlProgram _program;
@@ -548,7 +640,8 @@ public sealed class MediaShellRenderer : IDisposable
         float mediaWidthInShelfUnits,
         uint targetFramebuffer,
         uint width,
-        uint height)
+        uint height,
+        float fillScale = 1f)
     {
         if (width == 0 || height == 0)
         {
@@ -568,7 +661,7 @@ public sealed class MediaShellRenderer : IDisposable
 
         var aspect = _sceneWidth / (float)_sceneHeight;
         var (view, projection, cameraPosition) =
-            ShelfCamera(aspect, mediaHeightInShelfUnits, mediaWidthInShelfUnits);
+            ShelfCamera(aspect, mediaHeightInShelfUnits, mediaWidthInShelfUnits, fillScale);
         var viewProjection = view * projection;
 
         _shelfDrawItems.Clear();
@@ -587,17 +680,40 @@ public sealed class MediaShellRenderer : IDisposable
                 _discDrawItems.Add(new ShelfDrawItem(item, disc, DiscModel(item, disc.Asset)));
             }
         }
-        DrawShelfShadows(_shelfDrawItems, viewProjection);
+        // On the enlarged (handheld) shelf, drop the contact shadow lower and spread it wider so it reads
+        // as a grounding shadow with air between it and the model, rather than a dark line hugging the
+        // base. The drop is scaled by the framed extent (the same measure the camera distance scales by),
+        // so the gap projects to the SAME on-screen distance for every system — otherwise an absolute drop
+        // is a big gap under a small cartridge and a tiny one under a large case. Desktop (fillScale == 1)
+        // keeps the tight contact shadow its composition is tuned for.
+        var shadowExtent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
+        var shadowDrop = fillScale > 1f ? ShelfShadowDrop * shadowExtent : 0f;
+        var shadowScale = fillScale > 1f ? ShelfShadowScale : 1f;
+        DrawShelfShadows(_shelfDrawItems, viewProjection, shadowDrop, shadowScale);
 
-        foreach (var item in _shelfDrawItems)
+        // On desktop, visibility — not focus — is the quality boundary: removing the depth pass as an
+        // item left centre made its moulding flatten while it was still plainly on screen, so every
+        // visible medium gets its own pass. On a handheld that means up to seven render-target switches
+        // and depth clears a frame, which is the costliest thing to repeat on a tiled mobile GPU. The
+        // edge neighbours' self-shadowing barely reads at native handheld scale, so Android restricts
+        // the self-shadow pass to the focused medium and its two immediate neighbours; the rest keep
+        // the cheaper contact shadow from DrawShelfShadows. SelfShadowWindowCentre returns -1 off
+        // Android, leaving the desktop behaviour untouched.
+        var selfShadowCentre = SelfShadowWindowCentre(_shelfDrawItems);
+        for (var index = 0; index < _shelfDrawItems.Count; index++)
         {
-            // Visibility, not focus, is the quality boundary. Removing the depth pass as an item
-            // left centre made its moulding flatten while it was still plainly on screen. The
-            // scene is already bounded to seven submitted items; games outside that window incur
-            // no pass at all, while every visible medium retains identical material depth.
-            var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
-            DrawShelfItem(
-                item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
+            var item = _shelfDrawItems[index];
+            if (selfShadowCentre < 0 || Math.Abs(index - selfShadowCentre) <= 1)
+            {
+                var keyViewProjection = DrawKeyShadow(item.Resources, item.Model);
+                DrawShelfItem(
+                    item, viewProjection, cameraPosition, keyViewProjection, hasKeyShadow: true);
+            }
+            else
+            {
+                DrawShelfItem(
+                    item, viewProjection, cameraPosition, Matrix4x4.Identity, hasKeyShadow: false);
+            }
         }
 
         foreach (var disc in _discDrawItems)
@@ -611,6 +727,34 @@ public sealed class MediaShellRenderer : IDisposable
         }
 
         Present(targetFramebuffer, width, height);
+    }
+
+    /// <summary>
+    /// The index in <paramref name="items"/> to centre the self-shadow window on, or -1 to shadow
+    /// every item. Off Android it is always -1 (desktop shadows all visible media); on Android it is
+    /// the index of the most-focused item, so the caller can restrict the self-shadow pass to that
+    /// item and its immediate neighbours. FocusAmount peaks at the selection centre and falls off to
+    /// either side, so a single linear scan finds the window centre without sorting or allocating.
+    /// </summary>
+    private static int SelfShadowWindowCentre(IReadOnlyList<ShelfDrawItem> items)
+    {
+        if (!OperatingSystem.IsAndroid() || items.Count == 0)
+        {
+            return -1;
+        }
+
+        var centre = 0;
+        var best = items[0].Item.FocusAmount;
+        for (var index = 1; index < items.Count; index++)
+        {
+            if (items[index].Item.FocusAmount > best)
+            {
+                best = items[index].Item.FocusAmount;
+                centre = index;
+            }
+        }
+
+        return centre;
     }
 
     /// <summary>
@@ -989,25 +1133,50 @@ public sealed class MediaShellRenderer : IDisposable
     /// <param name="mediaWidthInShelfUnits">Turning width of the widest medium in the library view.
     /// Zero frames the band as though it were square, for a caller that has no row to measure.</param>
     internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
-        float aspect, float mediaHeightInShelfUnits, float mediaWidthInShelfUnits)
+        float aspect, float mediaHeightInShelfUnits, float mediaWidthInShelfUnits, float fillScale = 1f)
     {
         var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
         var extent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
-        var fovY = FieldOfViewDegrees * MathF.PI / 180f;
+        var fovDegrees = fillScale > 1f ? EnlargedShelfFieldOfViewDegrees : FieldOfViewDegrees;
+        var fovY = fovDegrees * MathF.PI / 180f;
         var tanY = MathF.Tan(fovY * 0.5f);
+
+        // The fill scale enlarges the framed media above the desktop-tuned fills (1.0 = desktop, >1 pulls
+        // the camera in). A handheld held at arm's length wants the media much larger than the Steam Deck
+        // composition; the desktop launch-lift headroom does not apply there because the emulator takes
+        // the screen the instant a game launches, so a brief lift clip during that transition never shows.
+        // Clamped below 1 so the media can never be framed larger than the viewport itself.
+        var frameFill = MathF.Min(ShelfFrameFill * MathF.Max(fillScale, 0.1f), 0.95f);
+        var widthFill = MathF.Min(ShelfFrameWidthFill * MathF.Max(fillScale, 0.1f), 0.95f);
+
+        // Cap the height fill by the medium's TRUE height, so a portrait case whose equal-area square
+        // still fits the frame cannot itself run off the top and bottom, and so there is always room
+        // above and below for the item's turn and its cast shadow. A medium's real height is
+        // sqrt(band/width) of its square, so limiting the square to MaxMediaHeightFill * sqrt(width/band)
+        // keeps the real height at MaxMediaHeightFill. Only applied when the shelf is scaled up beyond the
+        // desktop composition (fillScale > 1), so desktop framing and its tests are untouched.
+        if (fillScale > 1f)
+        {
+            var widthForFit = mediaWidthInShelfUnits > 0f ? mediaWidthInShelfUnits : band;
+            frameFill = MathF.Min(frameFill, MaxMediaHeightFill * MathF.Sqrt(widthForFit / band));
+        }
 
         // Both axes, and the one that runs out first wins. The same extent is offered to each,
         // because the shape that decides which axis binds is the frame's and not the medium's: a
         // wide viewport runs out of height first and a squat one out of width, whatever is standing
         // in it. No medium is measured against a dimension it happens not to be limited by.
-        var heightDistance = extent / ShelfFrameFill * 0.5f / tanY;
+        var heightDistance = extent / frameFill * 0.5f / tanY;
         var widthDistance = extent
-            / ShelfFrameWidthFill * 0.5f / (tanY * MathF.Max(aspect, 0.05f));
+            / widthFill * 0.5f / (tanY * MathF.Max(aspect, 0.05f));
         var distance = MathF.Max(heightDistance, widthDistance);
 
         var centreY = ShelfBaselineY + (band * 0.5f);
         var cameraPosition = new Vector3(0f, centreY + (distance * ShelfCameraElevation), distance);
-        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, centreY, 0f), Vector3.UnitY);
+        // Lift the media up the frame on the enlarged shelf (see ShelfMediaRise). distance*tanY is the
+        // frame's half-height at the media plane, so lowering the look-at point by that fraction raises
+        // the media by the same fraction of the half-frame.
+        var lookAtY = fillScale > 1f ? centreY - (distance * tanY * ShelfMediaRise) : centreY;
+        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, lookAtY, 0f), Vector3.UnitY);
         // Near/far follow the distance now that it is no longer fixed; the old 0.1..12 pair would
         // clip the shelf's far neighbours once the camera moved in.
         var projection = Matrix4x4.CreatePerspectiveFieldOfView(
@@ -1118,7 +1287,7 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var scope = resources.Panels[index].MaterialIndex;
             _program.Set(
-                $"uPanelEnabled[{index}]", scope < 0 || scope == materialIndex ? 1f : 0f);
+                PanelEnabledNames[index], scope < 0 || scope == materialIndex ? 1f : 0f);
         }
     }
 
@@ -1225,7 +1394,7 @@ public sealed class MediaShellRenderer : IDisposable
         for (var index = 0; index < MaxPanels; index++)
         {
             _whitePixel.Bind((uint)(5 + index));
-            _program.Set($"uPanelArt{index}", 5 + index);
+            _program.Set(PanelArtSamplerNames[index], 5 + index);
         }
     }
 
@@ -1244,7 +1413,9 @@ public sealed class MediaShellRenderer : IDisposable
 
     private void DrawShelfShadows(
         IReadOnlyList<ShelfDrawItem> items,
-        Matrix4x4 viewProjection)
+        Matrix4x4 viewProjection,
+        float shadowDrop = 0f,
+        float shadowScale = 1f)
     {
         _shadowFootprints.Clear();
         var count = Math.Min(items.Count, 7);
@@ -1267,14 +1438,16 @@ public sealed class MediaShellRenderer : IDisposable
                 // The plane's second axis is world Z, so this must follow the item's depth step.
                 new Vector2(item.CentreX, (focus * FocusDepth) + item.LaunchDepthOffset),
                 new Vector2(
-                    MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale,
-                    MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale),
+                    MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale * shadowScale,
+                    MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale * shadowScale),
                 (1f - (focus * 0.14f))
                 * (1f - (positiveLift * 1.5f))
                 * insertionVisibility));
         }
 
-        DrawShadows(_shadowFootprints, viewProjection, planeY: ShelfPlaneY);
+        // Lowering the receiving plane drops the whole shadow away from the model's base, which — with a
+        // slightly larger footprint above — opens air between the two on the enlarged shelf.
+        DrawShadows(_shadowFootprints, viewProjection, planeY: ShelfPlaneY - shadowDrop);
     }
 
     private void DrawShadows(
@@ -1299,9 +1472,9 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var footprint = footprints[index];
             _shadowProgram.Set(
-                $"uShadowFootprint[{index}]",
+                ShadowFootprintNames[index],
                 new Vector4(footprint.Centre, footprint.Radius.X, footprint.Radius.Y));
-            _shadowProgram.Set($"uShadowOpacity[{index}]", footprint.Opacity);
+            _shadowProgram.Set(ShadowOpacityNames[index], footprint.Opacity);
         }
 
         _gl.Enable(EnableCap.Blend);
@@ -1394,22 +1567,22 @@ public sealed class MediaShellRenderer : IDisposable
         {
             var panel = panels[i];
             var placement = panel.Placement;
-            _program.Set($"uPanelOrigin[{i}]", placement.Origin);
-            _program.Set($"uPanelUEdge[{i}]", placement.UEdge);
-            _program.Set($"uPanelVEdge[{i}]", placement.VEdge);
-            _program.Set($"uPanelNormal[{i}]", placement.Normal);
-            _program.Set($"uPanelTint[{i}]", tint);
+            _program.Set(PanelOriginNames[i], placement.Origin);
+            _program.Set(PanelUEdgeNames[i], placement.UEdge);
+            _program.Set(PanelVEdgeNames[i], placement.VEdge);
+            _program.Set(PanelNormalNames[i], placement.Normal);
+            _program.Set(PanelTintNames[i], tint);
             _program.Set(
-                $"uPanelAspect[{i}]",
+                PanelAspectNames[i],
                 placement.UEdge.Length() / MathF.Max(placement.VEdge.Length(), 1e-6f));
-            _program.Set($"uPanelCornerRadius[{i}]", panel.Panel.CornerRadius);
-            _program.Set($"uPanelCutCorner[{i}]", panel.Panel.CutCorner);
+            _program.Set(PanelCornerRadiusNames[i], panel.Panel.CornerRadius);
+            _program.Set(PanelCutCornerNames[i], panel.Panel.CutCorner);
             // The shell's allowance is authored against its thickness on this axis, so one figure
             // covers a 6mm cartridge and a 14mm keep case without being retuned per shell. A panel
             // that has been measured against its own face overrides it outright, in the same
             // object-space units.
             _program.Set(
-                $"uPanelMaxDepth[{i}]",
+                PanelMaxDepthNames[i],
                 panel.Panel.MaxSurfaceDepth
                 ?? definition.PanelDepthFraction
                     * MathF.Abs(Vector3.Dot(resources.Asset.Size, placement.Normal)));
@@ -1420,23 +1593,23 @@ public sealed class MediaShellRenderer : IDisposable
             var art = definition.TakesScrapedArtwork
                 ? _activePanelArt?.Get(panel.ArtIndex)
                 : null;
-            _program.Set($"uPanelHasArt[{i}]", art is not null ? 1f : 0f);
+            _program.Set(PanelHasArtNames[i], art is not null ? 1f : 0f);
 
             // Fit the artwork to the whole printed sheet first, then hand this panel its slice of
             // it. For every flat panel the slice is the whole sheet and this is the old centred
             // sub-rectangle; for a folded label it is what keeps the crease continuous.
             var crop = ArtCrop(panel.Panel.ArtFit, panel.SheetAspect, art?.Aspect ?? 1f);
             _program.Set(
-                $"uPanelArtScale[{i}]", new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
+                PanelArtScaleNames[i], new Vector2(crop.X, crop.Y * panel.ArtSpanScale));
             _program.Set(
-                $"uPanelArtOffset[{i}]",
+                PanelArtOffsetNames[i],
                 new Vector2(
                     (1f - crop.X) * 0.5f,
                     ((1f - crop.Y) * 0.5f) + (crop.Y * panel.ArtSpanOffset)));
             (art?.Texture ?? _whitePixel).Bind((uint)(5 + i));
-            _program.Set($"uPanelArt{i}", 5 + i);
+            _program.Set(PanelArtSamplerNames[i], 5 + i);
             // On for the whole shell unless a scoped panel turns it off again per mesh below.
-            _program.Set($"uPanelEnabled[{i}]", 1f);
+            _program.Set(PanelEnabledNames[i], 1f);
         }
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
@@ -1444,7 +1617,7 @@ public sealed class MediaShellRenderer : IDisposable
         for (var i = panels.Count; i < MaxPanels; i++)
         {
             _whitePixel.Bind((uint)(5 + i));
-            _program.Set($"uPanelArt{i}", 5 + i);
+            _program.Set(PanelArtSamplerNames[i], 5 + i);
         }
     }
 

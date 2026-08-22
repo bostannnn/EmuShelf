@@ -320,6 +320,54 @@ public class LibraryViewStateTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void SavingAnUnchangedViewSkipsTheDiskWrite()
+    {
+        var settings = new CountingSettingsService(new AppSettings
+        {
+            LibraryView = new LibraryViewSettings
+            {
+                IsGridView = false,
+                SelectedSystemId = "gamecube",
+                ListColumns = [new LibraryColumnSetting { Key = "Title", Width = 120 }],
+            },
+        });
+        var service = new LibraryViewStateService(settings, settings.Loaded);
+
+        // Same scalars and a fresh-but-content-identical column list. The list's by-reference default
+        // equality must not be mistaken for a change, so this must not rewrite settings.json.
+        service.Save(new LibraryViewSettings
+        {
+            IsGridView = false,
+            SelectedSystemId = "gamecube",
+            ListColumns = [new LibraryColumnSetting { Key = "Title", Width = 120 }],
+        });
+
+        Assert.Equal(0, settings.UpdateCount);
+    }
+
+    [AvaloniaFact]
+    public void SavingAChangedColumnWidthStillWritesToDisk()
+    {
+        var settings = new CountingSettingsService(new AppSettings
+        {
+            LibraryView = new LibraryViewSettings
+            {
+                ListColumns = [new LibraryColumnSetting { Key = "Title", Width = 120 }],
+            },
+        });
+        var service = new LibraryViewStateService(settings, settings.Loaded);
+
+        // Only a column width differs — exactly the change the list's by-reference equality would miss
+        // if the columns weren't compared element by element.
+        service.Save(new LibraryViewSettings
+        {
+            ListColumns = [new LibraryColumnSetting { Key = "Title", Width = 200 }],
+        });
+
+        Assert.Equal(1, settings.UpdateCount);
+    }
+
+    [AvaloniaFact]
     public void RestoresThePersistedColumnLayout()
     {
         var viewModel = CreateViewModel(new StubViewState(new LibraryViewSettings
@@ -481,6 +529,25 @@ public class LibraryViewStateTests : IDisposable
             {
                 Thread.Sleep(50);
             }
+        }
+    }
+
+    // Records how many times a view save reaches the settings store, so a redundant save (which the
+    // service should short-circuit) can be told apart from one that actually rewrites the file.
+    private sealed class CountingSettingsService(AppSettings initial) : ISettingsService
+    {
+        public AppSettings Loaded { get; private set; } = initial;
+        public int UpdateCount { get; private set; }
+
+        public AppSettings Load() => Loaded;
+
+        public void Save(AppSettings settings) => Loaded = settings;
+
+        public AppSettings Update(Func<AppSettings, AppSettings> update)
+        {
+            UpdateCount++;
+            Loaded = update(Loaded);
+            return Loaded;
         }
     }
 

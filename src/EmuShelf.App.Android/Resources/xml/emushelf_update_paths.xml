@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider path map for AndroidUpdateApplier. <cache-path> is the app-internal cache dir
+     (Context.getCacheDir()); the applier copies the verified update APK to updates/ under it and hands the
+     installer a content:// URI scoped to exactly that subfolder. Nothing else is exposed. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="updates" path="updates/" />
+</paths>

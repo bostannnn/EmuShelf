@@ -36,7 +36,12 @@ public sealed class SingleViewShell : IPlatformShell
 
         InterfaceMode = new AndroidInterfaceModeService();
         Frontend = new AndroidFrontendController();
-        Lifetime = new SingleViewApplicationLifetimeService();
+        // "Quit EmuShelf" from the couch menu finishes the launcher Activity and drops it from the
+        // recents list — the closest thing to a desktop quit on Android. Without a requestClose the
+        // shared lifetime service no-ops, which is why the menu item did nothing. Runs on the UI
+        // thread (the command dispatches there) and no-ops if the Activity is already gone.
+        Lifetime = new SingleViewApplicationLifetimeService(
+            () => MainActivity.Current?.FinishAndRemoveTask());
         // The dialog service needs the live TopLevel for the SAF folder picker; resolve it lazily each
         // call against the current Activity's view, which only exists once the factory has built it and
         // it is attached to the visual tree.
@@ -78,6 +83,12 @@ public sealed class SingleViewShell : IPlatformShell
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
+        // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
+        // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and
+        // sampler are started in the Android application; this supplies the "what" for the "how fast".
+        // View-model-level, so it is wired once here — not rebuilt with each view the factory below produces.
+        global::EmuShelf.App.Diagnostics.PerfTrace.StateProvider = () => viewModel.PerfStateSnapshot;
+
         // Point the Activity's couch key-event bridge at this view model's dispatcher. The Activity
         // owns the key events (Android gamepad buttons never reach Avalonia's KeyDown), so this is how
         // Menu / D-pad / A-B reach the shared UI on device. View-model-level, not view-level, so it is

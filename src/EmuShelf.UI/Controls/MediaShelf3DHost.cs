@@ -62,6 +62,9 @@ public sealed class MediaShelf3DHost : ContentControl
     public static readonly StyledProperty<Avalonia.Visual?> ChromeSourceProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, Avalonia.Visual?>(nameof(ChromeSource));
 
+    public static readonly StyledProperty<double> FrameFillScaleProperty =
+        AvaloniaProperty.Register<MediaShelf3DHost, double>(nameof(FrameFillScale), 1.0);
+
     public static readonly StyledProperty<CrtPresentation> CrtProperty =
         AvaloniaProperty.Register<MediaShelf3DHost, CrtPresentation>(
             nameof(Crt), CrtPresentation.Off);
@@ -166,6 +169,13 @@ public sealed class MediaShelf3DHost : ContentControl
         set => SetValue(ChromeSourceProperty, value);
     }
 
+    /// <inheritdoc cref="MediaShelf3DControl.FrameFillScaleProperty"/>
+    public double FrameFillScale
+    {
+        get => GetValue(FrameFillScaleProperty);
+        set => SetValue(FrameFillScaleProperty, value);
+    }
+
     /// <summary>How hard the scene is pushed through a CRT tube on the way to the screen.</summary>
     public CrtPresentation Crt
     {
@@ -230,6 +240,8 @@ public sealed class MediaShelf3DHost : ContentControl
             scene.TintBackdropWithAccent = TintBackdropWithAccent;
         else if (change.Property == ChromeSourceProperty)
             scene.ChromeSource = ChromeSource;
+        else if (change.Property == FrameFillScaleProperty)
+            scene.FrameFillScale = FrameFillScale;
     }
 
     protected override void OnDetachedFromVisualTree(Avalonia.VisualTreeAttachmentEventArgs e)
@@ -266,6 +278,7 @@ public sealed class MediaShelf3DHost : ContentControl
             Crt = Crt,
             TintBackdropWithAccent = TintBackdropWithAccent,
             ChromeSource = ChromeSource,
+            FrameFillScale = FrameFillScale,
         };
         scene.InitializationSucceeded += OnSceneInitializationSucceeded;
         scene.InitializationFailed += OnSceneInitializationFailed;

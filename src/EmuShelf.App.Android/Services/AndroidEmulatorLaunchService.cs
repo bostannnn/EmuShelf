@@ -38,67 +38,95 @@ public sealed class AndroidEmulatorLaunchService(
     {
         var title = string.IsNullOrWhiteSpace(displayName) ? game.Title : displayName;
 
+        // Preflight off the calling (UI) thread: the existence probe stats removable storage and the
+        // config/library lookups hit SQLite, either of which can hitch the launch frame — and on a slow
+        // SD card risk a short ANR — if run inline. The await resumes on the UI thread (ConfigureAwait
+        // true), so the Context/StartActivity handoff below still runs where Android expects it.
+        var preflight = await Task.Run(() => Preflight(game), cancellationToken).ConfigureAwait(true);
+        if (!preflight.Ok)
+            return new GameLaunchResult(false, $"Cannot launch {title}: {preflight.Failure}");
+
+        var resolution = preflight.Resolution!;
+        var profile = resolution.Profile!;
+
+        // No silent fallback: the emulator resolved here is the one the user intends (their configured
+        // choice, or the maintained-first default for the system). If it is not installed, say so and
+        // stop — do not start a different emulator, which would run with a different save format. The
+        // package is declared in the Android head's <queries> block, so the check works on API 30+.
+        if (!launcher.IsInstalled(profile.PackageName))
+            return new GameLaunchResult(
+                false, $"Cannot launch {title}: {profile.DisplayName} is not installed.");
+
+        // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
+        // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.
+        if (beforeStart is not null)
+            await beforeStart(cancellationToken);
+
+        logger.Information($"Launching {profile.DisplayName} for {game.Title}.");
+        if (launcher.Launch(resolution.Intent!))
+        {
+            // Record the session durably *before* returning: EmuShelf is now a prime kill candidate
+            // (a heavy emulator just took the foreground), so the return signal — or the next startup
+            // if we are killed — completes play-time accrual and save sync from this record.
+            pendingSessions.Set(new PendingPlaySession(
+                game.Id,
+                title,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+            return new GameLaunchResult(true, $"Launched {title} in {profile.DisplayName}");
+        }
+
+        // Installed but the activity handoff was rejected — a real, unexpected failure, so name it
+        // rather than guessing "not installed" or silently trying something else.
+        return new GameLaunchResult(
+            false, $"Cannot launch {title}: {profile.DisplayName} did not start.");
+    }
+
+    /// <summary>
+    /// The synchronous, IO-bound part of a launch — path probe, emulator selection and intent
+    /// resolution — factored out so it can run on a background thread. Picks exactly one emulator (the
+    /// configured choice, else the maintained-first default) and never falls back to another.
+    /// </summary>
+    private LaunchPreflight Preflight(Game game)
+    {
         if (!File.Exists(game.Path) && !Directory.Exists(game.Path))
         {
-            return new GameLaunchResult(
-                false,
-                $"Cannot launch {title}: the game path is unavailable (grant all-files access, or the SD card is not mounted).");
+            return LaunchPreflight.Failed(
+                "the game path is unavailable (grant all-files access, or the SD card is not mounted).");
         }
 
         var configuration = configurations.Get(game.SystemId);
 
-        // Honor the emulator selected in shared settings first, then fall through to maintained
-        // alternatives when that choice cannot be satisfied. RetroArch needs a core path, so a missing
-        // core can still fall back to a standalone emulator instead of making the game unlaunchable.
         var candidates = AndroidEmulatorLaunchProfiles.ForSystem(game.SystemId, configuration?.EmulatorId);
         if (candidates.Count == 0)
-            return new GameLaunchResult(false, $"Cannot launch {title}: no Android emulator supports this system.");
+            return LaunchPreflight.Failed("no Android emulator supports this system.");
+
+        // The single intended emulator: the user's configured choice sorts first, otherwise the
+        // maintained-first default. Everything past this point commits to it.
+        var intended = candidates[0];
 
         // Scope the launch URI's tree to the folder the game was imported from — normally the same folder
         // the emulator was granted (e.g. roms/psx). Without this, the resolver falls back to the game's own
         // sub-folder, which a nested multi-disc game's emulator has no grant to, and the launch is denied.
         var grantRoot = AndroidLibraryGrantRoot.ForGame(library.GetLibraryFolders(game.SystemId), game.Path);
 
-        AndroidLaunchResolution? lastFailure = null;
-        foreach (var candidate in candidates)
-        {
-            var resolution = AndroidLaunchResolver.Resolve(
-                game.SystemId,
-                game.Path,
-                preferredEmulatorId: candidate.Id,
-                retroArchCorePath: configuration?.CorePath,
-                emulatorGrantRoot: grantRoot);
+        var resolution = AndroidLaunchResolver.Resolve(
+            game.SystemId,
+            game.Path,
+            preferredEmulatorId: intended.Id,
+            retroArchCorePath: configuration?.CorePath,
+            emulatorGrantRoot: grantRoot);
 
-            if (!resolution.Success)
-            {
-                lastFailure = resolution;
-                continue;
-            }
+        return resolution.Success
+            ? LaunchPreflight.Ready(resolution)
+            : LaunchPreflight.Failed(resolution.FailureReason ?? "the chosen emulator could not accept it.");
+    }
 
-            // Pull cloud saves (if wired) before the emulator can read them, mirroring desktop ordering.
-            if (beforeStart is not null)
-                await beforeStart(cancellationToken);
+    private readonly record struct LaunchPreflight(AndroidLaunchResolution? Resolution, string? Failure)
+    {
+        public bool Ok => Resolution is not null;
 
-            logger.Information($"Launching {resolution.Profile!.DisplayName} for {game.Title}.");
-            if (launcher.Launch(resolution.Intent!))
-            {
-                // Record the session durably *before* returning: EmuShelf is now a prime kill candidate
-                // (a heavy emulator just took the foreground), so the return signal — or the next startup
-                // if we are killed — completes play-time accrual and save sync from this record.
-                pendingSessions.Set(new PendingPlaySession(
-                    game.Id,
-                    title,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
-                return new GameLaunchResult(true, $"Launched {title} in {resolution.Profile!.DisplayName}");
-            }
+        public static LaunchPreflight Failed(string reason) => new(null, reason);
 
-            return new GameLaunchResult(
-                false,
-                $"Could not start {resolution.Profile!.DisplayName} — is it installed?");
-        }
-
-        return new GameLaunchResult(
-            false,
-            $"Cannot launch {title}: {lastFailure?.FailureReason ?? "no configured emulator could accept it."}");
+        public static LaunchPreflight Ready(AndroidLaunchResolution resolution) => new(resolution, null);
     }
 }
