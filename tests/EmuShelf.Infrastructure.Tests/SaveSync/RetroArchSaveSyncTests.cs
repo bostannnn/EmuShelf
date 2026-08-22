@@ -118,6 +118,133 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task CorelessOverrideSyncsAnExactFolder_ForWatermelonDsShapedSaves()
+    {
+        // WatermelonDS has no libretro core but writes <game>.srm into a flat folder. Pointed at that
+        // folder as an override, the RetroArch provider must sync it under nds/ keys without requiring
+        // a core (see docs/android-save-sync-model.md). Before this it threw "No libretro core."
+        var folder = Path.Combine(BaseDirectory, "Watermelon-DS");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Trauma Center - Under the Knife (USA).srm"), "ds save");
+        await File.WriteAllTextAsync(Path.Combine(folder, "The World Ends With You (USA).srm"), "ds save");
+
+        var provider = new RetroArchSaveLocationProvider(
+            "nds",
+            corePath: null,
+            installationDirectory: BaseDirectory,
+            directoryOverride: folder,
+            homeDirectory: Path.Combine(BaseDirectory, "unused-home"),
+            isWindows: false,
+            isMacOS: false);
+        var info = await provider.GetSaveInfoAsync();
+
+        Assert.Equal(folder, info.SaveDirectory);
+        Assert.False(info.SortedByCore);
+        Assert.True(info.IsExclusive);
+        Assert.Equal(
+            [
+                "nds/The World Ends With You (USA).srm",
+                "nds/Trauma Center - Under the Knife (USA).srm",
+            ],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.NotNull(provider.ResolveUnit("nds/Trauma Center - Under the Knife (USA).srm"));
+    }
+
+    [Fact]
+    public async Task PlayStationBeetleCard_SharesDuckStationsFileTitleCardKey()
+    {
+        // A RetroArch PS1 core (Beetle PSX) writes <game>.srm; DuckStation writes <game>_1.mcd for a
+        // file-title per-game card. Both are the same raw 128 KB card, so for PlayStation this provider
+        // emits DuckStation's file-title card key — verified in
+        // DuckStationSaveSyncTests.FileTitleCardsSyncByExactFileNameAndReportTheirPortabilityConstraint
+        // ("playstation/per-game/file-title/<name>_<slot>.mcd") — so a card round-trips desktop
+        // DuckStation <-> Android Beetle. See docs/android-save-sync-model.md.
+        var folder = Path.Combine(BaseDirectory, "Beetle-PSX");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Metal Gear Solid (USA).srm"), "ps1 card");
+        await File.WriteAllTextAsync(Path.Combine(folder, "Chrono Cross (USA).srm"), "ps1 card");
+
+        var provider = CreatePlayStationBeetleProvider(folder);
+
+        Assert.Equal(
+            [
+                "playstation/per-game/file-title/Chrono Cross (USA)_1.mcd",
+                "playstation/per-game/file-title/Metal Gear Solid (USA)_1.mcd",
+            ],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+
+        // The key resolves back onto Beetle's own .srm card (existing file), byte-identical to the
+        // DuckStation card the same key restores as <name>_1.mcd on the desktop side.
+        Assert.Equal(
+            Path.Combine(folder, "Metal Gear Solid (USA).srm"),
+            provider.ResolveUnit("playstation/per-game/file-title/Metal Gear Solid (USA)_1.mcd")!.Path);
+    }
+
+    [Fact]
+    public void PlayStationCardKey_FreshRestoreLandsOnTheCoresDefaultSrm()
+    {
+        // Pulling a desktop DuckStation card onto a Thor that has never made this card: the key must
+        // land on Beetle's default <name>.srm so the core picks it up.
+        var folder = Path.Combine(BaseDirectory, "Beetle-empty");
+        Directory.CreateDirectory(folder);
+
+        var location = CreatePlayStationBeetleProvider(folder)
+            .ResolveUnit("playstation/per-game/file-title/Suikoden II (USA)_1.mcd");
+
+        Assert.NotNull(location);
+        Assert.Equal(Path.Combine(folder, "Suikoden II (USA).srm"), location!.Path);
+    }
+
+    [Fact]
+    public void PlayStationCardKey_RejectsAMalformedOrForeignKey()
+    {
+        var provider = CreatePlayStationBeetleProvider(Path.Combine(BaseDirectory, "Beetle-reject"));
+        Directory.CreateDirectory(Path.Combine(BaseDirectory, "Beetle-reject"));
+
+        // Not the file-title card shape, a traversal attempt, and another system's bare key are all refused.
+        Assert.Null(provider.ResolveUnit("playstation/per-game/file-title/_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/per-game/file-title/../escape_1.mcd"));
+        Assert.Null(provider.ResolveUnit("playstation/Metal Gear Solid (USA).srm"));
+    }
+
+    private RetroArchSaveLocationProvider CreatePlayStationBeetleProvider(string folder) =>
+        new(
+            "playstation",
+            corePath: "/data/data/com.retroarch.aarch64/cores/mednafen_psx_hw_libretro_android.so",
+            installationDirectory: BaseDirectory,
+            directoryOverride: folder,
+            homeDirectory: Path.Combine(BaseDirectory, "unused-home"),
+            isWindows: false,
+            isMacOS: false);
+
+    [Fact]
+    public async Task AndroidCoreFileNameStillNamesTheSortedByCoreSaveFolder()
+    {
+        // RetroArch's Android cores are "<core>_libretro_android.so". The "_android" build tag must be
+        // dropped when naming the core, or the sorted-by-core folder cannot be resolved and every
+        // RetroArch system on Android silently syncs nothing (measured on the Thor). See
+        // docs/android-save-sync-model.md.
+        var installation = Path.Combine(BaseDirectory, "RetroArch-android");
+        WriteConfig(installation, savefileDirectory: ":\\saves", extra: ["sort_savefiles_enable = \"true\""]);
+        var sorted = Path.Combine(installation, "saves", "mGBA");
+        Directory.CreateDirectory(sorted);
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Metroid Fusion (USA).srm"), "gba save");
+
+        var provider = CreateProvider(
+            "gba",
+            "/data/data/com.retroarch.aarch64/cores/mgba_libretro_android.so",
+            installation);
+        var info = await provider.GetSaveInfoAsync();
+
+        Assert.Equal("mGBA", info.Core.Name);
+        Assert.Equal(sorted, info.SaveDirectory);
+        Assert.True(info.SortedByCore);
+        Assert.Equal(
+            ["gba/Metroid Fusion (USA).srm"],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+    }
+
+    [Fact]
     public async Task ASharedCoreFolderClaimsOnlyThisSystemsLibrarySavesEvenWhenSortedByCore()
     {
         // mGBA serves both Game Boy Advance and Game Boy Color, so with "sort saves by core" on both
