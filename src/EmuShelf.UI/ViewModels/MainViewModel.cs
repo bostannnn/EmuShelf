@@ -961,14 +961,19 @@ public partial class MainViewModel : ViewModelBase
     /// draws opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
     public bool ShowShelfFlatBackdrop => !ShelfSceneSupported;
 
+    /// <summary>The library size, cached on the UI thread from <see cref="Games"/>'s CollectionChanged so
+    /// the pool-thread perf sampler never reads the UI-owned collection. Volatile for cross-thread reads.</summary>
+    private volatile int _perfGamesCount;
+
     /// <summary>
     /// A one-line snapshot of the couch state for the log-based perf sampler (<see cref="PerfTrace"/>):
     /// current layout, CRT toggle, the active render path, the selected platform/scope, and the visible
-    /// library size. Read off the UI thread by the sampler, so it only performs simple property reads.
+    /// library size. Read off the UI thread by the sampler, so it only reads primitives and cached values
+    /// (never the UI-owned <see cref="Games"/> collection directly).
     /// </summary>
     public string PerfStateSnapshot =>
         $"layout={GamepadLayout} crt={(CrtScreenEffect ? "on" : "off")} path={PerfRenderPath} " +
-        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={Games.Count}";
+        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={_perfGamesCount}";
 
     private string PerfRenderPath => GamepadLayout switch
     {
@@ -1611,7 +1616,14 @@ public partial class MainViewModel : ViewModelBase
 
         // Keep the gamepad row projection in lockstep with Games no matter how Games is changed
         // (reload, filter, or a direct test mutation), so the virtualized row grid never goes stale.
-        Games.CollectionChanged += (_, _) => BuildGamepadRows();
+        // Also cache the count for the perf sampler, which runs on a pool thread and must not read the
+        // UI-owned collection directly (see PerfStateSnapshot).
+        Games.CollectionChanged += (_, _) =>
+        {
+            _perfGamesCount = Games.Count;
+            BuildGamepadRows();
+        };
+        _perfGamesCount = Games.Count;
 
         _searchDebounce = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(SearchDebounceMs) };
         _searchDebounce.Tick += (_, _) =>

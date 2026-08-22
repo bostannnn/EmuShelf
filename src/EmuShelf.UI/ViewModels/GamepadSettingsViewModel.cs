@@ -1399,7 +1399,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
             if (_androidEmulatorChoices.TryGetValue(row.SystemId, out var choices) && choices.Count > 0)
                 yield return AndroidEmulatorChoiceRow(row);
-            if (row.HasSyncLibrary)
+            // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
+            // the sync always dead-ends — hide the row on the handheld (the import overlay already
+            // filters playstation3 the same way).
+            if (row.HasSyncLibrary && !OperatingSystem.IsAndroid())
             {
                 // Same command and stable id as Desktop's PS3-row "Sync RPCS3 library" button. PS3 is
                 // skipped by "Rescan all consoles" and imported only from RPCS3's game list, so this is
