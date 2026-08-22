@@ -5,6 +5,13 @@ This is the data-model half of Milestone **E-android** (see [android-port-plan.m
 The transport half (managed Google Drive, OAuth) lives in
 [cloud-sync-portability-plan.md](cloud-sync-portability-plan.md) and is unchanged by this document.
 
+> **Update 2026-08-22 — the Android DuckStation save provider has been removed.** DuckStation's
+> Android memory cards are owner-only (`-rw-------`) and unreadable by EmuShelf, so PS1 on Android now
+> syncs **only** via a RetroArch PS1 core (Beetle PSX). Every reference below to "DuckStation ✅ landed",
+> the Android DuckStation provider, or DuckStation as a fixed-root PS1 path is **historical** — see
+> DECISIONS 2026-08-22 ("Removed the Android DuckStation save provider; PS1 on Android syncs only via
+> Beetle PSX"). The desktop DuckStation provider is unchanged.
+
 ## The core principle (what the industry does)
 
 Two mature, shipping solutions were checked and they agree, so EmuShelf follows the same shape:
@@ -157,7 +164,10 @@ The model above is mostly shared code. The Android head must:
    (`allowManagedTransport: false`). Rebuild them to offer the managed Drive transport, the
    `SyncSaveStates` toggle, and the cross-arch **override** prompt.
 5. Transport plumbing (own doc): second public OAuth client + custom-scheme redirect, Android
-   `IProtectedTextStore` (Keystore) for the refresh token, force `TransportKind = GoogleDrive`.
+   `IProtectedTextStore` (Keystore) for the refresh token. (Both were simplified in practice — see
+   slice 5 below: Android reuses the desktop OAuth client over a loopback redirect, and no
+   Android-specific `TransportKind` force is needed — the connect flow writes `GoogleDrive` on every
+   platform and `IsConfigured` already requires it, rclone having been retired.)
 
 The SAF-backed `ILocalSaveEndpoint` rewrite is **not needed for the Thor** (all-files reaches
 `Android/data/<pkg>` for read+write, including `Directory.Move`); it reverts to a portability concern
