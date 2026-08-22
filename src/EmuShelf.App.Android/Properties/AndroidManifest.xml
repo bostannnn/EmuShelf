@@ -8,6 +8,11 @@
   <!-- INTERNET is harmless and lets the metadata/achievement HttpClients that the shared composition
        root builds exist without a runtime surprise later. -->
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- In-app update: the applier hands a downloaded, checksum-verified EmuShelf APK to the system package
+       installer (AndroidUpdateApplier). Sideload self-update needs this permission; the OS still shows the
+       user an install confirmation, and the first time also an "allow unknown apps" prompt. See the About →
+       Check for updates flow and the package-android release APK in .github/workflows/build.yml. -->
+  <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
   <!-- All-files access: the SAF folder picker resolves to a real path only when EmuShelf itself can
        read it, and the shared FolderScanner/disc readers do random access over multi-gigabyte files by
        absolute path. Declaring it is also what makes `appops set … MANAGE_EXTERNAL_STORAGE allow` stick
@@ -35,5 +40,18 @@
   </queries>
   <application android:label="EmuShelf"
                android:allowBackup="false"
-               android:hardwareAccelerated="true" />
+               android:hardwareAccelerated="true">
+    <!-- Mints the content:// URI the package installer reads the downloaded update APK from. The installer
+         is a separate process, so a file:// URI is rejected since API 24 — only a granted FileProvider URI
+         works. Authority mirrors AndroidUpdateApplier.FileProviderAuthority; exported=false + a per-URI read
+         grant keeps it reachable only by whoever we hand the intent to. Uses the AndroidX Core FileProvider
+         class shipped by Xamarin.AndroidX.Core (referenced by the head). -->
+    <provider android:name="androidx.core.content.FileProvider"
+              android:authorities="com.emushelf.app.updateprovider"
+              android:exported="false"
+              android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                 android:resource="@xml/emushelf_update_paths" />
+    </provider>
+  </application>
 </manifest>

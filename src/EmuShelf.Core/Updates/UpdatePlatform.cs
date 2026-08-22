@@ -18,6 +18,12 @@ public static class UpdatePlatform
             return "EmuShelf-linux-x64.AppImage";
         if (OperatingSystem.IsMacOS() && RuntimeInformation.OSArchitecture == Architecture.Arm64)
             return "EmuShelf-macos-arm64.zip";
+        // The Android head ships one arm64 APK (package-android in build.yml collects
+        // EmuShelf-android-arm64.apk + .sha256). Unlike the desktop artifacts the applier does not swap
+        // files itself — it hands the verified APK to the system package installer — but the check and
+        // the checksum-verified download are the same code path, so it just needs the asset name here.
+        if (OperatingSystem.IsAndroid() && RuntimeInformation.OSArchitecture == Architecture.Arm64)
+            return "EmuShelf-android-arm64.apk";
         return null;
     }
 
