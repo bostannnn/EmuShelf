@@ -2077,6 +2077,25 @@ breaks the whole-solution macOS build/test loop.
           frame for ~40 tiles — the dominant grid cost in the fan-on-scroll investigation) is dropped via
           a `reduced-effects` class gated on `IsReducedEffectsPlatform`, which also collapses one overdraw
           layer. Desktop keeps the depth. See DECISIONS 2026-08-22.
+    - [x] **S2 — couch grid vertical scroll glides instead of jumping** (2026-08-23, measured on the Thor).
+          The couch grid "jumped" one whole row per d-pad step / tap-to-focus with no glide, and felt
+          identical on `-c Release` — so it was never throughput. Cause: the vertical follow-scroll ease
+          (`GamepadShellView.RevealFocusedGame`) self-reposted at `DispatcherPriority.Render`; on Android's
+          compositor consecutive Render jobs drain within one paint, so every ease step ran before a single
+          frame showed. Fixed by driving the glide from `TopLevel.RequestAnimationFrame` (one step per
+          rendered frame, frame-rate-independent ease) — the continuous-offset model NeoStation (Flutter)
+          and Cocoon use. Verified on-device via a temporary glide-cadence trace: glide frames are now ~13 ms
+          (~60 fps). See DECISIONS 2026-08-23. **Remaining (deferred, own item below):** one heavy render
+          frame per row scrolled — the `VirtualizingStackPanel` realizing a row of 5 deep tile trees costs
+          ~120 ms (Debug) / ~66 ms (Release) as a single mid-glide spike. Still felt as a slight catch.
+    - [ ] **S3 — cut couch grid row-realization cost** (backlog; the remaining scroll jank after S2). The
+          per-row realize/paint of 5 heavy `GamepadGameButtonTheme` tiles is the last scroll hitch (measured
+          ~66 ms/row in Release). Levers, cheapest first: (a) **AOT** (`RunAOTCompilation` +
+          profiled AOT) — zero visual change, needs the Android NDK `26.3.11579264` (not yet installed on the
+          build Mac); (b) **lighten the tile visual tree / collapse overdraw** — bigger win but a look
+          tradeoff (get sign-off); (c) confirm whether the nested per-row `ItemsControl` re-instantiates its
+          5 tiles on recycle rather than rebinding, and if so give the grid true tile recycling. Measure each
+          with the S2 glide-cadence trace approach (`adb logcat -s EmuShelfPerf`).
     - Landed 2026-08-22: Android now hosts the UI via `IActivityApplicationLifetime.MainViewFactory` (fresh
       view per activity) instead of `ISingleViewApplicationLifetime.MainView`, clearing Avalonia's
       "MainView is not fully supported on Android" warning (was 33×/day on the Thor). Verified on-device.

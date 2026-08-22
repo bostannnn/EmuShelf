@@ -10485,3 +10485,36 @@ false, launch/exit sync a silent no-op) until the user selects Beetle PSX. Trade
 DuckStation still writes group-readable cards (e.g. a pre-reinstall install) loses that best-effort sync;
 the reliable, non-degrading path is Beetle. Save states were never wired for the Android DuckStation
 provider, so nothing is lost there.
+
+## 2026-08-23 — Couch grid vertical glide is driven by RequestAnimationFrame, not a Dispatcher repost
+
+The gamepad grid's vertical follow-scroll (`GamepadShellView.RevealFocusedGame` → the ease loop) is now
+ticked by `TopLevel.RequestAnimationFrame` — one step per rendered frame — instead of self-reposting at
+`DispatcherPriority.Render`. Symptom that drove the change: on Android the grid "jumped" one whole row per
+d-pad step / tap-to-focus with no visible glide, and it felt identical on a `-c Release` build (so it was
+never a throughput/overdraw problem — it was that the animation wasn't playing). On the Android compositor,
+consecutive Render-priority Dispatcher jobs are drained back-to-back within a single paint, so all ~20 ease
+steps executed before one frame was shown; the compositor only ever presented the settled offset, reading
+as a per-row teleport. Desktop happened to yield a paint between posts, so it glided there and the tests
+passed — masking the defect. RequestAnimationFrame fires exactly once immediately before each rendered
+frame, guaranteeing one step per paint on every platform; this is the continuous-offset model a
+Flutter/canvas frontend (NeoStation, Cocoon) uses for buttery grid scrolling.
+
+Ease is now frame-rate independent (closes `GamepadScrollDecayPerSecond`≈19/s of the remaining distance,
+scaled by the real delta between vsync callbacks) so the feel is identical at 60/120 Hz; a non-advancing
+headless frame clock falls back to one 60 Hz frame so a glide can't stall on the sub-pixel floor. The
+target is still measured position-relative to a realized row (no absolute `rowIndex*rowHeight`, preserving
+DECISIONS 2026-08-05) and the step loop still does pure offset arithmetic with no per-frame visual-tree
+reads. Test impact: the headless pump helpers in `GamepadGridSelectorTests` now call
+`AvaloniaHeadlessPlatform.ForceRenderTimerTick()` to drive real compositor frames (the glide no longer
+advances on a bare Dispatcher pump); assertions are unchanged.
+
+**On-device confirmation (Thor, 2026-08-23).** A temporary glide-cadence trace (per-glide frame count +
+dtMin/dtAvg/dtMax to `EmuShelfPerf`, since removed) showed the glide now runs at ~13 ms/frame (~60 fps) and
+the synchronous focus work is 0.1 ms — the animation is smooth. It also surfaced the *next* bottleneck,
+which this change does not address: a single heavy render frame per row scrolled — the
+`VirtualizingStackPanel` realizing a row of 5 deep couch tiles — costs **~120 ms on Debug and ~66 ms on
+Release** as one mid-glide spike, still felt as a slight catch. That is throughput (row realization/paint),
+tracked as ROADMAP Milestone S3; candidate levers are AOT (needs the Android NDK), lightening the tile
+visual tree, and confirming/adding true per-row tile recycling. The earlier "Release feels identical"
+report predates this fix — it was measuring the animation-driver defect, which dominated both builds.
