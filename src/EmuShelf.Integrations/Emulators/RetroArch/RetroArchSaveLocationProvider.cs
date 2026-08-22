@@ -181,7 +181,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     // The extension a RetroArch PS1 core writes its card with; a fresh restore lands here so the core
     // picks the card up. An existing card is read under whatever name it already has (see the probe).
     private const string PlayStationCardExtension = ".srm";
-    private static readonly string[] PlayStationCardExtensions = [".srm", ".mcr", ".mcd", ".bin", ".ps"];
+    // The recognized raw-memory-card extensions, probed to locate an existing card. Deliberately only
+    // real card formats (.srm RetroArch/Beetle, .mcr mednafen/ePSXe, .mcd DuckStation/PCSXR) — not
+    // catch-all extensions like .bin, which would risk a restore overwriting a non-card file.
+    private static readonly string[] PlayStationCardExtensions = [".srm", ".mcr", ".mcd"];
 
     // RetroArch's own artifacts in a save folder: save states (Game.state, .state1, .state.auto),
     // input replays, screenshots, and configuration. Everything else named after a game is that
