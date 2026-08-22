@@ -70,6 +70,14 @@ public sealed record RetroArchCore(string FileName, string? Name)
 
         var fileName = Path.GetFileName(corePath.Trim());
         var coreId = Path.GetFileNameWithoutExtension(fileName);
+        // RetroArch's Android cores are "<core>_libretro_android.so"; the "_android" build tag is not
+        // part of the core identity (desktop is "<core>_libretro.so/.dll"), so drop it before the
+        // shared "_libretro" strip. Without this the id stays "mgba_libretro_android", matches neither
+        // an info entry ("mgba_libretro.info") nor KnownCoreNames, leaving the core unnamed — and a
+        // sorted-by-core save folder that cannot be named syncs nothing. See docs/android-save-sync-model.md.
+        const string androidTag = "_android";
+        if (coreId.EndsWith(androidTag, StringComparison.OrdinalIgnoreCase))
+            coreId = coreId[..^androidTag.Length];
         const string suffix = "_libretro";
         if (coreId.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
             coreId = coreId[..^suffix.Length];
@@ -159,6 +167,24 @@ public sealed record RetroArchContentDirectories(string? Cheats, string? SaveSta
 public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 {
     private const string ConfigFileName = "retroarch.cfg";
+
+    // PlayStation battery saves cross emulator: DuckStation and a RetroArch PS1 core (Beetle PSX) both
+    // write the same raw 128 KB memory card, so for PlayStation this provider mirrors DuckStation's
+    // "file-title" per-game card cloud key — playstation/per-game/file-title/<name>_1.mcd — instead of
+    // the bare "<system>/<file>.srm" every other system uses. Both emulators then key one game to one
+    // cloud entry and a card round-trips desktop DuckStation ↔ Android Beetle. Requires DuckStation
+    // "Separate Card Per Game (File Title)" and matching ROM file names on each machine (a setup-
+    // checklist item, not a converter — the payload is identical). See docs/android-save-sync-model.md.
+    private const string PlayStationSystemId = "playstation";
+    private const string PlayStationCardKeyPrefix = "per-game/file-title/";
+    private const string PlayStationCardKeySuffix = "_1.mcd";
+    // The extension a RetroArch PS1 core writes its card with; a fresh restore lands here so the core
+    // picks the card up. An existing card is read under whatever name it already has (see the probe).
+    private const string PlayStationCardExtension = ".srm";
+    // The recognized raw-memory-card extensions, probed to locate an existing card. Deliberately only
+    // real card formats (.srm RetroArch/Beetle, .mcr mednafen/ePSXe, .mcd DuckStation/PCSXR) — not
+    // catch-all extensions like .bin, which would risk a restore overwriting a non-card file.
+    private static readonly string[] PlayStationCardExtensions = [".srm", ".mcr", ".mcd"];
 
     // RetroArch's own artifacts in a save folder: save states (Game.state, .state1, .state.auto),
     // input replays, screenshots, and configuration. Everything else named after a game is that
@@ -272,8 +298,23 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
             return null;
 
-        var fileName = unitId[UnitIdPrefix.Length..];
+        var localId = unitId[UnitIdPrefix.Length..];
         var info = Resolve(CancellationToken.None);
+        string fileName;
+        if (IsPlayStation)
+        {
+            // Land the shared PS1 card key on this core's own card file: read the existing card
+            // whatever its extension, and for a fresh restore create the core's default <base>.srm.
+            if (PlayStationCardBaseName(localId) is not { } baseName)
+                return null;
+            fileName = FindExistingPlayStationCard(info.SaveDirectory, baseName)
+                ?? baseName + PlayStationCardExtension;
+        }
+        else
+        {
+            fileName = localId;
+        }
+
         if (!IsSafeSaveFileName(fileName) || !BelongsToThisSystem(fileName, info))
             return null;
 
@@ -281,6 +322,42 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             Path.Combine(info.SaveDirectory, fileName),
             info.SaveDirectory,
             SaveUnitKind.File);
+    }
+
+    private bool IsPlayStation => string.Equals(_systemId, PlayStationSystemId, StringComparison.Ordinal);
+
+    // The shared cross-emulator card key portion for a local PS1 save file (<base>.<ext>): mirrors the
+    // key DuckStation emits for a file-title per-game card, so the two emulators meet at one cloud entry.
+    private static string PlayStationCardLocalId(string fileName) =>
+        PlayStationCardKeyPrefix + Path.GetFileNameWithoutExtension(fileName) + PlayStationCardKeySuffix;
+
+    // The base game name inside such a key, or null when the id is not a PS1 card key.
+    private static string? PlayStationCardBaseName(string localId)
+    {
+        if (!localId.StartsWith(PlayStationCardKeyPrefix, StringComparison.Ordinal) ||
+            !localId.EndsWith(PlayStationCardKeySuffix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var baseName = localId[PlayStationCardKeyPrefix.Length..^PlayStationCardKeySuffix.Length];
+        return baseName.Length == 0 || baseName.Contains('/') || baseName.Contains('\\') || baseName.Contains('\0')
+            ? null
+            : baseName;
+    }
+
+    // A card already on disk for this game keeps its own name (the core may write .srm or .mcr); only a
+    // fresh restore falls back to the default extension. Returns the file name, or null when none exists.
+    private static string? FindExistingPlayStationCard(string saveDirectory, string baseName)
+    {
+        foreach (var extension in PlayStationCardExtensions)
+        {
+            var candidate = baseName + extension;
+            if (File.Exists(Path.Combine(saveDirectory, candidate)))
+                return candidate;
+        }
+
+        return null;
     }
 
     private IReadOnlyList<SaveUnit> GetSaveUnits(CancellationToken cancellationToken)
@@ -296,7 +373,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             cancellationToken.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(path);
             if (IsSafeSaveFileName(fileName) && BelongsToThisSystem(fileName, info))
-                units.Add(new SaveUnit(UnitIdPrefix + fileName, fileName, SaveUnitKind.File));
+            {
+                var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
+                units.Add(new SaveUnit(UnitIdPrefix + localId, fileName, SaveUnitKind.File));
+            }
         }
 
         return units;
@@ -349,15 +429,27 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     private RetroArchSaveInfo Resolve(CancellationToken cancellationToken, bool probePerGameOverride = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // An override that is not RetroArch's configuration folder is taken as the save folder itself:
+        // the user pointed at the exact directory, which is more specific than anything retroarch.cfg
+        // could tell us — and it needs no core, because there is no core-named folder to resolve.
+        // This is how a coreless standalone emulator that writes RetroArch-shaped saves (WatermelonDS —
+        // <game>.srm in a flat folder) syncs: point this provider at that folder. Resolving here before
+        // the core check keeps such a system from failing for lack of a libretro core it never uses.
+        // See docs/android-save-sync-model.md.
+        if (_directoryOverride is not null && !File.Exists(Path.Combine(_directoryOverride, ConfigFileName)))
+            return new RetroArchSaveInfo(
+                _directoryOverride,
+                _core ?? new RetroArchCore(
+                    Path.GetFileName(Path.TrimEndingDirectorySeparator(_directoryOverride)), Name: null),
+                SortedByCore: false,
+                IsExclusive: true);
+
+        // From here the configuration decides the folder, and naming a sorted-by-core folder needs the
+        // core — so a core is required only on this path, not for an exact-folder override above.
         var core = _core ?? throw new RetroArchConfigurationFormatException(
             "No libretro core is configured for this system, so EmuShelf cannot tell which of " +
             "RetroArch's save folders belongs to it.");
-
-        // An override that is not RetroArch's configuration folder is taken as the save folder
-        // itself: the user has pointed at the exact directory, which is more specific than
-        // anything retroarch.cfg could tell us.
-        if (_directoryOverride is not null && !File.Exists(Path.Combine(_directoryOverride, ConfigFileName)))
-            return new RetroArchSaveInfo(_directoryOverride, core, SortedByCore: false, IsExclusive: true);
 
         var configPath = ResolveConfigPath();
         var configDirectory = Path.GetDirectoryName(configPath)!;

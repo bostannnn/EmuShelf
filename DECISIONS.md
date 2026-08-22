@@ -10131,6 +10131,73 @@ import-time evidence would suppress the SHA-1 the catalogue keys on. The small r
 hash-based relocation detection on folder replacement. Accepted cost: a DS/GBA folder replacement no
 longer verifies moved files by hash before enrichment runs — the same limitation Dreamcast already has.
 
+## 2026-08-21 — RetroArch save sync auto-locates its config on Android (no manual folder)
+
+On Android, EmuShelf never read RetroArch's `retroarch.cfg`, so every RetroArch system
+(`AppBootstrapper.ResolveAndroidEmulator`) returned a null installation and `CanSyncSystem` was false —
+a launch/exit sync was a silent no-op. The plan was to have the user set each RetroArch system's save
+folder by hand in the gamepad Saves UI. Measured on the Thor (Android 13, `com.retroarch.aarch64`) this
+is unnecessary: RetroArch keeps `retroarch.cfg` in its package files dir
+(`/storage/emulated/0/Android/data/<pkg>/files/retroarch.cfg`), the file is **group-readable**
+(`-rw-rw---- ext_data_rw`, verified readable by a non-owner), and its `savefile_directory` points at a
+normal shared-storage folder (`/storage/emulated/0/RetroArch/saves`) EmuShelf reads freely.
+
+So RetroArch now auto-locates like the fixed-root emulators: `ResolveAndroidEmulator` hands the provider
+RetroArch's package files dir as the installation directory (so `ResolveConfigPath` finds the real cfg)
+plus the DB-configured core, and the existing provider logic resolves the per-core save folder, filters a
+shared core (mGBA → GBA and GBC) by the system's own library file names, and emits **system-scoped**
+battery keys (`gba/<game>.srm` — never core- or emulator-scoped). No per-system folder override is
+needed. Two supporting fixes: `RetroArchCore.ForCorePath` drops the `_android` build tag from
+`<core>_libretro_android.so` (otherwise the core is unnameable and a sorted-by-core folder resolves to
+nothing), and the Android installation carries `CorePath` so `IsCoreSharedAcrossSystems` can pair GBA/GBC.
+A RetroArch-served system with no configured core (e.g. `nds` left empty) still sits out until its core is
+set. Requires a device rebuild to take effect; supersedes the "RetroArch cannot be auto-located — set the
+folder manually" note in docs/android-save-sync-model.md.
+
+## 2026-08-21 — RetroArch save provider: an exact-folder override needs no core (WatermelonDS)
+
+The doc's model has Android DS (WatermelonDS) "reuse RetroArchSaveLocationProvider" pointed at
+WatermelonDS's flat `<game>.srm` folder. But `RetroArchSaveLocationProvider.Resolve` threw
+"No libretro core is configured" before it reached the override branch, so a coreless standalone
+emulator (WatermelonDS has no libretro core) could never sync that way — the override was useless
+without also configuring a fake RetroArch core, which would then hijack the launcher.
+
+`Resolve` now takes the exact-folder-override branch **before** the core check: an override that
+isn't RetroArch's config folder is the save directory itself (`IsExclusive`, `SortedByCore: false`),
+and needs no core because there is no core-named folder to resolve — the sync path
+(`ResolveUnit`/`GetSaveUnits`/`BelongsToThisSystem`) never reads `Core`. When no core is known it
+carries a placeholder `RetroArchCore` named after the folder (only the detection message reads it).
+A core is still required on the config-derived path, where naming a sorted-by-core folder genuinely
+needs it. This makes "WatermelonDS = the RetroArch provider pointed at its folder" literally work:
+set the NDS Save folder override to WatermelonDS's directory (e.g. the Thor's
+`/storage/emulated/0/User/Watermelon-DS/`) and DS saves round-trip under `nds/<game>.srm` — the same
+system key any DS emulator emits. Save-state sync for such a coreless override stays unsupported (the
+config-derived state path still needs a core); battery saves are the wired case.
+
+## 2026-08-21 — PS1 cross-emulator save sync: DuckStation ⇄ Beetle PSX via one card key
+
+DuckStation (desktop) and a RetroArch PS1 core (Beetle PSX, Android) write the *same* raw 128 KB PS1
+memory card, but keyed it differently — DuckStation `playstation/per-game/<scheme>/<name>_<slot>.mcd`,
+RetroArch `playstation/<name>.srm` — so a card never round-tripped between them even though the payload
+is interchangeable. This is the config-alignment case the model always described, resolved by keying,
+not by a converter (no bytes are transformed).
+
+For PlayStation only, `RetroArchSaveLocationProvider` now emits DuckStation's **file-title** per-game
+card key: `playstation/per-game/file-title/<base>_1.mcd` (from the core's `<base>.srm`), and resolves it
+back onto the core's card file — an existing card under whatever extension it has, or a fresh restore as
+`<base>.srm`. DuckStation is left entirely unchanged (no migration, no risk to DuckStation↔DuckStation),
+because it already emits exactly that key for a file-title slot-1 card. `ResolveAndroidEmulator` also now
+routes PlayStation to the RetroArch provider when the configured emulator is `retroarch`, so Beetle PSX
+on Android gets a provider at all (PS1 was previously hardcoded to DuckStation, whose newer Android cards
+are unreadable 0600).
+
+**Setup-checklist requirements** (verified, not assumed): desktop DuckStation must use *Separate Card
+Per Game (File Title)*, **slot 1**; ROM file names must match on both machines; Beetle PSX writes
+`<rom>.srm` into RetroArch's save folder (the assumed extension — to confirm against the Thor's Beetle
+build). Other card schemes (title = DuckStation's DB title; serial) do not bridge, by design. No
+migration is written: pre-existing RetroArch-PS1 `.srm` cloud keys (unlikely — PS1-via-RetroArch was
+blocked on Android) stay in the cloud untouched under sync-never-deletes rather than being re-keyed.
+
 ## 2026-08-22 — Android launch scopes the SAF URI to the game's import folder, not its own sub-folder
 
 Nested multi-disc games (a per-game sub-folder holding `Disc 1`/`Disc 2` + an `.m3u`, e.g. Metal Gear
