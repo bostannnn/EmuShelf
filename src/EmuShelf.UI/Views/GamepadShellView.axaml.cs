@@ -23,6 +23,14 @@ public partial class GamepadShellView : UserControl
         // host (MainWindow on desktop, MainView on Android); wiring the subscriptions here is the same
         // contract the window used, moved to the view that owns the gamepad tree.
         DataContextChanged += OnDataContextChanged;
+
+        // Drop those subscriptions when this view leaves the tree for good. On Android the supported
+        // MainViewFactory hosting builds a FRESH GamepadShellView per activity, so without this the
+        // long-lived MainViewModel would keep firing PropertyChanged into dead views across recreations
+        // (a leak the old single-view reuse never had). Detach only ever happens at teardown — the couch
+        // root is IsVisible-gated, never removed from the tree on a Desktop/Gamepad mode switch — so this
+        // never runs mid-session on either head.
+        DetachedFromVisualTree += OnDetachedFromVisualTreeCleanup;
     }
 
     // FocusManager and RenderScaling are TopLevel concerns; the window exposed them directly, a
@@ -72,6 +80,21 @@ public partial class GamepadShellView : UserControl
         _gamepadViewModel = DataContext as MainViewModel;
         if (_gamepadViewModel is not null)
             _gamepadViewModel.PropertyChanged += OnGamepadViewModelPropertyChanged;
+    }
+
+    // Mirror of OnDataContextChanged's teardown, run when the view is permanently detached (activity
+    // teardown / window close) so the long-lived view model does not retain this dead view. Also stops
+    // any in-flight glide loop bound to it. See the ctor for why detach here is always terminal.
+    private void OnDetachedFromVisualTreeCleanup(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (_gamepadViewModel is not null)
+            _gamepadViewModel.PropertyChanged -= OnGamepadViewModelPropertyChanged;
+        _gamepadViewModel = null;
+
+        SyncGamepadScraperSubscription(null);
+        SyncGamepadCoverSearchSubscription(null);
+        SyncGamepadHotkeysSubscription(null);
+        CancelGamepadScroll();
     }
 
     // The controller scraper overlay tracks its own focus index on the wrapped view model, so the
@@ -229,6 +252,7 @@ public partial class GamepadShellView : UserControl
             nameof(MainViewModel.GamepadSettingsFocusRevision) or
             nameof(MainViewModel.IsGamepadSettingsTextEntryOpen) or
             nameof(MainViewModel.IsGamepadSettingsConfirmationOpen) or
+            nameof(MainViewModel.IsGamepadSettingsChoicePickerOpen) or
             nameof(MainViewModel.IsGamepadControllerInputActive)))
         {
             return;
@@ -561,6 +585,20 @@ public partial class GamepadShellView : UserControl
                 ? GamepadSettingsConfirmButton
                 : GamepadSettingsKeepButton;
             FocusManager?.Focus(button, NavigationMethod.Directional);
+        }
+        else if (viewModel.IsGamepadSettingsChoicePickerOpen && viewModel.GamepadSettings is { } choiceSettings)
+        {
+            GamepadSettingsChoiceOptions.UpdateLayout();
+            var option = GamepadSettingsChoiceOptions.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button =>
+                    button.DataContext is GamepadChoiceOptionViewModel choice && choice.IsFocused);
+            if (option is not null)
+            {
+                option.BringIntoView();
+                if (viewModel.IsGamepadControllerInputActive)
+                    FocusManager?.Focus(option, NavigationMethod.Directional);
+            }
         }
         else if (viewModel.IsGamepadSettingsOpen &&
             viewModel.GamepadSettings is { IsRailFocused: true })

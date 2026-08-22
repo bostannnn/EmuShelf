@@ -23,7 +23,9 @@ namespace EmuShelf.App.Android.Services;
 public sealed class SingleViewShell : IPlatformShell
 {
     private readonly ISingleViewApplicationLifetime _singleView;
-    private readonly MainView _mainView;
+    // The view for the current Activity. Rebuilt fresh by the MainViewFactory on every (re)creation
+    // (see Show), so this tracks whichever instance is live now — null before the first build.
+    private MainView? _currentView;
 
     public SingleViewShell(
         ISingleViewApplicationLifetime singleView,
@@ -31,7 +33,6 @@ public sealed class SingleViewShell : IPlatformShell
         PlatformShellDependencies deps)
     {
         _singleView = singleView;
-        _mainView = new MainView();
 
         InterfaceMode = new AndroidInterfaceModeService();
         Frontend = new AndroidFrontendController();
@@ -42,8 +43,11 @@ public sealed class SingleViewShell : IPlatformShell
         Lifetime = new SingleViewApplicationLifetimeService(
             () => MainActivity.Current?.FinishAndRemoveTask());
         // The dialog service needs the live TopLevel for the SAF folder picker; resolve it lazily each
-        // call since it only exists once the view is attached to the Activity's visual tree.
-        Dialog = new SingleViewDialogService(boot.Logger, () => TopLevel.GetTopLevel(_mainView));
+        // call against the current Activity's view, which only exists once the factory has built it and
+        // it is attached to the visual tree.
+        Dialog = new SingleViewDialogService(
+            boot.Logger,
+            () => _currentView is { } view ? TopLevel.GetTopLevel(view) : null);
 
         // The Android launch path: fire an Intent at the emulator app. The application context starts the
         // emulator as a new task (AndroidGameLauncher adds NEW_TASK), which is enough without a live
@@ -79,17 +83,16 @@ public sealed class SingleViewShell : IPlatformShell
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
-        _mainView.DataContext = viewModel;
-        _singleView.MainView = _mainView;
-
         // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
         // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and
         // sampler are started in the Android application; this supplies the "what" for the "how fast".
+        // View-model-level, so it is wired once here — not rebuilt with each view the factory below produces.
         global::EmuShelf.App.Diagnostics.PerfTrace.StateProvider = () => viewModel.PerfStateSnapshot;
 
         // Point the Activity's couch key-event bridge at this view model's dispatcher. The Activity
         // owns the key events (Android gamepad buttons never reach Avalonia's KeyDown), so this is how
-        // Menu / D-pad / A-B reach the shared UI on device.
+        // Menu / D-pad / A-B reach the shared UI on device. View-model-level, not view-level, so it is
+        // wired once here rather than rebuilt with each view the factory below produces.
         AndroidGamepadInput.Dispatch = viewModel.DispatchGamepadAction;
 
         // The Android system Back button / gesture: close an open couch overlay if one is open, otherwise
@@ -102,21 +105,41 @@ public sealed class SingleViewShell : IPlatformShell
         // session interrupted by process death: if a pending record exists, complete it; otherwise no-op.
         AndroidActivityLifecycle.ReturnedToForeground = () => CompletePendingSession(viewModel);
 
-        // Opened must run exactly ONCE — the shared contract, honoured on desktop by Window.Opened.
-        // AttachedToVisualTree is a *recurring* event: it re-fires on activity recreation (any config
-        // change outside the declared ConfigurationChanges set), the "Don't keep activities" developer
-        // option, split-screen, and process-death restore. Without this guard each re-attach would
-        // re-run the whole startup background pass — availability rescan, a RetroAchievements network
-        // refresh, the GitHub update check, and overlapping grid rebuilds — the exact stampede that
-        // pass is designed to avoid. See the A1 code review / DECISIONS 2026-08-17.
+        // Opened must run exactly ONCE per process — the shared contract, honoured on desktop by
+        // Window.Opened. AttachedToVisualTree is a *recurring* event: with the factory below a NEW view
+        // (and its AttachedToVisualTree) is built on every activity recreation (any config change outside
+        // the declared ConfigurationChanges set, "Don't keep activities", split-screen, process-death
+        // restore). The guard lives on the shell, not the view, so no matter how many views are built the
+        // whole startup background pass — availability rescan, a RetroAchievements network refresh, the
+        // GitHub update check, overlapping grid rebuilds — runs once. See the A1 review / DECISIONS
+        // 2026-08-17.
         var opened = false;
-        _mainView.AttachedToVisualTree += (_, _) =>
+
+        MainView BuildMainView()
         {
-            if (opened)
-                return;
-            opened = true;
-            Dispatcher.UIThread.Post(callbacks.Opened, DispatcherPriority.Background);
-        };
+            var view = new MainView { DataContext = viewModel };
+            _currentView = view;
+            view.AttachedToVisualTree += (_, _) =>
+            {
+                if (opened)
+                    return;
+                opened = true;
+                Dispatcher.UIThread.Post(callbacks.Opened, DispatcherPriority.Background);
+            };
+            return view;
+        }
+
+        // Use the supported Android hosting model: hand the Activity a factory it invokes to build a
+        // FRESH MainView on every (re)creation, bound to the one long-lived view model. Setting
+        // ISingleViewApplicationLifetime.MainView instead caches a single instance, reuses it across
+        // activities, and makes Avalonia log "…MainView is not fully supported on Android. Consider
+        // setting IActivityApplicationLifetime.MainViewFactory." on every cold start. The concrete
+        // Android lifetime implements IActivityApplicationLifetime too, so the cast succeeds there; the
+        // else branch is a harmless fallback for any other single-view host.
+        if (_singleView is IActivityApplicationLifetime activityLifetime)
+            activityLifetime.MainViewFactory = () => BuildMainView();
+        else
+            _singleView.MainView = BuildMainView();
 
         // The durable save point on Android is backgrounding (onPause/onStop), which Avalonia surfaces
         // as IActivatableLifetime.Deactivated(ActivationKind.Background) — NOT visual-tree detach, which

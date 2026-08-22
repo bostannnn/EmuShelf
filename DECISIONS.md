@@ -10232,3 +10232,212 @@ its own import folder rather than probing the emulator's private grants. Limitat
 from a folder *different* from the one they granted the emulator (e.g. imported `roms` but granted
 `roms/psx`), the tree still will not match; that narrower case is what a future grant-root verification
 step would cover.
+
+## 2026-08-22 — Android hosts the UI via IActivityApplicationLifetime.MainViewFactory, not MainView
+
+The Android head set `ISingleViewApplicationLifetime.MainView` directly (in `SingleViewShell.Show`), which
+Avalonia 12.1 flags on every cold start: `[WARN] [Avalonia/AndroidPlatform] ISingleViewApplicationLifetime.MainView
+is not fully supported on Android. Consider setting IActivityApplicationLifetime.MainViewFactory.` (33× in one
+day's Thor log). Decompiling `Avalonia.Android.ApplicationLifetime` shows the `MainView` setter logs that line
+and then caches `MainViewFactory = () => _mainView` — i.e. one view instance reused across every activity
+(re)creation, the pattern the warning calls unsupported. `SingleViewShell.Show` now casts the lifetime to
+`IActivityApplicationLifetime` and sets `MainViewFactory` to build a **fresh** `MainView` (bound to the one
+long-lived `MainViewModel`) on each activity (re)creation — the supported model. `AvaloniaMainActivity.
+InitializeAvaloniaView` invokes the factory at `OnCreate`, and the Android `Application.OnCreate`
+(→ `OnFrameworkInitializationCompleted` → `Show`) runs before the first `Activity.OnCreate`, so the factory is
+always set in time. Verified on the Thor: two new-code cold starts + a forced activity recreation (font_scale
+change) produced **zero** warnings, the couch UI renders, gamepad input still routes, and the process survives
+recreation.
+
+Companion change: because a *fresh* view is built per activity, `GamepadShellView` now unsubscribes its
+`MainViewModel`/scraper/cover-search/hotkeys `PropertyChanged` handlers on `DetachedFromVisualTree` — otherwise
+the long-lived view model would retain (and keep firing into) dead views across in-process recreations, a leak
+the old single-instance reuse never had. Detach is always terminal for that view on both heads (the couch root
+is `IsVisible`-gated, never removed from the tree on a Desktop/Gamepad mode switch), so the cleanup never runs
+mid-session.
+
+Deliberately **not** covered by this change: the `OpenGlException: Window 0 is invalid` render-loop errors
+(14× the same day). The Thor log shows those are a surface-teardown race — ~10 of 14 fire within 0.7s of an
+emulator launch (the app backgrounding), stack `DefaultRenderLoop.TimerTick → ServerCompositor.Render →
+EglGlPlatformSurface.RenderTarget.BeginDrawCore → CreateWindowSurface(0)` — i.e. the compositor drawing one
+more frame into the just-destroyed top-level Android surface. That is independent of the content-view hosting
+model (it is the `AvaloniaView`'s own surface, and the errors are already caught by the compositor and logged,
+no crash), so `MainViewFactory` does not address them; the proper fix is upstream (stop the render loop
+synchronously on surface-destroy / guard the zero window). Onboarding still uses `MainView` (once per install;
+`ResolveOnboardingTopLevel` reads `.MainView`, and its SAF picker path cannot be driven headlessly), which is a
+tolerable single warning.
+
+## 2026-08-22 — Android launch fails loudly; no emulator fallback
+
+When the emulator the user intends for a system (their configured choice, else the maintained-first
+default) cannot run a game, the Android launch path stops and says exactly why — "X is not installed",
+"select a RetroArch core first", "not on shared storage" — rather than silently trying the next
+maintained emulator. Cascading to a different emulator would launch with a *different* save format
+(e.g. RetroArch's Beetle memcard vs DuckStation's), so a "helpful" fallback reads as lost saves. This
+reverses the earlier RetroArch-missing-core fallback: that case now asks the user to configure a core
+instead of quietly substituting a standalone emulator. `AndroidEmulatorLaunchService` now resolves a
+single intended emulator and preflight-checks installation (`AndroidGameLauncher.IsInstalled`, backed by
+the manifest `<queries>` block) before doing any work. The IO-bound preflight (SD-card stat, SQLite
+reads, intent resolution) runs on a worker thread; the cloud-save pull runs once, only when a launch is
+actually going ahead.
+
+## 2026-08-22 — Texture-pack detection is hidden on Android, not ported
+
+The texture-pack detection pipeline is desktop-shaped: its resolvers walk emulator user directories in
+`Documents` / `~/.config` / `~/Library` layouts that do not exist on Android, and the two Android
+emulators that genuinely support texture packs (Dolphin, PPSSPP) keep them under `Android/data` in a
+shape those resolvers cannot read — and reading another app's `Android/data` only works on permissive
+firmware anyway. Rather than show a Texture Packs settings section that reports every platform as
+unconfigured, `CreateTexturePackSettingsContext` returns null on Android so the section is omitted. A
+future Android-native resolver (scoped to Dolphin + PPSSPP) can re-enable it; PS2/DS/RetroArch texture
+packs are out of scope because those Android builds do not support replacement.
+
+## 2026-08-22 — Android 3D-shelf render budget diverges from desktop
+
+The physical-media shelf renderer is tuned per platform for the handheld GPU: supersampling drops from
+2x to native (1x) — the single largest fan/battery cost, and the small on-screen media do not show the
+silhouette aliasing the desktop hero does; key-shadow maps drop from 1024² to 512²; and the per-item
+self-shadow pass is capped to the focused medium and its two immediate neighbours instead of every
+visible item, cutting render-target switches on a tiled mobile GPU. All three are gated on
+`OperatingSystem.IsAndroid()`, so desktop rendering (and its visual snapshot tests) is unchanged. The
+on-device visual result of the shadow cap is pending verification on the Thor. Deliberately *not* done:
+back-face culling — the shells are authored double-sided (open cases, cartridge lips), so culling would
+drop inner faces including in the shadow pass.
+
+## 2026-08-22 — Compiled bindings adopted for the hot couch templates only
+
+The couch grid tile and shelf-strip `DataTemplate`s (recycled constantly during scroll/glide) opt into
+`x:CompileBindings="True"` against their already-declared `GameViewModel` data type, dropping the
+per-binding reflection the rest of the shell still pays. Kept scoped rather than flipping the global
+`AvaloniaUseCompiledBindingsByDefault`: many templates lack an `x:DataType`, and a blanket flip silently
+blanks their bindings and complicates trimming. Converting the remaining templates is a separate
+follow-up.
+## 2026-08-22 — Android: `.nomedia` at the data root, and view-state saved less eagerly
+
+Two fixes to the same symptom — EmuShelf's data root lives in MediaStore-scanned shared storage on
+Android (`<primary>/EmuShelf`, chosen in `AndroidDataLocationBootstrap`), so browsing produced a wall
+of MediaProvider/FUSE log churn and needless flash writes.
+
+1. **`.nomedia` marker.** `AppBootstrapper` writes an empty `.nomedia` at `Paths.BaseDirectory` on
+   Android startup (right after `EnsureDirectoriesExist`, gated on `OperatingSystem.IsAndroid()`), which
+   tells the media scanner to skip the folder and every subfolder. This stops covers leaking into the
+   system gallery and kills the `content://media` / `files._data` scan spam. It runs per data folder
+   because a fresh pick rebuilds the bootstrapper, so a folder chosen later gets the marker too. Not
+   unit-tested: it is behind a platform check that is false on the macOS test host.
+
+2. **View-state debounce 500 ms → 2500 ms, plus a no-op guard.** Every platform/scope/layout/sort/
+   column change rewrites the whole `settings.json` (temp-write + rename); at 500 ms, browsing platform
+   to platform meant dozens of full rewrites a minute. The resting selection is what matters and it is
+   still captured, and nothing is lost on close because the shell already flushes any pending save on
+   background/close (`FlushPendingLibraryViewStateSave`). `LibraryViewStateService.Save` now also skips
+   the write when the incoming state matches the last-saved one. The record's `ListColumns` is an
+   `IReadOnlyList` whose default equality is by reference, and `BuildLibraryViewState` hands over a fresh
+   list each time, so the guard normalises both lists to one shared reference for the scalar-field record
+   comparison (future-proof against added fields) and compares the columns element by element. The
+   file-split idea (volatile view-state in its own file) was rejected: the cost is write *frequency*
+   — the temp+rename syscalls — not payload size, so fewer writes is the lever, not smaller ones.
+
+## 2026-08-22 — Android second screen: companion surface, built in native Android Views
+
+The Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080, `FLAG_PRESENTATION`, measured in
+port-plan 0b) was left as an open product choice. Decided: EmuShelf takes it over while it is the
+active frontend and makes it a **companion surface** — an app dock, an all-apps drawer, a
+RetroAchievements panel, and a dimmed game-logo idle while a game plays on the main screen. Scoped as
+Milestone SS in [docs/android-port-plan.md](docs/android-port-plan.md) and [ROADMAP.md](ROADMAP.md).
+
+Owner product calls: active **whenever EmuShelf is open** (not in-game only); dock/drawer-launched apps
+open **on Screen-2** beside the running game (`ActivityOptions.setLaunchDisplayId`); the achievements
+panel shows the **running game, else the currently-selected game**, cache-first and refreshed **only on
+the icon press** (gated by the shipped 5-minute staleness check), not on any timer.
+
+Two non-obvious build decisions:
+
+1. **Native C# Android Views inside `Android.App.Presentation`, not a second Avalonia surface.** The
+   second screen is launcher chrome (app icons, dock, launch intents) that reads the *shared Core
+   services in-process* — the RetroAchievements stores are framework-neutral and
+   `IRetroAchievementsBadgeCache.GetBadgePathAsync` returns a file path an `ImageView` loads directly,
+   so nothing forces Avalonia. A second Avalonia `TopLevel` hosted on a Presentation is unproven on
+   `Avalonia.Android` and the wrong tool for a home-screen-like surface. Embedding an `AvaloniaView`
+   only for the achievements panel is kept as a fallback if native re-rendering proves not worth it.
+
+2. **No new RetroAchievements path; reuse the existing cache-first pipeline.** The shipped
+   `AchievementDetailsViewModel` is already cache-first with pull-on-press
+   (`IRetroAchievementsDetailsService.RefreshAsync(manual:…)` + a 5-minute `DetailRefreshAge`), which is
+   exactly the "cache and pull only on real press" requirement. The second screen reuses that service
+   and the details/progress/badge stores rather than adding a parallel fetcher or any polling.
+
+The one genuine unknown is deferred to the **SS0** on-device spike, not decided here: whether a
+`Presentation` survives EmuShelf being backgrounded when an emulator takes the main screen (a
+multi-resume device — the head already relies on `OnTopResumedActivityChanged`), what keep-alive it
+needs (expected: a foreground service; Thor is SDK 33 so the notification-permission escalation stays
+dormant), and whether AYN's `com.odin.dualscreen.assistant` must be dismissed for our Presentation to
+own Screen-2.
+
+App-drawer package visibility uses a `<queries><intent>` for `ACTION_MAIN`+`CATEGORY_LAUNCHER` rather
+than `QUERY_ALL_PACKAGES`: it returns every launchable app, stays Play-policy-safe, and mirrors the
+existing narrow per-emulator `<queries>` block. Dock pins persist to a portable
+`Settings/second-screen-dock.json` (the pattern `pending-play-session.json` already uses), with the
+model and store in Core so the desktop suite tests them.
+## 2026-08-22 — Android: auto-update via the system package installer; hotkeys hidden; grid tile shadow dropped
+
+Four Milestone-S (stabilization) fixes from a Thor pass. Each is Android-only or a no-op off Android, so
+desktop behaviour and snapshots are unchanged.
+
+1. **Auto-update works on Android — but it is assisted, not silent.** The question was "is it possible?".
+   It is: CI already publishes a release-signed `EmuShelf-android-arm64.apk` and its `.sha256`, so the
+   shared check → download → checksum-verify path (`GitHubUpdateService`) needed only the Android asset
+   name in `UpdatePlatform.CurrentAssetName()`. What differs from desktop is the *apply* step: an Android
+   app cannot overwrite its own installed APK, so there is no in-place file-swap. A new
+   `AndroidUpdateApplier` (in the head) copies the verified APK into the app-internal cache, mints a
+   `content://` URI with a `FileProvider`, and fires `ACTION_VIEW`
+   (`application/vnd.android.package-archive`) at the system package installer, which shows the user a
+   confirmation. It is wired through a new `App.UpdateApplierFactoryOverride` hook (mirroring
+   `ExternalUriOpener`/`OnScreenKeyboardFactory`), so the shared `UpdateApplierFactory` stays desktop-only.
+   Manifest gains `REQUEST_INSTALL_PACKAGES` and the `com.emushelf.app.updateprovider` provider
+   (`Resources/xml/emushelf_update_paths.xml`, `<cache-path>`). **Two constraints, both inherent to
+   Android and surfaced to the user by the installer, not silently:** the new APK must be signed with the
+   same key as the running build (the CI release keystore — a locally/debug-signed sideload will not
+   accept the CI APK; uninstall-first is required), and the user must allow "install unknown apps" the
+   first time. The PackageInstaller Session API was considered and rejected for now: it avoids the
+   FileProvider but needs a BroadcastReceiver + PendingIntent status dance for the same user-facing
+   confirmation, i.e. more surface for no behavioural gain.
+
+2. **Hotkeys section hidden on Android.** The hotkeys feature writes a uniform *keyboard* scheme into each
+   *desktop* emulator's own config so it can be driven by *Steam Input*. On Android there is no Steam
+   Input and the emulators are sandboxed apps whose config EmuShelf cannot rewrite, so the whole section
+   is inert. `MainViewModel.CreateHotkeySettingsContext()` returns null on Android, which drops
+   `SettingsSection.Hotkeys` (gated on a non-empty context) and, via `HasHotkeys`, also disables the
+   gamepad hotkey-editor overlay entry. Gated in the view model, not in `EmulatorSettingsViewModel`, so
+   the desktop unit tests that inject a hotkey context directly are unaffected.
+
+3. **Removed the redundant "ScreenScraper" header** in the gamepad Artwork & Metadata section. It stacked
+   directly above the "Sign in to ScreenScraper" / "ScreenScraper account" sub-header, so it only cost
+   couch vertical space; the sub-headers already name the provider.
+
+4. **Grid tile drop-shadow dropped on Android.** A 20 px blurred `BoxShadow` on every one of the ~40
+   realized grid tiles is recomposited each frame while the library scrolls, and on a handheld GPU that is
+   the dominant grid cost (the fan-on-scroll investigation). A `reduced-effects` style class, bound on the
+   couch root to `MainViewModel.IsReducedEffectsPlatform` (true only on Android), sets the shadow
+   sibling's `IsVisible` to false — removing both the blur and one full-tile overdraw layer. Desktop and
+   desktop-gamepad mode keep the depth.
+
+## 2026-08-22 — Emulator selection is one flat app/core choice on Android and desktop
+
+The selected launcher is modelled everywhere as one `EmulatorChoice`, persisted through the existing
+`EmulatorConfiguration` pair `(EmulatorId, CorePath?)`. A standalone emulator has a short id and no core;
+each RetroArch core is its own visible `RetroArch · core` item with `EmulatorId = "retroarch"` and the
+exact core path. This is a presentation/domain unification, not a database change.
+
+Stored ids are the shared short vocabulary (`duckstation`, `pcsx2`, `rpcs3`, `dolphin`, `ppsspp`,
+`azahar`, `retroarch`) plus the Android-only `armsx2` and `watermelonds`. Concrete Android launch-profile
+ids (`android.*`) remain internal. `AndroidLaunchProfile.SelectionId` connects the two directly, replacing
+the hand-written desktop-to-Android translation switch that could never represent ARMSX2 or WatermelonDS.
+This also preserves the save-sync checks that already key on `retroarch` / `duckstation` / `dolphin`.
+
+Android supplies a fixed choice catalog because RetroArch's core directory is app-private. Desktop builds
+the same flat shape dynamically from registered emulators and cores found on disk. Before RetroArch's
+executable or Flatpak target is known it contributes one setup item; once known it expands into one item
+per installed core. Executable, arguments, target and Flatpak id remain drafts keyed by the underlying
+emulator, so switching cores reuses one RetroArch draft and switching to a standalone emulator does not
+discard it. A configured core that is temporarily missing remains visible rather than being silently
+replaced. No flow reads, modifies or deletes ROMs or emulator-owned configuration.

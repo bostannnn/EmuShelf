@@ -7,6 +7,7 @@ using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Integrations.Emulators;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Systems;
 
 namespace EmuShelf.App.Tests;
@@ -45,17 +46,45 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void PlayStationRow_OffersDuckStationAndRetroArchProfiles()
+    public void PlayStationRow_OffersStandaloneAndRetroArchSetupChoices()
     {
         var ps1 = CreateViewModel().Rows.Single(row => row.SystemId == "playstation");
 
-        Assert.True(ps1.HasMultipleProfiles);
+        Assert.True(ps1.HasEmulatorChoices);
         Assert.Equal(
-            ["DuckStation", "RetroArch"],
-            ps1.AvailableProfiles.Select(profile => profile.EmulatorName));
+            ["DuckStation", "RetroArch (set executable to choose a core)"],
+            ps1.AvailableChoices.Select(choice => choice.DisplayName));
         // The default (first-supporting) profile is active, so single-emulator behavior is unchanged.
         Assert.Equal("DuckStation", ps1.EmulatorName);
+        Assert.Equal("duckstation", ps1.SelectedChoice?.EmulatorId);
         Assert.False(ps1.RequiresCorePath);
+    }
+
+    [AvaloniaFact]
+    public void FixedAndroidChoices_MigrateLegacyRetroArchWithoutCoreToMaintainedDefault()
+    {
+        var configured = KnownSystems.All.ToDictionary(
+            system => system.Id,
+            system => system.Id == "nds"
+                ? new EmulatorConfiguration(system.Id, null, string.Empty)
+                {
+                    EmulatorId = "retroarch",
+                    CorePath = null,
+                }
+                : null,
+            StringComparer.Ordinal);
+
+        var nds = CreateViewModel(
+                configured: configured,
+                fixedEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem)
+            .Rows.Single(row => row.SystemId == "nds");
+
+        Assert.Equal(
+            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
+            nds.AvailableChoices.Select(choice => choice.DisplayName));
+        Assert.Equal("watermelonds", nds.EmulatorId);
+        Assert.Equal("WatermelonDS", nds.SelectedChoice?.DisplayName);
+        Assert.Null(nds.ToConfiguration().CorePath);
     }
 
     [AvaloniaFact]
@@ -63,33 +92,50 @@ public class EmulatorSettingsViewModelTests
     {
         var viewModel = CreateViewModel();
         var ps1 = viewModel.Rows.Single(row => row.SystemId == "playstation");
+        var root = Path.Combine(Path.GetTempPath(), "EmuShelfChoiceDrafts", Guid.NewGuid().ToString("N"));
+        var retroArchDirectory = Path.Combine(root, "RetroArch");
+        var coresDirectory = Path.Combine(retroArchDirectory, "cores");
+        var retroArchExecutable = Path.Combine(retroArchDirectory, "retroarch");
+        var swanStationCore = Path.Combine(coresDirectory, "swanstation_libretro.dll");
+        Directory.CreateDirectory(coresDirectory);
+        File.WriteAllText(swanStationCore, "core");
 
-        // Configure DuckStation, then switch the profile to RetroArch and configure its core.
-        ps1.ExecutablePath = "/portable/DuckStation/duckstation";
-        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "retroarch");
+        try
+        {
+            // Configure DuckStation, then switch to RetroArch's setup item. Once its executable is
+            // known, the one setup item expands into one picker item per discovered core.
+            ps1.ExecutablePath = "/portable/DuckStation/duckstation";
+            ps1.SelectedChoice = ps1.AvailableChoices.Single(choice => choice.EmulatorId == "retroarch");
 
-        Assert.Equal("RetroArch", ps1.EmulatorName);
-        Assert.True(ps1.RequiresCorePath);
-        ps1.ExecutablePath = "/portable/RetroArch/retroarch";
-        ps1.CorePath = "/portable/RetroArch/cores/swanstation_libretro.dll";
+            Assert.Equal("RetroArch", ps1.EmulatorName);
+            Assert.True(ps1.RequiresCorePath);
+            ps1.ExecutablePath = retroArchExecutable;
+            ps1.SelectedChoice = ps1.AvailableChoices.Single(choice => choice.CoreId == "swanstation");
 
-        await viewModel.SaveCommand.ExecuteAsync(null);
+            await viewModel.SaveCommand.ExecuteAsync(null);
 
-        // Both profiles persist, keyed by their own emulator id, and RetroArch is the active one.
-        var playStationProfiles = _configurations.AllSaved
-            .Where(configuration => configuration.SystemId == "playstation")
-            .ToList();
-        Assert.Contains(playStationProfiles, configuration =>
-            configuration.EmulatorId == "duckstation" &&
-            configuration.ExecutablePath == "/portable/DuckStation/duckstation");
-        Assert.Contains(playStationProfiles, configuration =>
-            configuration.EmulatorId == "retroarch" &&
-            configuration.CorePath == "/portable/RetroArch/cores/swanstation_libretro.dll");
-        Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
+            // Both profiles persist, keyed by their own emulator id, and RetroArch is the active one.
+            var playStationProfiles = _configurations.AllSaved
+                .Where(configuration => configuration.SystemId == "playstation")
+                .ToList();
+            Assert.Contains(playStationProfiles, configuration =>
+                configuration.EmulatorId == "duckstation" &&
+                configuration.ExecutablePath == "/portable/DuckStation/duckstation");
+            Assert.Contains(playStationProfiles, configuration =>
+                configuration.EmulatorId == "retroarch" &&
+                configuration.CorePath == swanStationCore);
+            Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
 
-        // Switching back restores the DuckStation draft rather than showing empty fields.
-        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "duckstation");
-        Assert.Equal("/portable/DuckStation/duckstation", ps1.ExecutablePath);
+            // Switching back restores the DuckStation draft rather than showing empty fields.
+            ps1.SelectedChoice = ps1.AvailableChoices.Single(choice => choice.EmulatorId == "duckstation");
+            Assert.Equal("/portable/DuckStation/duckstation", ps1.ExecutablePath);
+            Assert.Contains(ps1.AvailableChoices, choice =>
+                choice.EmulatorId == "retroarch" && choice.CorePath == swanStationCore);
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch (IOException) { }
+        }
     }
 
     [AvaloniaFact]
@@ -111,11 +157,11 @@ public class EmulatorSettingsViewModelTests
         Assert.Equal("/saves/duck", savesRow.OverrideDirectory);
 
         // Switching the picker (without saving) must show RetroArch's own folder, not DuckStation's.
-        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "retroarch");
+        ps1.SelectedChoice = ps1.AvailableChoices.Single(choice => choice.EmulatorId == "retroarch");
         Assert.Equal("/saves/retro", savesRow.OverrideDirectory);
 
         // Switching back shows DuckStation's folder again — neither override leaked onto the other.
-        ps1.SelectedProfile = ps1.AvailableProfiles.Single(profile => profile.EmulatorId == "duckstation");
+        ps1.SelectedChoice = ps1.AvailableChoices.Single(choice => choice.EmulatorId == "duckstation");
         Assert.Equal("/saves/duck", savesRow.OverrideDirectory);
     }
 
@@ -1396,7 +1442,8 @@ public class EmulatorSettingsViewModelTests
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
         FakeDialogService? dialogs = null,
-        Action<Uri>? openSignInUri = null) => new(
+        Action<Uri>? openSignInUri = null,
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? fixedEmulatorChoices = null) => new(
         KnownSystems.All,
         KnownEmulators.All,
         configured ?? KnownSystems.All.ToDictionary(
@@ -1410,7 +1457,8 @@ public class EmulatorSettingsViewModelTests
         cloudSaves: cloudSaves,
         texturePacks: texturePacks,
         screenScraper: screenScraper,
-        openSignInUri: openSignInUri);
+        openSignInUri: openSignInUri,
+        fixedEmulatorChoices: fixedEmulatorChoices);
 
     private static CloudSaveSyncSettingsContext CreateCloudContext(
         CloudSaveSyncSettings? current = null,

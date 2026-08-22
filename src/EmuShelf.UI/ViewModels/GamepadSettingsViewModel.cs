@@ -7,8 +7,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Input;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
-using EmuShelf.Integrations.Emulators.Android;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -25,6 +25,36 @@ public enum GamepadSettingsRowKind
     /// <summary>A non-focusable platform group heading (artwork + name) that gives the section a
     /// visible hierarchy instead of a flat list of equal-weight rows.</summary>
     Header,
+}
+
+/// <summary>One visible item in the controller-native choice picker opened from a settings row.</summary>
+public partial class GamepadChoiceOptionViewModel : ObservableObject
+{
+    private readonly GamepadSettingsViewModel _owner;
+
+    internal GamepadChoiceOptionViewModel(
+        GamepadSettingsViewModel owner,
+        int index,
+        string displayName,
+        bool isSelected)
+    {
+        _owner = owner;
+        Index = index;
+        DisplayName = displayName;
+        IsSelected = isSelected;
+    }
+
+    public int Index { get; }
+    public string DisplayName { get; }
+
+    [ObservableProperty]
+    public partial bool IsSelected { get; set; }
+
+    [ObservableProperty]
+    public partial bool IsFocused { get; set; }
+
+    [RelayCommand]
+    private void Select() => _owner.SelectChoiceOption(Index);
 }
 
 /// <summary>A single controller-sized row projected from the existing Desktop settings model.</summary>
@@ -197,9 +227,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly IReadOnlyList<ThemeChoiceViewModel> _themeChoices;
     private readonly Func<ThemePreference, Task>? _applyTheme;
     private readonly Func<Task>? _openHotkeys;
-    private readonly IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>> _androidRetroArchCores;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>> _androidEmulatorChoices;
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
+    private Action<string>? _commitChoice;
+    private string? _choicePickerRowKey;
     private bool _synchronizingSection;
     private bool _applyingLocalEdit;
     private bool _texturePackListExpanded;
@@ -217,6 +249,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public partial SettingsSection SelectedSection { get; set; } = SettingsSection.General;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsChoiceRowFocused))]
     public partial int FocusedRowIndex { get; set; }
 
     [ObservableProperty]
@@ -233,6 +266,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// <summary>True when the left section rail owns focus. Left enters it, Up/Down move sections,
     /// and Right/A return to the content column. Keeps LB/RB as a shortcut from either column.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsChoiceRowFocused))]
     public partial bool IsRailFocused { get; set; }
 
     [ObservableProperty]
@@ -271,7 +305,25 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     public partial bool IsConfirmChoiceSelected { get; set; }
 
-    public bool IsNormal => !IsTextEntryOpen && !IsConfirmationOpen;
+    [ObservableProperty]
+    public partial bool IsChoicePickerOpen { get; set; }
+
+    [ObservableProperty]
+    public partial string ChoicePickerTitle { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial string ChoicePickerDescription { get; set; } = string.Empty;
+
+    [ObservableProperty]
+    public partial int FocusedChoiceIndex { get; set; }
+
+    public ObservableCollection<GamepadChoiceOptionViewModel> ChoiceOptions { get; } = [];
+
+    public bool IsNormal => !IsTextEntryOpen && !IsConfirmationOpen && !IsChoicePickerOpen;
+
+    /// <summary>Whether the focused normal row accepts direct Left/Right adjustment.</summary>
+    public bool IsChoiceRowFocused =>
+        IsNormal && !IsRailFocused && FocusedRow?.IsChoice == true;
 
     public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices => _themeChoices;
 
@@ -357,8 +409,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         ? "Personalize EmuShelf's colors. A theme applies instantly and is shared with Desktop mode."
         : SelectedSection switch
     {
-        SettingsSection.Emulators when _androidRetroArchCores.Count > 0 =>
-            "Choose Android RetroArch cores, import games, and manage each system's folders.",
+        SettingsSection.Emulators when _androidEmulatorChoices.Count > 0 =>
+            "Choose which Android emulator launches each system, import games, and manage folders.",
         SettingsSection.Emulators =>
             "Import games and manage each system's folders. Edit emulator paths, arguments, and cores in Desktop Settings.",
         SettingsSection.Hotkeys =>
@@ -451,21 +503,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         Func<ThemePreference, Task>? applyTheme = null,
         Func<Task>? openHotkeys = null,
-        IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>? androidRetroArchCores = null)
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null)
     {
         _settings = settings;
         _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
         _openHotkeys = openHotkeys;
-        _androidRetroArchCores = androidRetroArchCores
-            ?? new Dictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>(StringComparer.Ordinal);
+        _androidEmulatorChoices = androidEmulatorChoices
+            ?? new Dictionary<string, IReadOnlyList<EmulatorChoice>>(StringComparer.Ordinal);
         // Both modes present the same section list, in the same order, so the couch surface mirrors
         // Desktop's structure. Only Themes is excluded here: appearance is not part of the settings
         // model, so it is a dedicated gamepad gallery page rather than a projected row section. The rail
         // and LB/RB paging still show Themes in Desktop's slot — right before About — by splicing it back
         // into the ordered page list (see Pages), not by appending it after every section. Emulators
-        // projects per-platform library actions plus Android's app-private RetroArch core choices;
+        // projects per-platform library actions plus Android's flat app/core choices;
         // executable paths and launch arguments stay Desktop-only. Hotkeys is a
         // per-emulator × per-action matrix that a controller can't navigate as a flat list, so its
         // section row opens the controller-native GamepadHotkeysViewModel overlay; About projects
@@ -533,6 +585,29 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     return true;
                 case GamepadAction.Cancel:
                     CancelConfirmation();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        if (IsChoicePickerOpen)
+        {
+            switch (action)
+            {
+                case GamepadAction.NavigateLeft:
+                case GamepadAction.NavigateUp:
+                    MoveChoiceFocus(-1);
+                    return true;
+                case GamepadAction.NavigateRight:
+                case GamepadAction.NavigateDown:
+                    MoveChoiceFocus(1);
+                    return true;
+                case GamepadAction.Confirm:
+                    SelectChoiceOption(FocusedChoiceIndex);
+                    return true;
+                case GamepadAction.Cancel:
+                    CancelChoicePicker();
                     return true;
                 default:
                     return false;
@@ -647,8 +722,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 MoveFocus(1);
                 return true;
             case GamepadAction.NavigateLeft:
-                // Left leaves the content for the section rail; values are changed with A (or Right).
-                EnterRail();
+                // Choice rows are symmetric: Left/Right make quick changes and A opens the complete
+                // list. Other row types retain Left-to-rail navigation.
+                if (FocusedRow?.IsChoice == true)
+                    AdjustFocused(-1);
+                else
+                    EnterRail();
                 return true;
             case GamepadAction.NavigateRight:
                 AdjustFocused(1);
@@ -932,6 +1011,99 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnModalStateChanged();
     }
 
+    private void OpenChoicePicker(
+        string rowKey,
+        string title,
+        string description,
+        string value,
+        IReadOnlyList<string> choices,
+        Action<string> commit)
+    {
+        if (choices.Count == 0)
+            return;
+
+        _choicePickerRowKey = rowKey;
+        _commitChoice = commit;
+        ChoicePickerTitle = title;
+        ChoicePickerDescription = description;
+        ChoiceOptions.Clear();
+        var selected = choices.ToList().IndexOf(value);
+        if (selected < 0)
+            selected = 0;
+        for (var index = 0; index < choices.Count; index++)
+        {
+            ChoiceOptions.Add(new GamepadChoiceOptionViewModel(
+                this,
+                index,
+                choices[index],
+                index == selected));
+        }
+
+        FocusedChoiceIndex = selected;
+        IsChoicePickerOpen = true;
+        UpdateChoiceOptionFocus();
+        OnModalStateChanged();
+        FocusRevision++;
+    }
+
+    private void MoveChoiceFocus(int delta)
+    {
+        if (!IsChoicePickerOpen || ChoiceOptions.Count == 0)
+            return;
+        FocusedChoiceIndex = Math.Clamp(
+            FocusedChoiceIndex + Math.Sign(delta),
+            0,
+            ChoiceOptions.Count - 1);
+    }
+
+    partial void OnFocusedChoiceIndexChanged(int value)
+    {
+        UpdateChoiceOptionFocus();
+        if (IsChoicePickerOpen)
+            FocusRevision++;
+    }
+
+    private void UpdateChoiceOptionFocus()
+    {
+        for (var index = 0; index < ChoiceOptions.Count; index++)
+            ChoiceOptions[index].IsFocused = IsChoicePickerOpen && index == FocusedChoiceIndex;
+    }
+
+    internal void SelectChoiceOption(int index)
+    {
+        if (!IsChoicePickerOpen || index < 0 || index >= ChoiceOptions.Count)
+            return;
+
+        var value = ChoiceOptions[index].DisplayName;
+        var rowKey = _choicePickerRowKey;
+        RunLocalEdit(() => _commitChoice?.Invoke(value));
+        CloseChoicePicker();
+        RebuildRows(rowKey);
+        FocusRevision++;
+    }
+
+    public void CancelChoicePicker()
+    {
+        if (!IsChoicePickerOpen)
+            return;
+        CloseChoicePicker();
+        FocusRevision++;
+    }
+
+    [RelayCommand]
+    private void DismissChoicePicker() => CancelChoicePicker();
+
+    private void CloseChoicePicker()
+    {
+        _commitChoice = null;
+        _choicePickerRowKey = null;
+        IsChoicePickerOpen = false;
+        ChoicePickerTitle = string.Empty;
+        ChoicePickerDescription = string.Empty;
+        ChoiceOptions.Clear();
+        OnModalStateChanged();
+    }
+
     public void CommitTextEntry()
     {
         if (!IsTextEntryOpen)
@@ -995,6 +1167,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private void OnModalStateChanged()
     {
         OnPropertyChanged(nameof(IsNormal));
+        OnPropertyChanged(nameof(IsChoiceRowFocused));
         OnPropertyChanged(nameof(KeyboardHint));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
@@ -1085,6 +1258,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             Rows[index].IsFocused = index == value;
         RememberFocusedRow();
         OnPropertyChanged(nameof(FocusedRow));
+        OnPropertyChanged(nameof(IsChoiceRowFocused));
         FocusRevision++;
     }
 
@@ -1121,6 +1295,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             Rows[index].IsFocused = index == FocusedRowIndex;
         RememberFocusedRow();
         OnPropertyChanged(nameof(FocusedRow));
+        OnPropertyChanged(nameof(IsChoiceRowFocused));
         OnPropertyChanged(nameof(SaveRow));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
@@ -1192,10 +1367,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
-        // folder too, and so the two surfaces' general.* field sets stay in parity. Hidden on Android:
-        // there is no reliable "open this folder" file-manager intent, and the reveal command throws
-        // (PlatformNotSupportedException) rather than doing anything — a dead row on the handheld.
-        if (_settings.HasDataDirectory && !OperatingSystem.IsAndroid())
+        // folder too, and so the two surfaces' general.* field sets stay in parity. Skipped where no
+        // OS file manager can open the path (Android), so the row never offers a button that only fails.
+        if (_settings.HasDataDirectory && _settings.CanRevealFiles)
         {
             yield return ActionRow(
                 "general.open-data-folder",
@@ -1208,24 +1382,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     }
 
     /// <summary>
-    /// Per-platform Android core choices and library actions, grouped under each platform's header.
+    /// Per-platform Android emulator choices and library actions, grouped under each platform's header.
     /// Executable paths and launch arguments stay Desktop-only. Android RetroArch core paths are the
-    /// exception: the Android head has no Desktop mode and cannot enumerate RetroArch's private core
-    /// folder, so it projects the known compatible filenames supplied by the Android composition path.
+    /// exception: the Android head has no Desktop mode, so it projects standalone apps and the known
+    /// compatible RetroArch core filenames supplied by the Android composition path as one flat picker.
     /// The remaining rows cover PS3 sync (the one platform "Rescan all" skips), per-platform rescan,
     /// and remembered-folder management.
     /// </summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
         // Header then action cards per platform, matching how Saves and Texture Packs render. No
-        // per-platform read-only info line: a flat, card-less row wedged between the header and the
-        // action cards read as unfinished, and the section is for running library actions, not
-        // inspecting which emulator is bound (that lives in Desktop Settings).
+        // per-platform read-only info line: the emulator picker is the binding source on Android, then
+        // the existing library actions follow unchanged.
         foreach (var row in _settings.Rows)
         {
             yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
-            if (_androidRetroArchCores.TryGetValue(row.SystemId, out var cores) && cores.Count > 0)
-                yield return AndroidRetroArchCoreRow(row, cores);
+            if (_androidEmulatorChoices.TryGetValue(row.SystemId, out var choices) && choices.Count > 0)
+                yield return AndroidEmulatorChoiceRow(row);
             // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
             // the sync always dead-ends — hide the row on the handheld (the import overlay already
             // filters playstation3 the same way).
@@ -1288,55 +1461,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private GamepadSettingsRowSpec AndroidRetroArchCoreRow(
-        EmulatorSettingsRowViewModel row,
-        IReadOnlyList<AndroidRetroArchCoreOption> cores)
+    private GamepadSettingsRowSpec AndroidEmulatorChoiceRow(EmulatorSettingsRowViewModel row)
     {
-        const string notSelected = "Not selected";
-        var currentPath = row.CorePath.Trim();
-        var current = cores.FirstOrDefault(core =>
-            string.Equals(core.Path, currentPath, StringComparison.Ordinal));
-
-        var choices = new List<string> { notSelected };
-        choices.AddRange(cores.Select(core => core.DisplayName));
-
-        // Preserve a path written by an older build or another compatible frontend. Android cannot
-        // inspect RetroArch's private directory to validate it, so silently replacing an unknown value
-        // would be worse than keeping it as an explicit choice until the user changes it.
-        string? customLabel = null;
-        if (current is null && currentPath.Length > 0)
-        {
-            customLabel = $"Current: {Path.GetFileName(currentPath)}";
-            choices.Add(customLabel);
-        }
-
-        var value = current?.DisplayName ?? customLabel ?? notSelected;
+        var choices = row.AvailableChoices.Select(choice => choice.DisplayName).ToList();
+        var value = row.SelectedChoice?.DisplayName ?? choices[0];
         return ChoiceRow(
-            $"emulators.{row.SystemId}.retroarch-core",
-            "RetroArch core",
-            "Install the same core in RetroArch first. Android keeps cores private, so EmuShelf selects its known filename without reading or changing RetroArch.",
+            $"emulators.{row.SystemId}.emulator",
+            "Emulator",
+            "Standalone apps and RetroArch cores are equal choices. Install the selected app or core first; EmuShelf never changes emulator files.",
             value,
             choices,
             selected =>
             {
-                if (selected == notSelected)
-                {
-                    row.CorePath = string.Empty;
-                    return;
-                }
-
-                if (selected == customLabel)
-                    return;
-
-                var option = cores.First(core => core.DisplayName == selected);
-                var retroArchProfile = row.AvailableProfiles.FirstOrDefault(profile =>
-                    string.Equals(profile.EmulatorId, "retroarch", StringComparison.Ordinal));
-                if (retroArchProfile is not null &&
-                    !string.Equals(row.EmulatorId, retroArchProfile.EmulatorId, StringComparison.Ordinal))
-                {
-                    row.SelectedProfile = retroArchProfile;
-                }
-                row.CorePath = option.Path;
+                var choice = row.AvailableChoices.First(candidate =>
+                    string.Equals(candidate.DisplayName, selected, StringComparison.Ordinal));
+                row.SelectedChoice = choice;
             },
             isGrouped: true,
             systemId: row.SystemId,
@@ -1519,7 +1658,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             offLabel: "OFF",
             isGrouped: true);
 
-        yield return HeaderRow("scraper.header", "ScreenScraper");
+        // No standalone "ScreenScraper" header: it stacked directly above the "Sign in to ScreenScraper"
+        // / "ScreenScraper account" sub-header below, so it only ate vertical space on the couch surface.
+        // The sub-headers already name the provider.
         if (_settings.IsScreenScraperConnected)
         {
             yield return HeaderRow("scraper.account-header", "ScreenScraper account");
@@ -1728,12 +1869,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.ExportDeviceAndCloudSavesCommand,
             _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null));
 
-        // Hidden on Android: opening the log reveals it in a desktop file manager, which throws on the
-        // handheld — so the row would do nothing there.
-        if (_settings.HasSyncLog && !OperatingSystem.IsAndroid())
+        if (_settings.HasSyncLog && _settings.CanRevealFiles)
         {
             // Actionable (opens the log in the OS viewer) rather than a dead read-only row where A
             // did nothing. Desktop exposes this as a hyperlink, so it is excluded from field parity.
+            // Skipped on Android, where there is no OS viewer to hand the log path to.
             yield return ActionRow(
                 "saves.log",
                 "Open sync activity log",
@@ -1944,7 +2084,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             GamepadSettingsRowKind.Choice,
             Activate: () =>
             {
-                Move(1);
+                OpenChoicePicker(key, label, description, value, choices, set);
                 return Task.CompletedTask;
             },
             Adjust: Move,

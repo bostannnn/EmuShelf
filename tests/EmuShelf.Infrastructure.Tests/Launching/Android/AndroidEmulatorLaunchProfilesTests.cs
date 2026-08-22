@@ -31,13 +31,52 @@ public class AndroidEmulatorLaunchProfilesTests
     }
 
     [Fact]
-    public void ForSystem_PutsTheExplicitSharedProfileBeforeMaintainedFallbacks()
+    public void ForSystem_PutsTheExplicitSelectionIdBeforeMaintainedFallbacks()
     {
         var playstation = AndroidEmulatorLaunchProfiles.ForSystem("playstation", "duckstation");
         var nds = AndroidEmulatorLaunchProfiles.ForSystem("nds", "retroarch");
+        var playstation2 = AndroidEmulatorLaunchProfiles.ForSystem("playstation2", "armsx2");
+        var standaloneNds = AndroidEmulatorLaunchProfiles.ForSystem("nds", "watermelonds");
 
         Assert.Equal(AndroidEmulatorLaunchProfiles.DuckStation.Id, playstation[0].Id);
         Assert.Equal(AndroidEmulatorLaunchProfiles.RetroArch.Id, nds[0].Id);
+        Assert.Equal(AndroidEmulatorLaunchProfiles.Armsx2.Id, playstation2[0].Id);
+        Assert.Equal(AndroidEmulatorLaunchProfiles.WatermelonDs.Id, standaloneNds[0].Id);
+    }
+
+    [Fact]
+    public void SelectionIds_AreShortStableAndDistinct()
+    {
+        var ids = AndroidEmulatorLaunchProfiles.All.Select(profile => profile.SelectionId).ToArray();
+
+        Assert.Equal(ids.Length, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Equal(
+            ["duckstation", "armsx2", "dolphin", "ppsspp", "azahar", "watermelonds", "retroarch"],
+            ids);
+        Assert.All(ids, id => Assert.DoesNotContain('.', id));
+    }
+
+    [Fact]
+    public void EmulatorChoiceCatalog_FlattensNdsStandaloneAndRetroArchCores()
+    {
+        var choices = AndroidEmulatorChoiceCatalog.ForSystem("nds");
+
+        Assert.Equal(
+            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
+            choices.Select(choice => choice.DisplayName));
+        Assert.Equal("watermelonds", choices[0].EmulatorId);
+        Assert.Null(choices[0].CorePath);
+        Assert.All(choices.Skip(1), choice =>
+        {
+            Assert.Equal("retroarch", choice.EmulatorId);
+            Assert.False(string.IsNullOrWhiteSpace(choice.CoreId));
+            Assert.False(string.IsNullOrWhiteSpace(choice.CorePath));
+        });
+
+        var melonDs = choices[2];
+        Assert.Same(
+            melonDs,
+            AndroidEmulatorChoiceCatalog.Match("nds", "retroarch", melonDs.CorePath));
     }
 
     [Fact]

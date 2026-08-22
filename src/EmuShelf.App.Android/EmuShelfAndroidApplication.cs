@@ -58,6 +58,20 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // (TcpLoopbackOAuthRedirectHandler) the transport binds.
         global::EmuShelf.App.App.ExternalUriOpener = OpenExternalUri;
 
+        // In-app update on Android: hand the downloaded, checksum-verified APK to the system package
+        // installer. There is no file-swap here (an app cannot overwrite its own installed APK), so the
+        // shared UpdateApplierFactory — which only knows the desktop swap/re-exec strategies — is replaced
+        // with the Android applier. The shared coordinator still drives the check + verified download.
+        // Resolves the live Activity when there is one, else the application context (installer intent adds
+        // NEW_TASK), mirroring OpenExternalUri.
+        // NullAppLogger, not a FileAppLogger: constructing AppPaths would create empty Cache/Logs/… dirs
+        // under the app-private folder (not the chosen data folder). The applier throws on failure and the
+        // shared coordinator logs that via its own logger, so no log is lost.
+        global::EmuShelf.App.App.UpdateApplierFactoryOverride =
+            () => new AndroidUpdateApplier(
+                () => (global::Android.Content.Context?)MainActivity.Current ?? ApplicationContext,
+                global::EmuShelf.Core.Diagnostics.NullAppLogger.Instance);
+
         // Log-based performance tracing for the fan-on-scroll diagnosis. Routes PerfTrace to logcat (tag
         // EmuShelfPerf) and starts the once-a-second sampler now; the shell fills in the state provider once
         // the couch view model exists. Runs in Release too — the whole point is to read it off a real build.

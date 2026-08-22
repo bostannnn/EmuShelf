@@ -1984,9 +1984,13 @@ breaks the whole-solution macOS build/test loop.
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
-        Controller Settings now selects a compatible RetroArch core per system without trying to read
-        RetroArch's app-private core directory; the saved choice activates RetroArch and is passed as the
-        exact `LIBRETRO` path, while unavailable choices can still fall through to standalone emulators.
+        Controller Settings now presents one flat emulator picker per system: every standalone Android
+        app is an entry and every compatible RetroArch core is an equal `RetroArch · core` entry without
+        trying to read RetroArch's app-private directory. The saved short emulator id plus optional exact
+        `LIBRETRO` path round-trips through the existing configuration schema; Android-only ARMSX2 and
+        WatermelonDS are selectable instead of being unreachable launch defaults. Desktop Settings uses
+        the same picker model, expanding RetroArch into disk-discovered core entries after its executable
+        or Flatpak target is configured while retaining each emulator's own executable/arguments draft.
         **Nested multi-disc launch fixed (2026-08-22):** the launch service now scopes the SAF URI's tree
         to the game's remembered import folder (`AndroidLibraryGrantRoot`) instead of the game's own
         sub-folder, so a per-game `.m3u` (MGS, Xenogears, Twin Snakes, Shadow Hearts Covenant) matches the
@@ -1994,6 +1998,10 @@ breaks the whole-solution macOS build/test loop.
         `SecurityException`; `roms/psx` tree → MGS boots and reads Disc 1), 7 selector tests + the existing
         on-device resolver test green. See DECISIONS 2026-08-22. Remaining: dependency-resolver promotion
         (desktop/Flatpak only) and a grant-root verification step for the rarer import≠grant-folder case.
+  - [ ] **B1 — unified-picker device acceptance.** On the Thor (or an arm64 AVD), confirm DS lists
+        WatermelonDS plus melonDS DS / melonDS / DeSmuME as four flat choices, restart to prove the chosen
+        `(EmulatorId, CorePath?)` persists, and launch one standalone app plus each RetroArch core. The
+        shared Debug suite is green; this checkbox is deliberately hardware-only.
   - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
         the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the
         app's own process proved all-files access reads *and writes* `Android/data/<pkg>` on the Thor
@@ -2028,6 +2036,21 @@ breaks the whole-solution macOS build/test loop.
   - [ ] **C — controller + IME** (native analog-stick reading — the sticks do nothing today — + IME),
         **E-android** save providers/transport, **E-desktop** (one real Google sign-in). Land these to a
         working core, then:
+  - [ ] **SS — second screen (Thor dual-screen companion)**. Decided 2026-08-22 (was parked as "revisit
+        as its own item" in 0b): use the Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080,
+        `FLAG_PRESENTATION`) as a companion surface while EmuShelf is the active frontend — an app dock,
+        an all-apps drawer, a RetroAchievements panel, and a dimmed game-logo idle while a game plays on
+        the main screen. Native C# Android Views inside an `Android.App.Presentation`, reading the shared
+        Core services in-process (no second Avalonia surface, no new RA path). Owner calls: active
+        **whenever EmuShelf is open**; dock/drawer-launched apps open **on Screen-2**; achievements show
+        the **running-or-selected game, cache-first, pull only on the icon press**. Steps: **SS0** —
+        gating spike (does the Presentation survive an emulator taking the main screen; must AYN's
+        `com.odin.dualscreen.assistant` be dismissed to own Screen-2; keep-alive mechanism) → **SS1**
+        `SecondScreenController` host → **SS2** bottom bar (drawer/achievements icons + 5-slot dock) →
+        **SS3** app drawer (manifest `<intent>` LAUNCHER query, launch on Screen-2) → **SS4** dock
+        pinning (portable `Settings/second-screen-dock.json`, Core-tested) → **SS5** achievements panel
+        (reuse `IRetroAchievementsDetailsService` + 5-min staleness gate) → **SS6** dim+logo idle
+        (touch-to-wake). Full detail in the plan's "Milestone SS".
   - [ ] **S — stabilization passes (features first, then iterate until solid)**. Owner strategy
         (2026-08-20): the lettered milestones build features, each verified narrowly; they do not produce a
         polished build. After the core imports/launches/returns/syncs end to end, switch to **repeated
@@ -2036,3 +2059,26 @@ breaks the whole-solution macOS build/test loop.
         rotating the 3D cover, and every stick interaction — really Milestone C), 3D shelf covers resize
         while scrolling (A2 density × shelf geometry/virtualization), plus "many others" to catalogue in the
         first pass. See the plan's "Milestone S — Stabilization passes".
+    - [x] **S1 — Android auto-update + grid/settings polish** (2026-08-22, four Thor-pass fixes;
+          on-device verification pending device return). (1) **In-app auto-update now works on Android.**
+          CI already publishes a signed `EmuShelf-android-arm64.apk` + `.sha256`, so the shared
+          check/download/checksum-verify path just needed the Android asset name (`UpdatePlatform`); a new
+          `AndroidUpdateApplier` (injected via `App.UpdateApplierFactoryOverride`) hands the verified APK
+          to the system package installer through a `FileProvider` content URI. It is not silent —
+          Android has no in-place file-swap for an installed app — and the update only installs when the
+          new APK is signed with the same key as the running build (the CI release keystore). Adds
+          `REQUEST_INSTALL_PACKAGES` + the provider to the manifest. (2) **Hotkeys section hidden on
+          Android.** The feature writes a *keyboard* scheme into desktop emulator configs for Steam Input;
+          neither exists on Android, so `MainViewModel.CreateHotkeySettingsContext` returns null there,
+          dropping the section and the gamepad hotkey-editor overlay. (3) **Removed the redundant
+          "ScreenScraper" header** in the gamepad Artwork & Metadata section — it stacked directly above
+          the "Sign in to ScreenScraper" sub-header and only ate couch vertical space. (4) **Grid scroll
+          no longer fans/chops on Android:** the per-tile 20 px blurred `BoxShadow` (recomposited every
+          frame for ~40 tiles — the dominant grid cost in the fan-on-scroll investigation) is dropped via
+          a `reduced-effects` class gated on `IsReducedEffectsPlatform`, which also collapses one overdraw
+          layer. Desktop keeps the depth. See DECISIONS 2026-08-22.
+    - Landed 2026-08-22: Android now hosts the UI via `IActivityApplicationLifetime.MainViewFactory` (fresh
+      view per activity) instead of `ISingleViewApplicationLifetime.MainView`, clearing Avalonia's
+      "MainView is not fully supported on Android" warning (was 33×/day on the Thor). Verified on-device.
+      NOT fixed by this: the `OpenGlException: Window 0 is invalid` render-loop errors — a separate
+      surface-teardown race on emulator-launch backgrounding, still open (see DECISIONS 2026-08-22).
