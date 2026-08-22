@@ -2036,8 +2036,8 @@ breaks the whole-solution macOS build/test loop.
   - [ ] **C — controller + IME** (native analog-stick reading — the sticks do nothing today — + IME),
         **E-android** save providers/transport, **E-desktop** (one real Google sign-in). Land these to a
         working core, then:
-  - [ ] **SS — second screen (Thor dual-screen companion)**. Decided 2026-08-22 (was parked as "revisit
-        as its own item" in 0b): use the Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080,
+  - [x] **SS — second screen (Thor dual-screen companion)** ✅ (implemented and verified on Thor
+        2026-08-22). Uses the Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080,
         `FLAG_PRESENTATION`) as a companion surface while EmuShelf is the active frontend — an app dock,
         an all-apps drawer, a RetroAchievements panel, and a dimmed game-logo idle while a game plays on
         the main screen. Native C# Android Views inside an `Android.App.Presentation`, reading the shared
@@ -2050,7 +2050,11 @@ breaks the whole-solution macOS build/test loop.
         **SS3** app drawer (manifest `<intent>` LAUNCHER query, launch on Screen-2) → **SS4** dock
         pinning (portable `Settings/second-screen-dock.json`, Core-tested) → **SS5** achievements panel
         (reuse `IRetroAchievementsDetailsService` + 5-min staleness gate) → **SS6** dim+logo idle
-        (touch-to-wake). Full detail in the plan's "Milestone SS".
+        (touch-to-wake). The SS0 spike confirmed the Presentation coexists with AYN's assistant without
+        disabling it and survives a real ARMSX2 handoff; a `specialUse` foreground service runs only while
+        a game owns the main panel. Release-device checks covered the virtualized drawer, Screen-2 Clock
+        launch, persisted dock, game artwork, overlay Close→game-idle restoration, return→browse, and
+        service teardown. Full detail in the plan's "Milestone SS".
   - [ ] **S — stabilization passes (features first, then iterate until solid)**. Owner strategy
         (2026-08-20): the lettered milestones build features, each verified narrowly; they do not produce a
         polished build. After the core imports/launches/returns/syncs end to end, switch to **repeated

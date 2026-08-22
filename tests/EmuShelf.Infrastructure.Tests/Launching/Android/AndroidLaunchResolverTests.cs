@@ -69,6 +69,56 @@ public class AndroidLaunchResolverTests
     }
 
     [Fact]
+    public void Resolve_StaleRetroArchWithoutCore_FallsBackToTheStandaloneDefault()
+    {
+        // A legacy DS row still says "retroarch" but has no core, so it cannot launch. DS's maintained-
+        // first default is WatermelonDS (a standalone needing no core) — the same row the settings picker
+        // migrates such a selection to — so the resolver launches that instead of prompting for a core.
+        var result = AndroidLaunchResolver.Resolve(
+            "nds",
+            "/storage/emulated/0/roms/nds/game.nds",
+            preferredEmulatorId: AndroidEmulatorLaunchProfiles.RetroArch.Id,
+            retroArchCorePath: null);
+
+        Assert.True(result.Success, result.FailureReason);
+        Assert.Equal(AndroidEmulatorLaunchProfiles.WatermelonDs.Id, result.Profile!.Id);
+    }
+
+    [Fact]
+    public void Resolve_DeliberateRetroArchCore_OnStandaloneDefaultSystem_LaunchesRetroArch()
+    {
+        // The fallback must hinge on the *empty* core path, not merely on RetroArch being preferred: a
+        // real DS RetroArch-core pick carries a core path, so it launches RetroArch (melonDS DS) and is
+        // never hijacked to WatermelonDS just because a standalone is the maintained default.
+        var corePath = AndroidRetroArchCoreCatalog.BySystem["nds"][0].Path;
+        var result = AndroidLaunchResolver.Resolve(
+            "nds",
+            "/storage/emulated/0/roms/nds/game.nds",
+            preferredEmulatorId: AndroidEmulatorLaunchProfiles.RetroArch.Id,
+            retroArchCorePath: corePath);
+
+        Assert.True(result.Success, result.FailureReason);
+        Assert.Equal(AndroidEmulatorLaunchProfiles.RetroArch.Id, result.Profile!.Id);
+        Assert.Equal(corePath, result.Intent!.StringExtras["LIBRETRO"]);
+    }
+
+    [Fact]
+    public void Resolve_StaleRetroArchWithoutCore_StillPromptsWhenRetroArchIsTheMaintainedDefault()
+    {
+        // PS1's maintained-first default is RetroArch itself (DuckStation is frozen), so dropping the
+        // unusable preference lands back on RetroArch — the core prompt is correct, not a dead-end to
+        // the deprioritised standalone.
+        var result = AndroidLaunchResolver.Resolve(
+            "playstation",
+            "/storage/emulated/0/roms/psx/game.chd",
+            preferredEmulatorId: AndroidEmulatorLaunchProfiles.RetroArch.Id,
+            retroArchCorePath: null);
+
+        Assert.False(result.Success);
+        Assert.Contains("core", result.FailureReason, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Resolve_RetroArch_UsesPlainPathAndCore()
     {
         var result = AndroidLaunchResolver.Resolve(
