@@ -3,6 +3,7 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Content.Res;
+using Android.OS;
 using Android.Views;
 using Avalonia.Android;
 using EmuShelf.App.Android.Services;
@@ -26,6 +27,11 @@ namespace EmuShelf.App.Android;
     Theme = "@style/Theme.AppCompat.NoActionBar",
     MainLauncher = true,
     Exported = true,
+    // The couch shell is landscape-only, and the Thor's panel is natively portrait (1080x1920) —
+    // without an explicit lock, going edge-to-edge fills that portrait panel instead of the rotated
+    // landscape the handheld is used in. SensorLandscape pins landscape while still allowing a 180°
+    // flip for a clamshell held either way.
+    ScreenOrientation = ScreenOrientation.SensorLandscape,
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize
         | ConfigChanges.UiMode
@@ -47,10 +53,50 @@ public class MainActivity : AvaloniaMainActivity
     /// </summary>
     internal static MainActivity? Current { get; private set; }
 
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        ApplyImmersiveMode();
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
         Current = this;
+    }
+
+    /// <summary>
+    /// Re-hides the system bars whenever the activity regains focus. Immersive mode is cleared by the
+    /// system after a dialog, a bar swipe, or the IME showing, so a one-shot in <see cref="OnCreate"/>
+    /// is not enough — the couch shell is a full-screen gamepad UI and the status bar and gesture-nav
+    /// pill otherwise sit in reserved bands that eat a strip of the panel and never return the space.
+    /// </summary>
+    public override void OnWindowFocusChanged(bool hasFocus)
+    {
+        base.OnWindowFocusChanged(hasFocus);
+        if (hasFocus)
+            ApplyImmersiveMode();
+    }
+
+    /// <summary>
+    /// Draws edge-to-edge and hides the status and navigation bars, leaving the transient-swipe
+    /// behaviour so the user can still reveal them. API 30+ only, which every supported device is
+    /// (the Thor is 33).
+    /// </summary>
+    private void ApplyImmersiveMode()
+    {
+        // The WindowInsetsController API is API 30+. Every supported device clears it (the Thor is 33);
+        // an older one simply keeps the system bars rather than crashing.
+        if (!OperatingSystem.IsAndroidVersionAtLeast(30) || Window is not { } window)
+            return;
+
+        window.SetDecorFitsSystemWindows(false);
+        if (window.InsetsController is { } controller)
+        {
+            controller.Hide(WindowInsets.Type.SystemBars());
+            controller.SystemBarsBehavior =
+                (int)WindowInsetsControllerBehavior.ShowTransientBarsBySwipe;
+        }
     }
 
     protected override void OnDestroy()

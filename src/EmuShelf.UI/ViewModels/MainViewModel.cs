@@ -909,6 +909,13 @@ public partial class MainViewModel : ViewModelBase
     public CrtPresentation InlineShelfCrt => CrtPresentation.Flat;
 
     /// <summary>
+    /// How much larger than the desktop composition the 3D shelf media is framed. The desktop couch is
+    /// tuned for the Steam Deck at 1.0; a handheld held at arm's length wants the media much larger, so
+    /// Android raises it. Kept as a single knob here so it is easy to tune.
+    /// </summary>
+    public double ShelfFillScale => OperatingSystem.IsAndroid() ? 1.5 : 1.0;
+
+    /// <summary>
     /// The games the 3D scene draws, or nothing outside the shelf layout.
     /// </summary>
     /// <remarks>
