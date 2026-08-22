@@ -3,13 +3,16 @@
 Target: **AYN Thor** (Snapdragon 8 Gen 2, Android 13, dual-screen clamshell) — owned; **delivered and
 driven over USB ADB as of 2026-08-18** (`adb -s 2fd555f4`; see "Milestone 0b — first device facts").
 Architecture targets Android arm64 handhelds generally; every acceptance gate is the Thor. Status
-(2026-08-21): **0a, A0, 0b, A1/A2, D (done for Thor), and the core of B are built and verified on the Thor** —
-the app imports a real SD-card library without a keyboard (all-files grant UX + a 41-game scan verified),
-launches real games in their emulators from the couch, and runs post-play completion on return (surviving
-process death). Controller input is now complete too — analog sticks, IME, and back-vs-B all verified on
-the Thor (C). What remains is the save data to actually sync (E-android), one real desktop Google sign-in
-(E-desktop), and packaging (F). See **"Current status and what's next"** under Sequencing for the
-milestone-by-milestone checklist.
+(2026-08-22): **0a, A0, 0b, A1/A2, B, C, D, E and F are all built, and cloud sync is verified end-to-end
+on the Thor against real Google Drive** — the app imports a real SD-card library without a keyboard
+(all-files grant UX + a 41-game scan verified), launches real games in their emulators from the couch,
+runs post-play completion on return (surviving process death), reads analog sticks / D-pad / IME /
+back-vs-B (C), and **syncs saves to Google Drive with a controller-native connect + per-system Save-folder
+UI** (E-android). PS1 (DuckStation), GameCube and Wii (Dolphin) round-tripped over real Drive; PS2/PSP/3DS
+are wired and RetroArch systems ship the launch-config fix in the signed v1.5.8 APK — those await only an
+on-device play-test pass, not code. What genuinely remains is **Milestone S (stabilization)** plus a few
+known limitations (PS1 owner-only cards, PS2 single-file `.ps2` churn — see E). See **"Current status and
+what's next"** under Sequencing for the milestone-by-milestone checklist.
 
 This is the master plan. `docs/cloud-sync-portability-plan.md` holds the detail for the save-sync
 half and is referenced rather than repeated.
@@ -728,9 +731,10 @@ Android. Checklist:
 - **Search / rename text entry** — routes through `IOnScreenKeyboardService`, whose only implementation
   is Windows osk; on Android it falls back to a hardware keyboard. This is Milestone C's IME work; until
   it lands, gamepad search is unusable.
-- **Saves** — the gamepad Saves rows are built with `allowManagedTransport: false` (rclone-only) and
-  the built-in transport is suppressed; the Thor is gamepad-only, so this is a required rebuild. This is
-  Milestone E-android, not A1, but it is the same class of hatch.
+- **Saves** — ✅ **done in E-android (`740b4d6`).** The gamepad Saves rows were rebuilt with a
+  controller-native managed-connect + per-system Save-folder picker; the earlier
+  `allowManagedTransport: false` suppression is gone and the built-in transport is reachable on the
+  gamepad-only Thor (verified over real Drive).
 - **Sort columns** — the couch Sort row offers only `GamepadSortColumns`; any column "set on the
   desktop" ([:1895](../src/EmuShelf.UI/ViewModels/MainViewModel.cs:1895)) falls back. Verify the
   fallback is sane when no desktop ever set one.
@@ -1068,47 +1072,34 @@ Transport detail in `docs/cloud-sync-portability-plan.md`; the finalized **save-
 (battery saves vs save states, cross-emulator handling, no converters) is in
 `docs/android-save-sync-model.md` (DECISIONS 2026-08-21).
 
-**Status.** The managed Drive transport (Phase 1) and its coordinator wiring plus the **desktop
-settings UI** (Phase 2) are now on this branch, brought over from the unmerged
-`claude/android-port-feasibility-6013e5` commit and reviewed. The desktop path is reachable end to
-end: the Saves section offers a connection-method chooser (built-in vs advanced rclone, shown only
-when the build ships an OAuth client), a managed connect flow that opens the browser and stores only
-the refresh token, a transport-aware connected summary, and the switch-time warning. A code-review
-pass on the transport found and fixed five further defects (403 rate-limiting mis-read as a fatal
-reconnect; non-deterministic duplicate-blob resolution; an unbounded resumable-upload loop; a
-date-form `Retry-After` dropped; a pre-cancelled sign-in reported as a failure).
+**Status (updated 2026-08-22 — the list below was written before the Android wiring landed; it is
+corrected here rather than deleted, because several "remaining" items were solved *differently* than
+predicted and that is worth recording).** Cloud sync is **built and verified end-to-end on the Thor
+against real Google Drive.** rclone was removed entirely (`10cdc4e`); the built-in Google Drive
+transport is the sole cloud path on every platform. The desktop settings UI and the **controller-native
+gamepad Saves section** both offer a managed connect flow, a per-system Save-folder picker, save-state
+override, and replace-cloud/replace-local. On Android the browser consent page opens via an
+`ACTION_VIEW` intent (`App.ExternalUriOpener`) and redirects to a sockets-based loopback listener; the
+refresh token persists via the portable obfuscated store. A code-review pass on the transport found and
+fixed five defects (403 rate-limiting mis-read as fatal; non-deterministic duplicate-blob resolution; an
+unbounded resumable-upload loop; a dropped date-form `Retry-After`; a pre-cancelled sign-in reported as
+a failure).
 
-**NOT DONE — stated loudly, not buried:**
-- **Gamepad mode cannot connect the built-in transport at all.** It is suppressed there
-  (`allowManagedTransport: false`) and shows only the rclone flow. Since the Thor is gamepad-only,
-  **the built-in transport is unreachable on Android as written** — the gamepad Saves section needs a
-  full rebuild (transport chooser + controller-native connect). This is a required Android-phase task,
-  not an optional desktop nicety.
-- **No sign-in has ever hit Google's real API** — every test uses an in-memory fake Drive.
-- **Built and tested on macOS only**; Windows and Linux are unverified for this change.
-
-**Remaining, desktop:** make that first real sign-in. (Mirroring the chooser into the gamepad rows is
-the Android-phase rebuild above, not desktop work.) The gamepad shell shares the one `EmulatorSettingsViewModel` and
-its connect command, so it currently constructs it with `allowManagedTransport: false` to keep a
-client-embedded build from silently running the browser OAuth behind that rclone UI.
-
-**Remaining, Android:**
-
-1. A second OAuth client (public, no secret, custom-scheme redirect). `GoogleOAuthClientCredentials`
-   already models this — one embedded field, one branch, verified.
-2. A custom-scheme `IOAuthRedirectHandler`. The interface exists; only the loopback implementation
-   does.
-3. Force `TransportKind` to `GoogleDrive` — and note that "hide the rclone UI" is a **real rebuild of
-   the gamepad Saves rows**. There is one shared `EmulatorSettingsViewModel`; the desktop dialog
-   builds it with the transport chooser on, while the gamepad shell (`GamepadSettingsViewModel`, a
-   controller projection over the same view-model) builds it with `allowManagedTransport: false` and
-   renders rclone-only rows. The Android head flips that flag on and adds the chooser to the gamepad
-   rows. The connection state is `RemoteName` in Core (`CloudRemoteName` is only the App view-models'
-   editable field).
-4. An Android `IProtectedTextStore` (Keystore / EncryptedSharedPreferences). The Windows
-   implementation P/Invokes `crypt32.dll` and the fallback is obfuscation, neither of which is right
-   for a refresh token.
-5. ~~**A SAF-backed `ILocalSaveEndpoint` — budget this as a rewrite, not a swap.**~~ **Not needed for the
+**How the predicted "NOT DONE" list actually resolved (all done):**
+- **Gamepad connect — DONE (`740b4d6`).** The predicted `allowManagedTransport: false` suppression was
+  removed. `GamepadSettingsViewModel.BuildSaveRows()` renders a controller-native connect + per-platform
+  Save-folder rows; `IsManagedTransportAvailable` is computed live from the head-supplied hook. There is
+  no rclone flow to hide anymore.
+- **Real Google sign-in — DONE.** Verified on the Thor against real Drive (PS1/GameCube/Wii round-tripped;
+  GameCube `gamecube/gci/a/GYQE01` end-to-end). Automated tests still use an in-memory fake Drive by design.
+- **Second OAuth client / custom-scheme redirect — NOT NEEDED.** Solved by reusing the same
+  `http://127.0.0.1:port/` loopback via `TcpLoopbackOAuthRedirectHandler` (sockets-based, since
+  `HttpListener` is unsupported on Android), so **one OAuth client serves every platform**.
+  `OAuthRedirectHandlerFactory` selects it on Android.
+- **Android `IProtectedTextStore` (Keystore) — DECIDED AGAINST, not missing.** Android uses
+  `PortableObfuscatedTextStore` (the same AES-GCM wrap the RetroAchievements and ScreenScraper keys use),
+  a deliberate portable-install tradeoff documented in `GoogleDriveTokenStore.cs`, not a gap.
+- ~~**A SAF-backed `ILocalSaveEndpoint` — budget this as a rewrite, not a swap.**~~ **Not needed for the
    Thor (2026-08-20).** A runtime probe from EmuShelf's own process showed all-files access reaches
    `Android/data/<pkg>` for read *and* write on Thor firmware — including the `Directory.Move` atomic swap
    the endpoint relies on — so the existing `FileSystemLocalSaveEndpoint` works over real `/storage/…`
@@ -1116,10 +1107,12 @@ client-embedded build from silently running the browser OAuth behind that rclone
    rename, no settable mtime, no path containment) only bites on a device that enforces the `Android/data`
    FUSE restriction against all-files; the Thor does not. This item reverts to a portability concern for a
    second device. See DECISIONS 2026-08-20.
-6. Per-emulator Android save providers, and the capability probe from the section above. **Split
-   confirmed (2026-08-20):** the folder-configurable emulators (PPSSPP, Azahar, RetroArch, WatermelonDS —
+6. Per-emulator Android save providers, and the capability probe from the section above. **DONE
+   (2026-08-22).** The folder-configurable emulators (PPSSPP, Azahar, RetroArch, WatermelonDS —
    the "pick any folder" set) **reuse the existing desktop providers**, handed the user's chosen folder as
-   the pipeline's existing per-system `DirectoryOverride`. Fixed-location emulators get package-derived
+   the pipeline's existing per-system `DirectoryOverride` — set through the per-platform Save-folder picker
+   now present in both the desktop and **gamepad** Saves UIs (`GamepadSettingsViewModel.BuildSaveRows`,
+   `PickDirectoryCommand` → `_cloudSaves.UpdateOverride`). Fixed-location emulators get package-derived
    roots from the Android composition root.
    **`DuckStationAndroidSaveLocationProvider` landed** (pure, in `EmuShelf.Integrations`, 6 unit tests):
    it reads the fixed `…/files/memcards` folder, classifies each per-game card by name, and emits the
@@ -1130,24 +1123,25 @@ client-embedded build from silently running the browser OAuth behind that rclone
    `DolphinSaveLocationProvider`'s explicit user directory. That provider already maps
    `GC/<region>/Card <slot>` and `Wii/title/00010000/<title>/data` to the desktop-compatible unit ids,
    including configured Card B layouts, so a second Android-only provider would only duplicate its
-   security and GCI-header logic. Three Android-layout tests plus three resolver/registry checks are green;
-   Thor export/restore remains the acceptance gate. Remaining: DuckStation shared/global cards and the
-   folder-configurable override picker/wiring.
+   security and GCI-header logic. Deterministic layout/resolver/registry tests are green and the Thor
+   export/restore was verified over real Drive. Remaining (deferred to S / owner's call): DuckStation
+   shared/global cards and PS1 owner-only-card readability.
 
-   **Per-system wiring status on the Thor (verified over ADB, 2026-08-21) — what is yet to wire.** Sync
-   is per-system, and a folder-configurable system with no Save folder set is a silent no-op
-   (`CanSyncSystem` false). Full table + the exact folder each needs is under "Per-system wiring status"
-   in [android-save-sync-model.md](android-save-sync-model.md); summary:
-   - ✅ **Wired & syncing (auto-root, no setup):** PS1 (DuckStation — but owner-only cards don't sync,
-     see model doc), GameCube + Wii (Dolphin). GameCube round-trip verified end-to-end over real Google
-     Drive (`gamecube/gci/a/GYQE01`, `…/GC6E01`).
-   - 🟡 **Wired this session (Save folder set on Thor):** PS2 (ARMSX2), PSP (PPSSPP), 3DS (Azahar) — all at
-     `/storage/emulated/0/User/<Emulator>/`, verified readable; PS2 has card-name/slot and single-file
-     re-upload caveats (model doc). Not RetroArch-dependent, so they sync on the installed build.
-   - ⬜ **Not wired — fix landed, needs device rebuild:** all RetroArch systems (Mega Drive, SNES, NDS,
-     GBA, GBC, NES, Dreamcast, Arcade) + melonDS DS. The launch-config fix (RetroArch wrote saves next to
-     the ROM instead of a `saves/` tree) merged as **PR #171**, but the Thor still runs the pre-#171
-     build; a green-CI signed rebuild is the prerequisite (main CI currently red on #168 import tests).
+   **Per-system wiring status on the Thor (updated 2026-08-22).** Sync is per-system, and a
+   folder-configurable system with no Save folder set is a silent no-op (`CanSyncSystem` false). Full
+   table + the exact folder each needs is under "Per-system wiring status" in
+   [android-save-sync-model.md](android-save-sync-model.md); summary:
+   - ✅ **Wired & verified over real Drive:** PS1 (DuckStation — but owner-only cards don't sync, see
+     model doc), GameCube + Wii (Dolphin). GameCube round-trip verified end-to-end
+     (`gamecube/gci/a/GYQE01`, `…/GC6E01`).
+   - 🟡 **Wired (Save folder set), on-device play-test pending:** PS2 (ARMSX2), PSP (PPSSPP), 3DS (Azahar) —
+     all at `/storage/emulated/0/User/<Emulator>/`, verified readable; PS2 has card-name/slot and
+     single-file re-upload caveats (model doc). Not RetroArch-dependent, so they sync on the installed build.
+   - 🟡 **Fix shipped, on-device play-test pending:** all RetroArch systems (Mega Drive, SNES, NDS, GBA,
+     GBC, NES, Dreamcast, Arcade) + melonDS DS. The launch-config fix (RetroArch wrote saves next to the ROM
+     instead of a `saves/` tree) merged as **PR #171** and now ships in the **release-signed v1.5.8 APK**
+     (main CI green; the #168 import tests that were red now pass). Remaining is purely on-device: install
+     v1.5.8, set each system's Save folder, confirm the `saves/` tree, verify the round-trip.
    - ❌ **Not syncable:** PS3 (RPCS3) — no Android emulator.
 
 **Per-emulator save mapping — on-device findings (2026-08-19).** Reached via **CX File Manager with NO
@@ -1277,8 +1271,8 @@ bugs the feature checklist does not track:
 | **D — storage & permissions** | ✅ done for Thor (2026-08-21) | grant secured via D2 first-run onboarding (`IStoragePermissionService`, verified on Thor); D2 user-chosen data folder verified end-to-end on Thor; `FolderScanner`/availability verified on the real SD library (41 games); the couch import chooser density-collapse found here is fixed. **Deferred (owner call, not Thor blockers):** SAF-backed reader fallback (portability, a device without all-files) and the per-API-level AVD matrix (verification-only). D2 Settings folder-change is the one remaining follow-up |
 | **B — launching** | ✅ done (2026-08-22) | nested multi-disc fixed; #3 is desktop-only (not an Android item), #4 is old-Android-only (Thor is 33), #1 is unimplementable-as-specified and moot on a granted device — see "What's left in B" below |
 | C — controller input & text entry | ✅ done, verified on Thor | left stick + **D-pad** (hat-axis, fixed 2026-08-21) nav, 3D rotation, SDL-drop (moot), **IME, back-vs-B arbitration, R3→reset-rotation — all verified on the Thor 2026-08-21**. Two device-only bugs found & fixed during the hands-on pass: R3 launched the focused game (unmapped → Avalonia activation), and the D-pad did nothing (reported as a hat axis the reader ignored). Optional follow-up: an API-<29 path is not needed (Thor is 33) |
-| E-desktop — managed Drive transport | 🟡 Phases 1–2 on branch | one real Google sign-in (all tests use an in-memory fake Drive) |
-| E-android — cloud sync | 🟡 local-save wiring in progress (SAF-endpoint rewrite ruled out) | **DuckStation (PS1) landed and is verified on the Thor; Dolphin (GC/Wii) fixed-root wiring landed with desktop-compatible ids and deterministic tests, with device export/restore still pending**; remaining: folder-configurable emulators' override plumbing, Android OAuth client + custom-scheme redirect, Android `IProtectedTextStore`, gamepad Saves rebuild — see below |
+| E-desktop — managed Drive transport | ✅ done | rclone removed; built-in Google Drive is the sole transport (`10cdc4e`); one real Google sign-in proven on the Thor (same OAuth client/loopback serves desktop). Automated tests still use an in-memory fake Drive by design |
+| **E-android — cloud sync** | ✅ done, verified on Thor over real Drive | managed connect + per-system Save-folder picker in the **gamepad** Saves UI (`740b4d6`); Android OAuth reuses the loopback (`TcpLoopbackOAuthRedirectHandler`, single client — no custom-scheme handler needed); token via `PortableObfuscatedTextStore` (no Keystore — deliberate). PS1/GC/Wii round-tripped; PS2/PSP/3DS + RetroArch systems (fix ships in signed v1.5.8) await only an on-device play-test. **Known limits → S:** PS1 owner-only cards, PS2 single-file `.ps2` churn — see E |
 | F — packaging & release | ✅ done | APK CI job done + attached to releases; **release-signing is live** — all four `ANDROID_KEYSTORE_*`/`ANDROID_KEY_*` secrets are set (2026-08-20), so tagged builds are release-signed (verified via `gh secret list`); Android OAuth client-id accessor (`GoogleOAuthAndroidClientId`) + `EMUSHELF_GOOGLE_OAUTH_CLIENT_*` secrets present; user install/sideload docs written (`docs/android-install.md`); stale `package-android` needs-comment fixed. **Only non-engineering remainder:** register a Google developer-verification identity — region/time-gated (enforcement starts 30 Sep 2026), not blocking. |
 | **S — stabilization passes** | ⬜ not started (repeat until solid) | the on-device bug/polish rounds after the core works; seeded backlog: 3D covers resize on scroll, "many others" TBD (analog-stick input is now fixed, PR #163) — see "Milestone S" above |
 
@@ -1321,42 +1315,32 @@ portal handoff. Tracked as a desktop-only improvement, out of the Android port's
 (`onTopResumedActivityChanged`) is API 29+. The Thor is API 33. A fallback only matters for Android ≤ 9,
 which the experimental sideload does not target; deferred indefinitely.
 
-**What E-android needs (the biggest remaining body of work):** the auto-sync path is *wired* (the exit
-signal calls it) but no-ops because Android has nothing to sync yet. **The single biggest item shrank on
-2026-08-20:** a runtime capability probe fired from EmuShelf's own process proved that on the Thor,
-all-files access **reads and writes `Android/data/<pkg>` over real paths** (DuckStation memcards + Dolphin
-GC, including `Directory.Move`) — so the SAF-backed `ILocalSaveEndpoint`, budgeted as the one genuine
-rewrite, is **not needed for the Thor**; the existing `FileSystemLocalSaveEndpoint` serves all seven
-emulators over real paths, and the "no-root `Android/data` access mechanism" open question is answered
-(plain all-files works here). See DECISIONS 2026-08-20. DuckStation and Dolphin are now wired: Dolphin's
-package-derived external-files root is the same `Config/` + `GC/` + `Wii/` user tree the existing desktop
-provider already understands, so Android feeds that root through its explicit-user-directory seam instead
-of duplicating GCI parsing and stable unit-id logic. The deterministic Card A/Card B/Wii fixtures are green;
-an on-device export/restore is still required. Landing the rest of E-android means plumbing the one-time
-save-folder override for PPSSPP, Azahar, WatermelonDS and RetroArch (including WatermelonDS's `.srm`
-constraint; **PS2 folder-card→`.ps2` and cross-emulator save sync are deferred to their own feature,
-owner's call**), a second public OAuth client + custom-scheme
-redirect, an Android `IProtectedTextStore` for the refresh token, and rebuilding the gamepad Saves rows to
-offer the managed transport (currently rclone-only there). The SAF endpoint reverts to a portability
-concern for a hypothetical second device, not v1 work.
+**What E-android needed, and where it landed (2026-08-22).** The auto-sync path is wired to the exit
+signal and now moves real saves. **The single biggest item shrank on 2026-08-20:** a runtime capability
+probe from EmuShelf's own process proved all-files access **reads and writes `Android/data/<pkg>` over
+real paths** (DuckStation memcards + Dolphin GC, including `Directory.Move`), so the SAF-backed
+`ILocalSaveEndpoint` rewrite is **not needed for the Thor**; the existing `FileSystemLocalSaveEndpoint`
+serves every emulator over real paths. DuckStation and Dolphin providers are wired (Dolphin feeds its
+package-derived `files/` root through the desktop provider's explicit-user-directory seam), and the
+folder-configurable emulators (PPSSPP, Azahar, WatermelonDS, RetroArch) reuse the desktop providers via
+the per-system `DirectoryOverride`, now settable through a **controller-native Save-folder picker in the
+gamepad Saves UI** (`740b4d6`). The three predicted "hard" auth items were solved more cheaply than
+budgeted: **no second OAuth client and no custom-scheme handler** (the loopback redirect is reused via
+`TcpLoopbackOAuthRedirectHandler`, one client for all platforms), and **no Keystore** (the refresh token
+uses `PortableObfuscatedTextStore`, the same wrap as the achievements key — deliberate). The SAF endpoint
+reverts to a portability concern for a hypothetical second device, not v1 work. **Deferred to S / owner's
+call:** PS1 owner-only-card readability, PS2 folder-card→`.ps2` conversion + cross-emulator sync.
 
 **Strategy (owner, 2026-08-20): finish the feature milestones to a working core, *then* stabilize —
-repeatedly.** Do not interleave the on-device bug/polish work into the feature milestones; land the
-remaining feature (E-android; E-desktop in parallel) so the core imports, launches, returns and syncs end
-to end, then switch to **Milestone S** — the repeated stabilization passes above — and iterate until it
-feels finished. The known-issues backlog (3D-covers-resize-on-scroll, …) is deliberately parked for S
-rather than fixed piecemeal now.
+repeatedly.** With E-android landed, the feature core is complete: the app imports, launches, returns and
+**syncs to real Google Drive** end to end. The next phase is **Milestone S** — the repeated stabilization
+passes above. The known-issues backlog (3D-covers-resize-on-scroll, …) is parked for S.
 
-**Recommended next step among the features:** **E-android**, so post-play auto-sync actually moves saves —
-it is the milestone that turns "launches games" into "launches games and keeps your saves in the cloud",
-and the exit-signal plumbing it plugs into is already in place. **B, C and F are done and verified on the
-Thor** (C 2026-08-21: analog sticks + D-pad nav, 3D rotation, IME, back-vs-B, R3→reset-rotation; B
-2026-08-22: nested multi-disc launch; F 2026-08-22: release-signed CI + install docs) — so the only
-remaining feature work is E-android, with E-desktop parallel. E-android is the sole gate on the first
-stabilization pass.
-
-E-desktop is genuinely parallel and improves the shipping product either way — it deletes three rclone
-download steps from `build.yml` and a bundled binary from all three artifacts.
+**Recommended next step:** **Milestone S**, opened by an on-device play-test pass on the signed v1.5.8 APK
+to close the remaining save round-trips (RetroArch systems, PSP, 3DS, PS2 — all wired, all awaiting a play
+test rather than code). **B, C, D, E and F are done** (E 2026-08-22: cloud sync verified on the Thor over
+real Drive — PS1/GC/Wii round-tripped; C: analog sticks + D-pad, 3D rotation, IME, back-vs-B; B: nested
+multi-disc launch; F: release-signed CI + install docs). No feature milestone remains on the critical path.
 
 ### While the Thor is in transit
 
