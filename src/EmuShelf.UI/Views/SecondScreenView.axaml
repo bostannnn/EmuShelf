@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Name="Root"
+             x:Class="EmuShelf.App.Views.SecondScreenView"
+             x:DataType="vm:SecondScreenViewModel"
+             Background="{DynamicResource EmuWindowBackgroundBrush}">
+
+  <!-- The Thor companion surface: an embedded Avalonia top level on Screen-2, so it inherits the app's
+       palette, Inter font, and controls. The resting surface shows the focused/running game's fan art
+       with its logo staggered in on top (Cocoon-style); the bottom bar carries the app dock plus the
+       drawer and achievements toggles. -->
+  <Grid RowDefinitions="*,Auto">
+
+    <Panel Grid.Row="0" ClipToBounds="True">
+
+      <!-- Resting spotlight: fan art -->
+      <Image Source="{Binding FanartImage}" Stretch="UniformToFill" Opacity="{Binding FanartOpacity}"
+             IsVisible="{Binding HasFanart}">
+        <Image.Transitions>
+          <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+          </Transitions>
+        </Image.Transitions>
+      </Image>
+
+      <!-- Scrim so the logo and dock read over busy art -->
+      <Border Background="#40000000" IsVisible="{Binding HasFanart}" />
+
+      <!-- ...and the logo on top -->
+      <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
+             HorizontalAlignment="Center" VerticalAlignment="Center"
+             Opacity="{Binding LogoOpacity}" IsVisible="{Binding HasWheel}">
+        <Image.Transitions>
+          <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.45" Easing="CubicEaseOut" />
+          </Transitions>
+        </Image.Transitions>
+      </Image>
+
+      <!-- Fallback when the selected game has no art (or nothing is selected) -->
+      <TextBlock Text="EmuShelf" FontSize="44" FontWeight="Bold" Opacity="0.22"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 IsVisible="{Binding ShowBranding}"
+                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+
+      <!-- App drawer overlay -->
+      <Border IsVisible="{Binding IsDrawerOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
+        <Grid RowDefinitions="Auto,*" Margin="26,18,26,14">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="{Binding DrawerTitle}" FontSize="22" FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            <Button Grid.Column="1" Content="Clear slot" Margin="0,0,8,0"
+                    IsVisible="{Binding CanClearSlot}"
+                    Command="{Binding ClearSlotCommand}" />
+            <Button Grid.Column="2" Content="Close" Command="{Binding CloseOverlayCommand}" />
+          </Grid>
+          <ScrollViewer Grid.Row="1" Margin="0,10,0,0">
+            <ItemsControl ItemsSource="{Binding Apps}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <!-- Fixed column count that stretches to fill the width, so tiles pack the row
+                       instead of leaving dead space on the right. -->
+                  <UniformGrid Columns="6" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SecondScreenAppViewModel">
+                  <Button Height="98" Margin="4" Padding="4"
+                          HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                          Background="{DynamicResource EmuCardBrush}"
+                          Command="{Binding DataContext.LaunchAppCommand, ElementName=Root}"
+                          CommandParameter="{Binding}">
+                    <StackPanel VerticalAlignment="Center" Spacing="5">
+                      <Image Source="{Binding Icon}" Width="44" Height="44"
+                             HorizontalAlignment="Center" IsVisible="{Binding HasIcon}" />
+                      <TextBlock Text="{Binding Label}" FontSize="11" TextAlignment="Center"
+                                 TextTrimming="CharacterEllipsis" MaxLines="1"
+                                 HorizontalAlignment="Center"
+                                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+
+      <!-- Achievements overlay -->
+      <Border IsVisible="{Binding IsAchievementsOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
+        <Grid RowDefinitions="Auto,Auto,*" Margin="26,18,26,14">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+            <TextBlock Grid.Column="0" Text="{Binding AchievementsTitle}" FontSize="22" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            <Button Grid.Column="1" Content="Refresh" Margin="0,0,8,0"
+                    IsVisible="{Binding CanRefresh}"
+                    Command="{Binding RefreshCommand}" />
+            <Button Grid.Column="2" Content="Close" Command="{Binding CloseOverlayCommand}" />
+          </Grid>
+          <TextBlock Grid.Row="1" Text="{Binding AchievementsStatus}" FontSize="13" Margin="0,6,0,0"
+                     IsVisible="{Binding HasStatus}"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+          <ScrollViewer Grid.Row="2" Margin="0,10,0,0">
+            <ItemsControl ItemsSource="{Binding Achievements}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SecondScreenAchievementViewModel">
+                  <Grid ColumnDefinitions="Auto,*" Margin="0,7" Opacity="{Binding RowOpacity}">
+                    <PathIcon Grid.Column="0" Width="24" Height="24" VerticalAlignment="Top"
+                              Data="{DynamicResource AchievementTrophyGeometry}"
+                              Foreground="{DynamicResource EmuAchievementBrush}" />
+                    <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2">
+                      <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
+                                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                      <TextBlock Text="{Binding Detail}" FontSize="13"
+                                 Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Panel>
+
+    <!-- Bottom bar:  ☰  |  five dock slots  |  trophy -->
+    <Border Grid.Row="1" Height="104" Background="{DynamicResource EmuToolbarBrush}"
+            BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
+
+        <Button Grid.Column="0" Width="52" Height="52" Padding="0" Background="Transparent"
+                VerticalAlignment="Center" ToolTip.Tip="All apps"
+                Command="{Binding ToggleDrawerCommand}">
+          <TextBlock Text="&#x2630;" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+        </Button>
+
+        <ItemsControl Grid.Column="1" ItemsSource="{Binding Dock}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:SecondScreenSlotViewModel">
+              <Button Width="52" Height="52" Padding="4"
+                      Background="{DynamicResource EmuCardBrush}"
+                      BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                      Command="{Binding DataContext.ActivateSlotCommand, ElementName=Root}"
+                      CommandParameter="{Binding Index}">
+                <Panel>
+                  <TextBlock Text="+" FontSize="24" IsVisible="{Binding IsEmpty}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"
+                             Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                  <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" />
+                </Panel>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Button Grid.Column="2" Width="52" Height="52" Padding="0" Background="Transparent"
+                VerticalAlignment="Center" ToolTip.Tip="Achievements"
+                Command="{Binding ToggleAchievementsCommand}">
+          <PathIcon Width="27" Height="27"
+                    Data="{DynamicResource AchievementTrophyGeometry}"
+                    Foreground="{DynamicResource EmuAchievementBrush}" />
+        </Button>
+      </Grid>
+    </Border>
+  </Grid>
+</UserControl>

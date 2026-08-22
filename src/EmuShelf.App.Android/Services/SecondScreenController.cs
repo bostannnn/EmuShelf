@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using Android.App;
 using Android.Content;
 using Android.Content.PM;
@@ -7,7 +8,6 @@ using Android.Graphics.Drawables;
 using Android.Hardware.Display;
 using Android.OS;
 using Android.Views;
-using Android.Widget;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
@@ -19,8 +19,11 @@ using EmuShelf.Core.SecondScreen;
 namespace EmuShelf.App.Android.Services;
 
 /// <summary>
-/// Owns the Thor companion display for the lifetime of the Android frontend. All Android UI stays in
-/// this head; only dock mutation and running-vs-focused target selection cross into Core.
+/// Owns the Thor companion display for the lifetime of the Android frontend. The visible surface is an
+/// embedded Avalonia view (<see cref="ThorSecondScreenPresentation.Model"/>); this controller is the
+/// Android glue: it finds the presentation display, drives the view model, enumerates launchable apps,
+/// launches them on Screen-2, and keeps the process alive while a game owns the main panel. Only dock
+/// mutation and running-vs-focused target selection cross into Core.
 /// </summary>
 internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.IDisplayListener, IDisposable
 {
@@ -46,7 +49,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     private string? _runningGameTitle;
     private long? _achievementTargetGameId;
     private string? _achievementTargetTitle;
-    private long _gameArtworkGeneration;
+    private long _spotlightGeneration;
     private bool _disposed;
     private bool _appsLoaded;
     private bool _appsLoadInFlight;
@@ -64,6 +67,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         _readStore = readStore;
         _details = details;
         _account = account;
+        // Reserved for the next iteration (achievement badges + game-idle artwork as Avalonia bitmaps).
         _badges = badges;
         _gameDetails = gameDetails;
         _logger = logger;
@@ -90,63 +94,20 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     internal void GameStarted(Game game, string title)
     {
         // All companion state lives on the main thread. GameStarted runs on the launch continuation,
-        // which is not guaranteed to be the main thread, so marshal the whole transition — field
-        // mutation, presentation update, and the artwork-load kickoff — onto it so nothing races the
-        // main-thread readers (OpenAchievementsCore, RenderRestingSurface, ViewModelPropertyChanged).
+        // which is not guaranteed to be the main thread, so marshal the whole transition onto it so
+        // nothing races the main-thread readers / Avalonia bindings.
         RunOnMain(() =>
         {
             _runningGameId = game.Id;
             _runningGameTitle = title;
-            var artworkGeneration = ++_gameArtworkGeneration;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
-            _presentation?.ShowGameIdle(title);
+            if (_presentation is { } presentation)
+            {
+                presentation.Model.Overlay = SecondScreenOverlayKind.None;
+                ScheduleSpotlightUpdate();
+            }
             StartKeepAliveIfNeeded();
-            LoadIdleArtwork(game, title, artworkGeneration);
-        });
-    }
-
-    // Resolve and sample the clear-logo/cover entirely off the UI thread. The generation check
-    // prevents a slow lookup for one game from replacing a later game's artwork. Kicked off from the
-    // main thread so the captured generation matches the state set in GameStarted.
-    private void LoadIdleArtwork(Game game, string title, long artworkGeneration)
-    {
-        _ = Task.Run(() =>
-        {
-            Bitmap? bitmap = null;
-            try
-            {
-                var logo = _gameDetails.GetDetails(game.Id).Media
-                    .Where(media => media.Kind == GameMediaKind.Wheel && media.IsSelected)
-                    .OrderByDescending(media => media.Id)
-                    .Select(media => media.LocalPath)
-                    .FirstOrDefault();
-                bitmap = DecodeSampled(logo ?? game.CoverPath, maxWidth: 960, maxHeight: 760);
-                if (bitmap is null)
-                    return;
-
-                var loaded = bitmap;
-                bitmap = null;
-                RunOnMain(() =>
-                {
-                    if (_runningGameId != game.Id || _gameArtworkGeneration != artworkGeneration ||
-                        _presentation is not { } presentation)
-                    {
-                        loaded.Dispose();
-                        return;
-                    }
-
-                    presentation.UpdateIdleArtwork(loaded);
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.Warning($"Could not resolve second-screen artwork for {title}.", ex);
-            }
-            finally
-            {
-                bitmap?.Dispose();
-            }
         });
     }
 
@@ -156,25 +117,36 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         {
             _runningGameId = null;
             _runningGameTitle = null;
-            _gameArtworkGeneration++;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
-            _presentation?.ShowBrowseHome();
+            if (_presentation is { } presentation)
+            {
+                presentation.Model.Overlay = SecondScreenOverlayKind.None;
+                ScheduleSpotlightUpdate();
+            }
             StopKeepAlive();
         });
     }
 
-    internal void ToggleDrawer()
+    private void ToggleDrawer()
     {
-        // The chrome ☰ button is a toggle: a second press on an open all-apps drawer closes it back
-        // to the resting surface rather than re-opening the same drawer.
+        // The ☰ chrome button toggles: a second press on an open all-apps drawer closes it.
         if (_navigation.Overlay == SecondScreenOverlay.AppDrawer)
             CloseOverlay();
         else
             ShowDrawer(pickSlot: null);
     }
 
-    internal void ActivateDockSlot(int slot)
+    private void ToggleAchievements()
+    {
+        // The trophy chrome button toggles, mirroring the drawer.
+        if (_navigation.Overlay == SecondScreenOverlay.Achievements)
+            CloseOverlay();
+        else
+            OpenAchievementsCore(forceRefresh: false);
+    }
+
+    private void ActivateDockSlot(int slot)
     {
         var component = _dock[slot];
         if (component is null)
@@ -186,57 +158,32 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         LaunchOnSecondScreen(component);
     }
 
-    internal void EditDockSlot(int slot) => ShowDrawer(slot);
+    private void RefreshAchievements() => OpenAchievementsCore(forceRefresh: true);
 
-    internal void ToggleAchievements()
+    private void OnDrawerAppSelected(string component)
     {
-        // The chrome ★ button is a toggle, mirroring the drawer: a second press closes the panel.
-        if (_navigation.Overlay == SecondScreenOverlay.Achievements)
+        if (_navigation.DockSlot is { } slot)
+        {
+            _dock = _dock.Pin(slot, component);
+            _dockStore.Save(_dock);
+            RenderDock();
             CloseOverlay();
+        }
         else
-            OpenAchievementsCore(forceRefresh: false);
+        {
+            LaunchOnSecondScreen(component);
+        }
     }
 
-    internal void RefreshAchievements() => OpenAchievementsCore(forceRefresh: true);
-
-    internal void LoadBadge(ImageView image, string badgeName, long surfaceRevision)
+    private void OnClearSlot()
     {
-        _ = Task.Run(async () =>
-        {
-            Bitmap? bitmap = null;
-            try
-            {
-                var path = await _badges.GetBadgePathAsync(badgeName);
-                if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                    return;
-                bitmap = DecodeSampled(path, maxWidth: 128, maxHeight: 128);
-                if (bitmap is null)
-                    return;
+        if (_navigation.DockSlot is not { } slot)
+            return;
 
-                var loaded = bitmap;
-                bitmap = null;
-                RunOnMain(() =>
-                {
-                    if (!IsAchievementSurfaceCurrent(surfaceRevision) ||
-                        !string.Equals(image.Tag?.ToString(), badgeName, StringComparison.Ordinal) ||
-                        _presentation is not { } presentation)
-                    {
-                        loaded.Dispose();
-                        return;
-                    }
-
-                    presentation.SetPanelBitmap(image, loaded);
-                });
-            }
-            catch (Exception ex)
-            {
-                _logger.Warning($"Could not load second-screen achievement badge {badgeName}.", ex);
-            }
-            finally
-            {
-                bitmap?.Dispose();
-            }
-        });
+        _dock = _dock.Clear(slot);
+        _dockStore.Save(_dock);
+        RenderDock();
+        CloseOverlay();
     }
 
     public void OnDisplayAdded(int displayId)
@@ -322,12 +269,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
         try
         {
-            _presentation = new ThorSecondScreenPresentation(_activity, display, this);
+            _presentation = new ThorSecondScreenPresentation(_activity, display);
+            WireModel(_presentation.Model);
             _presentation.Show();
             _logger.Information($"Second-screen Presentation attached: {Describe(display)}.");
             EnsureAppsLoadedAsync();
             RenderDock();
             RenderRestingSurface();
+            ScheduleSpotlightUpdate();
             StartKeepAliveIfNeeded();
         }
         catch (Exception ex)
@@ -337,6 +286,19 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 ex);
             DismissPresentation();
         }
+    }
+
+    // Wire the view model's Android-side callbacks once, when the presentation is created. These fire on
+    // the Avalonia UI thread, which is the Android main thread, so no extra marshalling is needed.
+    private void WireModel(SecondScreenViewModel model)
+    {
+        model.DrawerToggled = ToggleDrawer;
+        model.AchievementsToggled = ToggleAchievements;
+        model.OverlayClosed = CloseOverlay;
+        model.SlotCleared = OnClearSlot;
+        model.AchievementsRefreshed = RefreshAchievements;
+        model.SlotActivated = ActivateDockSlot;
+        model.AppLaunched = app => OnDrawerAppSelected(app.Component);
     }
 
     private void EnsureAppsLoadedAsync()
@@ -368,14 +330,17 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                     var flattened = component.FlattenToString();
                     if (string.IsNullOrEmpty(flattened))
                         continue;
-                    loaded[flattened] = new SecondScreenApp(
-                        flattened,
-                        resolved.LoadLabel(manager)?.ToString() ?? activityInfo.PackageName,
-                        resolved.LoadIcon(manager));
+                    var label = resolved.LoadLabel(manager)?.ToString() ?? activityInfo.PackageName;
+                    // Rasterise the launcher icon to a small Avalonia bitmap once, so the drawer and dock
+                    // show real icons. Bounded to 96px so the whole set stays a few MB.
+                    var icon = DrawableToAvaloniaBitmap(resolved.LoadIcon(manager), 96);
+                    loaded[flattened] = new SecondScreenApp(flattened, label, icon);
                 }
 
                 RunOnMain(() =>
                 {
+                    foreach (var existing in _apps.Values)
+                        existing.Icon?.Dispose();
                     _apps.Clear();
                     foreach (var app in loaded)
                         _apps[app.Key] = app.Value;
@@ -404,39 +369,30 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void RenderDrawer(int? pickSlot)
     {
-        var apps = _apps.Values
-            .OrderBy(app => app.Label, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
-        _presentation?.ShowDrawer(
-            apps,
-            pickSlot,
-            selected: app =>
-            {
-                if (pickSlot is { } slot)
-                {
-                    _dock = _dock.Pin(slot, app.Component);
-                    _dockStore.Save(_dock);
-                    RenderDock();
-                    CloseOverlay();
-                }
-                else
-                {
-                    LaunchOnSecondScreen(app.Component);
-                }
-            },
-            clearSlot: pickSlot is { } clearSlot
-                ? () =>
-                {
-                    _dock = _dock.Clear(clearSlot);
-                    _dockStore.Save(_dock);
-                    RenderDock();
-                    CloseOverlay();
-                }
-                : null,
-            close: CloseOverlay);
+        if (_presentation is not { } presentation)
+            return;
+
+        presentation.Model.Apps.Clear();
+        foreach (var app in _apps.Values.OrderBy(app => app.Label, StringComparer.CurrentCultureIgnoreCase))
+            presentation.Model.Apps.Add(new SecondScreenAppViewModel(app.Component, app.Label, app.Icon));
+        presentation.Model.DrawerTitle = pickSlot is { } slot ? $"Choose an app for slot {slot + 1}" : "All apps";
+        presentation.Model.CanClearSlot = pickSlot is not null;
+        presentation.Model.Overlay = SecondScreenOverlayKind.Drawer;
     }
 
-    private void RenderDock() => _presentation?.RenderDock(_dock, _apps);
+    private void RenderDock()
+    {
+        if (_presentation is not { } presentation)
+            return;
+
+        for (var slot = 0; slot < SecondScreenDock.SlotCount; slot++)
+        {
+            var component = _dock[slot];
+            var app = component is not null && _apps.TryGetValue(component, out var found) ? found : null;
+            presentation.Model.Dock[slot].Label = app?.Label;
+            presentation.Model.Dock[slot].Icon = app?.Icon;
+        }
+    }
 
     private void CloseOverlay()
     {
@@ -447,18 +403,155 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void RenderRestingSurface()
     {
-        if (_presentation is not { } presentation)
+        // Closing an overlay returns to the resting spotlight, which is already loaded — don't reload it
+        // (that would re-run the crossfade). Fresh art loads only on focus/running-game changes.
+        if (_presentation is { } presentation)
+            presentation.Model.Overlay = SecondScreenOverlayKind.None;
+    }
+
+    private void ScheduleSpotlightUpdate()
+    {
+        if (_presentation is null)
             return;
 
-        if (_navigation.BaseSurface == SecondScreenBaseSurface.GameIdle && _runningGameId is not null)
-            presentation.ShowGameIdle(_runningGameTitle ?? "Now playing");
-        else
-            presentation.ShowBrowseHome();
+        // Debounce: focus changes fire rapidly while scrolling the library, so only the settled game's
+        // art is loaded. A monotonic generation both debounces and guards the async load below.
+        var generation = ++_spotlightGeneration;
+        _mainHandler.PostDelayed(
+            () =>
+            {
+                if (generation == _spotlightGeneration)
+                    UpdateSpotlight(generation);
+            },
+            110);
+    }
+
+    private void UpdateSpotlight(long generation)
+    {
+        if (_presentation is null)
+            return;
+
+        var targetId = _runningGameId ?? _viewModel?.FocusedGame?.Id;
+        if (targetId is null)
+        {
+            ClearSpotlight();
+            return;
+        }
+
+        var id = targetId.Value;
+        _ = Task.Run(() =>
+        {
+            Avalonia.Media.Imaging.Bitmap? fanart = null;
+            Avalonia.Media.Imaging.Bitmap? wheel = null;
+            try
+            {
+                var media = _gameDetails.GetDetails(id).Media;
+                var fanartPath = media
+                    .Where(item => item.Kind == GameMediaKind.Fanart && item.IsSelected)
+                    .OrderByDescending(item => item.Id)
+                    .Select(item => item.LocalPath)
+                    .FirstOrDefault();
+                var wheelPath = media
+                    .Where(item => item.Kind == GameMediaKind.Wheel && item.IsSelected)
+                    .OrderByDescending(item => item.Id)
+                    .Select(item => item.LocalPath)
+                    .FirstOrDefault();
+                fanart = LoadAvaloniaBitmap(fanartPath, decodeWidth: 1240);
+                wheel = LoadAvaloniaBitmap(wheelPath, decodeWidth: 900);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Could not resolve second-screen spotlight art for game {id}.", ex);
+            }
+
+            RunOnMain(() =>
+            {
+                if (generation != _spotlightGeneration || _presentation is not { } presentation)
+                {
+                    fanart?.Dispose();
+                    wheel?.Dispose();
+                    return;
+                }
+
+                var model = presentation.Model;
+                // Fade the current art out, then swap and fade the new art in — fan art first, logo
+                // staggered on top, the Cocoon-style entrance. Kept short so the art appears promptly.
+                model.FanartOpacity = 0;
+                model.LogoOpacity = 0;
+                _mainHandler.PostDelayed(
+                    () =>
+                    {
+                        if (generation != _spotlightGeneration)
+                        {
+                            fanart?.Dispose();
+                            wheel?.Dispose();
+                            return;
+                        }
+                        model.SetSpotlight(fanart, wheel);
+                        model.FanartOpacity = model.HasFanart ? 1 : 0;
+                        _mainHandler.PostDelayed(
+                            () =>
+                            {
+                                if (generation == _spotlightGeneration)
+                                    model.LogoOpacity = model.HasWheel ? 1 : 0;
+                            },
+                            200);
+                    },
+                    80);
+            });
+        });
+    }
+
+    private void ClearSpotlight()
+    {
+        if (_presentation is not { } presentation)
+            return;
+        presentation.Model.FanartOpacity = 0;
+        presentation.Model.LogoOpacity = 0;
+        presentation.Model.SetSpotlight(null, null);
+    }
+
+    private static Avalonia.Media.Imaging.Bitmap? LoadAvaloniaBitmap(string? path, int decodeWidth)
+    {
+        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+            return null;
+        try
+        {
+            using var stream = File.OpenRead(path);
+            return Avalonia.Media.Imaging.Bitmap.DecodeToWidth(stream, decodeWidth);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static Avalonia.Media.Imaging.Bitmap? DrawableToAvaloniaBitmap(Drawable? drawable, int size)
+    {
+        if (drawable is null)
+            return null;
+        try
+        {
+            using var androidBitmap = global::Android.Graphics.Bitmap.CreateBitmap(
+                size, size, global::Android.Graphics.Bitmap.Config.Argb8888!);
+            using var canvas = new Canvas(androidBitmap);
+            drawable.SetBounds(0, 0, size, size);
+            drawable.Draw(canvas);
+            using var stream = new MemoryStream();
+            androidBitmap.Compress(global::Android.Graphics.Bitmap.CompressFormat.Png!, 100, stream);
+            androidBitmap.Recycle();
+            stream.Position = 0;
+            return new Avalonia.Media.Imaging.Bitmap(stream);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private void LaunchOnSecondScreen(string flattenedComponent)
     {
-        if (_activity is null || _presentation?.Display is not { } display)
+        if (_activity is not { } activity || _presentation?.Display is not { } display)
             return;
 
         using var component = ComponentName.UnflattenFromString(flattenedComponent);
@@ -472,9 +565,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         intent.AddCategory(Intent.CategoryLauncher);
         intent.SetComponent(component);
         intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ResetTaskIfNeeded);
-        var activity = _activity;
-        if (activity is null)
-            return;
         try
         {
             if (OperatingSystem.IsAndroidVersionAtLeast(26))
@@ -499,10 +589,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         catch (Exception ex)
         {
             _logger.Error($"Could not launch {flattenedComponent} on the second screen.", ex);
-            _presentation?.ShowAchievementsMessage(
-                "App could not open",
-                "This app may not support launching on the Thor's second display.",
-                close: CloseOverlay);
         }
     }
 
@@ -519,10 +605,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             : focused?.DisplayTitle ?? "Achievements";
         if (gameId is null)
         {
-            _presentation?.ShowAchievementsMessage(
-                "Achievements",
-                "Select a game first.",
-                close: CloseOverlay);
+            ShowAchievementsMessage("Achievements", "Select a game first.", canRefresh: false);
             return;
         }
 
@@ -530,10 +613,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         if (!links.TryGetValue(gameId.Value, out var link) ||
             link is not { HasAchievements: true, RetroAchievementsGameId: { } raGameId })
         {
-            _presentation?.ShowAchievementsMessage(
-                title,
-                "No RetroAchievements set is linked to this game.",
-                close: CloseOverlay);
+            ShowAchievementsMessage(title, "No RetroAchievements set is linked to this game.", canRefresh: false);
             return;
         }
 
@@ -543,7 +623,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         var credentials = _account.CurrentCredentials;
         if (cached is not null)
         {
-            _presentation?.ShowAchievements(
+            ShowAchievementsSnapshot(
                 title,
                 cached,
                 credentials is null
@@ -551,18 +631,16 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                     : forceRefresh
                         ? "Refreshing achievement details…"
                         : $"Updated {cached.LastRefreshedAt.LocalDateTime:g}",
-                canRefresh: credentials is not null,
-                close: CloseOverlay,
-                surfaceRevision: surfaceRevision);
+                canRefresh: credentials is not null);
         }
         else
         {
-            _presentation?.ShowAchievementsMessage(
+            ShowAchievementsMessage(
                 title,
                 credentials is null
                     ? "Connect RetroAchievements in Settings to load details."
                     : "Loading achievement details…",
-                close: CloseOverlay);
+                canRefresh: false);
         }
 
         var stale = cached is null || DateTimeOffset.UtcNow - cached.LastRefreshedAt >= DetailRefreshAge;
@@ -575,26 +653,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         {
             try
             {
-                var response = await _details.RefreshAsync(
-                    credentials,
-                    raGameId,
-                    manual: forceRefresh);
-                RunOnMain(() => ApplyAchievementRefresh(
-                    surfaceRevision,
-                    gameId.Value,
-                    title,
-                    cached,
-                    response));
+                var response = await _details.RefreshAsync(credentials, raGameId, manual: forceRefresh);
+                RunOnMain(() => ApplyAchievementRefresh(surfaceRevision, gameId.Value, title, cached, response));
             }
             catch (Exception ex)
             {
                 _logger.Error($"Second-screen achievement refresh failed for game id {gameId}.", ex);
                 RunOnMain(() => ShowAchievementFailure(
-                    surfaceRevision,
-                    gameId.Value,
-                    title,
-                    cached,
-                    "Achievement details could not be refreshed."));
+                    surfaceRevision, gameId.Value, title, cached, "Achievement details could not be refreshed."));
             }
         });
     }
@@ -611,13 +677,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
         if (response.IsSuccess)
         {
-            _presentation?.ShowAchievements(
-                title,
-                response.Value!,
-                "Updated just now",
-                canRefresh: true,
-                close: CloseOverlay,
-                surfaceRevision: surfaceRevision);
+            ShowAchievementsSnapshot(title, response.Value!, "Updated just now", canRefresh: true);
             return;
         }
 
@@ -646,23 +706,48 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             return;
 
         if (cached is not null)
-        {
-            _presentation?.ShowAchievements(
-                title,
-                cached,
-                status,
-                canRefresh: true,
-                close: CloseOverlay,
-                surfaceRevision: surfaceRevision);
-        }
+            ShowAchievementsSnapshot(title, cached, status, canRefresh: true);
         else
+            ShowAchievementsMessage(title, status, canRefresh: true);
+    }
+
+    private void ShowAchievementsSnapshot(
+        string title,
+        RetroAchievementsDetailsSnapshot snapshot,
+        string? status,
+        bool canRefresh)
+    {
+        if (_presentation is not { } presentation)
+            return;
+
+        presentation.Model.AchievementsTitle = title;
+        presentation.Model.AchievementsStatus = status;
+        presentation.Model.CanRefresh = canRefresh;
+        presentation.Model.Achievements.Clear();
+        foreach (var achievement in snapshot.Details.Achievements
+                     .OrderBy(item => item.DisplayOrder)
+                     .ThenBy(item => item.AchievementId))
         {
-            _presentation?.ShowAchievementsMessage(
-                title,
-                status,
-                canRefresh: true,
-                close: CloseOverlay);
+            var state = achievement.IsHardcore ? "Hardcore" : achievement.IsEarned ? "Unlocked" : "Locked";
+            var points = achievement.Points == 1 ? "1 pt" : $"{achievement.Points} pts";
+            presentation.Model.Achievements.Add(new SecondScreenAchievementViewModel(
+                achievement.Title,
+                $"{state}  •  {points}",
+                achievement.IsEarned));
         }
+        presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
+    }
+
+    private void ShowAchievementsMessage(string title, string message, bool canRefresh)
+    {
+        if (_presentation is not { } presentation)
+            return;
+
+        presentation.Model.AchievementsTitle = title;
+        presentation.Model.AchievementsStatus = message;
+        presentation.Model.CanRefresh = canRefresh;
+        presentation.Model.Achievements.Clear();
+        presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
     private bool IsAchievementRequestCurrent(long surfaceRevision, long gameId, string title) =>
@@ -705,12 +790,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.FocusedGame) && _runningGameId is null)
-        {
-            // An open panel remains a snapshot until the user asks for achievements again, but its
-            // pending request must no longer be allowed to overwrite the newly focused context.
-            ResetAchievementTarget();
-        }
+        if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
+            return;
+
+        // An open panel remains a snapshot until the user asks for achievements again, but its pending
+        // request must no longer be allowed to overwrite the newly focused context.
+        ResetAchievementTarget();
+        // While browsing, the spotlight follows the library selection (a running game always wins).
+        ScheduleSpotlightUpdate();
     }
 
     private void DismissPresentation()
@@ -770,27 +857,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             });
     }
 
-    private static Bitmap? DecodeSampled(string? path, int maxWidth, int maxHeight)
-    {
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            return null;
-
-        using var bounds = new BitmapFactory.Options { InJustDecodeBounds = true };
-        BitmapFactory.DecodeFile(path, bounds);
-        if (bounds.OutWidth <= 0 || bounds.OutHeight <= 0)
-            return null;
-
-        var sample = 1;
-        while (bounds.OutWidth / (sample * 2) >= maxWidth &&
-               bounds.OutHeight / (sample * 2) >= maxHeight)
-        {
-            sample *= 2;
-        }
-
-        using var decode = new BitmapFactory.Options { InSampleSize = sample };
-        return BitmapFactory.DecodeFile(path, decode);
-    }
-
     private static string Describe(Display display)
         => $"id={display.DisplayId}, name={display.Name}, flags={display.Flags}, rotation={display.Rotation}";
 
@@ -813,4 +879,4 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     }
 }
 
-internal sealed record SecondScreenApp(string Component, string Label, Drawable? Icon);
+internal sealed record SecondScreenApp(string Component, string Label, Avalonia.Media.Imaging.Bitmap? Icon);
