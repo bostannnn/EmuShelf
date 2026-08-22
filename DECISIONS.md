@@ -10475,3 +10475,47 @@ logo, touch-to-reveal controls, virtualized drawer, Clock launched on display 4 
 launch, achievements no-link/Close, return-to-browse, and foreground-service teardown. No matching crash or
 second-screen error appeared in the run log. All 2,205 local tests plus the focused second-screen tests and
 Release Android publish passed.
+
+## 2026-08-22 — Library rescan removes games whose files were deleted
+
+A rescan of a remembered folder now deletes the library rows for games the scan no longer finds on
+disk, instead of only flagging them "unavailable". The row goes; the file is never touched (rescan
+still only reads).
+
+Removal is never silent: once the whole rescan finishes, a single confirmation lists every missing
+title (`IDialogService.ConfirmRescanRemovalsAsync`) and deletes only on an explicit yes. Declining
+keeps every row — the availability pass then just marks them unavailable, the pre-change behavior.
+The prompt defaults to "keep them" (false) on platforms that haven't built it (the Android skeleton),
+so no head deletes without asking.
+
+Removal is scoped to folders that are **reachable that scan** (`Directory.Exists`, the same gate
+`FolderScanner` uses). A folder on a disconnected drive scans as empty rather than erroring, so its
+games are deliberately left alone — they still show as unavailable, never pruned. This preserves the
+portable-drive guarantee: unplugging a ROM drive and rescanning must not wipe the library. Games added
+individually outside any remembered folder are likewise left for the availability pass, not removed.
+A file the descriptor/playlist collapse folds into a suppressed component still counts as present, so a
+multi-disc entry is not mistaken for a deletion. The rescan status now reports removals, e.g.
+"Rescan added 2, removed 1 game(s)".
+
+Startup's availability pass (`RefreshAvailabilityAsync`) is unchanged — it only marks, never deletes —
+so a normal launch never removes rows.
+## 2026-08-22 — Removed the Android DuckStation save provider; PS1 on Android syncs only via Beetle PSX
+
+`DuckStationAndroidSaveLocationProvider` (and its test) is deleted. It read DuckStation Android's fixed
+`Android/data/<pkg>/files/memcards` folder, but the cards the current DuckStation build writes there are
+**owner-only** (`-rw-------`) and unreadable under all-files access (an app cannot `chmod` another app's
+files — DECISIONS 2026-08-20 refinement), so the provider degrades toward syncing nothing as the player
+makes new saves. Rather than ship a save path that silently does nothing, PS1 on Android now syncs **only**
+through a RetroArch PS1 core (Beetle PSX), whose cards live in normal readable shared storage and which
+already emits DuckStation's `playstation/per-game/file-title/<name>_1.mcd` key, so a card still round-trips
+1:1 with a desktop DuckStation file-title card.
+
+Wiring changes: `SaveProviderRegistry.CreateDuckStationProvider` returns null on Android (the desktop
+`DuckStationSaveLocationProvider` is unchanged and still serves desktop PS1); `AppBootstrapper.ResolveAndroidEmulator`
+no longer has a PlayStation branch — PS1 falls through to `ResolveAndroidRetroArch`, which resolves an
+installation only when a RetroArch core is configured and returns null otherwise. Net effect on Android:
+DuckStation stays launchable, but a DuckStation-configured PlayStation has no save provider (`CanSyncSystem`
+false, launch/exit sync a silent no-op) until the user selects Beetle PSX. Tradeoff accepted: a user whose
+DuckStation still writes group-readable cards (e.g. a pre-reinstall install) loses that best-effort sync;
+the reliable, non-degrading path is Beetle. Save states were never wired for the Android DuckStation
+provider, so nothing is lost there.

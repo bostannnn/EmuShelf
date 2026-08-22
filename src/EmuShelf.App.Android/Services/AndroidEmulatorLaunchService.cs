@@ -16,12 +16,13 @@ namespace EmuShelf.App.Android.Services;
 /// <c>AndroidIntentRequest</c> (via the tested <see cref="AndroidLaunchResolver"/>) and hands it to
 /// <see cref="AndroidGameLauncher"/>.
 ///
-/// First cut, by design: it is fire-and-forget. There is no process to await, so it returns as soon as the
-/// emulator is started (<see cref="GameLaunchResult.ProcessExited"/> is false, so the caller neither accrues
-/// play time nor runs post-play save sync). The pre-launch hook supplied to <see cref="LaunchAsync"/> still runs, so
-/// a cloud-save <em>pull</em> happens before the emulator reads the save. Automatic return detection
-/// (<c>onTopResumedActivityChanged</c>, surviving process death) and push-on-return are the next Milestone B
-/// step — until then, post-play sync is manual.
+/// Fire-and-forget by design: there is no child process to await, so it returns as soon as the emulator is
+/// started (<see cref="GameLaunchResult.ProcessExited"/> is false, so this method itself accrues no play time
+/// and runs no inline post-play sync). The pre-launch <paramref name="beforeStart"/> hook still runs, so a
+/// cloud-save <em>pull</em> happens before the emulator reads the save. Post-play work is deferred, not
+/// skipped: a durable <see cref="PendingPlaySession"/> is recorded here, and return detection (foreground
+/// return, or the next startup if EmuShelf was killed) completes play-time accrual and the push-on-return
+/// save sync from that record — see <c>SingleViewShell.CompletePendingSession</c>.
 /// </summary>
 public sealed class AndroidEmulatorLaunchService(
     AndroidGameLauncher launcher,

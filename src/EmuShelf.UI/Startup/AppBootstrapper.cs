@@ -284,37 +284,29 @@ public sealed class AppBootstrapper
         return result;
     }
 
-    // On Android there is no configured executable path to derive a save location from. The
-    // fixed-location emulators keep their saves at a package-derived path under Android/data, which
-    // EmuShelf reads directly under all-files access (DECISIONS 2026-08-20), so their installation is
-    // synthesised from the package name here — no user pick. DuckStation and Dolphin are fixed-root
-    // emulators; the registry adapts each root to the provider's on-disk layout. RetroArch is
-    // auto-located too (below): its retroarch.cfg lives in the same package Android/data files dir and
-    // is group-readable, so EmuShelf can read the configured savefile_directory itself. PPSSPP and
-    // Azahar remain folder-configurable (their save folder is chosen by the user and recorded only in
-    // the emulator's own unreadable private config), so they return null and rely on the per-system
-    // save-location override the user sets once.
+    // On Android there is no configured executable path to derive a save location from. Dolphin
+    // (GameCube/Wii) keeps its saves at a package-derived path under Android/data that EmuShelf reads
+    // directly under all-files access (DECISIONS 2026-08-20), so its installation is synthesised from the
+    // package name here — no user pick. RetroArch is auto-located too: its retroarch.cfg lives in the
+    // same package Android/data files dir and is group-readable, so EmuShelf reads the configured
+    // savefile_directory itself — and this is also the PS1 path (Beetle PSX). PS1 has no fixed-root
+    // branch of its own: DuckStation's cards are owner-only and unreadable on Android (there is no
+    // Android DuckStation save provider), so PS1 syncs only when configured for a RetroArch PS1 core.
+    // PPSSPP and Azahar remain folder-configurable (their save folder is chosen by the user and recorded
+    // only in the emulator's own unreadable private config), so they return null and rely on the
+    // per-system save-location override the user sets once.
     internal static SaveEmulatorInstallation? ResolveAndroidEmulator(
         string systemId,
         EmulatorConfiguration? configuration) => systemId switch
     {
-        // PS1 defaults to DuckStation on Android, but honors a configured RetroArch PS1 core (Beetle
-        // PSX) so its saves route through the RetroArch provider instead — which is the only way to sync
-        // PS1 on Android at all, since DuckStation's own newer cards are owner-only (0600) and
-        // unreadable (see docs/android-save-sync-model.md). Both keep the same file-title card key, so a
-        // card round-trips with a desktop DuckStation file-title card.
-        "playstation" when string.Equals(configuration?.EmulatorId, "retroarch", StringComparison.Ordinal)
-            => ResolveAndroidRetroArch(configuration),
-        "playstation" => new SaveEmulatorInstallation(
-            AndroidExternalStorageUri.ExternalAppFilesDirectory(
-                AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
-            IsFlatpak: false,
-            EmulatorId: "duckstation"),
         "gamecube" or "wii" => new SaveEmulatorInstallation(
             AndroidExternalStorageUri.ExternalAppFilesDirectory(
                 AndroidEmulatorLaunchProfiles.Dolphin.PackageName),
             IsFlatpak: false,
             EmulatorId: "dolphin"),
+        // PlayStation has no branch of its own: DuckStation is unreadable on Android, so PS1 syncs only
+        // when configured for a RetroArch PS1 core (Beetle PSX), which the fallthrough resolves like any
+        // other RetroArch system (null for a non-RetroArch or unconfigured emulator).
         _ => ResolveAndroidRetroArch(configuration),
     };
 

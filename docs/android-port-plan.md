@@ -1116,10 +1116,10 @@ a failure).
    now present in both the desktop and **gamepad** Saves UIs (`GamepadSettingsViewModel.BuildSaveRows`,
    `PickDirectoryCommand` → `_cloudSaves.UpdateOverride`). Fixed-location emulators get package-derived
    roots from the Android composition root.
-   **`DuckStationAndroidSaveLocationProvider` landed** (pure, in `EmuShelf.Integrations`, 6 unit tests):
-   it reads the fixed `…/files/memcards` folder, classifies each per-game card by name, and emits the
-   *same* `duckstation/per-game/{serial|title}/…` unit ids as the desktop provider, so a card syncs 1:1
-   between desktop and Android DuckStation when both use DuckStation's default `PerGameTitle` card type.
+   **`DuckStationAndroidSaveLocationProvider` was later removed (2026-08-22):** DuckStation's Android
+   memory cards are owner-only (`-rw-------`) and unreadable by EmuShelf, so it synced nothing on current
+   builds. PS1 on Android now syncs only via a RetroArch PS1 core (Beetle PSX), which emits DuckStation's
+   `playstation/per-game/file-title/…` card key for 1:1 round-trips. See DECISIONS 2026-08-22.
    **Dolphin fixed-root wiring landed (2026-08-20):** both GameCube and Wii resolve
    `Android/data/org.dolphinemu.dolphinemu/files` from the package id and pass it as the existing
    `DolphinSaveLocationProvider`'s explicit user directory. That provider already maps

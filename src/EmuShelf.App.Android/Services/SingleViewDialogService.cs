@@ -101,10 +101,48 @@ public sealed class SingleViewDialogService(IAppLogger logger, Func<TopLevel?> t
         return Task.FromResult<string?>(null);
     }
 
-    public Task<string?> PickSaveArchiveAsync(string suggestedFileName)
+    /// <summary>
+    /// Opens the Android system "create document" picker (SAF <c>ACTION_CREATE_DOCUMENT</c>, surfaced by
+    /// Avalonia through <c>TopLevel.StorageProvider</c>) for the save-export archive and returns a real
+    /// filesystem path the shared export sink can write to. As with <see cref="PickFolderAsync"/>,
+    /// Avalonia's <c>TryGetLocalPath()</c> is null for a SAF document URI, so with all-files access held we
+    /// translate an <c>externalstorage</c> document URI to its <c>/storage/…</c> path ourselves. If the
+    /// chosen location cannot be translated to a writable local path, we log and return null so the export
+    /// reports a clean "cancelled" rather than writing nowhere.
+    /// </summary>
+    public async Task<string?> PickSaveArchiveAsync(string suggestedFileName)
     {
-        logger.Information(NotYet + nameof(PickSaveArchiveAsync));
-        return Task.FromResult<string?>(null);
+        var top = topLevel();
+        if (top is null)
+        {
+            logger.Warning("Save-archive pick requested before a TopLevel was available.");
+            return null;
+        }
+
+        var file = await top.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+        {
+            Title = "Export saves",
+            SuggestedFileName = suggestedFileName,
+            DefaultExtension = "zip",
+        });
+
+        if (file is null)
+            return null;
+
+        var localPath = file.TryGetLocalPath();
+        if (string.IsNullOrEmpty(localPath))
+            localPath = AndroidExternalStorageUri.TryResolveLocalPath(file.Path);
+
+        if (string.IsNullOrEmpty(localPath))
+        {
+            logger.Information(
+                $"Chosen save-archive location '{file.Path}' did not resolve to a writable local path " +
+                "(no all-files access, or a provider with no local path); export cancelled.");
+            return null;
+        }
+
+        logger.Information($"Save-archive destination resolved to '{localPath}'.");
+        return localPath;
     }
 
     public Task<bool> ConfirmRemoveGameAsync(string gameTitle)
