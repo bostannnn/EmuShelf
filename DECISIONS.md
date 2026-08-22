@@ -10209,3 +10209,26 @@ files, so `GoogleDriveApiClient.ListAllAsync` fetches the entire tree in one pag
 handling is unchanged (oldest-wins per name; all same-named folders still merged), with an id-visited
 guard added since the walk is now a local map rather than the API's inherently acyclic per-folder
 listing. One round-trip instead of one per folder; the flush's nested walk shrinks with it.
+## 2026-08-22 — Android launch scopes the SAF URI to the game's import folder, not its own sub-folder
+
+Nested multi-disc games (a per-game sub-folder holding `Disc 1`/`Disc 2` + an `.m3u`, e.g. Metal Gear
+Solid, Xenogears, Twin Snakes, Shadow Hearts Covenant) would not launch on Android, while single files in
+the same system folder did. Root cause, reproduced on the Thor: EmuShelf hands the emulator a
+`content://` **tree/document** URI. `AndroidLaunchResolver` scoped the *tree* to `emulatorGrantRoot` when
+supplied, but the launch service (`AndroidEmulatorLaunchService`) never supplied one, so it fell back to
+the game file's own parent folder. Each emulator holds a persisted SAF **prefix** grant to the whole
+system folder (DuckStation → `roms/psx`, Dolphin → `roms/ngc`+`roms/wii`, …), and Android validates the
+URI's tree against a granted tree: a tree re-rooted at `roms/psx/Metal Gear Solid …` matches no grant, so
+the emulator was denied (`SecurityException: Permission Denial` from `ExternalStorageProvider`, uid =
+DuckStation). The same document tree-scoped to `roms/psx` booted the game and read Disc 1 (verified live).
+
+Fix: the launch service now derives the grant root from the game's remembered `LibraryFolder` — the
+folder the user imported from, which in the normal setup *is* the folder they granted the emulator — via
+the new pure `AndroidLibraryGrantRoot.ForGame` (most-specific containing folder; null when none). The
+resolver already re-validates same-volume ancestry and ignores a non-ancestor root, so a stale record is
+harmless, and a game with no remembered folder keeps the old parent-folder behaviour. This resolves the
+Milestone B "nested-multi-disc tree" open item without a per-emulator setup-checklist UI: EmuShelf reads
+its own import folder rather than probing the emulator's private grants. Limitation: if the user imported
+from a folder *different* from the one they granted the emulator (e.g. imported `roms` but granted
+`roms/psx`), the tree still will not match; that narrower case is what a future grant-root verification
+step would cover.

@@ -1980,14 +1980,20 @@ breaks the whole-solution macOS build/test loop.
         unchanged; `GamepadImportChooserLayoutTests` guards it). **Deferred (owner call, not Thor blockers):**
         SAF-backed reader fallback (device without all-files) and the per-API-level AVD matrix
         (verification-only). See DECISIONS 2026-08-21.
-  - [x] **B — launching (core)** (2026-08-20, verified on Thor). Per-emulator intent data + pure
+  - [x] **B — launching** ✅ (done 2026-08-22, verified on Thor). Per-emulator intent data + pure
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
         Controller Settings now selects a compatible RetroArch core per system without trying to read
         RetroArch's app-private core directory; the saved choice activates RetroArch and is passed as the
         exact `LIBRETRO` path, while unavailable choices can still fall through to standalone emulators.
-        Remaining: per-emulator setup checklist (+ nested-tree verification), dependency-resolver promotion.
+        **Nested multi-disc launch fixed (2026-08-22):** the launch service now scopes the SAF URI's tree
+        to the game's remembered import folder (`AndroidLibraryGrantRoot`) instead of the game's own
+        sub-folder, so a per-game `.m3u` (MGS, Xenogears, Twin Snakes, Shadow Hearts Covenant) matches the
+        emulator's own `roms/<system>` prefix grant. Reproduced live on the Thor (sub-folder tree →
+        `SecurityException`; `roms/psx` tree → MGS boots and reads Disc 1), 7 selector tests + the existing
+        on-device resolver test green. See DECISIONS 2026-08-22. Remaining: dependency-resolver promotion
+        (desktop/Flatpak only) and a grant-root verification step for the rarer import≠grant-folder case.
   - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
         the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the
         app's own process proved all-files access reads *and writes* `Android/data/<pkg>` on the Thor
@@ -2009,13 +2015,16 @@ breaks the whole-solution macOS build/test loop.
         then the transport half (Android OAuth client + custom-scheme redirect, Keystore token store,
         gamepad Saves rebuild). PS2 folder-card→`.ps2` / cross-emulator save sync is a separate deferred
         feature.
-  - [x] **F — Android APK CI job + release signing wired (2026-08-20)**. `package-android` in
+  - [x] **F — packaging & release** ✅ (engineering done 2026-08-22). `package-android` in
         `.github/workflows/build.yml` builds the out-of-solution head (JDK 21 + SDK 36 + android workload) as
         a PR build floor and **attaches the APK to tagged releases** (in the `release` job's `needs`, but its
-        `if` only requires the desktop packages, so a broken APK can never block a desktop release).
-        Release-signing is **wired** and activates once the owner runs the keystore setup (DECISIONS
-        2026-08-20); until then it debug-signs. Remaining F: owner runs the keystore setup, developer-
-        verification install docs.
+        `if` only requires the desktop packages, so a broken APK can never block a desktop release; the stale
+        "not in needs" comment on the `package-android` job is fixed). **Release-signing is live** — all four
+        `ANDROID_KEYSTORE_*`/`ANDROID_KEY_*` secrets are configured (2026-08-20, verified via `gh secret
+        list`), so tagged builds are release-signed. The Android OAuth client-id accessor
+        (`GoogleOAuthAndroidClientId`) is present, and user install/sideload instructions are written
+        (`docs/android-install.md`). **Only non-engineering remainder:** register a Google
+        developer-verification identity — region/time-gated (enforcement starts 30 Sep 2026), not blocking.
   - [ ] **C — controller + IME** (native analog-stick reading — the sticks do nothing today — + IME),
         **E-android** save providers/transport, **E-desktop** (one real Google sign-in). Land these to a
         working core, then:
