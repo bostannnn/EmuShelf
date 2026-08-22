@@ -252,6 +252,7 @@ public partial class GamepadShellView : UserControl
             nameof(MainViewModel.GamepadSettingsFocusRevision) or
             nameof(MainViewModel.IsGamepadSettingsTextEntryOpen) or
             nameof(MainViewModel.IsGamepadSettingsConfirmationOpen) or
+            nameof(MainViewModel.IsGamepadSettingsChoicePickerOpen) or
             nameof(MainViewModel.IsGamepadControllerInputActive)))
         {
             return;
@@ -584,6 +585,20 @@ public partial class GamepadShellView : UserControl
                 ? GamepadSettingsConfirmButton
                 : GamepadSettingsKeepButton;
             FocusManager?.Focus(button, NavigationMethod.Directional);
+        }
+        else if (viewModel.IsGamepadSettingsChoicePickerOpen && viewModel.GamepadSettings is { } choiceSettings)
+        {
+            GamepadSettingsChoiceOptions.UpdateLayout();
+            var option = GamepadSettingsChoiceOptions.GetVisualDescendants()
+                .OfType<Button>()
+                .FirstOrDefault(button =>
+                    button.DataContext is GamepadChoiceOptionViewModel choice && choice.IsFocused);
+            if (option is not null)
+            {
+                option.BringIntoView();
+                if (viewModel.IsGamepadControllerInputActive)
+                    FocusManager?.Focus(option, NavigationMethod.Directional);
+            }
         }
         else if (viewModel.IsGamepadSettingsOpen &&
             viewModel.GamepadSettings is { IsRailFocused: true })

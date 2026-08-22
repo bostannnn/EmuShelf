@@ -56,6 +56,7 @@ public enum AndroidEmulatorMaintenance
 /// </summary>
 public sealed record AndroidLaunchProfile(
     string Id,
+    string SelectionId,
     string DisplayName,
     IReadOnlyList<string> SupportedSystemIds,
     string PackageName,

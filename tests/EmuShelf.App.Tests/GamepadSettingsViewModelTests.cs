@@ -244,34 +244,54 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public async Task AndroidRetroArchCoreChoice_SelectsRetroArchAndPersistsLaunchableCorePath()
+    public async Task AndroidEmulatorChoice_ListsStandaloneAndCoreEntriesAndPersistsThePair()
     {
         using var viewModel = CreateGamepadSettings(
-            androidRetroArchCores: AndroidRetroArchCoreCatalog.BySystem);
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
         viewModel.SelectedSection = SettingsSection.Emulators;
 
-        var settingsRow = viewModel.Settings.Rows.Single(row => row.SystemId == "playstation");
-        Assert.Equal("duckstation", settingsRow.EmulatorId);
-        var coreRow = viewModel.Rows.Single(row => row.Key == "emulators.playstation.retroarch-core");
-        Assert.Equal("Not selected", coreRow.Value);
+        var settingsRow = viewModel.Settings.Rows.Single(row => row.SystemId == "nds");
+        Assert.Equal(
+            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
+            settingsRow.AvailableChoices.Select(choice => choice.DisplayName));
+        Assert.Equal("watermelonds", settingsRow.EmulatorId);
+        Assert.Null(settingsRow.SelectedChoice?.CorePath);
+        var emulatorRow = viewModel.Rows.Single(row => row.Key == "emulators.nds.emulator");
+        Assert.Equal("WatermelonDS", emulatorRow.Value);
 
-        // A advances to the first compatible core. Selecting one also activates RetroArch for this
-        // system, so the Android launcher will prefer it over any standalone fallback.
-        await coreRow.SelectCommand.ExecuteAsync(null);
-        var expectedPath = AndroidRetroArchCoreCatalog.BySystem["playstation"][0].Path;
+        // A opens an explicit list without changing the value. Down + A chooses the first
+        // RetroArch-core-as-emulator item.
+        await emulatorRow.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.IsChoicePickerOpen);
+        Assert.Equal(
+            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
+            viewModel.ChoiceOptions.Select(option => option.DisplayName));
+        Assert.Equal("watermelonds", settingsRow.EmulatorId);
+        viewModel.Dispatch(GamepadAction.NavigateDown);
+        viewModel.Dispatch(GamepadAction.Confirm);
+        Assert.False(viewModel.IsChoicePickerOpen);
+        var expectedPath = AndroidRetroArchCoreCatalog.BySystem["nds"][0].Path;
+        Assert.Equal("retroarch", settingsRow.EmulatorId);
+        Assert.Equal(expectedPath, settingsRow.CorePath);
+
+        // Direct Left/Right adjustment is symmetric and wraps, so a quick change never requires
+        // blindly pressing A through the whole list.
+        viewModel.Dispatch(GamepadAction.NavigateLeft);
+        Assert.Equal("watermelonds", settingsRow.EmulatorId);
+        viewModel.Dispatch(GamepadAction.NavigateRight);
         Assert.Equal("retroarch", settingsRow.EmulatorId);
         Assert.Equal(expectedPath, settingsRow.CorePath);
 
         await viewModel.Settings.SaveCommand.ExecuteAsync(null);
         var saved = Assert.Single(
             _configurations.SavedConfigurations,
-            configuration => configuration.SystemId == "playstation" && configuration.EmulatorId == "retroarch");
+            configuration => configuration.SystemId == "nds" && configuration.EmulatorId == "retroarch");
         Assert.Equal(expectedPath, saved.CorePath);
-        Assert.Equal("retroarch", _configurations.ActiveEmulators["playstation"]);
+        Assert.Equal("retroarch", _configurations.ActiveEmulators["nds"]);
 
         var resolution = AndroidLaunchResolver.Resolve(
-            "playstation",
-            "/storage/emulated/0/ROMs/PS1/game.chd",
+            "nds",
+            "/storage/emulated/0/ROMs/DS/game.nds",
             AndroidEmulatorLaunchProfiles.RetroArch.Id,
             saved.CorePath);
         Assert.True(resolution.Success, resolution.FailureReason);
@@ -279,12 +299,35 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void RetroArchCoreChoice_IsOnlyProjectedWhenAndroidSuppliesTheCatalog()
+    public async Task AndroidOnlyStandaloneChoices_PersistTheirShortIdsWithoutCorePaths()
+    {
+        using var viewModel = CreateGamepadSettings(
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
+
+        var ds = viewModel.Settings.Rows.Single(row => row.SystemId == "nds");
+        var ps2 = viewModel.Settings.Rows.Single(row => row.SystemId == "playstation2");
+        Assert.Equal("watermelonds", ds.EmulatorId);
+        Assert.Equal("armsx2", ps2.EmulatorId);
+
+        await viewModel.Settings.SaveCommand.ExecuteAsync(null);
+
+        var savedDs = Assert.Single(_configurations.SavedConfigurations, configuration =>
+            configuration.SystemId == "nds" && configuration.EmulatorId == "watermelonds");
+        var savedPs2 = Assert.Single(_configurations.SavedConfigurations, configuration =>
+            configuration.SystemId == "playstation2" && configuration.EmulatorId == "armsx2");
+        Assert.Null(savedDs.CorePath);
+        Assert.Null(savedPs2.CorePath);
+        Assert.Equal("watermelonds", _configurations.ActiveEmulators["nds"]);
+        Assert.Equal("armsx2", _configurations.ActiveEmulators["playstation2"]);
+    }
+
+    [AvaloniaFact]
+    public void EmulatorChoice_IsOnlyProjectedWhenAndroidSuppliesTheCatalog()
     {
         using var viewModel = CreateGamepadSettings();
         viewModel.SelectedSection = SettingsSection.Emulators;
 
-        Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".retroarch-core", StringComparison.Ordinal));
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".emulator", StringComparison.Ordinal));
     }
 
     [AvaloniaFact]
@@ -437,13 +480,17 @@ public sealed class GamepadSettingsViewModelTests
         var status = viewModel.Rows.Single(row => row.Key == "textures.status-filter");
         await status.SelectCommand.ExecuteAsync(null);
 
+        Assert.True(viewModel.IsChoicePickerOpen);
+        Assert.Equal("All", viewModel.Settings.TextureStatusFilter);
+        viewModel.Dispatch(GamepadAction.NavigateDown);
+        viewModel.Dispatch(GamepadAction.Confirm);
+        Assert.False(viewModel.IsChoicePickerOpen);
         Assert.Equal("Matched", viewModel.Settings.TextureStatusFilter);
         Assert.Equal(status.Key, viewModel.FocusedRow!.Key);
-        // Left now moves focus to the section rail rather than cycling the choice, which advances
-        // only with A/Right (NeoStation-style); the value is left unchanged.
+        // Left directly reverses a choice. It no longer unexpectedly leaves for the section rail.
         viewModel.Dispatch(GamepadAction.NavigateLeft);
-        Assert.True(viewModel.IsRailFocused);
-        Assert.Equal("Matched", viewModel.Settings.TextureStatusFilter);
+        Assert.False(viewModel.IsRailFocused);
+        Assert.Equal("All", viewModel.Settings.TextureStatusFilter);
     }
 
     [AvaloniaFact]
@@ -534,11 +581,19 @@ public sealed class GamepadSettingsViewModelTests
         IOnScreenKeyboardService? onScreenKeyboard = null,
         AppUpdateCoordinator? updates = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
-        IReadOnlyDictionary<string, IReadOnlyList<AndroidRetroArchCoreOption>>? androidRetroArchCores = null) => new(
-            CreateSettings(maintenance, metadataPreferences, retroAchievements, cloudSaves, texturePacks, screenScraper, updates),
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null) => new(
+            CreateSettings(
+                maintenance,
+                metadataPreferences,
+                retroAchievements,
+                cloudSaves,
+                texturePacks,
+                screenScraper,
+                updates,
+                androidEmulatorChoices),
             onScreenKeyboard,
             themeChoices,
-            androidRetroArchCores: androidRetroArchCores);
+            androidEmulatorChoices: androidEmulatorChoices);
 
     private EmulatorSettingsViewModel CreateSettings(
         LibraryMaintenanceActions? maintenance = null,
@@ -547,7 +602,8 @@ public sealed class GamepadSettingsViewModelTests
         CloudSaveSyncSettingsContext? cloudSaves = null,
         TexturePackSettingsContext? texturePacks = null,
         ScreenScraperSettingsContext? screenScraper = null,
-        AppUpdateCoordinator? updates = null) => new(
+        AppUpdateCoordinator? updates = null,
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? fixedEmulatorChoices = null) => new(
             KnownSystems.All,
             KnownEmulators.All,
             KnownSystems.All.ToDictionary(
@@ -562,7 +618,8 @@ public sealed class GamepadSettingsViewModelTests
             cloudSaves: cloudSaves,
             texturePacks: texturePacks,
             screenScraper: screenScraper,
-            updates: updates);
+            updates: updates,
+            fixedEmulatorChoices: fixedEmulatorChoices);
 
     private static LibraryMaintenanceActions CreateMaintenance(Action<bool> setShowEmpty) => new(
         (_, _) => Task.FromResult(string.Empty),

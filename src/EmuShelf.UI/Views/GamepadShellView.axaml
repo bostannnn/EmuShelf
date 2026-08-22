@@ -1747,15 +1747,16 @@
                                                             <Border Grid.Column="2" Classes="gamepad-settings-affordance"
                                                                     IsVisible="{Binding IsChoice}"
                                                                     VerticalAlignment="Center" MinWidth="250">
-                                                                <!-- Choice rows only advance (A / Right, wrapping), so a single
-                                                                     forward chevron matches the behaviour; a leading "‹" would
-                                                                     imply a decrement that Left (which enters the rail) doesn't do. -->
-                                                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                                                    <TextBlock Grid.Column="0" Text="{Binding Value}"
+                                                                <!-- Both arrows are real controls: Left/Right select adjacent
+                                                                     values, while A opens the complete labelled choice list. -->
+                                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                                                                    <TextBlock Grid.Column="0" Text="‹" FontSize="24" VerticalAlignment="Center"
+                                                                               Foreground="{DynamicResource EmuAccentBrush}" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding Value}"
                                                                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                                TextAlignment="Center" FontWeight="SemiBold"
                                                                                TextTrimming="CharacterEllipsis" />
-                                                                    <TextBlock Grid.Column="1" Text="›" FontSize="24" VerticalAlignment="Center"
+                                                                    <TextBlock Grid.Column="2" Text="›" FontSize="24" VerticalAlignment="Center"
                                                                                Foreground="{DynamicResource EmuAccentBrush}" />
                                                                 </Grid>
                                                             </Border>
@@ -1956,6 +1957,58 @@
                                         </ItemsControl>
                                     </ScrollViewer>
                                     </Grid>
+
+                                    <!-- Choice rows open an explicit controller-native list. Left/Right on
+                                         the underlying row remains the fast path; this modal is the clear,
+                                         inspectable path for emulator/core lists and other settings. -->
+                                    <Border IsVisible="{Binding GamepadSettings.IsChoicePickerOpen}"
+                                            HorizontalAlignment="Stretch" VerticalAlignment="Center"
+                                            MaxWidth="760" Margin="24" Padding="24" CornerRadius="16"
+                                            Background="{DynamicResource EmuCardBrush}"
+                                            BorderBrush="{DynamicResource EmuAccentBrush}" BorderThickness="2">
+                                        <Grid RowDefinitions="Auto,Auto,*" RowSpacing="12">
+                                            <TextBlock Text="{Binding GamepadSettings.ChoicePickerTitle}"
+                                                       FontSize="22" FontWeight="Bold" TextWrapping="Wrap" />
+                                            <TextBlock Grid.Row="1" Text="{Binding GamepadSettings.ChoicePickerDescription}"
+                                                       FontSize="14" TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <ScrollViewer Grid.Row="2" MaxHeight="480"
+                                                          VerticalScrollBarVisibility="Auto"
+                                                          HorizontalScrollBarVisibility="Disabled">
+                                                <ItemsRepeater x:Name="GamepadSettingsChoiceOptions"
+                                                               ItemsSource="{Binding GamepadSettings.ChoiceOptions}">
+                                                    <ItemsRepeater.Layout>
+                                                        <StackLayout Spacing="4" />
+                                                    </ItemsRepeater.Layout>
+                                                    <ItemsRepeater.ItemTemplate>
+                                                        <DataTemplate x:DataType="vm:GamepadChoiceOptionViewModel">
+                                                            <Button Classes="gamepad-modal-option"
+                                                                    Classes.focused="{Binding IsFocused}"
+                                                                    Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
+                                                                    Command="{Binding SelectCommand}">
+                                                                <Grid ColumnDefinitions="36,*" ColumnSpacing="12">
+                                                                    <Border Width="30" Height="30" CornerRadius="15"
+                                                                            IsVisible="{Binding IsSelected}"
+                                                                            Background="{DynamicResource EmuAccentBrush}">
+                                                                        <TextBlock Text="✓" FontSize="16" FontWeight="Bold"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                                   Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
+                                                                    </Border>
+                                                                    <Border Width="30" Height="30" CornerRadius="15"
+                                                                            IsVisible="{Binding !IsSelected}"
+                                                                            BorderBrush="{DynamicResource EmuStrongBorderBrush}"
+                                                                            BorderThickness="2" />
+                                                                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}"
+                                                                               FontSize="18" FontWeight="SemiBold"
+                                                                               VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                                </Grid>
+                                                            </Button>
+                                                        </DataTemplate>
+                                                    </ItemsRepeater.ItemTemplate>
+                                                </ItemsRepeater>
+                                            </ScrollViewer>
+                                        </Grid>
+                                    </Border>
 
                                     <Border IsVisible="{Binding GamepadSettings.IsTextEntryOpen}"
                                             HorizontalAlignment="Stretch" VerticalAlignment="Center"
@@ -2730,10 +2783,14 @@
                                     IsVisible="{Binding IsGamepadSettingsNormal}">
                             <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
                             <TextBlock Text="Navigate" />
-                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="‹" /></Border>
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="LB/RB" /></Border>
                             <TextBlock Text="Sections" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"
+                                    IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}"><TextBlock Text="← →" /></Border>
+                            <TextBlock Text="Change" IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}" />
                             <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
-                            <TextBlock Text="Select" />
+                            <TextBlock Text="Options" IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}" />
+                            <TextBlock Text="Select" IsVisible="{Binding !GamepadSettings.IsChoiceRowFocused}" />
                             <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="START" /></Border>
                             <TextBlock Text="Save" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
@@ -2756,6 +2813,15 @@
                             <TextBlock Text="Confirm" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Keep" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadSettingsChoicePickerOpen}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Choose" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Use" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Cancel" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
