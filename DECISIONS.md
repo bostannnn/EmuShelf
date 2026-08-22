@@ -10233,6 +10233,40 @@ from a folder *different* from the one they granted the emulator (e.g. imported 
 `roms/psx`), the tree still will not match; that narrower case is what a future grant-root verification
 step would cover.
 
+## 2026-08-22 — Android hosts the UI via IActivityApplicationLifetime.MainViewFactory, not MainView
+
+The Android head set `ISingleViewApplicationLifetime.MainView` directly (in `SingleViewShell.Show`), which
+Avalonia 12.1 flags on every cold start: `[WARN] [Avalonia/AndroidPlatform] ISingleViewApplicationLifetime.MainView
+is not fully supported on Android. Consider setting IActivityApplicationLifetime.MainViewFactory.` (33× in one
+day's Thor log). Decompiling `Avalonia.Android.ApplicationLifetime` shows the `MainView` setter logs that line
+and then caches `MainViewFactory = () => _mainView` — i.e. one view instance reused across every activity
+(re)creation, the pattern the warning calls unsupported. `SingleViewShell.Show` now casts the lifetime to
+`IActivityApplicationLifetime` and sets `MainViewFactory` to build a **fresh** `MainView` (bound to the one
+long-lived `MainViewModel`) on each activity (re)creation — the supported model. `AvaloniaMainActivity.
+InitializeAvaloniaView` invokes the factory at `OnCreate`, and the Android `Application.OnCreate`
+(→ `OnFrameworkInitializationCompleted` → `Show`) runs before the first `Activity.OnCreate`, so the factory is
+always set in time. Verified on the Thor: two new-code cold starts + a forced activity recreation (font_scale
+change) produced **zero** warnings, the couch UI renders, gamepad input still routes, and the process survives
+recreation.
+
+Companion change: because a *fresh* view is built per activity, `GamepadShellView` now unsubscribes its
+`MainViewModel`/scraper/cover-search/hotkeys `PropertyChanged` handlers on `DetachedFromVisualTree` — otherwise
+the long-lived view model would retain (and keep firing into) dead views across in-process recreations, a leak
+the old single-instance reuse never had. Detach is always terminal for that view on both heads (the couch root
+is `IsVisible`-gated, never removed from the tree on a Desktop/Gamepad mode switch), so the cleanup never runs
+mid-session.
+
+Deliberately **not** covered by this change: the `OpenGlException: Window 0 is invalid` render-loop errors
+(14× the same day). The Thor log shows those are a surface-teardown race — ~10 of 14 fire within 0.7s of an
+emulator launch (the app backgrounding), stack `DefaultRenderLoop.TimerTick → ServerCompositor.Render →
+EglGlPlatformSurface.RenderTarget.BeginDrawCore → CreateWindowSurface(0)` — i.e. the compositor drawing one
+more frame into the just-destroyed top-level Android surface. That is independent of the content-view hosting
+model (it is the `AvaloniaView`'s own surface, and the errors are already caught by the compositor and logged,
+no crash), so `MainViewFactory` does not address them; the proper fix is upstream (stop the render loop
+synchronously on surface-destroy / guard the zero window). Onboarding still uses `MainView` (once per install;
+`ResolveOnboardingTopLevel` reads `.MainView`, and its SAF picker path cannot be driven headlessly), which is a
+tolerable single warning.
+
 ## 2026-08-22 — Android launch fails loudly; no emulator fallback
 
 When the emulator the user intends for a system (their configured choice, else the maintained-first

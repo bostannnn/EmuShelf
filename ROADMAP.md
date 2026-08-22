@@ -2069,3 +2069,8 @@ breaks the whole-solution macOS build/test loop.
           frame for ~40 tiles — the dominant grid cost in the fan-on-scroll investigation) is dropped via
           a `reduced-effects` class gated on `IsReducedEffectsPlatform`, which also collapses one overdraw
           layer. Desktop keeps the depth. See DECISIONS 2026-08-22.
+    - Landed 2026-08-22: Android now hosts the UI via `IActivityApplicationLifetime.MainViewFactory` (fresh
+      view per activity) instead of `ISingleViewApplicationLifetime.MainView`, clearing Avalonia's
+      "MainView is not fully supported on Android" warning (was 33×/day on the Thor). Verified on-device.
+      NOT fixed by this: the `OpenGlException: Window 0 is invalid` render-loop errors — a separate
+      surface-teardown race on emulator-launch backgrounding, still open (see DECISIONS 2026-08-22).
