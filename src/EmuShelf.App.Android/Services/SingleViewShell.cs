@@ -58,6 +58,7 @@ public sealed class SingleViewShell : IPlatformShell
             gameLauncher,
             boot.EmulatorConfigurations,
             _pendingSessions,
+            boot.Library,
             boot.Logger);
     }
 

@@ -232,9 +232,10 @@ jobs:
     # The Android head (src/EmuShelf.App.Android) is experimental and lives OUTSIDE EmuShelf.slnx, so
     # `dotnet build`/`dotnet test` in the `build` job never compile it — this job is the build floor that
     # keeps it from silently rotting (a shared-interface change that breaks the head fails here, not at
-    # deploy time). It runs on PRs too, but uploads the APK only on non-PR events. Deliberately NOT in the
-    # `release` job's `needs`: the APK is an experimental sideload artifact and must never be able to fail
-    # a tagged Windows/macOS/Linux release (that job runs with fail_on_unmatched_files: true).
+    # deploy time). It runs on PRs too, but uploads the APK only on non-PR events. The `release` job lists
+    # this job in `needs` so a tagged release WAITS for and attaches the APK, but the release's own `if`
+    # only *requires* the three desktop packages — so a broken experimental APK is left off the release
+    # rather than blocking the Windows/macOS/Linux release. See the `release` job's comment.
     runs-on: ubuntu-latest
     # Hoisted to job level so the decode/sign steps can gate on `env.ANDROID_KEYSTORE_BASE64 != ''`
     # (a step cannot read `secrets.*` in its own `if`). Absent (fork PRs, or before the keystore is
