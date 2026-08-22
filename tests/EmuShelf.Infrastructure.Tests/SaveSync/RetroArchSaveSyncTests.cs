@@ -200,6 +200,24 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task PlayStationCard_NeverEmitsADuplicateKeyForTwoSameBaseCards()
+    {
+        // The file-title key drops the extension, so a stray second card format beside the .srm
+        // (e.g. a leftover .mcr) would otherwise collapse onto the same id and the whole PlayStation
+        // sync would throw Argument_AddingDuplicateWithKey. Exactly one unit must be emitted.
+        var folder = Path.Combine(BaseDirectory, "Beetle-dupe");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Suikoden II (USA).srm"), "card a");
+        await File.WriteAllTextAsync(Path.Combine(folder, "Suikoden II (USA).mcr"), "card b");
+
+        var units = await CreatePlayStationBeetleProvider(folder).GetSaveUnitsAsync();
+
+        Assert.Equal(
+            ["playstation/per-game/file-title/Suikoden II (USA)_1.mcd"],
+            units.Select(unit => unit.UnitId));
+    }
+
+    [Fact]
     public void PlayStationCardKey_FreshRestoreLandsOnTheCoresDefaultSrm()
     {
         // Pulling a desktop DuckStation card onto a Thor that has never made this card: the key must

@@ -372,6 +372,7 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             return [];
 
         var units = new List<SaveUnit>();
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
         foreach (var path in Directory.EnumerateFiles(info.SaveDirectory)
                      .OrderBy(path => path, StringComparer.Ordinal))
         {
@@ -383,13 +384,21 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             // On PlayStation only the raw memory card is battery data; a PS1 core may drop a companion
             // beside it — Beetle PSX writes a small ".ldci" disc-control index next to each multi-disc
             // game's ".srm" — that shares the game's base name. Left in, it collapses onto the same
-            // file-title card key as the card and the whole PlayStation sync throws
-            // (Argument_AddingDuplicateWithKey). Claim only real memory-card files there.
+            // file-title card key as the card. Claim only real memory-card files there.
             if (IsPlayStation && !IsPlayStationCardFile(fileName))
                 continue;
 
             var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
-            units.Add(new SaveUnit(UnitIdPrefix + localId, fileName, SaveUnitKind.File));
+            var unitId = UnitIdPrefix + localId;
+
+            // Never emit a unit id twice: the whole sync builds a dictionary keyed by it and throws
+            // (Argument_AddingDuplicateWithKey) on a duplicate. PlayStation's file-title key drops the
+            // extension, so two same-named cards (a stray .mcr beside a .srm) would otherwise collide;
+            // the first in the deterministic order wins and the rest are left for the emulator.
+            if (!emitted.Add(unitId))
+                continue;
+
+            units.Add(new SaveUnit(unitId, fileName, SaveUnitKind.File));
         }
 
         return units;
