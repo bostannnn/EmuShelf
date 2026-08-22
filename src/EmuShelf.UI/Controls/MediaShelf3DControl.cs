@@ -658,6 +658,10 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             && width == _lastRenderedWidth
             && height == _lastRenderedHeight;
 
+        // Per-frame render cost, for the log-based perf sampler (PerfTrace). Cheap timestamp pair; only
+        // frames that actually draw reach here (the empty/no-op frames returned above).
+        var perfStart = System.Diagnostics.Stopwatch.GetTimestamp();
+
         try
         {
             _renderer.Crt = crt.IsActive && frame is not null
@@ -754,6 +758,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             {
                 RequestNextFrameRendering();
             }
+
+            EmuShelf.App.Diagnostics.PerfTrace.RecordGlFrame(
+                System.Diagnostics.Stopwatch.GetTimestamp() - perfStart);
         }
         catch (Exception exception)
         {

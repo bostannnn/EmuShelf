@@ -5,7 +5,10 @@ using Android.Content.PM;
 using Android.Content.Res;
 using Android.Views;
 using Avalonia.Android;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using EmuShelf.App.Android.Services;
+using EmuShelf.App.Diagnostics;
 
 namespace EmuShelf.App.Android;
 
@@ -114,6 +117,20 @@ public class MainActivity : AvaloniaMainActivity
             return base.DispatchKeyEvent(e);
         }
 
+        // Diagnostics: L3 (left-stick click) is unmapped in the couch input map, so it drives the
+        // renderer debug-overlay cycle (off -> fps+render time -> +dirty rects -> all). This is how the
+        // fan-on-scroll cost is measured on-device — Avalonia's own render thread draws the FPS and
+        // ms/frame graphs and the dirty-rect repaint scope, at no cost when off. Works in Release too so
+        // the Debug vs Release/AOT difference can be read directly on the panel.
+        if (e.Action == KeyEventActions.Down && e.KeyCode == Keycode.ButtonThumbl)
+        {
+            var label = RenderOverlayDiagnostics.Cycle(ResolveTopLevel());
+            // A one-line trace so the current mode is confirmable over adb logcat without watching the panel.
+            // Same tag as the perf sampler so a single `logcat -s EmuShelfPerf` sees the whole diagnostic.
+            global::Android.Util.Log.Info("EmuShelfPerf", $"Render overlays: {label ?? "(no top level)"}");
+            return true;
+        }
+
         if (e.Action == KeyEventActions.Down &&
             AndroidGamepadInput.Map(e.KeyCode) is { } action &&
             AndroidGamepadInput.Dispatch?.Invoke(action) == true)
@@ -123,6 +140,13 @@ public class MainActivity : AvaloniaMainActivity
 
         return base.DispatchKeyEvent(e);
     }
+
+    // The single-view head's live top level, reached through the app lifetime's MainView — the same
+    // route onboarding uses. Null before the view is shown.
+    private static TopLevel? ResolveTopLevel() =>
+        (global::Avalonia.Application.Current?.ApplicationLifetime as ISingleViewApplicationLifetime)?.MainView is { } view
+            ? TopLevel.GetTopLevel(view)
+            : null;
 
     /// <summary>
     /// The head's analog-stick surface. Joystick stick movement arrives as generic <see cref="MotionEvent"/>s
