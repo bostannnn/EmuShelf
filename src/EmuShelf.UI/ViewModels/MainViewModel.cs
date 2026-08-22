@@ -13,6 +13,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Rendering;
+using EmuShelf.App.Diagnostics;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
@@ -394,6 +395,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnGamepadLayoutChanged(GamepadLibraryLayout value)
     {
+        PerfTrace.Event($"EVENT layout->{value}");
         ScheduleLibraryViewStateSave();
         OnPropertyChanged(nameof(IsGamepadSpotlightView));
         OnPropertyChanged(nameof(IsGamepadShelfView));
@@ -945,8 +947,28 @@ public partial class MainViewModel : ViewModelBase
     /// draws opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
     public bool ShowShelfFlatBackdrop => !ShelfSceneSupported;
 
+    /// <summary>
+    /// A one-line snapshot of the couch state for the log-based perf sampler (<see cref="PerfTrace"/>):
+    /// current layout, CRT toggle, the active render path, the selected platform/scope, and the visible
+    /// library size. Read off the UI thread by the sampler, so it only performs simple property reads.
+    /// </summary>
+    public string PerfStateSnapshot =>
+        $"layout={GamepadLayout} crt={(CrtScreenEffect ? "on" : "off")} path={PerfRenderPath} " +
+        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={Games.Count}";
+
+    private string PerfRenderPath => GamepadLayout switch
+    {
+        GamepadLibraryLayout.Grid => "grid",
+        GamepadLibraryLayout.Spotlight => "spotlight",
+        GamepadLibraryLayout.Shelf => ShowInlineShelfScene ? "shelf-inline-gl"
+            : ShowCouchScene ? "shelf-tube"
+            : "shelf-flat",
+        _ => "?",
+    };
+
     partial void OnCrtScreenEffectChanged(bool value)
     {
+        PerfTrace.Event($"EVENT crt->{(value ? "on" : "off")}");
         OnPropertyChanged(nameof(CouchCrt));
         OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
@@ -1811,6 +1833,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedSystemChanged(GameSystem? value)
     {
+        PerfTrace.Event($"EVENT platform->{value?.Name ?? "(scope)"}");
         if (value is not null)
             CurrentLibraryScope = LibraryScope.System;
         NotifyLibraryPresentationChanged();

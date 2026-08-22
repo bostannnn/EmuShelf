@@ -1,5 +1,7 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
+using EmuShelf.App.Diagnostics;
 
 namespace EmuShelf.App.Android.Views;
 
@@ -14,4 +16,15 @@ public partial class MainView : UserControl
     public MainView() => InitializeComponent();
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+#if DEBUG
+        // Debug builds show the renderer overlays (FPS + ms/frame + dirty rects) from first frame, so the
+        // fan-on-scroll cost is visible without hunting for the L3 toggle. Release starts clean; L3 still
+        // cycles them there for the Debug vs Release comparison. See RenderOverlayDiagnostics.
+        RenderOverlayDiagnostics.SetEnabled(TopLevel.GetTopLevel(this), true);
+#endif
+    }
 }

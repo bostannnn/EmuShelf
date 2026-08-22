@@ -82,6 +82,11 @@ public sealed class SingleViewShell : IPlatformShell
         _mainView.DataContext = viewModel;
         _singleView.MainView = _mainView;
 
+        // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
+        // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and
+        // sampler are started in the Android application; this supplies the "what" for the "how fast".
+        global::EmuShelf.App.Diagnostics.PerfTrace.StateProvider = () => viewModel.PerfStateSnapshot;
+
         // Point the Activity's couch key-event bridge at this view model's dispatcher. The Activity
         // owns the key events (Android gamepad buttons never reach Avalonia's KeyDown), so this is how
         // Menu / D-pad / A-B reach the shared UI on device.
