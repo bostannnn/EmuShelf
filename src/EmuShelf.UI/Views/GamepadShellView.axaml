@@ -39,6 +39,7 @@
     <Grid>
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
           Classes.tube="{Binding IsShelfTubeActive}"
+          Classes.reduced-effects="{Binding IsReducedEffectsPlatform}"
           IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
         <Border Grid.Row="0" Padding="42,18,42,12" Classes="gamepad-toolbar"

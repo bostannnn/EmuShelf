@@ -10257,3 +10257,46 @@ of MediaProvider/FUSE log churn and needless flash writes.
    comparison (future-proof against added fields) and compares the columns element by element. The
    file-split idea (volatile view-state in its own file) was rejected: the cost is write *frequency*
    — the temp+rename syscalls — not payload size, so fewer writes is the lever, not smaller ones.
+
+## 2026-08-22 — Android: auto-update via the system package installer; hotkeys hidden; grid tile shadow dropped
+
+Four Milestone-S (stabilization) fixes from a Thor pass. Each is Android-only or a no-op off Android, so
+desktop behaviour and snapshots are unchanged.
+
+1. **Auto-update works on Android — but it is assisted, not silent.** The question was "is it possible?".
+   It is: CI already publishes a release-signed `EmuShelf-android-arm64.apk` and its `.sha256`, so the
+   shared check → download → checksum-verify path (`GitHubUpdateService`) needed only the Android asset
+   name in `UpdatePlatform.CurrentAssetName()`. What differs from desktop is the *apply* step: an Android
+   app cannot overwrite its own installed APK, so there is no in-place file-swap. A new
+   `AndroidUpdateApplier` (in the head) copies the verified APK into the app-internal cache, mints a
+   `content://` URI with a `FileProvider`, and fires `ACTION_VIEW`
+   (`application/vnd.android.package-archive`) at the system package installer, which shows the user a
+   confirmation. It is wired through a new `App.UpdateApplierFactoryOverride` hook (mirroring
+   `ExternalUriOpener`/`OnScreenKeyboardFactory`), so the shared `UpdateApplierFactory` stays desktop-only.
+   Manifest gains `REQUEST_INSTALL_PACKAGES` and the `com.emushelf.app.updateprovider` provider
+   (`Resources/xml/emushelf_update_paths.xml`, `<cache-path>`). **Two constraints, both inherent to
+   Android and surfaced to the user by the installer, not silently:** the new APK must be signed with the
+   same key as the running build (the CI release keystore — a locally/debug-signed sideload will not
+   accept the CI APK; uninstall-first is required), and the user must allow "install unknown apps" the
+   first time. The PackageInstaller Session API was considered and rejected for now: it avoids the
+   FileProvider but needs a BroadcastReceiver + PendingIntent status dance for the same user-facing
+   confirmation, i.e. more surface for no behavioural gain.
+
+2. **Hotkeys section hidden on Android.** The hotkeys feature writes a uniform *keyboard* scheme into each
+   *desktop* emulator's own config so it can be driven by *Steam Input*. On Android there is no Steam
+   Input and the emulators are sandboxed apps whose config EmuShelf cannot rewrite, so the whole section
+   is inert. `MainViewModel.CreateHotkeySettingsContext()` returns null on Android, which drops
+   `SettingsSection.Hotkeys` (gated on a non-empty context) and, via `HasHotkeys`, also disables the
+   gamepad hotkey-editor overlay entry. Gated in the view model, not in `EmulatorSettingsViewModel`, so
+   the desktop unit tests that inject a hotkey context directly are unaffected.
+
+3. **Removed the redundant "ScreenScraper" header** in the gamepad Artwork & Metadata section. It stacked
+   directly above the "Sign in to ScreenScraper" / "ScreenScraper account" sub-header, so it only cost
+   couch vertical space; the sub-headers already name the provider.
+
+4. **Grid tile drop-shadow dropped on Android.** A 20 px blurred `BoxShadow` on every one of the ~40
+   realized grid tiles is recomposited each frame while the library scrolls, and on a handheld GPU that is
+   the dominant grid cost (the fan-on-scroll investigation). A `reduced-effects` style class, bound on the
+   couch root to `MainViewModel.IsReducedEffectsPlatform` (true only on Android), sets the shadow
+   sibling's `IsVisible` to false — removing both the blur and one full-tile overdraw layer. Desktop and
+   desktop-gamepad mode keep the depth.

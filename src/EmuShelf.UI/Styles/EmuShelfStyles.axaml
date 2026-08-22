@@ -1054,6 +1054,13 @@
         <Style Selector="Button.gamepad-game.focused Border.gamepad-cover-shadow">
             <Setter Property="BoxShadow" Value="none" />
         </Style>
+        <!-- Android (reduced-effects): drop the tile drop-shadow entirely. A 20px blurred BoxShadow on
+             every one of the ~40 realized tiles is recomposited each frame while the library scrolls, and
+             on a handheld GPU that is the dominant grid cost (the fan-on-scroll investigation). Collapsing
+             the empty shadow sibling also removes one full-tile overdraw layer. Desktop keeps the depth. -->
+        <Style Selector="Grid.gamepad-root.reduced-effects Border.gamepad-cover-shadow">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
         <!-- The focused tile lifts with a small scale. It is applied to the whole cover STACK (accent
              ring + well + cover together) so the concentric focus frame scales as one unit and its even
              6px border is preserved. Scaling only the cover grows it into the fixed ring and eats the

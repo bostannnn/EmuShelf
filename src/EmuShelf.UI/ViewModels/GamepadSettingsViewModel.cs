@@ -1514,7 +1514,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             offLabel: "OFF",
             isGrouped: true);
 
-        yield return HeaderRow("scraper.header", "ScreenScraper");
+        // No standalone "ScreenScraper" header: it stacked directly above the "Sign in to ScreenScraper"
+        // / "ScreenScraper account" sub-header below, so it only ate vertical space on the couch surface.
+        // The sub-headers already name the provider.
         if (_settings.IsScreenScraperConnected)
         {
             yield return HeaderRow("scraper.account-header", "ScreenScraper account");

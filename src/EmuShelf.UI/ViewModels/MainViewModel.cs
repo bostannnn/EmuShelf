@@ -924,6 +924,14 @@ public partial class MainViewModel : ViewModelBase
     public double ShelfFillScale => OperatingSystem.IsAndroid() ? 1.5 : 1.0;
 
     /// <summary>
+    /// True on Android, where the view drops GPU-expensive per-tile decoration (blurred drop shadows and
+    /// their overdraw) from the grid. Those effects recomposite every frame while the library scrolls; on
+    /// a handheld GPU that is the dominant grid cost (the fan-on-scroll investigation), and desktop keeps
+    /// them. Bound as a style class on the couch root, so it is a one-line reach for any effect to gate.
+    /// </summary>
+    public bool IsReducedEffectsPlatform => OperatingSystem.IsAndroid();
+
+    /// <summary>
     /// The games the 3D scene draws, or nothing outside the shelf layout.
     /// </summary>
     /// <remarks>
@@ -6750,7 +6758,14 @@ public partial class MainViewModel : ViewModelBase
 
     // Reads each configured emulator's hotkey config to build the section state; the caller runs it
     // on a worker so opening Settings never does file IO on the UI thread.
-    private HotkeySettingsContext? CreateHotkeySettingsContext() => _hotkeys?.CreateSettingsContext();
+    //
+    // Android has no hotkeys section: the feature writes a *keyboard* hotkey scheme into each desktop
+    // emulator's own config so it can be driven by Steam Input. On Android there is no Steam Input, and
+    // the emulators are sandboxed apps whose config EmuShelf cannot rewrite — so the whole section is
+    // inert there. Returning null drops SettingsSection.Hotkeys (gated on a non-empty context) and, with
+    // it, HasHotkeys — which also disables the gamepad hotkey-editor overlay entry.
+    private HotkeySettingsContext? CreateHotkeySettingsContext() =>
+        OperatingSystem.IsAndroid() ? null : _hotkeys?.CreateSettingsContext();
 
     private TexturePackSettingsContext? CreateTexturePackSettingsContext() =>
         // Titles come from the whole library, not the visible collection: a Dolphin pack must

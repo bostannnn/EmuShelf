@@ -63,6 +63,15 @@ public partial class App : Application
     public static Action<Uri>? ExternalUriOpener { get; set; }
 
     /// <summary>
+    /// Builds the in-place update applier for platforms the shared <see cref="UpdateApplierFactory"/>
+    /// cannot serve. Desktop leaves this null and the factory returns the Windows/macOS/AppImage applier;
+    /// the Android head sets it to one that hands the verified APK to the system package installer (there
+    /// is no file-swap on Android, and the applier needs an Android context the shared code cannot reach).
+    /// Set before Avalonia starts.
+    /// </summary>
+    public static Func<IUpdateApplier>? UpdateApplierFactoryOverride { get; set; }
+
+    /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
     /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
     /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the
@@ -392,7 +401,8 @@ public partial class App : Application
         // is platform-specific (AppImage re-exec on the Steam Deck, helper swap on Windows/macOS).
         _updateHttpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
         _updateHttpClient.DefaultRequestHeaders.UserAgent.ParseAdd($"EmuShelf/{AppBuildInfo.Version}");
-        var updateApplier = UpdateApplierFactory.Create(Bootstrapper.Paths, Bootstrapper.Logger);
+        var updateApplier = UpdateApplierFactoryOverride?.Invoke()
+            ?? UpdateApplierFactory.Create(Bootstrapper.Paths, Bootstrapper.Logger);
         var updateService = new GitHubUpdateService(
             _updateHttpClient,
             SemanticVersion.ParseOrZero(AppBuildInfo.Version),
