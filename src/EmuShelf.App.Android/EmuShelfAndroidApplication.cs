@@ -73,11 +73,12 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
                 global::EmuShelf.Core.Diagnostics.NullAppLogger.Instance);
 
         // Log-based performance tracing for the fan-on-scroll diagnosis. Routes PerfTrace to logcat (tag
-        // EmuShelfPerf) and starts the once-a-second sampler now; the shell fills in the state provider once
-        // the couch view model exists. Runs in Release too — the whole point is to read it off a real build.
+        // EmuShelfPerf); the shell fills in the state provider once the couch view model exists. The sampler
+        // is NOT started here — it is gated behind the same triple-L3 switch as the on-screen overlays
+        // (RenderOverlayDiagnostics.Cycle), so a normal session writes nothing to the log. Works in Release
+        // too, which is the point: the diagnostics can be turned on from a real build when needed.
         global::EmuShelf.App.Diagnostics.PerfTrace.Sink =
             message => global::Android.Util.Log.Info("EmuShelfPerf", message);
-        global::EmuShelf.App.Diagnostics.PerfTrace.StartSampling();
 
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()

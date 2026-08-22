@@ -150,6 +150,13 @@ public class MainActivity : AvaloniaMainActivity
         return context.CreateConfigurationContext(overridden);
     }
 
+    // Triple-L3 diagnostics gesture: three left-stick clicks whose gaps each stay within this window count
+    // as one activation, advancing the render-overlay cycle. KeyEvent.EventTime is a monotonic uptime clock,
+    // so no wall-clock skew, and the fields need no locking — DispatchKeyEvent is the UI thread.
+    private const long TripleClickWindowMs = 700;
+    private long _lastL3ClickMs;
+    private int _l3ClickCount;
+
     /// <summary>
     /// The head's couch input surface. Gamepad buttons and the D-pad arrive here as Android key events
     /// even though Avalonia reports them as <c>Key.None</c>, so this is where they are mapped to logical
@@ -171,17 +178,29 @@ public class MainActivity : AvaloniaMainActivity
             return base.DispatchKeyEvent(e);
         }
 
-        // Diagnostics: L3 (left-stick click) is unmapped in the couch input map, so it drives the
-        // renderer debug-overlay cycle (off -> fps+render time -> +dirty rects -> all). This is how the
-        // fan-on-scroll cost is measured on-device — Avalonia's own render thread draws the FPS and
-        // ms/frame graphs and the dirty-rect repaint scope, at no cost when off. Works in Release too so
-        // the Debug vs Release/AOT difference can be read directly on the panel.
+        // Diagnostics: L3 (left-stick click) is unmapped in the couch input map, so a *triple* L3 — three
+        // clicks within TripleClickWindowMs — advances the renderer debug-overlay cycle (off -> fps+render
+        // time -> +dirty rects -> all) and, via RenderOverlayDiagnostics.Cycle, gates the matching logcat
+        // perf sampler on the same step. Requiring a triple gesture (not a single click) keeps a stray
+        // stick press from ever switching the diagnostics on. Nothing is on by default; this is the only way
+        // in, in Debug and Release alike, so the Debug vs Release/AOT difference can be read on the panel.
+        // Every L3 click is consumed here so it does nothing else.
         if (e.Action == KeyEventActions.Down && e.KeyCode == Keycode.ButtonThumbl)
         {
-            var label = RenderOverlayDiagnostics.Cycle(ResolveTopLevel());
-            // A one-line trace so the current mode is confirmable over adb logcat without watching the panel.
-            // Same tag as the perf sampler so a single `logcat -s EmuShelfPerf` sees the whole diagnostic.
-            global::Android.Util.Log.Info("EmuShelfPerf", $"Render overlays: {label ?? "(no top level)"}");
+            // Count discrete presses only (RepeatCount == 0); a held L3 auto-repeats and must not self-trigger.
+            if (e.RepeatCount != 0)
+                return true;
+
+            _l3ClickCount = e.EventTime - _lastL3ClickMs <= TripleClickWindowMs ? _l3ClickCount + 1 : 1;
+            _lastL3ClickMs = e.EventTime;
+            if (_l3ClickCount >= 3)
+            {
+                _l3ClickCount = 0;
+                var label = RenderOverlayDiagnostics.Cycle(ResolveTopLevel());
+                // A one-line trace so the current mode is confirmable over adb logcat without watching the
+                // panel. Same tag as the perf sampler so `logcat -s EmuShelfPerf` sees the whole diagnostic.
+                global::Android.Util.Log.Info("EmuShelfPerf", $"Render overlays: {label ?? "(no top level)"}");
+            }
             return true;
         }
 

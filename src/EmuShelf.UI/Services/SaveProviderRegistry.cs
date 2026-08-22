@@ -382,21 +382,13 @@ public static class SaveProviderRegistry
 
     private static ISaveLocationProvider? CreateDuckStationProvider(SaveProviderContext context)
     {
-        // On Android, DuckStation keeps no readable settings.ini (its config is in app-private storage),
-        // so the desktop provider cannot resolve it. The Android provider works off the fixed on-device
-        // memcards folder instead and emits the same unit ids. The root is DuckStation's app-data files
-        // directory (from the Android installation), or the user's chosen folder as an override.
+        // DuckStation has no Android save provider. On Android it keeps its memory cards in app-private
+        // Android/data storage as owner-only (0600) files EmuShelf cannot read (DECISIONS 2026-08-20,
+        // docs/android-save-sync-model.md), so DuckStation PS1 saves cannot sync there. PS1 on Android
+        // syncs through a RetroArch PS1 core (Beetle PSX) instead — see
+        // AppBootstrapper.ResolveAndroidEmulator — so DuckStation resolves to no provider on Android.
         if (OperatingSystem.IsAndroid())
-        {
-            var root = context.DirectoryOverride ?? context.EmulatorDirectory;
-            if (string.IsNullOrWhiteSpace(root))
-                return null;
-            var memcards = Path.GetFileName(Path.TrimEndingDirectorySeparator(root))
-                    .Equals("memcards", StringComparison.OrdinalIgnoreCase)
-                ? root
-                : Path.Combine(root, "memcards");
-            return new DuckStationAndroidSaveLocationProvider(memcards);
-        }
+            return null;
 
         if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
             string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
@@ -415,15 +407,6 @@ public static class SaveProviderRegistry
         ISaveLocationProvider provider,
         CancellationToken cancellationToken)
     {
-        // The Android provider has no settings.ini to inspect; its memory-card folder is the whole story.
-        if (provider is DuckStationAndroidSaveLocationProvider android)
-        {
-            return new SaveProviderDetection(
-                android.MemoryCardsDirectory,
-                "Per-game memory cards are synced by file name. Another DuckStation only picks one up if it " +
-                "uses the same per-game card type (DuckStation's default) and the game has the same name.");
-        }
-
         var info = await ((DuckStationSaveLocationProvider)provider).GetMemoryCardInfoAsync(cancellationToken);
         return new SaveProviderDetection(
             info.Directory,
@@ -659,7 +642,6 @@ public static class SaveProviderRegistry
     private static string EmulatorId(ISaveLocationProvider provider) => provider switch
     {
         DuckStationSaveLocationProvider => "duckstation",
-        DuckStationAndroidSaveLocationProvider => "duckstation",
         Pcsx2SaveLocationProvider => "pcsx2",
         PpssppSaveLocationProvider => "ppsspp",
         DolphinSaveLocationProvider => "dolphin",

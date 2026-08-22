@@ -10465,3 +10465,23 @@ multi-disc entry is not mistaken for a deletion. The rescan status now reports r
 
 Startup's availability pass (`RefreshAvailabilityAsync`) is unchanged — it only marks, never deletes —
 so a normal launch never removes rows.
+## 2026-08-22 — Removed the Android DuckStation save provider; PS1 on Android syncs only via Beetle PSX
+
+`DuckStationAndroidSaveLocationProvider` (and its test) is deleted. It read DuckStation Android's fixed
+`Android/data/<pkg>/files/memcards` folder, but the cards the current DuckStation build writes there are
+**owner-only** (`-rw-------`) and unreadable under all-files access (an app cannot `chmod` another app's
+files — DECISIONS 2026-08-20 refinement), so the provider degrades toward syncing nothing as the player
+makes new saves. Rather than ship a save path that silently does nothing, PS1 on Android now syncs **only**
+through a RetroArch PS1 core (Beetle PSX), whose cards live in normal readable shared storage and which
+already emits DuckStation's `playstation/per-game/file-title/<name>_1.mcd` key, so a card still round-trips
+1:1 with a desktop DuckStation file-title card.
+
+Wiring changes: `SaveProviderRegistry.CreateDuckStationProvider` returns null on Android (the desktop
+`DuckStationSaveLocationProvider` is unchanged and still serves desktop PS1); `AppBootstrapper.ResolveAndroidEmulator`
+no longer has a PlayStation branch — PS1 falls through to `ResolveAndroidRetroArch`, which resolves an
+installation only when a RetroArch core is configured and returns null otherwise. Net effect on Android:
+DuckStation stays launchable, but a DuckStation-configured PlayStation has no save provider (`CanSyncSystem`
+false, launch/exit sync a silent no-op) until the user selects Beetle PSX. Tradeoff accepted: a user whose
+DuckStation still writes group-readable cards (e.g. a pre-reinstall install) loses that best-effort sync;
+the reliable, non-degrading path is Beetle. Save states were never wired for the Android DuckStation
+provider, so nothing is lost there.
