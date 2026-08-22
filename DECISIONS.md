@@ -10442,6 +10442,29 @@ emulator, so switching cores reuses one RetroArch draft and switching to a stand
 discard it. A configured core that is temporarily missing remains visible rather than being silently
 replaced. No flow reads, modifies or deletes ROMs or emulator-owned configuration.
 
+## 2026-08-22 — Library rescan removes games whose files were deleted
+
+A rescan of a remembered folder now deletes the library rows for games the scan no longer finds on
+disk, instead of only flagging them "unavailable". The row goes; the file is never touched (rescan
+still only reads).
+
+Removal is never silent: once the whole rescan finishes, a single confirmation lists every missing
+title (`IDialogService.ConfirmRescanRemovalsAsync`) and deletes only on an explicit yes. Declining
+keeps every row — the availability pass then just marks them unavailable, the pre-change behavior.
+The prompt defaults to "keep them" (false) on platforms that haven't built it (the Android skeleton),
+so no head deletes without asking.
+
+Removal is scoped to folders that are **reachable that scan** (`Directory.Exists`, the same gate
+`FolderScanner` uses). A folder on a disconnected drive scans as empty rather than erroring, so its
+games are deliberately left alone — they still show as unavailable, never pruned. This preserves the
+portable-drive guarantee: unplugging a ROM drive and rescanning must not wipe the library. Games added
+individually outside any remembered folder are likewise left for the availability pass, not removed.
+A file the descriptor/playlist collapse folds into a suppressed component still counts as present, so a
+multi-disc entry is not mistaken for a deletion. The rescan status now reports removals, e.g.
+"Rescan added 2, removed 1 game(s)".
+
+Startup's availability pass (`RefreshAvailabilityAsync`) is unchanged — it only marks, never deletes —
+so a normal launch never removes rows.
 ## 2026-08-22 — Removed the Android DuckStation save provider; PS1 on Android syncs only via Beetle PSX
 
 `DuckStationAndroidSaveLocationProvider` (and its test) is deleted. It read DuckStation Android's fixed

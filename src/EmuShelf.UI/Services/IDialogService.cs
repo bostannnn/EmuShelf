@@ -58,6 +58,13 @@ public interface IDialogService
     /// <summary>Confirms removing several library records without touching their files or covers.</summary>
     Task<bool> ConfirmRemoveGamesAsync(int gameCount);
 
+    /// <summary>
+    /// Confirms deleting the library records a rescan found missing on disk, listing their titles so
+    /// the user sees exactly what goes. Files and covers are never touched. Defaults to false (keep
+    /// them) on platforms that have not built the prompt.
+    /// </summary>
+    Task<bool> ConfirmRescanRemovalsAsync(IReadOnlyList<string> gameTitles) => Task.FromResult(false);
+
     /// <summary>Asks once whether newly imported games may use network metadata providers.</summary>
     Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount);
 
