@@ -49,6 +49,21 @@ public static class AndroidLaunchResolver
                           string.Equals(p.Id, preferredEmulatorId, StringComparison.Ordinal))
                       ?? candidates[0];
 
+        // A "RetroArch, no core" preference cannot launch, and it was never a deliberate pick: every
+        // RetroArch core choice persists its core path, so an empty one is a stale/legacy selection —
+        // e.g. a pre-WatermelonDS DS row that still says "retroarch". Rather than dead-ending on a core
+        // prompt for an emulator the user didn't choose, fall back to the system's natural maintained-
+        // first default (the order with no preference applied) when that default is a standalone needing
+        // no core — the same row the settings picker already migrates such a selection to. When RetroArch
+        // is itself the maintained default (e.g. PS1), candidates[0] is RetroArch again and the core
+        // prompt below still stands.
+        if (profile.PayloadSlot == AndroidRomPayloadSlot.RetroArchCore &&
+            string.IsNullOrEmpty(retroArchCorePath) &&
+            candidates[0].PayloadSlot != AndroidRomPayloadSlot.RetroArchCore)
+        {
+            profile = candidates[0];
+        }
+
         // RetroArch is the plain-path exception: it holds all-files, takes the raw path, and needs a core.
         if (profile.PayloadSlot == AndroidRomPayloadSlot.RetroArchCore)
         {
