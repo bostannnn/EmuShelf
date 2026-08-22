@@ -152,6 +152,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public Action? SlotCleared { get; set; }
     public Action? AchievementsRefreshed { get; set; }
     public Action<int>? SlotActivated { get; set; }
+    public Action<int>? SlotEditRequested { get; set; }
     public Action<SecondScreenAppViewModel>? AppLaunched { get; set; }
 
     [RelayCommand]
@@ -169,8 +170,30 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [RelayCommand]
     private void Refresh() => AchievementsRefreshed?.Invoke();
 
+    private DateTimeOffset _lastEditAt = DateTimeOffset.MinValue;
+
     [RelayCommand]
-    private void ActivateSlot(int index) => SlotActivated?.Invoke(index);
+    private void ActivateSlot(SecondScreenSlotViewModel? slot)
+    {
+        // Take the slot (a reference type), not its int index: a RelayCommand<int> reports
+        // CanExecute==false for a null/unset parameter, which disables the button and makes the tap do
+        // nothing — the reason dock taps never launched. A reference-type parameter stays enabled.
+        if (slot is null)
+            return;
+        // If a long-press just opened the picker, ignore a click that lands right after it (some input
+        // stacks still fire one on release) so hold-to-manage doesn't also launch. The window is short so
+        // an ordinary tap is never swallowed.
+        if (DateTimeOffset.UtcNow - _lastEditAt < TimeSpan.FromMilliseconds(500))
+            return;
+        SlotActivated?.Invoke(slot.Index);
+    }
+
+    [RelayCommand]
+    private void EditSlot(int index)
+    {
+        _lastEditAt = DateTimeOffset.UtcNow;
+        SlotEditRequested?.Invoke(index);
+    }
 
     [RelayCommand]
     private void LaunchApp(SecondScreenAppViewModel app) => AppLaunched?.Invoke(app);

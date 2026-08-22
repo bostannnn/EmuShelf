@@ -298,8 +298,13 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         model.SlotCleared = OnClearSlot;
         model.AchievementsRefreshed = RefreshAchievements;
         model.SlotActivated = ActivateDockSlot;
+        model.SlotEditRequested = EditDockSlot;
         model.AppLaunched = app => OnDrawerAppSelected(app.Component);
     }
+
+    // Long-press on a dock slot opens its picker, where a filled slot can be re-pinned or cleared. Tap
+    // still launches (ActivateDockSlot), so this is the "manage" gesture without a permanent affordance.
+    private void EditDockSlot(int slot) => ShowDrawer(slot);
 
     private void EnsureAppsLoadedAsync()
     {
@@ -474,30 +479,26 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 }
 
                 var model = presentation.Model;
-                // Fade the current art out, then swap and fade the new art in — fan art first, logo
-                // staggered on top, the Cocoon-style entrance. Kept short so the art appears promptly.
-                model.FanartOpacity = 0;
+                // Fan art swaps instantly (no fade-out to the background), so scrolling the library game to
+                // game never blinks the panel. The logo is held back and faded in after a short delay — the
+                // original "logo appears after the art" entrance — and that touches only the logo, not the
+                // background, so it adds no blink.
+                model.ShowBranding = fanart is null && wheel is null;
+                model.FanartImage = fanart;
+                model.FanartOpacity = fanart is not null ? 1 : 0;
                 model.LogoOpacity = 0;
                 _mainHandler.PostDelayed(
                     () =>
                     {
                         if (generation != _spotlightGeneration)
                         {
-                            fanart?.Dispose();
                             wheel?.Dispose();
                             return;
                         }
-                        model.SetSpotlight(fanart, wheel);
-                        model.FanartOpacity = model.HasFanart ? 1 : 0;
-                        _mainHandler.PostDelayed(
-                            () =>
-                            {
-                                if (generation == _spotlightGeneration)
-                                    model.LogoOpacity = model.HasWheel ? 1 : 0;
-                            },
-                            200);
+                        model.WheelImage = wheel;
+                        model.LogoOpacity = wheel is not null ? 1 : 0;
                     },
-                    80);
+                    190);
             });
         });
     }

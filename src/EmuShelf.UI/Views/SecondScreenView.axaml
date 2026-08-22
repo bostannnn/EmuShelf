@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:ai="using:Avalonia.Input"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d"
@@ -17,26 +18,21 @@
 
     <Panel Grid.Row="0" ClipToBounds="True">
 
-      <!-- Resting spotlight: fan art -->
+      <!-- Resting spotlight: fan art. Swapped instantly (no opacity transition) so scrolling the library
+           does not blink the panel between games. -->
       <Image Source="{Binding FanartImage}" Stretch="UniformToFill" Opacity="{Binding FanartOpacity}"
-             IsVisible="{Binding HasFanart}">
-        <Image.Transitions>
-          <Transitions>
-            <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
-          </Transitions>
-        </Image.Transitions>
-      </Image>
+             IsVisible="{Binding HasFanart}" />
 
       <!-- Scrim so the logo and dock read over busy art -->
       <Border Background="#40000000" IsVisible="{Binding HasFanart}" />
 
-      <!-- ...and the logo on top -->
+      <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink) -->
       <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
              HorizontalAlignment="Center" VerticalAlignment="Center"
              Opacity="{Binding LogoOpacity}" IsVisible="{Binding HasWheel}">
         <Image.Transitions>
           <Transitions>
-            <DoubleTransition Property="Opacity" Duration="0:0:0.45" Easing="CubicEaseOut" />
+            <DoubleTransition Property="Opacity" Duration="0:0:0.30" Easing="CubicEaseOut" />
           </Transitions>
         </Image.Transitions>
       </Image>
@@ -130,14 +126,14 @@
     </Panel>
 
     <!-- Bottom bar:  ☰  |  five dock slots  |  trophy -->
-    <Border Grid.Row="1" Height="104" Background="{DynamicResource EmuToolbarBrush}"
+    <Border Grid.Row="1" Height="64" Background="{DynamicResource EmuToolbarBrush}"
             BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
 
-        <Button Grid.Column="0" Width="52" Height="52" Padding="0" Background="Transparent"
+        <Button Grid.Column="0" Width="46" Height="46" Padding="0" Background="Transparent"
                 VerticalAlignment="Center" ToolTip.Tip="All apps"
                 Command="{Binding ToggleDrawerCommand}">
-          <TextBlock Text="&#x2630;" FontSize="26" HorizontalAlignment="Center" VerticalAlignment="Center"
+          <TextBlock Text="&#x2630;" FontSize="23" HorizontalAlignment="Center" VerticalAlignment="Center"
                      Foreground="{DynamicResource EmuTextPrimaryBrush}" />
         </Button>
 
@@ -150,13 +146,15 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:SecondScreenSlotViewModel">
-              <Button Width="52" Height="52" Padding="4"
+              <!-- Tap launches (or opens the picker if empty); long-press opens the picker to re-pin or
+                   clear a filled slot (handled in code-behind via the Holding gesture). -->
+              <Button Width="50" Height="50" Padding="2" ai:InputElement.IsHoldingEnabled="True"
                       Background="{DynamicResource EmuCardBrush}"
                       BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
                       Command="{Binding DataContext.ActivateSlotCommand, ElementName=Root}"
-                      CommandParameter="{Binding Index}">
+                      CommandParameter="{Binding}">
                 <Panel>
-                  <TextBlock Text="+" FontSize="24" IsVisible="{Binding IsEmpty}"
+                  <TextBlock Text="+" FontSize="22" IsVisible="{Binding IsEmpty}"
                              HorizontalAlignment="Center" VerticalAlignment="Center"
                              Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                   <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" />
@@ -166,10 +164,10 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Button Grid.Column="2" Width="52" Height="52" Padding="0" Background="Transparent"
+        <Button Grid.Column="2" Width="46" Height="46" Padding="0" Background="Transparent"
                 VerticalAlignment="Center" ToolTip.Tip="Achievements"
                 Command="{Binding ToggleAchievementsCommand}">
-          <PathIcon Width="27" Height="27"
+          <PathIcon Width="24" Height="24"
                     Data="{DynamicResource AchievementTrophyGeometry}"
                     Foreground="{DynamicResource EmuAchievementBrush}" />
         </Button>
