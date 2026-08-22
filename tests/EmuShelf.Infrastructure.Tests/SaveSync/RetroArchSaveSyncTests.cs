@@ -118,6 +118,39 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task CorelessOverrideSyncsAnExactFolder_ForWatermelonDsShapedSaves()
+    {
+        // WatermelonDS has no libretro core but writes <game>.srm into a flat folder. Pointed at that
+        // folder as an override, the RetroArch provider must sync it under nds/ keys without requiring
+        // a core (see docs/android-save-sync-model.md). Before this it threw "No libretro core."
+        var folder = Path.Combine(BaseDirectory, "Watermelon-DS");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Trauma Center - Under the Knife (USA).srm"), "ds save");
+        await File.WriteAllTextAsync(Path.Combine(folder, "The World Ends With You (USA).srm"), "ds save");
+
+        var provider = new RetroArchSaveLocationProvider(
+            "nds",
+            corePath: null,
+            installationDirectory: BaseDirectory,
+            directoryOverride: folder,
+            homeDirectory: Path.Combine(BaseDirectory, "unused-home"),
+            isWindows: false,
+            isMacOS: false);
+        var info = await provider.GetSaveInfoAsync();
+
+        Assert.Equal(folder, info.SaveDirectory);
+        Assert.False(info.SortedByCore);
+        Assert.True(info.IsExclusive);
+        Assert.Equal(
+            [
+                "nds/The World Ends With You (USA).srm",
+                "nds/Trauma Center - Under the Knife (USA).srm",
+            ],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.NotNull(provider.ResolveUnit("nds/Trauma Center - Under the Knife (USA).srm"));
+    }
+
+    [Fact]
     public async Task AndroidCoreFileNameStillNamesTheSortedByCoreSaveFolder()
     {
         // RetroArch's Android cores are "<core>_libretro_android.so". The "_android" build tag must be

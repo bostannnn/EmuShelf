@@ -357,15 +357,27 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     private RetroArchSaveInfo Resolve(CancellationToken cancellationToken, bool probePerGameOverride = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        // An override that is not RetroArch's configuration folder is taken as the save folder itself:
+        // the user pointed at the exact directory, which is more specific than anything retroarch.cfg
+        // could tell us — and it needs no core, because there is no core-named folder to resolve.
+        // This is how a coreless standalone emulator that writes RetroArch-shaped saves (WatermelonDS —
+        // <game>.srm in a flat folder) syncs: point this provider at that folder. Resolving here before
+        // the core check keeps such a system from failing for lack of a libretro core it never uses.
+        // See docs/android-save-sync-model.md.
+        if (_directoryOverride is not null && !File.Exists(Path.Combine(_directoryOverride, ConfigFileName)))
+            return new RetroArchSaveInfo(
+                _directoryOverride,
+                _core ?? new RetroArchCore(
+                    Path.GetFileName(Path.TrimEndingDirectorySeparator(_directoryOverride)), Name: null),
+                SortedByCore: false,
+                IsExclusive: true);
+
+        // From here the configuration decides the folder, and naming a sorted-by-core folder needs the
+        // core — so a core is required only on this path, not for an exact-folder override above.
         var core = _core ?? throw new RetroArchConfigurationFormatException(
             "No libretro core is configured for this system, so EmuShelf cannot tell which of " +
             "RetroArch's save folders belongs to it.");
-
-        // An override that is not RetroArch's configuration folder is taken as the save folder
-        // itself: the user has pointed at the exact directory, which is more specific than
-        // anything retroarch.cfg could tell us.
-        if (_directoryOverride is not null && !File.Exists(Path.Combine(_directoryOverride, ConfigFileName)))
-            return new RetroArchSaveInfo(_directoryOverride, core, SortedByCore: false, IsExclusive: true);
 
         var configPath = ResolveConfigPath();
         var configDirectory = Path.GetDirectoryName(configPath)!;

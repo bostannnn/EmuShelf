@@ -10153,3 +10153,23 @@ nothing), and the Android installation carries `CorePath` so `IsCoreSharedAcross
 A RetroArch-served system with no configured core (e.g. `nds` left empty) still sits out until its core is
 set. Requires a device rebuild to take effect; supersedes the "RetroArch cannot be auto-located — set the
 folder manually" note in docs/android-save-sync-model.md.
+
+## 2026-08-21 — RetroArch save provider: an exact-folder override needs no core (WatermelonDS)
+
+The doc's model has Android DS (WatermelonDS) "reuse RetroArchSaveLocationProvider" pointed at
+WatermelonDS's flat `<game>.srm` folder. But `RetroArchSaveLocationProvider.Resolve` threw
+"No libretro core is configured" before it reached the override branch, so a coreless standalone
+emulator (WatermelonDS has no libretro core) could never sync that way — the override was useless
+without also configuring a fake RetroArch core, which would then hijack the launcher.
+
+`Resolve` now takes the exact-folder-override branch **before** the core check: an override that
+isn't RetroArch's config folder is the save directory itself (`IsExclusive`, `SortedByCore: false`),
+and needs no core because there is no core-named folder to resolve — the sync path
+(`ResolveUnit`/`GetSaveUnits`/`BelongsToThisSystem`) never reads `Core`. When no core is known it
+carries a placeholder `RetroArchCore` named after the folder (only the detection message reads it).
+A core is still required on the config-derived path, where naming a sorted-by-core folder genuinely
+needs it. This makes "WatermelonDS = the RetroArch provider pointed at its folder" literally work:
+set the NDS Save folder override to WatermelonDS's directory (e.g. the Thor's
+`/storage/emulated/0/User/Watermelon-DS/`) and DS saves round-trip under `nds/<game>.srm` — the same
+system key any DS emulator emits. Save-state sync for such a coreless override stays unsupported (the
+config-derived state path still needs a core); battery saves are the wired case.
