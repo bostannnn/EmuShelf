@@ -7,7 +7,6 @@ using Android.Graphics;
 using Android.Graphics.Drawables;
 using Android.Hardware.Display;
 using Android.OS;
-using Android.Views;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
@@ -19,15 +18,27 @@ using EmuShelf.Core.SecondScreen;
 namespace EmuShelf.App.Android.Services;
 
 /// <summary>
-/// Owns the Thor companion display for the lifetime of the Android frontend. The visible surface is an
-/// embedded Avalonia view (<see cref="ThorSecondScreenPresentation.Model"/>); this controller is the
-/// Android glue: it finds the presentation display, drives the view model, enumerates launchable apps,
-/// launches them on Screen-2, and keeps the process alive while a game owns the main panel. Only dock
-/// mutation and running-vs-focused target selection cross into Core.
+/// Drives the Thor companion surface. The visible surface is <see cref="SecondScreenHomeActivity"/> — a
+/// real Activity registered as the secondary display's home (<c>CATEGORY_SECONDARY_HOME</c>) that hosts an
+/// embedded Avalonia view bound to <see cref="Model"/>. Because the companion is an ordinary activity (not
+/// an always-on-top <c>Presentation</c>), an app launched from the dock draws in front of it and Back/Home
+/// returns to it — the two things a Presentation could not do (see DECISIONS 2026-08-23).
+///
+/// The controller is a process-wide singleton (<see cref="Active"/>) so the companion's state survives the
+/// home activity being recreated, and so the home activity — which the system may start before or after the
+/// shared app composes — can always find it. Only dock mutation and running-vs-focused target selection
+/// cross into Core.
 /// </summary>
-internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.IDisplayListener, IDisposable
+internal sealed class SecondScreenController : IDisposable
 {
     private static readonly TimeSpan DetailRefreshAge = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// The live controller for this process, or null before the shared app has composed. The home activity
+    /// reads this to bind its view; the controller pushes itself here on construction and clears it on
+    /// dispose. Only ever touched on the main thread.
+    /// </summary>
+    internal static SecondScreenController? Active { get; private set; }
 
     private readonly ISecondScreenDockStore _dockStore;
     private readonly IRetroAchievementsReadStore _readStore;
@@ -42,9 +53,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     private SecondScreenDock _dock;
     private SecondScreenNavigationState _navigation = SecondScreenNavigationState.Initial;
     private MainViewModel? _viewModel;
-    private MainActivity? _activity;
-    private DisplayManager? _displayManager;
-    private ThorSecondScreenPresentation? _presentation;
+    private SecondScreenHomeActivity? _home;
     private long? _runningGameId;
     private string? _runningGameTitle;
     private long? _achievementTargetGameId;
@@ -72,7 +81,20 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         _gameDetails = gameDetails;
         _logger = logger;
         _dock = dockStore.Load();
+
+        // Wire the view model's Android-side callbacks once. Model outlives every home activity, so its
+        // state (dock icons, spotlight art, open overlay) survives activity recreation.
+        WireModel(Model);
+
+        Active = this;
+        // The system may already have the companion home on screen (it is that display's home) before the
+        // shared app finished composing. Adopt it now so it stops showing the cold placeholder model.
+        if (SecondScreenHomeActivity.Current is { } home)
+            AttachHome(home);
     }
+
+    /// <summary>The shared companion view model. Bound by the home activity; mutated only on the main thread.</summary>
+    public SecondScreenViewModel Model { get; } = new();
 
     internal void Start(MainViewModel viewModel)
     {
@@ -83,31 +105,100 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
         _viewModel = viewModel;
         _viewModel.PropertyChanged += ViewModelPropertyChanged;
-
-        AndroidActivityLifecycle.ActivityAvailable += AttachActivity;
-        AndroidActivityLifecycle.ActivityDestroyed += ActivityDestroyed;
-        AndroidActivityLifecycle.TopResumedChanged += TopResumedChanged;
-        if (MainActivity.Current is { } activity)
-            AttachActivity(activity);
+        EnsureCompanionShown();
+        ScheduleSpotlightUpdate();
     }
+
+    /// <summary>
+    /// Brings the companion home onto Screen-2. The Thor's built-in second-screen launcher
+    /// (<c>com.neogamelab.neostation</c>) is the elected <c>CATEGORY_SECONDARY_HOME</c>, so EmuShelf does
+    /// not win that election — instead it explicitly launches its own home activity onto the presentation
+    /// display while EmuShelf is the active frontend, replacing NeoStation. A no-op when the companion is
+    /// already up (we started it, or — if EmuShelf ever is the elected home — the system did). Launching
+    /// on Screen-2 does not background the main UI (both displays stay resumed on Android 10+).
+    /// </summary>
+    internal void EnsureCompanionShown()
+    {
+        if (_disposed || SecondScreenHomeActivity.Current is not null)
+            return;
+
+        var context = global::Android.App.Application.Context;
+        var displayManager = (DisplayManager?)context.GetSystemService(Context.DisplayService);
+        var display = (displayManager?.GetDisplays(DisplayManager.DisplayCategoryPresentation) ?? [])
+            .OrderBy(candidate => candidate.DisplayId == 4 ? 0 : 1)
+            .FirstOrDefault();
+        if (display is null)
+        {
+            _logger.Information("Second-screen: no FLAG_PRESENTATION display is available; companion not shown.");
+            return;
+        }
+
+        try
+        {
+            using var intent = new Intent(context, typeof(SecondScreenHomeActivity));
+            intent.AddFlags(ActivityFlags.NewTask);
+            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            {
+                using var options = ActivityOptions.MakeBasic();
+                options?.SetLaunchDisplayId(display.DisplayId);
+                context.StartActivity(intent, options?.ToBundle());
+            }
+            else
+            {
+                context.StartActivity(intent);
+            }
+            _logger.Information($"Second-screen companion launched on display {display.DisplayId}.");
+        }
+        catch (Exception ex)
+        {
+            // Optional chrome: a failure here must never bubble into the launch/return paths that call it.
+            _logger.Error("Could not launch the second-screen companion.", ex);
+        }
+    }
+
+    // --- Home activity attach / detach -------------------------------------------------------------
+
+    /// <summary>
+    /// The companion home activity became visible. Bind it to the shared model and paint the current state
+    /// onto it. Called from the activity's OnCreate (main thread) and from the controller ctor when a home
+    /// is already up.
+    /// </summary>
+    internal void AttachHome(SecondScreenHomeActivity home)
+    {
+        RunOnMain(() =>
+        {
+            _home = home;
+            home.BindModel(Model);
+            EnsureAppsLoadedAsync();
+            RenderDock();
+            RenderRestingSurface();
+            ScheduleSpotlightUpdate();
+        });
+    }
+
+    internal void DetachHome(SecondScreenHomeActivity home)
+    {
+        RunOnMain(() =>
+        {
+            if (ReferenceEquals(_home, home))
+                _home = null;
+        });
+    }
+
+    private bool HasSurface => _home is not null;
 
     internal void GameStarted(Game game, string title)
     {
-        // All companion state lives on the main thread. GameStarted runs on the launch continuation,
-        // which is not guaranteed to be the main thread, so marshal the whole transition onto it so
-        // nothing races the main-thread readers / Avalonia bindings.
+        // GameStarted runs on the launch continuation, which is not guaranteed to be the main thread, so
+        // marshal the whole transition onto it so nothing races the main-thread readers / Avalonia bindings.
         RunOnMain(() =>
         {
             _runningGameId = game.Id;
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
-            if (_presentation is { } presentation)
-            {
-                presentation.Model.Overlay = SecondScreenOverlayKind.None;
-                ScheduleSpotlightUpdate();
-            }
-            StartKeepAliveIfNeeded();
+            Model.Overlay = SecondScreenOverlayKind.None;
+            ScheduleSpotlightUpdate();
         });
     }
 
@@ -119,12 +210,11 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
-            if (_presentation is { } presentation)
-            {
-                presentation.Model.Overlay = SecondScreenOverlayKind.None;
-                ScheduleSpotlightUpdate();
-            }
-            StopKeepAlive();
+            Model.Overlay = SecondScreenOverlayKind.None;
+            // Returning to EmuShelf: if NeoStation reclaimed Screen-2 while a game was running, bring the
+            // companion back to the front.
+            EnsureCompanionShown();
+            ScheduleSpotlightUpdate();
         });
     }
 
@@ -186,110 +276,8 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         CloseOverlay();
     }
 
-    public void OnDisplayAdded(int displayId)
-    {
-        _logger.Information($"Second-screen display added: {displayId}.");
-        RunOnMain(EnsurePresentation);
-    }
-
-    public void OnDisplayChanged(int displayId)
-    {
-        if (_presentation?.Display?.DisplayId == displayId)
-            _logger.Information($"Second-screen display changed: {Describe(_presentation.Display)}.");
-    }
-
-    public void OnDisplayRemoved(int displayId)
-    {
-        if (_presentation?.Display?.DisplayId != displayId)
-            return;
-
-        _logger.Information($"Second-screen display removed: {displayId}.");
-        DismissPresentation();
-    }
-
-    private void AttachActivity(MainActivity activity)
-    {
-        if (_disposed)
-            return;
-
-        RunOnMain(() =>
-        {
-            if (ReferenceEquals(_activity, activity) && _presentation is not null)
-                return;
-
-            if (_activity is not null && !ReferenceEquals(_activity, activity))
-                DetachDisplayManager();
-
-            _activity = activity;
-            _displayManager = (DisplayManager?)activity.GetSystemService(Context.DisplayService);
-            _displayManager?.RegisterDisplayListener(this, _mainHandler);
-            EnsurePresentation();
-        });
-    }
-
-    private void ActivityDestroyed(MainActivity activity, bool _)
-    {
-        if (!ReferenceEquals(_activity, activity))
-            return;
-
-        RunOnMain(() =>
-        {
-            if (_navigation.Overlay != SecondScreenOverlay.None)
-            {
-                _navigation = _navigation.CloseOverlay();
-                ResetAchievementTarget();
-            }
-            DismissPresentation();
-            DetachDisplayManager();
-            _activity = null;
-        });
-    }
-
-    private void TopResumedChanged(bool topResumed)
-    {
-        var state = topResumed ? "top-resumed" : "backgrounded";
-        _logger.Information(
-            $"Second-screen SS0 lifecycle: EmuShelf {state}; presentation showing={_presentation?.IsShowing == true}.");
-    }
-
-    private void EnsurePresentation()
-    {
-        if (_disposed || _presentation is not null || _activity is null || _displayManager is null)
-            return;
-
-        var display = (_displayManager
-            .GetDisplays(DisplayManager.DisplayCategoryPresentation) ?? [])
-            .OrderBy(candidate => candidate.DisplayId == 4 ? 0 : 1)
-            .FirstOrDefault();
-        if (display is null)
-        {
-            _logger.Information("Second-screen SS0: no FLAG_PRESENTATION display is currently available.");
-            return;
-        }
-
-        try
-        {
-            _presentation = new ThorSecondScreenPresentation(_activity, display);
-            WireModel(_presentation.Model);
-            _presentation.Show();
-            _logger.Information($"Second-screen Presentation attached: {Describe(display)}.");
-            EnsureAppsLoadedAsync();
-            RenderDock();
-            RenderRestingSurface();
-            ScheduleSpotlightUpdate();
-            StartKeepAliveIfNeeded();
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(
-                "Second-screen SS0: Presentation could not attach. AYN's dual-screen assistant may own the display.",
-                ex);
-            DismissPresentation();
-        }
-    }
-
-    // Wire the view model's Android-side callbacks once, when the presentation is created. These fire on
-    // the Avalonia UI thread, which is the Android main thread, so no extra marshalling is needed.
+    // Wire the view model's Android-side callbacks. These fire on the Avalonia UI thread, which is the
+    // Android main thread, so no extra marshalling is needed.
     private void WireModel(SecondScreenViewModel model)
     {
         model.DrawerToggled = ToggleDrawer;
@@ -309,11 +297,11 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     private void EnsureAppsLoadedAsync()
     {
         if (_appsLoaded || _appsLoadInFlight ||
-            _activity is not { PackageManager: { } manager } activity)
+            _home is not { PackageManager: { } manager } home)
             return;
 
         _appsLoadInFlight = true;
-        var ownPackage = activity.PackageName;
+        var ownPackage = home.PackageName;
         _ = Task.Run(() =>
         {
             try
@@ -374,28 +362,22 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void RenderDrawer(int? pickSlot)
     {
-        if (_presentation is not { } presentation)
-            return;
-
-        presentation.Model.Apps.Clear();
+        Model.Apps.Clear();
         foreach (var app in _apps.Values.OrderBy(app => app.Label, StringComparer.CurrentCultureIgnoreCase))
-            presentation.Model.Apps.Add(new SecondScreenAppViewModel(app.Component, app.Label, app.Icon));
-        presentation.Model.DrawerTitle = pickSlot is { } slot ? $"Choose an app for slot {slot + 1}" : "All apps";
-        presentation.Model.CanClearSlot = pickSlot is not null;
-        presentation.Model.Overlay = SecondScreenOverlayKind.Drawer;
+            Model.Apps.Add(new SecondScreenAppViewModel(app.Component, app.Label, app.Icon));
+        Model.DrawerTitle = pickSlot is { } slot ? $"Choose an app for slot {slot + 1}" : "All apps";
+        Model.CanClearSlot = pickSlot is not null;
+        Model.Overlay = SecondScreenOverlayKind.Drawer;
     }
 
     private void RenderDock()
     {
-        if (_presentation is not { } presentation)
-            return;
-
         for (var slot = 0; slot < SecondScreenDock.SlotCount; slot++)
         {
             var component = _dock[slot];
             var app = component is not null && _apps.TryGetValue(component, out var found) ? found : null;
-            presentation.Model.Dock[slot].Label = app?.Label;
-            presentation.Model.Dock[slot].Icon = app?.Icon;
+            Model.Dock[slot].Label = app?.Label;
+            Model.Dock[slot].Icon = app?.Icon;
         }
     }
 
@@ -410,13 +392,12 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     {
         // Closing an overlay returns to the resting spotlight, which is already loaded — don't reload it
         // (that would re-run the crossfade). Fresh art loads only on focus/running-game changes.
-        if (_presentation is { } presentation)
-            presentation.Model.Overlay = SecondScreenOverlayKind.None;
+        Model.Overlay = SecondScreenOverlayKind.None;
     }
 
     private void ScheduleSpotlightUpdate()
     {
-        if (_presentation is null)
+        if (!HasSurface)
             return;
 
         // Debounce: focus changes fire rapidly while scrolling the library, so only the settled game's
@@ -433,7 +414,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void UpdateSpotlight(long generation)
     {
-        if (_presentation is null)
+        if (!HasSurface)
             return;
 
         var targetId = _runningGameId ?? _viewModel?.FocusedGame?.Id;
@@ -471,22 +452,21 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
             RunOnMain(() =>
             {
-                if (generation != _spotlightGeneration || _presentation is not { } presentation)
+                if (generation != _spotlightGeneration || !HasSurface)
                 {
                     fanart?.Dispose();
                     wheel?.Dispose();
                     return;
                 }
 
-                var model = presentation.Model;
                 // Fan art swaps instantly (no fade-out to the background), so scrolling the library game to
                 // game never blinks the panel. The logo is held back and faded in after a short delay — the
                 // original "logo appears after the art" entrance — and that touches only the logo, not the
                 // background, so it adds no blink.
-                model.ShowBranding = fanart is null && wheel is null;
-                model.FanartImage = fanart;
-                model.FanartOpacity = fanart is not null ? 1 : 0;
-                model.LogoOpacity = 0;
+                Model.ShowBranding = fanart is null && wheel is null;
+                Model.FanartImage = fanart;
+                Model.FanartOpacity = fanart is not null ? 1 : 0;
+                Model.LogoOpacity = 0;
                 _mainHandler.PostDelayed(
                     () =>
                     {
@@ -495,8 +475,8 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                             wheel?.Dispose();
                             return;
                         }
-                        model.WheelImage = wheel;
-                        model.LogoOpacity = wheel is not null ? 1 : 0;
+                        Model.WheelImage = wheel;
+                        Model.LogoOpacity = wheel is not null ? 1 : 0;
                     },
                     190);
             });
@@ -505,11 +485,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void ClearSpotlight()
     {
-        if (_presentation is not { } presentation)
-            return;
-        presentation.Model.FanartOpacity = 0;
-        presentation.Model.LogoOpacity = 0;
-        presentation.Model.SetSpotlight(null, null);
+        Model.FanartOpacity = 0;
+        Model.LogoOpacity = 0;
+        Model.SetSpotlight(null, null);
     }
 
     private static Avalonia.Media.Imaging.Bitmap? LoadAvaloniaBitmap(string? path, int decodeWidth)
@@ -552,8 +530,11 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
     private void LaunchOnSecondScreen(string flattenedComponent)
     {
-        if (_activity is not { } activity || _presentation?.Display is not { } display)
+        if (_home is not { } home)
+        {
+            _logger.Information("Second-screen dock launch ignored: the companion home is not attached.");
             return;
+        }
 
         using var component = ComponentName.UnflattenFromString(flattenedComponent);
         if (component is null)
@@ -562,30 +543,35 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             return;
         }
 
+        // Launch from the home activity's context and pin the launch to the home's display, so the app
+        // opens on Screen-2. Because the home is an ordinary activity (not a Presentation), the launched
+        // app draws in front of it; Back/Home on Screen-2 returns to the companion. Activity.Display is
+        // API 30+; the Thor is 33, and the launch still works display-agnostically on anything older.
+        int? displayId = OperatingSystem.IsAndroidVersionAtLeast(30) ? home.Display?.DisplayId : null;
         using var intent = new Intent(Intent.ActionMain);
         intent.AddCategory(Intent.CategoryLauncher);
         intent.SetComponent(component);
         intent.AddFlags(ActivityFlags.NewTask | ActivityFlags.ResetTaskIfNeeded);
         try
         {
-            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            if (displayId is { } id && OperatingSystem.IsAndroidVersionAtLeast(26))
             {
                 using var options = ActivityOptions.MakeBasic();
                 if (options is not null)
                 {
-                    options.SetLaunchDisplayId(display.DisplayId);
-                    activity.StartActivity(intent, options.ToBundle());
+                    options.SetLaunchDisplayId(id);
+                    home.StartActivity(intent, options.ToBundle());
                 }
                 else
                 {
-                    activity.StartActivity(intent);
+                    home.StartActivity(intent);
                 }
             }
             else
             {
-                activity.StartActivity(intent);
+                home.StartActivity(intent);
             }
-            _logger.Information($"Launched {flattenedComponent} on second-screen display {display.DisplayId}.");
+            _logger.Information($"Launched {flattenedComponent} on second-screen display {displayId?.ToString() ?? "?"}.");
         }
         catch (Exception ex)
         {
@@ -718,37 +704,31 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         string? status,
         bool canRefresh)
     {
-        if (_presentation is not { } presentation)
-            return;
-
-        presentation.Model.AchievementsTitle = title;
-        presentation.Model.AchievementsStatus = status;
-        presentation.Model.CanRefresh = canRefresh;
-        presentation.Model.Achievements.Clear();
+        Model.AchievementsTitle = title;
+        Model.AchievementsStatus = status;
+        Model.CanRefresh = canRefresh;
+        Model.Achievements.Clear();
         foreach (var achievement in snapshot.Details.Achievements
                      .OrderBy(item => item.DisplayOrder)
                      .ThenBy(item => item.AchievementId))
         {
             var state = achievement.IsHardcore ? "Hardcore" : achievement.IsEarned ? "Unlocked" : "Locked";
             var points = achievement.Points == 1 ? "1 pt" : $"{achievement.Points} pts";
-            presentation.Model.Achievements.Add(new SecondScreenAchievementViewModel(
+            Model.Achievements.Add(new SecondScreenAchievementViewModel(
                 achievement.Title,
                 $"{state}  •  {points}",
                 achievement.IsEarned));
         }
-        presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
+        Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
     private void ShowAchievementsMessage(string title, string message, bool canRefresh)
     {
-        if (_presentation is not { } presentation)
-            return;
-
-        presentation.Model.AchievementsTitle = title;
-        presentation.Model.AchievementsStatus = message;
-        presentation.Model.CanRefresh = canRefresh;
-        presentation.Model.Achievements.Clear();
-        presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
+        Model.AchievementsTitle = title;
+        Model.AchievementsStatus = message;
+        Model.CanRefresh = canRefresh;
+        Model.Achievements.Clear();
+        Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
     private bool IsAchievementRequestCurrent(long surfaceRevision, long gameId, string title) =>
@@ -766,29 +746,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         _achievementTargetTitle = null;
     }
 
-    private void StartKeepAliveIfNeeded()
-    {
-        if (_runningGameId is null || _presentation?.IsShowing != true || _activity is not { } activity)
-            return;
-
-        try
-        {
-            SecondScreenKeepAliveService.Start(activity.ApplicationContext ?? activity);
-        }
-        catch (Exception ex)
-        {
-            // The companion is optional launch chrome. Android may reject an FGS start during a
-            // transition; that must never turn an already-started emulator into a failed launch.
-            _logger.Warning("Could not start the second-screen keep-alive service.", ex);
-        }
-    }
-
-    private void StopKeepAlive()
-    {
-        if (_activity is { } activity)
-            SecondScreenKeepAliveService.Stop(activity.ApplicationContext ?? activity);
-    }
-
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
@@ -799,49 +756,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         ResetAchievementTarget();
         // While browsing, the spotlight follows the library selection (a running game always wins).
         ScheduleSpotlightUpdate();
-    }
-
-    private void DismissPresentation()
-    {
-        if (_presentation is not { } presentation)
-            return;
-        _presentation = null;
-        StopKeepAlive();
-
-        try
-        {
-            presentation.ReleaseResources();
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning("Could not release second-screen resources cleanly.", ex);
-        }
-
-        try
-        {
-            presentation.Dismiss();
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning("Could not dismiss the second-screen Presentation cleanly.", ex);
-        }
-        finally
-        {
-            presentation.Dispose();
-        }
-    }
-
-    private void DetachDisplayManager()
-    {
-        try
-        {
-            _displayManager?.UnregisterDisplayListener(this);
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning("Could not unregister the second-screen display listener.", ex);
-        }
-        _displayManager = null;
     }
 
     private void RunOnMain(Action action)
@@ -858,25 +772,17 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             });
     }
 
-    private static string Describe(Display display)
-        => $"id={display.DisplayId}, name={display.Name}, flags={display.Flags}, rotation={display.Rotation}";
-
-    public new void Dispose()
+    public void Dispose()
     {
         if (_disposed)
             return;
         _disposed = true;
+        if (ReferenceEquals(Active, this))
+            Active = null;
         if (_viewModel is not null)
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
-        AndroidActivityLifecycle.ActivityAvailable -= AttachActivity;
-        AndroidActivityLifecycle.ActivityDestroyed -= ActivityDestroyed;
-        AndroidActivityLifecycle.TopResumedChanged -= TopResumedChanged;
-        DismissPresentation();
-        DetachDisplayManager();
-        StopKeepAlive();
-        _activity = null;
+        _home = null;
         _mainHandler.Dispose();
-        base.Dispose();
     }
 }
 
