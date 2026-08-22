@@ -35,7 +35,12 @@ public sealed class SingleViewShell : IPlatformShell
 
         InterfaceMode = new AndroidInterfaceModeService();
         Frontend = new AndroidFrontendController();
-        Lifetime = new SingleViewApplicationLifetimeService();
+        // "Quit EmuShelf" from the couch menu finishes the launcher Activity and drops it from the
+        // recents list — the closest thing to a desktop quit on Android. Without a requestClose the
+        // shared lifetime service no-ops, which is why the menu item did nothing. Runs on the UI
+        // thread (the command dispatches there) and no-ops if the Activity is already gone.
+        Lifetime = new SingleViewApplicationLifetimeService(
+            () => MainActivity.Current?.FinishAndRemoveTask());
         // The dialog service needs the live TopLevel for the SAF folder picker; resolve it lazily each
         // call since it only exists once the view is attached to the Activity's visual tree.
         Dialog = new SingleViewDialogService(boot.Logger, () => TopLevel.GetTopLevel(_mainView));

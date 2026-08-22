@@ -50,6 +50,14 @@ public sealed class MediaShellRenderer : IDisposable
     private const float ShelfPlaneY = ShelfBaselineY - 0.008f;
     private const float FocusLift = 0.035f;
 
+    /// <summary>How far the enlarged shelf drops the cast shadow below the model's base, in shelf units,
+    /// to open air between the two. Desktop keeps the tight contact shadow (drop 0).</summary>
+    private const float ShelfShadowDrop = 0.12f;
+
+    /// <summary>How much wider the enlarged shelf's dropped shadow spreads, so it reads as a soft ground
+    /// shadow rather than a hard outline. Desktop keeps scale 1.</summary>
+    private const float ShelfShadowScale = 1.25f;
+
     /// <summary>
     /// Fraction of the viewport height the framed medium's equal-area square fills, when height is
     /// the axis that runs out first.
@@ -124,8 +132,26 @@ public sealed class MediaShellRenderer : IDisposable
     /// </remarks>
     private const float ShelfFrameWidthFill = 0.311f;
 
+    /// <summary>
+    /// The most of the viewport height a medium's own silhouette is ever allowed to fill, leaving room
+    /// for its turn. The framing above measures an equal-area square, which for a portrait medium sits
+    /// well below the medium's true height — so a large fill can leave the square comfortably inside the
+    /// frame while the case itself runs off the top and bottom. This caps the fill by the true height so
+    /// that cannot happen. It only bites once the fill is pushed high (the handheld's enlarged shelf); at
+    /// the desktop fill it is slack, so desktop framing and its tests are unchanged.
+    /// </summary>
+    private const float MaxMediaHeightFill = 0.56f;
+
     /// <summary>How far the camera sits above the media band's centre, as a fraction of distance.</summary>
     private const float ShelfCameraElevation = 0.075f;
+
+    /// <summary>
+    /// How far up the frame the media is lifted on the enlarged shelf, as a fraction of the frame's
+    /// half-height. The scene fills all the way to the bottom so the shadow can flow behind the title,
+    /// which would otherwise centre the media too low; this restores it to its intended height without
+    /// re-clipping the shadow. Desktop (fillScale == 1) stays centred.
+    /// </summary>
+    private const float ShelfMediaRise = 0.13f;
 
     /// <summary>How far the focused medium steps toward the camera.</summary>
     /// <remarks>
@@ -548,7 +574,8 @@ public sealed class MediaShellRenderer : IDisposable
         float mediaWidthInShelfUnits,
         uint targetFramebuffer,
         uint width,
-        uint height)
+        uint height,
+        float fillScale = 1f)
     {
         if (width == 0 || height == 0)
         {
@@ -568,7 +595,7 @@ public sealed class MediaShellRenderer : IDisposable
 
         var aspect = _sceneWidth / (float)_sceneHeight;
         var (view, projection, cameraPosition) =
-            ShelfCamera(aspect, mediaHeightInShelfUnits, mediaWidthInShelfUnits);
+            ShelfCamera(aspect, mediaHeightInShelfUnits, mediaWidthInShelfUnits, fillScale);
         var viewProjection = view * projection;
 
         _shelfDrawItems.Clear();
@@ -587,7 +614,12 @@ public sealed class MediaShellRenderer : IDisposable
                 _discDrawItems.Add(new ShelfDrawItem(item, disc, DiscModel(item, disc.Asset)));
             }
         }
-        DrawShelfShadows(_shelfDrawItems, viewProjection);
+        // On the enlarged (handheld) shelf, drop the contact shadow lower and spread it wider so it reads
+        // as a grounding shadow with air between it and the model, rather than a dark line hugging the
+        // base. Desktop (fillScale == 1) keeps the tight contact shadow its composition is tuned for.
+        var shadowDrop = fillScale > 1f ? ShelfShadowDrop : 0f;
+        var shadowScale = fillScale > 1f ? ShelfShadowScale : 1f;
+        DrawShelfShadows(_shelfDrawItems, viewProjection, shadowDrop, shadowScale);
 
         foreach (var item in _shelfDrawItems)
         {
@@ -989,25 +1021,49 @@ public sealed class MediaShellRenderer : IDisposable
     /// <param name="mediaWidthInShelfUnits">Turning width of the widest medium in the library view.
     /// Zero frames the band as though it were square, for a caller that has no row to measure.</param>
     internal static (Matrix4x4 View, Matrix4x4 Projection, Vector3 CameraPosition) ShelfCamera(
-        float aspect, float mediaHeightInShelfUnits, float mediaWidthInShelfUnits)
+        float aspect, float mediaHeightInShelfUnits, float mediaWidthInShelfUnits, float fillScale = 1f)
     {
         var band = MathF.Max(mediaHeightInShelfUnits, 0.05f);
         var extent = FramedExtent(mediaHeightInShelfUnits, mediaWidthInShelfUnits);
         var fovY = FieldOfViewDegrees * MathF.PI / 180f;
         var tanY = MathF.Tan(fovY * 0.5f);
 
+        // The fill scale enlarges the framed media above the desktop-tuned fills (1.0 = desktop, >1 pulls
+        // the camera in). A handheld held at arm's length wants the media much larger than the Steam Deck
+        // composition; the desktop launch-lift headroom does not apply there because the emulator takes
+        // the screen the instant a game launches, so a brief lift clip during that transition never shows.
+        // Clamped below 1 so the media can never be framed larger than the viewport itself.
+        var frameFill = MathF.Min(ShelfFrameFill * MathF.Max(fillScale, 0.1f), 0.95f);
+        var widthFill = MathF.Min(ShelfFrameWidthFill * MathF.Max(fillScale, 0.1f), 0.95f);
+
+        // Cap the height fill by the medium's TRUE height, so a portrait case whose equal-area square
+        // still fits the frame cannot itself run off the top and bottom, and so there is always room
+        // above and below for the item's turn and its cast shadow. A medium's real height is
+        // sqrt(band/width) of its square, so limiting the square to MaxMediaHeightFill * sqrt(width/band)
+        // keeps the real height at MaxMediaHeightFill. Only applied when the shelf is scaled up beyond the
+        // desktop composition (fillScale > 1), so desktop framing and its tests are untouched.
+        if (fillScale > 1f)
+        {
+            var widthForFit = mediaWidthInShelfUnits > 0f ? mediaWidthInShelfUnits : band;
+            frameFill = MathF.Min(frameFill, MaxMediaHeightFill * MathF.Sqrt(widthForFit / band));
+        }
+
         // Both axes, and the one that runs out first wins. The same extent is offered to each,
         // because the shape that decides which axis binds is the frame's and not the medium's: a
         // wide viewport runs out of height first and a squat one out of width, whatever is standing
         // in it. No medium is measured against a dimension it happens not to be limited by.
-        var heightDistance = extent / ShelfFrameFill * 0.5f / tanY;
+        var heightDistance = extent / frameFill * 0.5f / tanY;
         var widthDistance = extent
-            / ShelfFrameWidthFill * 0.5f / (tanY * MathF.Max(aspect, 0.05f));
+            / widthFill * 0.5f / (tanY * MathF.Max(aspect, 0.05f));
         var distance = MathF.Max(heightDistance, widthDistance);
 
         var centreY = ShelfBaselineY + (band * 0.5f);
         var cameraPosition = new Vector3(0f, centreY + (distance * ShelfCameraElevation), distance);
-        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, centreY, 0f), Vector3.UnitY);
+        // Lift the media up the frame on the enlarged shelf (see ShelfMediaRise). distance*tanY is the
+        // frame's half-height at the media plane, so lowering the look-at point by that fraction raises
+        // the media by the same fraction of the half-frame.
+        var lookAtY = fillScale > 1f ? centreY - (distance * tanY * ShelfMediaRise) : centreY;
+        var view = Matrix4x4.CreateLookAt(cameraPosition, new Vector3(0f, lookAtY, 0f), Vector3.UnitY);
         // Near/far follow the distance now that it is no longer fixed; the old 0.1..12 pair would
         // clip the shelf's far neighbours once the camera moved in.
         var projection = Matrix4x4.CreatePerspectiveFieldOfView(
@@ -1244,7 +1300,9 @@ public sealed class MediaShellRenderer : IDisposable
 
     private void DrawShelfShadows(
         IReadOnlyList<ShelfDrawItem> items,
-        Matrix4x4 viewProjection)
+        Matrix4x4 viewProjection,
+        float shadowDrop = 0f,
+        float shadowScale = 1f)
     {
         _shadowFootprints.Clear();
         var count = Math.Min(items.Count, 7);
@@ -1267,14 +1325,16 @@ public sealed class MediaShellRenderer : IDisposable
                 // The plane's second axis is world Z, so this must follow the item's depth step.
                 new Vector2(item.CentreX, (focus * FocusDepth) + item.LaunchDepthOffset),
                 new Vector2(
-                    MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale,
-                    MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale),
+                    MathF.Max(radiusX, 0.05f) * shadowExpansion * item.LaunchScale * shadowScale,
+                    MathF.Max(radiusZ, 0.045f) * shadowExpansion * item.LaunchScale * shadowScale),
                 (1f - (focus * 0.14f))
                 * (1f - (positiveLift * 1.5f))
                 * insertionVisibility));
         }
 
-        DrawShadows(_shadowFootprints, viewProjection, planeY: ShelfPlaneY);
+        // Lowering the receiving plane drops the whole shadow away from the model's base, which — with a
+        // slightly larger footprint above — opens air between the two on the enlarged shelf.
+        DrawShadows(_shadowFootprints, viewProjection, planeY: ShelfPlaneY - shadowDrop);
     }
 
     private void DrawShadows(
