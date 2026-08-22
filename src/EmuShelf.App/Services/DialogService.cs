@@ -278,6 +278,18 @@ public sealed class DialogService : IDialogService
         return await dialog.ShowDialog<bool>(owner);
     }
 
+    public async Task<bool> ConfirmRescanRemovalsAsync(IReadOnlyList<string> gameTitles)
+    {
+        var owner = DialogOwner;
+        if (owner is null || gameTitles.Count == 0)
+            return false;
+
+        var viewModel = new RescanRemovalsViewModel(gameTitles);
+        var dialog = new RescanRemovalsWindow { DataContext = viewModel };
+        viewModel.CloseRequested += confirmed => dialog.Close(confirmed);
+        return await dialog.ShowDialog<bool>(owner);
+    }
+
     public async Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
     {
         var owner = DialogOwner;

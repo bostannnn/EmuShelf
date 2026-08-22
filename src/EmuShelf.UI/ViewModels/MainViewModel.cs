@@ -5345,6 +5345,9 @@ public partial class MainViewModel : ViewModelBase
         {
             var total = 0;
             var addedIds = new List<long>();
+            // Rows whose files a reachable folder no longer holds, gathered across every system so the
+            // whole rescan asks for confirmation once at the end rather than per folder or per system.
+            var removalCandidates = new List<(long Id, string Title)>();
             foreach (var system in systems.Where(system => system.Id != "playstation3"))
             {
                 var folders = await Task.Run(() => _library.GetLibraryFolders(system.Id));
@@ -5355,6 +5358,11 @@ public partial class MainViewModel : ViewModelBase
                 var knownPaths = await Task.Run(() => _library.GetGames(system.Id)
                     .Select(game => Path.GetFullPath(game.Path))
                     .ToHashSet(PathComparer));
+                // Roots reached this scan and every path found under them. A folder on a disconnected
+                // drive scans as empty (FolderScanner returns nothing rather than throwing), so it is
+                // deliberately excluded here — its games must survive as "unavailable", never be pruned.
+                var reachableRoots = new List<string>();
+                var presentPaths = new HashSet<string>(PathComparer);
                 foreach (var folder in folders)
                 {
                     // The main-window toast is hidden behind the Settings modal, so mirror the same
@@ -5366,7 +5374,19 @@ public partial class MainViewModel : ViewModelBase
                         SetStatus(message, StatusSeverity.Progress);
                         statusProgress?.Report(message);
                     });
+                    // Same predicate FolderScanner gates its walk on, so "reachable" and "produced a
+                    // real listing" always agree — a missing root is never mistaken for an empty one.
+                    var rootReachable = await Task.Run(() => Directory.Exists(folder.Path));
                     var selection = await _scanner.ScanAsync(folder.Path, system, progress);
+                    if (rootReachable)
+                    {
+                        reachableRoots.Add(Path.GetFullPath(folder.Path));
+                        // A file the collapse folded into a suppressed component still exists on disk,
+                        // so count it present too — its stale row is dropped by the import above, not
+                        // by the deletion pass below.
+                        foreach (var path in selection.EntryPaths.Concat(selection.SuppressedPaths))
+                            presentPaths.Add(Path.GetFullPath(path));
+                    }
                     var newSelection = SelectUnimportedEntries(selection, knownPaths);
                     var importResult = await ReconcileImportAsync(system, newSelection);
                     // Overlapping folders shouldn't re-read an entry the previous folder just added.
@@ -5375,6 +5395,36 @@ public partial class MainViewModel : ViewModelBase
                     total += importResult.AddedCount;
                     addedIds.AddRange(importResult.AddedGameIds);
                 }
+
+                // A game that lived under a folder we just reached but the scan no longer found was
+                // deleted on disk — a candidate to drop (its file is never touched). Games under an
+                // unreachable folder, or added individually outside any remembered folder, are left
+                // for the availability pass to flag rather than removed.
+                if (reachableRoots.Count > 0)
+                {
+                    var missing = await Task.Run(() => _library.GetGames(system.Id)
+                        .Where(game =>
+                        {
+                            var full = Path.GetFullPath(game.Path);
+                            return !presentPaths.Contains(full)
+                                && reachableRoots.Any(root => IsPathUnderRoot(full, root));
+                        })
+                        .Select(game => (game.Id, game.Title))
+                        .ToList());
+                    removalCandidates.AddRange(missing);
+                }
+            }
+
+            // Removal is never silent: list the missing titles and only delete on an explicit yes.
+            // Declining keeps every row — the availability pass below then just marks them unavailable.
+            var removed = 0;
+            if (removalCandidates.Count > 0 &&
+                await _dialogs.ConfirmRescanRemovalsAsync(
+                    removalCandidates.Select(candidate => candidate.Title).ToList()))
+            {
+                var removalIds = removalCandidates.Select(candidate => candidate.Id).ToList();
+                await Task.Run(() => _library.RemoveGames(removalIds));
+                removed = removalIds.Count;
             }
 
             await UpdateAvailabilityAsync();
@@ -5382,7 +5432,7 @@ public partial class MainViewModel : ViewModelBase
                 await ShowSystemAsync(systemToShow);
             else
                 await ReloadGamesAsync();
-            SetStatus(total == 0 ? "Rescan complete — no new games" : $"Rescan added {total} game(s)");
+            SetStatus(BuildRescanStatus(total, removed));
             if (addedIds.Count > 0)
             {
                 // A remembered-folder rescan is another import path. Only its newly discovered
@@ -5406,6 +5456,31 @@ public partial class MainViewModel : ViewModelBase
         {
             IsBusy = false;
         }
+    }
+
+    private static string BuildRescanStatus(int added, int removed)
+    {
+        var changes = new List<string>();
+        if (added > 0)
+            changes.Add($"added {added}");
+        if (removed > 0)
+            changes.Add($"removed {removed}");
+        return changes.Count == 0
+            ? "Rescan complete — no new games"
+            : $"Rescan {string.Join(", ", changes)} game(s)";
+    }
+
+    /// <summary>
+    /// Whether <paramref name="fullPath"/> sits inside <paramref name="fullRoot"/> (both already
+    /// absolute). The trailing separator keeps a sibling like <c>…/RomsBackup</c> from matching the
+    /// <c>…/Roms</c> root, and comparison follows the platform's file-path case rule.
+    /// </summary>
+    private static bool IsPathUnderRoot(string fullPath, string fullRoot)
+    {
+        var root = fullRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? fullRoot
+            : fullRoot + Path.DirectorySeparatorChar;
+        return fullPath.StartsWith(root, FilePathComparison.Comparison);
     }
 
     /// <summary>

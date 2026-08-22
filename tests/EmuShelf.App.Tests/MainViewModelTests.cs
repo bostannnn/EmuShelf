@@ -312,6 +312,108 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task RescanSystem_RemovesGamesWhoseFilesWereDeletedFromAReachableFolder()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        Assert.Equal(2, _library.GetGames(Ps1.Id).Count);
+
+        // The ROM is gone from disk but its folder is still reachable, so the rescan offers to drop
+        // the row (listing it) instead of parking it as "unavailable".
+        File.Delete(Path.Combine(folder, "Alpha.cue"));
+        _dialogs.ConfirmRescanRemovalsToReturn = true;
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        Assert.Equal(["Alpha"], _dialogs.LastRescanRemovalTitles);
+        var remaining = Assert.Single(_library.GetGames(Ps1.Id));
+        Assert.Equal("Beta", remaining.Title);
+        Assert.Equal("Rescan removed 1 game(s)", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task RescanSystem_KeepsMissingGamesWhenTheRemovalPromptIsDeclined()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddFolderCommand.ExecuteAsync(null);
+
+        // The user is asked but says "keep them", so the row survives — flagged unavailable, not deleted.
+        File.Delete(Path.Combine(folder, "Alpha.cue"));
+        _dialogs.ConfirmRescanRemovalsToReturn = false;
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        Assert.Equal(1, _dialogs.RescanRemovalPrompts);
+        Assert.Equal(["Alpha"], _dialogs.LastRescanRemovalTitles);
+        var kept = _library.GetGames(Ps1.Id);
+        Assert.Equal(2, kept.Count);
+        Assert.False(kept.Single(game => game.Title == "Alpha").IsAvailable);
+        Assert.Equal("Rescan complete — no new games", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task RescanSystem_KeepsGamesWhenTheWholeFolderIsUnreachable()
+    {
+        // A disconnected drive scans as empty rather than erroring; the library must survive it, so
+        // an unreachable remembered folder never triggers removal — the games only go "unavailable".
+        var folder = MakeRomsFolder();
+        _dialogs.FolderToReturn = folder;
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        Assert.Equal(2, _library.GetGames(Ps1.Id).Count);
+
+        Directory.Delete(folder, recursive: true);
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        Assert.Equal(0, _dialogs.RescanRemovalPrompts); // nothing reachable was missing, so no prompt
+        var games = _library.GetGames(Ps1.Id);
+        Assert.Equal(2, games.Count);
+        Assert.All(games, game => Assert.False(game.IsAvailable));
+        Assert.Equal("Rescan complete — no new games", vm.StatusText);
+    }
+
+    [AvaloniaFact]
+    public async Task RescanSystem_PrunesOnlyTheReachableFolderWhenAnotherIsDisconnected()
+    {
+        // Two remembered folders for one system: one reachable with a deleted ROM, one whole folder
+        // gone (a disconnected drive). Removal must be scoped per root — the reachable folder's stale
+        // row is dropped, the disconnected folder's game is kept — so a partial outage can't cascade
+        // into wiping games that simply weren't reachable this scan.
+        var reachable = Path.Combine(_baseDirectory, "reachable");
+        var disconnected = Path.Combine(_baseDirectory, "disconnected");
+        Directory.CreateDirectory(reachable);
+        Directory.CreateDirectory(disconnected);
+        File.WriteAllText(Path.Combine(reachable, "Alpha.cue"), "x");
+        File.WriteAllText(Path.Combine(disconnected, "Beta.cue"), "x");
+        var vm = CreateViewModel();
+
+        _dialogs.FolderToReturn = reachable;
+        _dialogs.SystemToReturn = Ps1;
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        _dialogs.FolderToReturn = disconnected;
+        _dialogs.SystemToReturn = Ps1;
+        await vm.AddFolderCommand.ExecuteAsync(null);
+        Assert.Equal(2, _library.GetGames(Ps1.Id).Count);
+
+        File.Delete(Path.Combine(reachable, "Alpha.cue"));
+        Directory.Delete(disconnected, recursive: true);
+        _dialogs.ConfirmRescanRemovalsToReturn = true;
+        await vm.RescanSystemCommand.ExecuteAsync(null);
+
+        // Only the reachable folder's deleted ROM is offered for removal, never the disconnected one.
+        Assert.Equal(["Alpha"], _dialogs.LastRescanRemovalTitles);
+        var remaining = Assert.Single(_library.GetGames(Ps1.Id));
+        Assert.Equal("Beta", remaining.Title); // the disconnected folder's game survived
+        Assert.False(remaining.IsAvailable);
+        Assert.Equal("Rescan removed 1 game(s)", vm.StatusText);
+    }
+
+    [AvaloniaFact]
     public async Task AddGames_HeaderlessMegaDriveFileIsSkippedAfterConfirmation()
     {
         var path = Path.Combine(_baseDirectory, "roms", "Not a Mega Drive ROM.md");

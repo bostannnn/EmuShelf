@@ -88,6 +88,15 @@ internal sealed class FakeDialogService : IDialogService
         LastRemoveGameCount = gameCount;
         return Task.FromResult(ConfirmRemoveGamesToReturn);
     }
+    public bool ConfirmRescanRemovalsToReturn { get; set; }
+    public IReadOnlyList<string>? LastRescanRemovalTitles { get; private set; }
+    public int RescanRemovalPrompts { get; private set; }
+    public Task<bool> ConfirmRescanRemovalsAsync(IReadOnlyList<string> gameTitles)
+    {
+        RescanRemovalPrompts++;
+        LastRescanRemovalTitles = gameTitles;
+        return Task.FromResult(ConfirmRescanRemovalsToReturn);
+    }
     public Task<GameSystem?> PickSystemAsync(IReadOnlyList<GameSystem> systems, GameSystem? suggested) =>
         Task.FromResult(SystemToReturn);
     public Task<MetadataConsentChoice> PromptForMetadataConsentAsync(int gameCount)
