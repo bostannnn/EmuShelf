@@ -392,9 +392,11 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
     }
 
     [Fact]
-    public async Task Download_WalksTheFolderTreeOnlyOncePerSession()
+    public async Task Download_WalksTheFolderTreeInOneListingPerSession()
     {
-        // Drive resolves no paths of its own, so a per-unit walk is what makes a small sync slow.
+        // Drive resolves no paths of its own, so a per-unit — or even per-folder — walk is what makes a
+        // small sync slow. Under drive.file the app sees only its own files, so one flat listing is the
+        // whole tree.
         var drive = new FakeDriveServer();
         drive.AddFile(
             $"{CloudFolder}/{CloudSaveIndex.FileName}",
@@ -414,8 +416,9 @@ public sealed class GoogleDriveCloudSyncTransportTests : TempAppDirectoryTestBas
         foreach (var unitId in new[] { "playstation2/a", "playstation2/b", "playstation/c" })
             (await transport.DownloadAsync(unitId, Cancellation)).Dispose();
 
-        // One walk of root + the two emulator folders, and nothing per additional unit.
-        Assert.Equal(3, drive.ListCalls - afterList);
+        // One flat listing of the whole tree, and nothing per additional unit or folder (it was
+        // previously one listing per folder — root + the two emulator folders).
+        Assert.Equal(1, drive.ListCalls - afterList);
     }
 
     [Fact]
