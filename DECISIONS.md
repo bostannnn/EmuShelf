@@ -10420,3 +10420,24 @@ desktop behaviour and snapshots are unchanged.
    couch root to `MainViewModel.IsReducedEffectsPlatform` (true only on Android), sets the shadow
    sibling's `IsVisible` to false — removing both the blur and one full-tile overdraw layer. Desktop and
    desktop-gamepad mode keep the depth.
+
+## 2026-08-22 — Emulator selection is one flat app/core choice on Android and desktop
+
+The selected launcher is modelled everywhere as one `EmulatorChoice`, persisted through the existing
+`EmulatorConfiguration` pair `(EmulatorId, CorePath?)`. A standalone emulator has a short id and no core;
+each RetroArch core is its own visible `RetroArch · core` item with `EmulatorId = "retroarch"` and the
+exact core path. This is a presentation/domain unification, not a database change.
+
+Stored ids are the shared short vocabulary (`duckstation`, `pcsx2`, `rpcs3`, `dolphin`, `ppsspp`,
+`azahar`, `retroarch`) plus the Android-only `armsx2` and `watermelonds`. Concrete Android launch-profile
+ids (`android.*`) remain internal. `AndroidLaunchProfile.SelectionId` connects the two directly, replacing
+the hand-written desktop-to-Android translation switch that could never represent ARMSX2 or WatermelonDS.
+This also preserves the save-sync checks that already key on `retroarch` / `duckstation` / `dolphin`.
+
+Android supplies a fixed choice catalog because RetroArch's core directory is app-private. Desktop builds
+the same flat shape dynamically from registered emulators and cores found on disk. Before RetroArch's
+executable or Flatpak target is known it contributes one setup item; once known it expands into one item
+per installed core. Executable, arguments, target and Flatpak id remain drafts keyed by the underlying
+emulator, so switching cores reuses one RetroArch draft and switching to a standalone emulator does not
+discard it. A configured core that is temporarily missing remains visible rather than being silently
+replaced. No flow reads, modifies or deletes ROMs or emulator-owned configuration.

@@ -500,7 +500,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         SteamInputTemplateInstaller? steamTemplateInstaller = null,
         Func<bool, Task>? setCrtScreenEffect = null,
         bool crtShelfEffect = true,
-        Action<Uri>? openSignInUri = null)
+        Action<Uri>? openSignInUri = null,
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? fixedEmulatorChoices = null)
     {
         _configurations = configurations;
         _dialogs = dialogs;
@@ -647,7 +648,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
                 // (tests) leaves the row to read its own folders as before.
                 initialLibraryFolders: libraryFolders is null
                     ? null
-                    : libraryFolders.GetValueOrDefault(system.Id) ?? []);
+                    : libraryFolders.GetValueOrDefault(system.Id) ?? [],
+                fixedChoices: fixedEmulatorChoices?.GetValueOrDefault(system.Id));
         }).ToArray();
         Rows = new ObservableCollection<EmulatorSettingsRowViewModel>(rows);
         foreach (var row in Rows)

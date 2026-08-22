@@ -1077,10 +1077,12 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadHotkeysOpen => GamepadOverlay == GamepadOverlayKind.Hotkeys;
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
+    public bool IsGamepadSettingsChoicePickerOpen =>
+        IsGamepadSettingsOpen && GamepadSettings?.IsChoicePickerOpen == true;
     /// <summary>Settings overlay open in its normal (non-modal) state, so the footer shows the
-    /// navigation hints; the text-entry and confirmation modals swap in their own legends.</summary>
+    /// navigation hints; entry, confirmation, and choice modals swap in their own legends.</summary>
     public bool IsGamepadSettingsNormal =>
-        IsGamepadSettingsOpen && !IsGamepadSettingsTextEntryOpen && !IsGamepadSettingsConfirmationOpen;
+        IsGamepadSettingsOpen && GamepadSettings?.IsNormal == true;
     public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
@@ -2270,8 +2272,8 @@ public partial class MainViewModel : ViewModelBase
                 ThemeChoices,
                 SetThemeAsync,
                 OpenGamepadHotkeysFromSettings,
-                androidRetroArchCores: OperatingSystem.IsAndroid()
-                    ? AndroidRetroArchCoreCatalog.BySystem
+                androidEmulatorChoices: OperatingSystem.IsAndroid()
+                    ? AndroidEmulatorChoiceCatalog.BySystem
                     : null);
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
@@ -6720,7 +6722,10 @@ public partial class MainViewModel : ViewModelBase
             crtShelfEffect: CrtScreenEffect,
             profiles: profiles,
             updates: Updates,
-            libraryFolders: libraryFolders);
+            libraryFolders: libraryFolders,
+            fixedEmulatorChoices: OperatingSystem.IsAndroid()
+                ? AndroidEmulatorChoiceCatalog.BySystem
+                : null);
     }
 
     private Task SetAmbientThemeFromArtworkAsync(bool value)
@@ -6814,12 +6819,14 @@ public partial class MainViewModel : ViewModelBase
             nameof(GamepadSettingsViewModel.SelectedSection) or
             nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
             nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
+            nameof(GamepadSettingsViewModel.IsChoicePickerOpen) or
             nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected) or
             nameof(GamepadSettingsViewModel.TextEntryRevision))
         {
             OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
             OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
             OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+            OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
             OnPropertyChanged(nameof(IsGamepadSettingsNormal));
             OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
         }
@@ -6842,6 +6849,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsNormal));
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
@@ -6855,6 +6864,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
+        OnPropertyChanged(nameof(IsGamepadSettingsNormal));
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 

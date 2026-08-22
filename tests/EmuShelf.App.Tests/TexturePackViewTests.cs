@@ -64,9 +64,9 @@ public class TexturePackViewTests
     }
 
     [AvaloniaFact]
-    public void SettingsWindow_MultiEmulatorRow_RendersTheEmulatorProfilePicker()
+    public void SettingsWindow_RendersTheFlatEmulatorChoicePicker()
     {
-        // The PlayStation row now has two profiles (DuckStation / RetroArch), so its picker must
+        // The PlayStation row has DuckStation plus RetroArch's setup choice, so its picker must
         // render and bind. Nothing else renders the Emulators section, so this is its binding proof.
         var viewModel = CreateSettingsViewModel();
         viewModel.SelectedSection = SettingsSection.Emulators;
@@ -77,16 +77,16 @@ public class TexturePackViewTests
             viewModel.Rows.Single(row => row.SystemId == "playstation").IsExpanded = true;
             Dispatcher.UIThread.RunJobs();
 
-            var profileNames = window.GetVisualDescendants()
+            var choiceNames = window.GetVisualDescendants()
                 .OfType<ComboBox>()
                 .Select(box => box.ItemsSource)
-                .OfType<IEnumerable<EmulatorSettingsRowViewModel.EmulatorProfileOption>>()
+                .OfType<IEnumerable<EmulatorChoice>>()
                 .SelectMany(options => options)
-                .Select(option => option.EmulatorName)
+                .Select(option => option.DisplayName)
                 .ToArray();
 
-            Assert.Contains("DuckStation", profileNames);
-            Assert.Contains("RetroArch", profileNames);
+            Assert.Contains("DuckStation", choiceNames);
+            Assert.Contains("RetroArch (set executable to choose a core)", choiceNames);
         }
         finally
         {

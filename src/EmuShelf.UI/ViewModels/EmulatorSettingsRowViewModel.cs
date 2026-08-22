@@ -7,6 +7,7 @@ using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Launching;
+using EmuShelf.Integrations.Emulators;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -19,11 +20,13 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     private readonly LibraryFolderManagementActions? _folderActions;
     private readonly Func<Func<Task<string>>, Action<string>, Task>? _runFolderMaintenance;
     private readonly string _homeDirectory;
+    private readonly IReadOnlyList<EmulatorChoice>? _fixedChoices;
     // The emulator definitions that can serve this system, keyed by id, and one saved draft per
     // emulator so switching the profile picker keeps each profile's edits.
     private readonly Dictionary<string, EmulatorDefinition> _emulatorsById;
     private readonly Dictionary<string, ProfileDraft> _drafts = new(StringComparer.Ordinal);
     private bool _switchingProfile;
+    private bool _refreshingChoices;
 
     public string SystemId { get; }
     public string SystemName { get; }
@@ -39,6 +42,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     // Stable AutomationIds so the Emulators section is scriptable/accessible like the others.
     // Keyed by system id, e.g. "emulators.playstation.executable". (Emulators isn't part of the
     // Desktop/Gamepad parity set, so these are Desktop-only.)
+    public string EmulatorChoiceFieldId => $"emulators.{SystemId}.emulator";
     public string ExecutableFieldId => $"emulators.{SystemId}.executable";
     public string BrowseFieldId => $"emulators.{SystemId}.browse";
     public string LaunchArgumentsFieldId => $"emulators.{SystemId}.launch-args";
@@ -48,11 +52,13 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string RescanFieldId => $"emulators.{SystemId}.rescan";
     public string SyncFieldId => $"emulators.{SystemId}.sync";
 
-    /// <summary>Every emulator that can serve this system, in registration order, for the picker.</summary>
-    public IReadOnlyList<EmulatorProfileOption> AvailableProfiles { get; }
+    /// <summary>
+    /// The flat picker: standalone emulators plus one RetroArch item per discovered/fixed core.
+    /// Android injects a fixed catalog; desktop rebuilds this collection after every core scan.
+    /// </summary>
+    public ObservableCollection<EmulatorChoice> AvailableChoices { get; } = [];
 
-    /// <summary>The picker is only meaningful when a system has more than one supported emulator.</summary>
-    public bool HasMultipleProfiles => AvailableProfiles.Count > 1;
+    public bool HasEmulatorChoices => AvailableChoices.Count > 0;
     /// <summary>Flatpak targets are meaningful only on Linux.</summary>
     public bool CanSelectFlatpakTarget => OperatingSystem.IsLinux();
     public bool IsLaunchTargetPickerVisible => CanSelectFlatpakTarget;
@@ -101,10 +107,12 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     [ObservableProperty]
     public partial string LaunchArguments { get; set; }
 
-    /// <summary>The active emulator profile for this system. Changing it swaps the editable fields to
-    /// that profile's saved draft; the previous profile's edits are kept for when it is picked again.</summary>
+    /// <summary>
+    /// The complete emulator/core selection. Changing the underlying emulator swaps editable drafts;
+    /// changing only a RetroArch core keeps the same executable/argument draft.
+    /// </summary>
     [ObservableProperty]
-    public partial EmulatorProfileOption? SelectedProfile { get; set; }
+    public partial EmulatorChoice? SelectedChoice { get; set; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCorePath))]
@@ -158,7 +166,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         Func<Func<Task<string>>, Action<string>, Task>? runFolderMaintenance = null,
         IReadOnlyList<EmulatorDefinition>? supportedEmulators = null,
         SystemEmulatorProfiles? profiles = null,
-        IReadOnlyList<LibraryFolder>? initialLibraryFolders = null)
+        IReadOnlyList<LibraryFolder>? initialLibraryFolders = null,
+        IReadOnlyList<EmulatorChoice>? fixedChoices = null)
     {
         _dialogs = dialogs;
         _logger = logger ?? NullAppLogger.Instance;
@@ -167,22 +176,52 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         _folderActions = folderActions;
         _runFolderMaintenance = runFolderMaintenance;
         _homeDirectory = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _fixedChoices = fixedChoices;
         SystemId = system.Id;
         SystemName = system.Name;
         SystemShortName = system.ShortName;
         AccentColor = system.AccentColor;
 
-        // The picker lists every emulator that can serve this system; when only one can (most
-        // systems) it collapses to a single profile and the picker stays hidden.
+        // Registered definitions own editable drafts. A fixed platform catalog may add selection-only
+        // Android emulators that have no desktop executable definition.
         var available = (supportedEmulators is { Count: > 0 } ? supportedEmulators : [emulator])
             .Where(candidate => candidate.Supports(system.Id))
             .ToList();
         if (available.Count == 0)
             available = [emulator];
-        _emulatorsById = available.ToDictionary(candidate => candidate.Id, StringComparer.Ordinal);
-        AvailableProfiles = available
-            .Select(candidate => new EmulatorProfileOption(candidate.Id, candidate.Name))
-            .ToList();
+        if (fixedChoices is { Count: > 0 })
+        {
+            foreach (var choiceGroup in fixedChoices.GroupBy(choice => choice.EmulatorId, StringComparer.Ordinal))
+            {
+                if (available.Any(candidate => string.Equals(
+                        candidate.Id,
+                        choiceGroup.Key,
+                        StringComparison.Ordinal)))
+                {
+                    continue;
+                }
+
+                var firstChoice = choiceGroup.First();
+                var separator = firstChoice.DisplayName.IndexOf(" · ", StringComparison.Ordinal);
+                var displayName = separator >= 0
+                    ? firstChoice.DisplayName[..separator]
+                    : firstChoice.DisplayName;
+                available.Add(new EmulatorDefinition(
+                    choiceGroup.Key,
+                    displayName,
+                    [system.Id],
+                    string.Empty,
+                    RequiresCorePath: choiceGroup.Any(choice => !string.IsNullOrWhiteSpace(choice.CorePath)),
+                    SharesDefaultInstallation: string.Equals(
+                        choiceGroup.Key,
+                        "retroarch",
+                        StringComparison.Ordinal)));
+            }
+        }
+
+        _emulatorsById = available
+            .DistinctBy(candidate => candidate.Id, StringComparer.Ordinal)
+            .ToDictionary(candidate => candidate.Id, StringComparer.Ordinal);
 
         // One editable draft per emulator so switching the picker keeps each profile's own edits.
         foreach (var candidate in available)
@@ -198,8 +237,22 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             _drafts[candidate.Id] = DraftFor(system.Id, candidate, candidateConfig, fallbackInstallationId);
         }
 
+        var configuredEmulatorId = profiles?.ActiveEmulatorId ?? configuration?.EmulatorId;
+        var configuredCorePath = configuredEmulatorId is null
+            ? null
+            : profiles?.ForEmulator(configuredEmulatorId)?.CorePath ?? configuration?.CorePath;
+        var initialChoice = fixedChoices?.FirstOrDefault(choice =>
+            choice.Matches(configuredEmulatorId, configuredCorePath));
+        // A fixed catalog is authoritative. In particular, legacy Android rows may say only
+        // "retroarch" with no core even though that pair cannot launch; use the maintained-first
+        // choice that the launch service would actually fall back to instead of inventing a fifth
+        // picker item such as "RetroArch (current)".
+        if (initialChoice is null && fixedChoices is { Count: > 0 })
+            initialChoice = fixedChoices[0];
+
         var activeEmulatorId =
-            profiles?.ActiveEmulatorId is { } chosen && _emulatorsById.ContainsKey(chosen) ? chosen
+            initialChoice?.EmulatorId is { } selected && _emulatorsById.ContainsKey(selected) ? selected
+            : profiles?.ActiveEmulatorId is { } chosen && _emulatorsById.ContainsKey(chosen) ? chosen
             : configuration?.EmulatorId is { } configured && _emulatorsById.ContainsKey(configured) ? configured
             : _emulatorsById.ContainsKey(emulator.Id) ? emulator.Id
             : available[0].Id;
@@ -216,9 +269,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         IsExecutableShared = isExecutableShared;
         _switchingProfile = true;
         LoadProfile(activeEmulatorId);
+        if (initialChoice is not null)
+            CorePath = initialChoice.CorePath ?? string.Empty;
         _switchingProfile = false;
-        SelectedProfile = AvailableProfiles.First(option =>
-            string.Equals(option.EmulatorId, activeEmulatorId, StringComparison.Ordinal));
 
         RefreshAvailableCores();
         IsExpanded = isExpanded;
@@ -280,31 +333,44 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             AvailableFlatpakApplicationIds.Add(reference);
     }
 
-    partial void OnSelectedProfileChanged(EmulatorProfileOption? value)
+    partial void OnSelectedChoiceChanged(EmulatorChoice? value)
     {
         if (_switchingProfile ||
+            _refreshingChoices ||
             value is null ||
-            !_emulatorsById.ContainsKey(value.EmulatorId) ||
-            string.Equals(value.EmulatorId, EmulatorId, StringComparison.Ordinal))
+            !_emulatorsById.ContainsKey(value.EmulatorId))
         {
             return;
         }
 
+        var emulatorChanged = !string.Equals(value.EmulatorId, EmulatorId, StringComparison.Ordinal);
         _switchingProfile = true;
         try
         {
-            // Snapshot the profile we are leaving so its edits return when it is picked again.
-            _drafts[EmulatorId] = new ProfileDraft(
-                EmulatorInstallationId, ExecutablePath, TargetKind, FlatpakAppId, LaunchArguments, CorePath);
-            LoadProfile(value.EmulatorId);
+            if (emulatorChanged)
+            {
+                // Snapshot the profile we are leaving so its edits return when it is picked again.
+                CaptureActiveDraft();
+                LoadProfile(value.EmulatorId);
+            }
+
+            CorePath = value.CorePath ?? string.Empty;
+            CaptureActiveDraft();
         }
         finally
         {
             _switchingProfile = false;
         }
 
-        RefreshAvailableCores();
-        ProfileChanged?.Invoke(this);
+        if (emulatorChanged)
+        {
+            RefreshAvailableCores();
+            ProfileChanged?.Invoke(this);
+        }
+        else
+        {
+            RefreshAvailableChoices();
+        }
     }
 
     /// <summary>Recomputes whether this row's executable is shared with other systems. Parent-driven,
@@ -347,6 +413,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     {
         SelectedCore = AvailableCores.FirstOrDefault(option =>
             string.Equals(option.Path, value, StringComparison.OrdinalIgnoreCase));
+        if (!_switchingProfile && !_refreshingChoices)
+            RefreshAvailableChoices();
     }
 
     partial void OnSelectedCoreChanged(LibretroCoreOption? value)
@@ -361,12 +429,24 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     {
         AvailableCores.Clear();
         FilteredCores.Clear();
-        if (!RequiresCorePath)
+        if (_fixedChoices is not null)
+        {
+            RefreshAvailableChoices();
             return;
+        }
+
+        var coreEmulator = _emulatorsById.Values.FirstOrDefault(candidate => candidate.RequiresCorePath);
+        if (coreEmulator is null)
+        {
+            RefreshAvailableChoices();
+            return;
+        }
+
+        var coreDraft = CurrentDraftFor(coreEmulator.Id);
 
         try
         {
-            foreach (var core in CoreSearchDirectories()
+            foreach (var core in CoreSearchDirectories(coreDraft)
                          .Where(Directory.Exists)
                          .SelectMany(Directory.EnumerateFiles)
                          .Where(path => Path.GetExtension(path) is ".dll" or ".dylib" or ".so")
@@ -384,17 +464,88 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         SelectedCore = AvailableCores.FirstOrDefault(option =>
             string.Equals(option.Path, CorePath, StringComparison.OrdinalIgnoreCase));
         RefreshFilteredCores();
+        RefreshAvailableChoices();
     }
+
+    private void RefreshAvailableChoices()
+    {
+        var coreEmulator = _emulatorsById.Values.FirstOrDefault(candidate => candidate.RequiresCorePath);
+        var rememberedCorePath = coreEmulator is null ? null : CurrentDraftFor(coreEmulator.Id).CorePath;
+        var choices = _fixedChoices ?? DesktopEmulatorChoiceCatalog.ForSystem(
+            SystemId,
+            _emulatorsById.Values.ToList(),
+            AvailableCores.Select(core => core.Path),
+            IsCoreTargetConfigured(),
+            rememberedCorePath);
+
+        _refreshingChoices = true;
+        try
+        {
+            AvailableChoices.Clear();
+            foreach (var choice in choices)
+                AvailableChoices.Add(choice);
+
+            var selected = AvailableChoices.FirstOrDefault(choice =>
+                choice.Matches(EmulatorId, CorePath));
+            if (selected is null && _fixedChoices is null && !string.IsNullOrWhiteSpace(EmulatorId))
+            {
+                // Keep a choice written by an older build or another compatible frontend visible.
+                // Desktop should not silently replace a temporarily missing core merely because its
+                // drive is disconnected. Fixed platform catalogs remain exact and authoritative.
+                var emulatorName = _emulatorsById.GetValueOrDefault(EmulatorId)?.Name ?? EmulatorId;
+                var corePath = string.IsNullOrWhiteSpace(CorePath) ? null : CorePath.Trim();
+                var coreId = corePath is null ? null : Path.GetFileNameWithoutExtension(corePath);
+                selected = new EmulatorChoice(
+                    coreId is null ? $"{EmulatorId}:current" : $"{EmulatorId}:{coreId}:current",
+                    coreId is null
+                        ? $"{emulatorName} (current)"
+                        : $"{emulatorName} · {coreId} (current)",
+                    EmulatorId,
+                    coreId,
+                    corePath);
+                AvailableChoices.Add(selected);
+            }
+
+            SelectedChoice = selected;
+            OnPropertyChanged(nameof(HasEmulatorChoices));
+        }
+        finally
+        {
+            _refreshingChoices = false;
+        }
+    }
+
+    private bool IsCoreTargetConfigured()
+    {
+        var coreEmulator = _emulatorsById.Values.FirstOrDefault(candidate => candidate.RequiresCorePath);
+        if (coreEmulator is null)
+            return false;
+        var draft = CurrentDraftFor(coreEmulator.Id);
+        return draft.TargetKind == "Flatpak"
+            ? !string.IsNullOrWhiteSpace(draft.FlatpakAppId)
+            : !string.IsNullOrWhiteSpace(draft.ExecutablePath);
+    }
+
+    private ProfileDraft CurrentDraftFor(string emulatorId) =>
+        string.Equals(EmulatorId, emulatorId, StringComparison.Ordinal)
+            ? new ProfileDraft(
+                EmulatorInstallationId,
+                ExecutablePath,
+                TargetKind,
+                FlatpakAppId,
+                LaunchArguments,
+                CorePath)
+            : _drafts[emulatorId];
 
     // Direct RetroArch targets keep cores beside the executable in portable and AppImage-extracted
     // layouts, or under the user's RetroArch config directory on Linux/macOS. Flatpak targets have
     // no executable path; their per-app directory is mounted at the identical host path, so derive
     // the installed-core directory from the user-selected app id without editing RetroArch config.
-    private IEnumerable<string> CoreSearchDirectories()
+    private IEnumerable<string> CoreSearchDirectories(ProfileDraft draft)
     {
-        if (IsFlatpakTarget)
+        if (draft.TargetKind == "Flatpak")
         {
-            if (string.IsNullOrWhiteSpace(_homeDirectory) || string.IsNullOrWhiteSpace(FlatpakAppId))
+            if (string.IsNullOrWhiteSpace(_homeDirectory) || string.IsNullOrWhiteSpace(draft.FlatpakAppId))
                 yield break;
 
             // Every branch of an app shares one per-app data directory (.var/app/<appId>), so strip any
@@ -403,17 +554,17 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
                 _homeDirectory,
                 ".var",
                 "app",
-                FlatpakApplicationTarget.Parse(FlatpakAppId).AppId,
+                FlatpakApplicationTarget.Parse(draft.FlatpakAppId).AppId,
                 "config",
                 "retroarch",
                 "cores");
             yield break;
         }
 
-        if (string.IsNullOrWhiteSpace(ExecutablePath))
+        if (string.IsNullOrWhiteSpace(draft.ExecutablePath))
             yield break;
 
-        var emulatorDirectory = Path.GetDirectoryName(ExecutablePath);
+        var emulatorDirectory = Path.GetDirectoryName(draft.ExecutablePath);
         if (string.IsNullOrWhiteSpace(emulatorDirectory))
             yield break;
 
@@ -606,12 +757,12 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     {
         CaptureActiveDraft();
         var configurations = new List<EmulatorConfiguration>();
-        foreach (var option in AvailableProfiles)
+        foreach (var emulator in _emulatorsById.Values)
         {
-            var isActive = string.Equals(option.EmulatorId, EmulatorId, StringComparison.Ordinal);
-            var draft = _drafts[option.EmulatorId];
-            if (isActive || IsConfigured(option.EmulatorId, draft))
-                configurations.Add(ConfigurationFrom(option.EmulatorId, draft));
+            var isActive = string.Equals(emulator.Id, EmulatorId, StringComparison.Ordinal);
+            var draft = _drafts[emulator.Id];
+            if (isActive || IsConfigured(emulator.Id, draft))
+                configurations.Add(ConfigurationFrom(emulator.Id, draft));
         }
 
         return configurations;
@@ -649,9 +800,6 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     }
 
     public sealed record LibretroCoreOption(string Name, string Path);
-
-    /// <summary>One selectable emulator profile in the picker.</summary>
-    public sealed record EmulatorProfileOption(string EmulatorId, string EmulatorName);
 
     // The editable state of one emulator profile, cached per emulator so switching the picker keeps
     // each profile's own edits until Save.

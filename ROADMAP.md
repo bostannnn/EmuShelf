@@ -1984,9 +1984,13 @@ breaks the whole-solution macOS build/test loop.
         `AndroidIntentFactory`/`AndroidLaunchResolver`; `<queries>` manifest; `AndroidEmulatorLaunchService`
         wired via `IPlatformShell.LaunchService`. A couch button launches a real game; exit signal
         (`OnTopResumedActivityChanged`) + durable deferred post-play completion survive process death.
-        Controller Settings now selects a compatible RetroArch core per system without trying to read
-        RetroArch's app-private core directory; the saved choice activates RetroArch and is passed as the
-        exact `LIBRETRO` path, while unavailable choices can still fall through to standalone emulators.
+        Controller Settings now presents one flat emulator picker per system: every standalone Android
+        app is an entry and every compatible RetroArch core is an equal `RetroArch · core` entry without
+        trying to read RetroArch's app-private directory. The saved short emulator id plus optional exact
+        `LIBRETRO` path round-trips through the existing configuration schema; Android-only ARMSX2 and
+        WatermelonDS are selectable instead of being unreachable launch defaults. Desktop Settings uses
+        the same picker model, expanding RetroArch into disk-discovered core entries after its executable
+        or Flatpak target is configured while retaining each emulator's own executable/arguments draft.
         **Nested multi-disc launch fixed (2026-08-22):** the launch service now scopes the SAF URI's tree
         to the game's remembered import folder (`AndroidLibraryGrantRoot`) instead of the game's own
         sub-folder, so a per-game `.m3u` (MGS, Xenogears, Twin Snakes, Shadow Hearts Covenant) matches the
@@ -1994,6 +1998,10 @@ breaks the whole-solution macOS build/test loop.
         `SecurityException`; `roms/psx` tree → MGS boots and reads Disc 1), 7 selector tests + the existing
         on-device resolver test green. See DECISIONS 2026-08-22. Remaining: dependency-resolver promotion
         (desktop/Flatpak only) and a grant-root verification step for the rarer import≠grant-folder case.
+  - [ ] **B1 — unified-picker device acceptance.** On the Thor (or an arm64 AVD), confirm DS lists
+        WatermelonDS plus melonDS DS / melonDS / DeSmuME as four flat choices, restart to prove the chosen
+        `(EmulatorId, CorePath?)` persists, and launch one standalone app plus each RetroArch core. The
+        shared Debug suite is green; this checkbox is deliberately hardware-only.
   - [~] **E-android — cloud sync (started, 2026-08-20)**. The auto-sync path was already wired; this adds
         the actual save data. **Capability finding that reshaped the milestone:** a runtime probe from the
         app's own process proved all-files access reads *and writes* `Android/data/<pkg>` on the Thor

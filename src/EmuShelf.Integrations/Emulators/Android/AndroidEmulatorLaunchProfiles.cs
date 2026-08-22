@@ -18,6 +18,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>PS1 — DuckStation. Frozen Android build; boots via <c>EmulationActivity</c> + <c>bootPath</c>.</summary>
     public static AndroidLaunchProfile DuckStation { get; } = new(
         "android.duckstation",
+        "duckstation",
         "DuckStation",
         ["playstation"],
         PackageName: "com.github.stenzek.duckstation",
@@ -31,6 +32,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>PS2 — ARMSX2 (PCSX2 fork). VIEW + content URI as data; declares all-files access.</summary>
     public static AndroidLaunchProfile Armsx2 { get; } = new(
         "android.armsx2",
+        "armsx2",
         "ARMSX2",
         ["playstation2"],
         PackageName: "com.armsx2",
@@ -41,6 +43,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>GameCube / Wii — Dolphin. MAIN + <c>AutoStartFile</c> content-URI extra.</summary>
     public static AndroidLaunchProfile Dolphin { get; } = new(
         "android.dolphin",
+        "dolphin",
         "Dolphin",
         ["gamecube", "wii"],
         PackageName: "org.dolphinemu.dolphinemu",
@@ -52,6 +55,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>PSP — PPSSPP. VIEW + content URI as data.</summary>
     public static AndroidLaunchProfile Ppsspp { get; } = new(
         "android.ppsspp",
+        "ppsspp",
         "PPSSPP",
         ["psp"],
         PackageName: "org.ppsspp.ppsspp",
@@ -62,6 +66,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>3DS — Azahar (Citra fork; keeps Citra's activity name). VIEW + content URI as data.</summary>
     public static AndroidLaunchProfile Azahar { get; } = new(
         "android.azahar",
+        "azahar",
         "Azahar",
         ["3ds"],
         PackageName: "org.azahar_emu.azahar",
@@ -72,6 +77,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// <summary>DS — WatermelonDS (melonDS fork; kept melonDS's package id). Custom action + <c>uri</c> extra.</summary>
     public static AndroidLaunchProfile WatermelonDs { get; } = new(
         "android.watermelonds",
+        "watermelonds",
         "WatermelonDS",
         ["nds"],
         PackageName: "me.magnum.melondualds",
@@ -87,6 +93,7 @@ public static class AndroidEmulatorLaunchProfiles
     /// </summary>
     public static AndroidLaunchProfile RetroArch { get; } = new(
         "android.retroarch",
+        "retroarch",
         "RetroArch",
         ["playstation", "megadrive", "nds", "gba", "snes", "nes", "dreamcast", "arcade", "gbc"],
         PackageName: "com.retroarch.aarch64",
@@ -113,30 +120,23 @@ public static class AndroidEmulatorLaunchProfiles
 
     /// <summary>The launch profiles that can serve <paramref name="systemId"/>, maintained builds first.</summary>
     public static IReadOnlyList<AndroidLaunchProfile> ForSystem(string systemId) =>
-        ForSystem(systemId, preferredSharedEmulatorId: null);
+        ForSystem(systemId, preferredSelectionId: null);
 
     /// <summary>
     /// The launch profiles that can serve <paramref name="systemId"/>. A profile explicitly selected
-    /// in the shared emulator settings is tried first; remaining fallbacks retain the maintained-first
-    /// order. Shared ids are translated here because Android launch profiles deliberately have distinct
-    /// ids from their desktop configuration counterparts.
+    /// in settings is tried first; remaining fallbacks retain the maintained-first order. Persisted
+    /// selection ids deliberately stay short and cross-platform while the internal Android profile ids
+    /// continue to identify concrete launch definitions.
     /// </summary>
     public static IReadOnlyList<AndroidLaunchProfile> ForSystem(
         string systemId,
-        string? preferredSharedEmulatorId)
+        string? preferredSelectionId)
     {
-        var preferredAndroidId = preferredSharedEmulatorId switch
-        {
-            "retroarch" => RetroArch.Id,
-            "duckstation" => DuckStation.Id,
-            "dolphin" => Dolphin.Id,
-            "ppsspp" => Ppsspp.Id,
-            "azahar" => Azahar.Id,
-            _ => null,
-        };
-
         return All.Where(profile => profile.Supports(systemId))
-            .OrderBy(profile => string.Equals(profile.Id, preferredAndroidId, StringComparison.Ordinal) ? 0 : 1)
+            .OrderBy(profile => string.Equals(
+                profile.SelectionId,
+                preferredSelectionId,
+                StringComparison.Ordinal) ? 0 : 1)
             .ThenBy(profile => profile.Maintenance)
             .ToList();
     }
