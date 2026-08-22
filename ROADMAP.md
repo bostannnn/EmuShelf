@@ -2036,3 +2036,8 @@ breaks the whole-solution macOS build/test loop.
         rotating the 3D cover, and every stick interaction — really Milestone C), 3D shelf covers resize
         while scrolling (A2 density × shelf geometry/virtualization), plus "many others" to catalogue in the
         first pass. See the plan's "Milestone S — Stabilization passes".
+    - Landed 2026-08-22: Android now hosts the UI via `IActivityApplicationLifetime.MainViewFactory` (fresh
+      view per activity) instead of `ISingleViewApplicationLifetime.MainView`, clearing Avalonia's
+      "MainView is not fully supported on Android" warning (was 33×/day on the Thor). Verified on-device.
+      NOT fixed by this: the `OpenGlException: Window 0 is invalid` render-loop errors — a separate
+      surface-teardown race on emulator-launch backgrounding, still open (see DECISIONS 2026-08-22).
