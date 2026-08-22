@@ -24,6 +24,12 @@
             <Setter Property="Width" Value="{Binding #GamepadOverlayHost.Bounds.Width}" />
             <Setter Property="Height" Value="{Binding #GamepadOverlayHost.Bounds.Height}" />
         </Style>
+        <!-- In shelf view the platform rail sits directly over the 3D shelf's own backdrop; paint it the
+             same backdrop brush so there is no colour step (the "line") where the paler toolbar meets the
+             brighter shelf. In grid/list the toolbar keeps its own brush to separate from the content. -->
+        <Style Selector="Border.gamepad-toolbar.shelf-view">
+            <Setter Property="Background" Value="{DynamicResource EmuLibraryBrush}" />
+        </Style>
     </UserControl.Styles>
 
     <!-- The gamepad shell: the couch UI subtree (GamepadRoot) plus the CRT tube host that composites
@@ -35,8 +41,9 @@
           Classes.tube="{Binding IsShelfTubeActive}"
           IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
-        <Border Grid.Row="0" Padding="42,18,42,12" Background="{DynamicResource EmuToolbarBrush}"
-                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1">
+        <Border Grid.Row="0" Padding="42,18,42,12" Classes="gamepad-toolbar"
+                Classes.shelf-view="{Binding IsGamepadShelfView}"
+                Background="{DynamicResource EmuToolbarBrush}" BorderThickness="0">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
                 <Border Classes="gamepad-key" VerticalAlignment="Center">
                     <TextBlock Text="LB" />
@@ -801,13 +808,14 @@
                             IsVisible="{Binding !AmbientThemeFromArtwork}" />
                 </Panel>
 
-                <!-- Top margin clears the platform rail (100px) so the flat fallback's covers and the
-                     title are not drawn underneath it. The 3D scene is NOT here — it lives beside
-                     GamepadRoot at the window root, because it captures GamepadRoot into the tube and
-                     a scene inside that subtree would be photographing itself. Its camera fills only
-                     half the frame height with media, which leaves the rail's band and this title's
-                     band clear inside the glass. -->
-                <Grid RowDefinitions="*,Auto" Margin="0,128,0,40">
+                <!-- Top margin clears the platform rail. The media host fills the WHOLE area and the
+                     title/metadata is a bottom overlay on top of it, rather than a second grid row that
+                     steals height from the scene. That split made the scene taller whenever HasGames was
+                     briefly false during a platform switch (metadata collapsed) and shorter once it
+                     returned — the shared GL surface resized, rebuilt, and the media visibly "popped big
+                     then shrank" on every LB/RB. A single-cell layout keeps the scene viewport a constant
+                     size, so the media stays put and stays large. -->
+                <Grid Margin="0,112,0,0">
                     <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
                          the focused slot lands on centre; the viewport's ClipToBounds hides the off-screen
                          covers. Slots are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the
@@ -819,7 +827,10 @@
                     <!-- Responsive host for the shared scene plus its flat no-GL fallback. The star
                          row gives physical media the available couch viewport while the title keeps
                          its own automatic row. -->
-                    <Grid x:Name="GamepadShelfMediaHost" Grid.Row="0" Margin="16,8">
+                    <!-- The media host fills all the way to the bottom so the 3D shadow can extend into
+                         (and be seen behind) the title text below, rather than being clipped at a surface
+                         edge above it. The title is an overlay drawn on top of this same scene. -->
+                    <Grid x:Name="GamepadShelfMediaHost" Margin="16,4,16,0">
                     <Panel x:Name="GamepadShelfViewport" ClipToBounds="True"
                            IsVisible="{Binding !ShelfSceneSupported}"
                            SizeChanged="OnGamepadShelfViewportSizeChanged">
@@ -900,6 +911,7 @@
                                                IsActive="{Binding ShowInlineShelfScene}"
                                                IsSceneSupported="{Binding InlineSceneSupported}"
                                                Crt="{Binding InlineShelfCrt}"
+                                               FrameFillScale="{Binding ShelfFillScale}"
                                                TintBackdropWithAccent="False"
                                                Items="{Binding ShelfSceneItems}"
                                                FocusedItem="{Binding FocusedGame}"
@@ -911,12 +923,12 @@
                                                InitializationFailed="OnGamepadInlineShelfFailed" />
                     </Grid>
 
-                    <!-- Focused game's platform + title, centred beneath the shelf (the dock is hidden here). -->
-                    <StackPanel Grid.Row="1" Margin="0,22,0,0"
-                                HorizontalAlignment="Center" Spacing="6" IsVisible="{Binding HasGames}">
-                        <TextBlock Text="{Binding FocusedGame.SystemName}" HorizontalAlignment="Center"
-                                   FontSize="{DynamicResource EmuGpCaptionSize}" FontWeight="Bold" LetterSpacing="1.4"
-                                   Foreground="{DynamicResource EmuAccentBrush}" />
+                    <!-- Focused game's title + achievements, overlaid tight against the bottom of the shelf
+                         (the dock is hidden here). Bottom-aligned overlay, not a grid row, so it never
+                         resizes the scene. The platform name is dropped here — the rail already shows the
+                         active platform — which frees vertical room for the media. -->
+                    <StackPanel VerticalAlignment="Bottom" Margin="0,0,0,24"
+                                HorizontalAlignment="Center" Spacing="4" IsVisible="{Binding HasGames}">
                         <TextBlock Text="{Binding FocusedGame.DisplayTitle}" HorizontalAlignment="Center"
                                    FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
                                    MaxLines="1" TextTrimming="CharacterEllipsis" />
@@ -924,8 +936,12 @@
                              each with its unlock count. No bars — the shelf keeps the calm, so this is the
                              glyph-and-count reduction of the spotlight dock. Collapses whole for games with
                              no RetroAchievements support, so non-RA titles add no third line. -->
+                        <!-- Reserve the whisper line's height whether or not it is shown, so the title
+                             above it keeps a constant baseline as focus moves between games with and
+                             without an achievement mark. -->
+                        <Panel Height="22" Margin="0,2,0,0">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="18"
-                                    Margin="0,2,0,0" IsVisible="{Binding FocusedGame.ShowAchievementMark}">
+                                    VerticalAlignment="Center" IsVisible="{Binding FocusedGame.ShowAchievementMark}">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <PathIcon Width="14" Height="14" VerticalAlignment="Center"
                                           Data="{StaticResource AchievementTrophyGeometry}"
@@ -945,6 +961,7 @@
                                            Foreground="{DynamicResource EmuAchievementBrush}" />
                             </StackPanel>
                         </StackPanel>
+                        </Panel>
                     </StackPanel>
                 </Grid>
             </Panel>
@@ -2775,6 +2792,7 @@
                                IsSceneSupported="{Binding TubeSceneSupported}"
                                Crt="{Binding CouchCrt}"
                                ChromeSource="{Binding #GamepadRoot}"
+                               FrameFillScale="{Binding ShelfFillScale}"
                                Items="{Binding ShelfSceneItems}"
                                FocusedItem="{Binding FocusedGame}"
                                ShelfPosition="{Binding ShelfPosition}"

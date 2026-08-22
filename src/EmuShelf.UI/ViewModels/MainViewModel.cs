@@ -13,6 +13,7 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Rendering;
+using EmuShelf.App.Diagnostics;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
@@ -38,7 +39,13 @@ namespace EmuShelf.App.ViewModels;
 public partial class MainViewModel : ViewModelBase
 {
     private const int SearchDebounceMs = 250;
-    private const int ViewStateSaveDebounceMs = 500;
+    // Every platform/scope/layout/sort/column change rewrites the whole settings.json (temp-write +
+    // rename). Browsing platform-to-platform at 500 ms coalescing meant dozens of full rewrites a minute
+    // — needless flash wear on a handheld, and on Android it also fed MediaStore/FUSE scan churn. A few
+    // seconds coalesces active browsing into a handful of writes; the resting selection is what matters,
+    // and it's still captured. Nothing is lost on app close: the shell flushes any pending save on
+    // background/close (see FlushPendingLibraryViewStateSave).
+    private const int ViewStateSaveDebounceMs = 2500;
     // Fast LB/RB cycling changes the selected platform many times a second; each change used to run a
     // full clear-and-rebuild of the grid (BeginScopeChange + a fresh DB query + hundreds of new
     // GameViewModels), which is what blanked covers, dropped the selector and reset focus mid-scroll.
@@ -394,6 +401,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnGamepadLayoutChanged(GamepadLibraryLayout value)
     {
+        PerfTrace.Event($"EVENT layout->{value}");
         ScheduleLibraryViewStateSave();
         OnPropertyChanged(nameof(IsGamepadSpotlightView));
         OnPropertyChanged(nameof(IsGamepadShelfView));
@@ -909,6 +917,13 @@ public partial class MainViewModel : ViewModelBase
     public CrtPresentation InlineShelfCrt => CrtPresentation.Flat;
 
     /// <summary>
+    /// How much larger than the desktop composition the 3D shelf media is framed. The desktop couch is
+    /// tuned for the Steam Deck at 1.0; a handheld held at arm's length wants the media much larger, so
+    /// Android raises it. Kept as a single knob here so it is easy to tune.
+    /// </summary>
+    public double ShelfFillScale => OperatingSystem.IsAndroid() ? 1.5 : 1.0;
+
+    /// <summary>
     /// The games the 3D scene draws, or nothing outside the shelf layout.
     /// </summary>
     /// <remarks>
@@ -938,8 +953,28 @@ public partial class MainViewModel : ViewModelBase
     /// draws opaque over it, and the couch root's own library fill covers the bands around the media.</summary>
     public bool ShowShelfFlatBackdrop => !ShelfSceneSupported;
 
+    /// <summary>
+    /// A one-line snapshot of the couch state for the log-based perf sampler (<see cref="PerfTrace"/>):
+    /// current layout, CRT toggle, the active render path, the selected platform/scope, and the visible
+    /// library size. Read off the UI thread by the sampler, so it only performs simple property reads.
+    /// </summary>
+    public string PerfStateSnapshot =>
+        $"layout={GamepadLayout} crt={(CrtScreenEffect ? "on" : "off")} path={PerfRenderPath} " +
+        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={Games.Count}";
+
+    private string PerfRenderPath => GamepadLayout switch
+    {
+        GamepadLibraryLayout.Grid => "grid",
+        GamepadLibraryLayout.Spotlight => "spotlight",
+        GamepadLibraryLayout.Shelf => ShowInlineShelfScene ? "shelf-inline-gl"
+            : ShowCouchScene ? "shelf-tube"
+            : "shelf-flat",
+        _ => "?",
+    };
+
     partial void OnCrtScreenEffectChanged(bool value)
     {
+        PerfTrace.Event($"EVENT crt->{(value ? "on" : "off")}");
         OnPropertyChanged(nameof(CouchCrt));
         OnPropertyChanged(nameof(ShowCouchScene));
         OnPropertyChanged(nameof(ShowInlineShelfScene));
@@ -1804,6 +1839,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedSystemChanged(GameSystem? value)
     {
+        PerfTrace.Event($"EVENT platform->{value?.Name ?? "(scope)"}");
         if (value is not null)
             CurrentLibraryScope = LibraryScope.System;
         NotifyLibraryPresentationChanged();

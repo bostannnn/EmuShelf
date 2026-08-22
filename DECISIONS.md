@@ -10278,3 +10278,27 @@ per-binding reflection the rest of the shell still pays. Kept scoped rather than
 `AvaloniaUseCompiledBindingsByDefault`: many templates lack an `x:DataType`, and a blanket flip silently
 blanks their bindings and complicates trimming. Converting the remaining templates is a separate
 follow-up.
+## 2026-08-22 — Android: `.nomedia` at the data root, and view-state saved less eagerly
+
+Two fixes to the same symptom — EmuShelf's data root lives in MediaStore-scanned shared storage on
+Android (`<primary>/EmuShelf`, chosen in `AndroidDataLocationBootstrap`), so browsing produced a wall
+of MediaProvider/FUSE log churn and needless flash writes.
+
+1. **`.nomedia` marker.** `AppBootstrapper` writes an empty `.nomedia` at `Paths.BaseDirectory` on
+   Android startup (right after `EnsureDirectoriesExist`, gated on `OperatingSystem.IsAndroid()`), which
+   tells the media scanner to skip the folder and every subfolder. This stops covers leaking into the
+   system gallery and kills the `content://media` / `files._data` scan spam. It runs per data folder
+   because a fresh pick rebuilds the bootstrapper, so a folder chosen later gets the marker too. Not
+   unit-tested: it is behind a platform check that is false on the macOS test host.
+
+2. **View-state debounce 500 ms → 2500 ms, plus a no-op guard.** Every platform/scope/layout/sort/
+   column change rewrites the whole `settings.json` (temp-write + rename); at 500 ms, browsing platform
+   to platform meant dozens of full rewrites a minute. The resting selection is what matters and it is
+   still captured, and nothing is lost on close because the shell already flushes any pending save on
+   background/close (`FlushPendingLibraryViewStateSave`). `LibraryViewStateService.Save` now also skips
+   the write when the incoming state matches the last-saved one. The record's `ListColumns` is an
+   `IReadOnlyList` whose default equality is by reference, and `BuildLibraryViewState` hands over a fresh
+   list each time, so the guard normalises both lists to one shared reference for the scalar-field record
+   comparison (future-proof against added fields) and compares the columns element by element. The
+   file-split idea (volatile view-state in its own file) was rejected: the cost is write *frequency*
+   — the temp+rename syscalls — not payload size, so fewer writes is the lever, not smaller ones.

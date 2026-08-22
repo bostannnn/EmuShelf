@@ -3,9 +3,13 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Content.Res;
+using Android.OS;
 using Android.Views;
 using Avalonia.Android;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using EmuShelf.App.Android.Services;
+using EmuShelf.App.Diagnostics;
 
 namespace EmuShelf.App.Android;
 
@@ -26,6 +30,11 @@ namespace EmuShelf.App.Android;
     Theme = "@style/Theme.AppCompat.NoActionBar",
     MainLauncher = true,
     Exported = true,
+    // The couch shell is landscape-only, and the Thor's panel is natively portrait (1080x1920) —
+    // without an explicit lock, going edge-to-edge fills that portrait panel instead of the rotated
+    // landscape the handheld is used in. SensorLandscape pins landscape while still allowing a 180°
+    // flip for a clamshell held either way.
+    ScreenOrientation = ScreenOrientation.SensorLandscape,
     ConfigurationChanges = ConfigChanges.Orientation
         | ConfigChanges.ScreenSize
         | ConfigChanges.UiMode
@@ -47,10 +56,50 @@ public class MainActivity : AvaloniaMainActivity
     /// </summary>
     internal static MainActivity? Current { get; private set; }
 
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        ApplyImmersiveMode();
+    }
+
     protected override void OnResume()
     {
         base.OnResume();
         Current = this;
+    }
+
+    /// <summary>
+    /// Re-hides the system bars whenever the activity regains focus. Immersive mode is cleared by the
+    /// system after a dialog, a bar swipe, or the IME showing, so a one-shot in <see cref="OnCreate"/>
+    /// is not enough — the couch shell is a full-screen gamepad UI and the status bar and gesture-nav
+    /// pill otherwise sit in reserved bands that eat a strip of the panel and never return the space.
+    /// </summary>
+    public override void OnWindowFocusChanged(bool hasFocus)
+    {
+        base.OnWindowFocusChanged(hasFocus);
+        if (hasFocus)
+            ApplyImmersiveMode();
+    }
+
+    /// <summary>
+    /// Draws edge-to-edge and hides the status and navigation bars, leaving the transient-swipe
+    /// behaviour so the user can still reveal them. API 30+ only, which every supported device is
+    /// (the Thor is 33).
+    /// </summary>
+    private void ApplyImmersiveMode()
+    {
+        // The WindowInsetsController API is API 30+. Every supported device clears it (the Thor is 33);
+        // an older one simply keeps the system bars rather than crashing.
+        if (!OperatingSystem.IsAndroidVersionAtLeast(30) || Window is not { } window)
+            return;
+
+        window.SetDecorFitsSystemWindows(false);
+        if (window.InsetsController is { } controller)
+        {
+            controller.Hide(WindowInsets.Type.SystemBars());
+            controller.SystemBarsBehavior =
+                (int)WindowInsetsControllerBehavior.ShowTransientBarsBySwipe;
+        }
     }
 
     protected override void OnDestroy()
@@ -114,6 +163,20 @@ public class MainActivity : AvaloniaMainActivity
             return base.DispatchKeyEvent(e);
         }
 
+        // Diagnostics: L3 (left-stick click) is unmapped in the couch input map, so it drives the
+        // renderer debug-overlay cycle (off -> fps+render time -> +dirty rects -> all). This is how the
+        // fan-on-scroll cost is measured on-device — Avalonia's own render thread draws the FPS and
+        // ms/frame graphs and the dirty-rect repaint scope, at no cost when off. Works in Release too so
+        // the Debug vs Release/AOT difference can be read directly on the panel.
+        if (e.Action == KeyEventActions.Down && e.KeyCode == Keycode.ButtonThumbl)
+        {
+            var label = RenderOverlayDiagnostics.Cycle(ResolveTopLevel());
+            // A one-line trace so the current mode is confirmable over adb logcat without watching the panel.
+            // Same tag as the perf sampler so a single `logcat -s EmuShelfPerf` sees the whole diagnostic.
+            global::Android.Util.Log.Info("EmuShelfPerf", $"Render overlays: {label ?? "(no top level)"}");
+            return true;
+        }
+
         if (e.Action == KeyEventActions.Down &&
             AndroidGamepadInput.Map(e.KeyCode) is { } action &&
             AndroidGamepadInput.Dispatch?.Invoke(action) == true)
@@ -123,6 +186,13 @@ public class MainActivity : AvaloniaMainActivity
 
         return base.DispatchKeyEvent(e);
     }
+
+    // The single-view head's live top level, reached through the app lifetime's MainView — the same
+    // route onboarding uses. Null before the view is shown.
+    private static TopLevel? ResolveTopLevel() =>
+        (global::Avalonia.Application.Current?.ApplicationLifetime as ISingleViewApplicationLifetime)?.MainView is { } view
+            ? TopLevel.GetTopLevel(view)
+            : null;
 
     /// <summary>
     /// The head's analog-stick surface. Joystick stick movement arrives as generic <see cref="MotionEvent"/>s

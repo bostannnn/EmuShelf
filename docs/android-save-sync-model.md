@@ -217,7 +217,7 @@ the RetroArch systems await a device rebuild.
 | PS2 | ARMSX2 | 🟡 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/ARMSX2/` (readable, `PCSX2-Android.ini` + `memcards/`). `mcd002.ps2` uploads; see the two PS2 notes below (card-name/slot alignment, and the single-file re-upload cost) |
 | PSP | PPSSPP | 🟢 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/ppsspp/` (has `PSP/SAVEDATA`); on-device round-trip pending a play test |
 | 3DS | Azahar | 🟢 **Wired (Save folder set on Thor)** | override → `/storage/emulated/0/User/Azahar/` (has `sdmc`); on-device round-trip pending a play test |
-| Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | ⬜ **Not wired — fix landed, needs device rebuild** | see RetroArch note below |
+| Mega Drive / SNES / NDS / GBA / GBC / NES / Dreamcast / Arcade | RetroArch (+ melonDS for DS) | 🟡 **Fix shipped in signed v1.5.8 — on-device play-test pending** | see RetroArch note below |
 | PS3 | RPCS3 | ❌ **Not syncable** | no Android emulator exists — cloud keeps `playstation3/…`, desktop-only |
 
 The PS2/PSP/3DS overrides were written directly into the Thor's `settings.json` over ADB (their
@@ -241,9 +241,10 @@ mode is unverified) — the SAF `ILocalSaveEndpoint` the plan deferred. Tracked 
 *via EmuShelf* wasn't loading its config, so it wrote saves next to the ROM
 (`/storage/…/roms/<system>/<core>/<game>.srm`, e.g. `roms/gbc/mGBA/Metal Gear Solid (USA).srm`) instead
 of a stable `saves/` tree. Fixed in **PR #171 (`Android: send RetroArch CONFIGFILE so user settings
-load`), merged to main** — but the Thor still runs the pre-#171 build. **Sequence:** rebuild+install the
-Android head with #171 → confirm RetroArch writes each system's saves to one predictable folder → set that
-folder per system in the gamepad Saves UI → verify the sync.
+load`), merged to main and now shipping in the release-signed v1.5.8 APK** (main CI green as of
+2026-08-22; the #168 import tests that had blocked a signed build now pass). **Remaining sequence, purely
+on-device:** install v1.5.8 → confirm RetroArch writes each system's saves to one predictable folder → set
+that folder per system in the gamepad Saves UI → verify the sync.
 
 **PS2 restore is gated by the emulator's slot filename, not the file on disk.** The Pcsx2 provider
 resolves a card by the enabled `SlotN_Filename` in `PCSX2-Android.ini`, so a cloud card downloads only
@@ -266,14 +267,13 @@ choice; mitigations are a standard **8 MB** card (4× smaller, keeps interop) or
 per-game deltas, but they do not cross-sync with a desktop single-file card). Recorded so it is a known
 tradeoff, not a surprise.
 
-**Getting a new build onto the Thor.** The device runs a **CI release-signed** APK (versionCode 628,
-in-place upgradeable). A local dev build is versionCode 2 and signed with a different key, so it can only
-be installed by **uninstalling first** (resets onboarding; app data under `/storage/emulated/0/User/
-EmuShelf` survives). The clean path is a green CI main build (release-signed, higher versionCode) →
-`adb install -r`. **Blocker (2026-08-21): main CI is red** — the #171 merge build failed on unrelated
-#168 import tests (`GameBoyAdvanceFolderImport…` / `NintendoDsFolderImport…`, `Assert.Single()` empty),
-so no post-#171 signed artifact exists yet. Fix main CI (or accept a supervised local reinstall) to ship
-#171 — the prerequisite for the RetroArch systems.
+**Getting a new build onto the Thor.** The device runs a **CI release-signed** APK, in-place upgradeable.
+A local dev build is versionCode 2 and signed with a different key, so it can only be installed by
+**uninstalling first** (resets onboarding; app data under `/storage/emulated/0/User/EmuShelf` survives).
+The clean path is a green CI main build (release-signed, higher versionCode) → `adb install -r`.
+**Unblocked (2026-08-22): main CI is green** — the #168 import tests (`GameBoyAdvanceFolderImport…` /
+`NintendoDsFolderImport…`) now pass, and the **release-signed v1.5.8 APK carries #171**. Install v1.5.8 to
+pick up the RetroArch config fix.
 
 ## Implementation sequence (slices)
 

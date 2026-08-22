@@ -58,6 +58,13 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // (TcpLoopbackOAuthRedirectHandler) the transport binds.
         global::EmuShelf.App.App.ExternalUriOpener = OpenExternalUri;
 
+        // Log-based performance tracing for the fan-on-scroll diagnosis. Routes PerfTrace to logcat (tag
+        // EmuShelfPerf) and starts the once-a-second sampler now; the shell fills in the state provider once
+        // the couch view model exists. Runs in Release too — the whole point is to read it off a real build.
+        global::EmuShelf.App.Diagnostics.PerfTrace.Sink =
+            message => global::Android.Util.Log.Info("EmuShelfPerf", message);
+        global::EmuShelf.App.Diagnostics.PerfTrace.StartSampling();
+
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()
             // Pin EGL explicitly. The default [Egl, Software] list lets a failed EGL init fall back to
