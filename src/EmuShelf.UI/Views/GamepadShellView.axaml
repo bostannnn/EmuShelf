@@ -157,7 +157,11 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:GameViewModel">
+                            <!-- CompileBindings on: this tile is recycled as rows virtualize in and out
+                                 during a scroll, so its dozen bindings re-evaluate constantly. Compiled
+                                 against the already-declared GameViewModel they skip the per-binding
+                                 reflection the rest of the shell still pays. -->
+                            <DataTemplate x:DataType="vm:GameViewModel" x:CompileBindings="True">
                         <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
                                 Classes.unavailable="{Binding !IsAvailable}"
                                 Theme="{StaticResource GamepadGameButtonTheme}"
@@ -845,7 +849,10 @@
                                 </ItemsPanelTemplate>
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate x:DataType="vm:GameViewModel">
+                                <!-- CompileBindings on: the shelf strip re-templates its focused item and
+                                     neighbours every glide frame; compiling these bindings against the
+                                     declared GameViewModel drops the reflection cost from that hot path. -->
+                                <DataTemplate x:DataType="vm:GameViewModel" x:CompileBindings="True">
                                     <!-- Uniform-width slot; the cover is centred inside and scales with
                                          focus. Width MUST match MainWindow.ShelfSlotWidth (410). -->
                                     <Panel Classes="shelf-media" Classes.focused="{Binding IsFocused}"

@@ -1192,8 +1192,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
-        // folder too, and so the two surfaces' general.* field sets stay in parity.
-        if (_settings.HasDataDirectory)
+        // folder too, and so the two surfaces' general.* field sets stay in parity. Skipped where no
+        // OS file manager can open the path (Android), so the row never offers a button that only fails.
+        if (_settings.HasDataDirectory && _settings.CanRevealFiles)
         {
             yield return ActionRow(
                 "general.open-data-folder",
@@ -1723,10 +1724,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.ExportDeviceAndCloudSavesCommand,
             _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null));
 
-        if (_settings.HasSyncLog)
+        if (_settings.HasSyncLog && _settings.CanRevealFiles)
         {
             // Actionable (opens the log in the OS viewer) rather than a dead read-only row where A
             // did nothing. Desktop exposes this as a hyperlink, so it is excluded from field parity.
+            // Skipped on Android, where there is no OS viewer to hand the log path to.
             yield return ActionRow(
                 "saves.log",
                 "Open sync activity log",
