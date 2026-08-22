@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -238,6 +239,7 @@ public class GamepadGridSelectorTests
             for (var i = 0; i < 6; i++)
             {
                 viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             }
             await Pump();
@@ -502,6 +504,7 @@ public class GamepadGridSelectorTests
             for (var i = 0; i < 24; i++)
             {
                 viewModel.DispatchGamepadAction(GamepadAction.NavigateDown);
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             }
             await SettleScroll(window);
@@ -539,6 +542,9 @@ public class GamepadGridSelectorTests
         var last = double.NaN;
         for (var i = 0; i < 60; i++)
         {
+            // The glide now advances once per RENDERED frame (TopLevel.RequestAnimationFrame), not once
+            // per Dispatcher Render job, so drive a real compositor frame before flushing the reveal posts.
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
             var y = scroller.Offset.Y;
@@ -595,6 +601,9 @@ public class GamepadGridSelectorTests
         // than Render in Avalonia, so a Render-only pump would leave the ring update pending.
         for (var i = 0; i < 8; i++)
         {
+            // Drive a real compositor frame so any in-flight RequestAnimationFrame scroll glide advances,
+            // then flush the reveal posts (Input/Loaded, lower than Render) that reposition the ring.
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Input);

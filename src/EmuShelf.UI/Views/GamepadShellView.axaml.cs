@@ -60,12 +60,22 @@ public partial class GamepadShellView : UserControl
     // glides continuously under the stationary centred selector; a scope switch / resize / far jump
     // still lands immediately. The target offset is measured ONCE per move from the realized row
     // (position-relative — never an absolute rowIndex*rowHeight, which desynced the panel's estimated
-    // extent; see DECISIONS 2026-08-05), then the loop eases toward that fixed _gamepadScrollTarget with
+    // extent; see DECISIONS 2026-08-05), then the glide eases toward that fixed _gamepadScrollTarget with
     // pure arithmetic and no per-frame visual-tree reads (which re-enter layout and stack-overflow the
-    // panel on short-cover rows). A held d-pad just retargets the one running loop.
+    // panel on short-cover rows). A held d-pad just retargets the one running glide. The glide is ticked by
+    // the compositor's own per-frame callback (TopLevel.RequestAnimationFrame), NOT a self-reposted
+    // Dispatcher job — on Android's compositor consecutive Render-priority posts drained within a single
+    // paint, so every ease step ran before one frame was shown and each row landed as a hard snap; see
+    // DECISIONS 2026-08-23.
     private bool _gamepadScrollAnimating;
     private int _gamepadScrollGeneration;
     private double _gamepadScrollTarget;
+    // Timestamp of the previous glide frame, so the ease can scale by the real time between vsync
+    // callbacks (frame-rate independent). Null on the first frame of a glide and whenever it settles.
+    private TimeSpan? _gamepadScrollLastFrameTime;
+    // The per-frame RAF callback, built once per glide (it captures that glide's generation), so a held
+    // d-pad's continuous glide reuses one delegate and allocates nothing further on the scroll hot path.
+    private Action<TimeSpan>? _gamepadScrollFrameCallback;
     private int? _lastRevealedRowIndex;
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -263,10 +273,11 @@ public partial class GamepadShellView : UserControl
         Dispatcher.UIThread.Post(RevealGamepadOverlayFocus, DispatcherPriority.Input);
     }
 
-    // Fraction of the remaining distance the glide closes each frame. Tuned so a held d-pad (~one row
-    // every 110ms) reads as one continuous scroll rather than a stack of per-row snaps, while still
-    // settling within a few frames once the direction is released.
-    private const double GamepadScrollSmoothing = 0.28;
+    // Rate the glide closes the remaining distance, per SECOND. Frame-rate independent: the per-frame
+    // fraction is derived from the real delta between vsync callbacks, so the feel is identical at 60 or
+    // 120 Hz. ~19/s reproduces the old hand-tuned 0.28-per-frame feel at 60 Hz — a held d-pad (~one row
+    // every 110ms) reads as one continuous scroll, and it settles within a few frames once released.
+    private const double GamepadScrollDecayPerSecond = 19.0;
     // Within this many pixels of centre the glide lands exactly and stops reposting, so an idle grid
     // burns no CPU.
     private const double GamepadScrollSettleThreshold = 0.5;
@@ -475,8 +486,13 @@ public partial class GamepadShellView : UserControl
             return; // the running loop chases the updated target — never start a second one
 
         _gamepadScrollAnimating = true;
+        _gamepadScrollLastFrameTime = null;
+        // Build the per-frame callback ONCE for this glide: it captures this generation, so a stale
+        // in-flight frame from a superseded glide still no-ops (generation guard), while every subsequent
+        // frame of a held d-pad's glide reuses the same delegate instead of allocating a new closure.
         var generation = ++_gamepadScrollGeneration;
-        Dispatcher.UIThread.Post(() => StepGamepadScroll(generation), DispatcherPriority.Render);
+        _gamepadScrollFrameCallback = now => StepGamepadScroll(generation, now);
+        RequestGamepadScrollFrame();
     }
 
     // Stop the glide: bumping the generation makes any queued step no-op, and clearing the flag lets the
@@ -485,13 +501,41 @@ public partial class GamepadShellView : UserControl
     {
         _gamepadScrollAnimating = false;
         _gamepadScrollGeneration++;
+        _gamepadScrollLastFrameTime = null;
+        _gamepadScrollFrameCallback = null;
     }
 
-    // One glide frame: step the offset a fraction of the remaining distance to the FIXED target. Pure
-    // offset arithmetic — it never reads the visual tree (no TranslatePoint/Bounds), so it cannot trigger
-    // the re-entrant layout that stack-overflows the virtualizing panel on short rows. Reposts itself at
-    // Render priority until it settles or the ScrollViewer clamps it at a list end.
-    private void StepGamepadScroll(int generation)
+    // Drive the glide from the compositor's own per-frame callback rather than a self-reposted Dispatcher
+    // job. TopLevel.RequestAnimationFrame fires once immediately before each rendered frame, so the offset
+    // advances in lock-step with vsync — the continuous-offset model a Flutter/canvas grid uses. A
+    // Render-priority Dispatcher repost does NOT guarantee one tick per painted frame on Android's
+    // compositor, so intermediate offsets were never shown and each row landed as a hard snap ("rows jump
+    // up and down"). Frames are requested only while a glide is in flight and stop on settle, so an idle
+    // grid still forces no frames.
+    private void RequestGamepadScrollFrame()
+    {
+        if (_gamepadScrollFrameCallback is not { } callback)
+            return;
+
+        if (TopLevel.GetTopLevel(this) is not { } topLevel)
+        {
+            // No hosting compositor to tick us (detached mid-glide): land on the target at once so focus is
+            // never left off-centre, then stop.
+            if (_gamepadScroller is { } scroller && scroller.IsAttachedToVisualTree())
+                scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
+            CancelGamepadScroll();
+            return;
+        }
+
+        topLevel.RequestAnimationFrame(callback);
+    }
+
+    // One glide frame: step the offset a time-scaled fraction of the remaining distance to the FIXED
+    // target. Pure offset arithmetic — it never reads the visual tree (no TranslatePoint/Bounds), so it
+    // cannot trigger the re-entrant layout that stack-overflows the virtualizing panel on short rows. Runs
+    // from RequestAnimationFrame and re-requests the next frame until it settles or the ScrollViewer clamps
+    // it at a list end.
+    private void StepGamepadScroll(int generation, TimeSpan now)
     {
         if (generation != _gamepadScrollGeneration || !_gamepadScrollAnimating)
             return;
@@ -506,30 +550,43 @@ public partial class GamepadShellView : UserControl
         var delta = _gamepadScrollTarget - current;
         if (Math.Abs(delta) < GamepadScrollSettleThreshold)
         {
-            scroller.Offset = scroller.Offset.WithY(_gamepadScrollTarget);
+            scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
             CancelGamepadScroll();
             return;
         }
 
-        var step = delta * GamepadScrollSmoothing;
-        // Never crawl sub-pixel: guarantee at least a whole pixel of travel so a long tail can't stall,
-        // and never overshoot the target.
-        if (Math.Abs(step) < 1)
-            step = Math.Sign(delta);
-        var next = current + step;
-        if ((delta > 0 && next > _gamepadScrollTarget) || (delta < 0 && next < _gamepadScrollTarget))
-            next = _gamepadScrollTarget;
-
-        scroller.Offset = scroller.Offset.WithY(Math.Max(0, next));
-        // No usable movement means the offset is clamped at a list end (the target row can't be centred).
-        // Stop rather than repost forever against the clamp.
-        if (Math.Abs(scroller.Offset.Y - current) < 0.5)
+        // The first frame has no prior timestamp: record the clock and wait one frame so the ease has a
+        // real delta to scale by. Every later frame closes GamepadScrollDecayPerSecond of the remaining
+        // distance per second, so the glide feels identical regardless of the refresh rate.
+        if (_gamepadScrollLastFrameTime is { } last)
         {
-            CancelGamepadScroll();
-            return;
+            // Clamp dt so a stall (backgrounded, GC pause) can't teleport the offset in one giant jump.
+            // A non-advancing frame clock (some headless harnesses) reports dt <= 0; treat it as one 60 Hz
+            // frame so the glide still progresses instead of stalling on the sub-pixel floor.
+            // Cap at ~2 frames (33 ms) rather than 50 ms so that catching up after a stall (e.g. the heavy
+            // row-realization frame) is a gentle step, not a single large lurch that reads as its own jump.
+            var dt = (now - last).TotalSeconds;
+            dt = dt <= 0 ? 1.0 / 60.0 : Math.Min(dt, 1.0 / 30.0);
+            var step = delta * (1 - Math.Exp(-GamepadScrollDecayPerSecond * dt));
+            // Never crawl sub-pixel (a long tail can't stall) and never overshoot the target.
+            if (Math.Abs(step) < 1)
+                step = Math.Sign(delta);
+            var next = current + step;
+            if ((delta > 0 && next > _gamepadScrollTarget) || (delta < 0 && next < _gamepadScrollTarget))
+                next = _gamepadScrollTarget;
+
+            scroller.Offset = scroller.Offset.WithY(Math.Max(0, next));
+            // No usable movement means the offset is clamped at a list end (the target row can't be
+            // centred). Stop rather than re-request forever against the clamp.
+            if (Math.Abs(scroller.Offset.Y - current) < 0.5)
+            {
+                CancelGamepadScroll();
+                return;
+            }
         }
 
-        Dispatcher.UIThread.Post(() => StepGamepadScroll(generation), DispatcherPriority.Render);
+        _gamepadScrollLastFrameTime = now;
+        RequestGamepadScrollFrame();
     }
 
     // Cache the grid's ScrollViewer; it is stable once the ListBox realizes, but re-resolve if the
