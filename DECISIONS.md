@@ -10173,3 +10173,27 @@ set the NDS Save folder override to WatermelonDS's directory (e.g. the Thor's
 `/storage/emulated/0/User/Watermelon-DS/`) and DS saves round-trip under `nds/<game>.srm` — the same
 system key any DS emulator emits. Save-state sync for such a coreless override stays unsupported (the
 config-derived state path still needs a core); battery saves are the wired case.
+
+## 2026-08-21 — PS1 cross-emulator save sync: DuckStation ⇄ Beetle PSX via one card key
+
+DuckStation (desktop) and a RetroArch PS1 core (Beetle PSX, Android) write the *same* raw 128 KB PS1
+memory card, but keyed it differently — DuckStation `playstation/per-game/<scheme>/<name>_<slot>.mcd`,
+RetroArch `playstation/<name>.srm` — so a card never round-tripped between them even though the payload
+is interchangeable. This is the config-alignment case the model always described, resolved by keying,
+not by a converter (no bytes are transformed).
+
+For PlayStation only, `RetroArchSaveLocationProvider` now emits DuckStation's **file-title** per-game
+card key: `playstation/per-game/file-title/<base>_1.mcd` (from the core's `<base>.srm`), and resolves it
+back onto the core's card file — an existing card under whatever extension it has, or a fresh restore as
+`<base>.srm`. DuckStation is left entirely unchanged (no migration, no risk to DuckStation↔DuckStation),
+because it already emits exactly that key for a file-title slot-1 card. `ResolveAndroidEmulator` also now
+routes PlayStation to the RetroArch provider when the configured emulator is `retroarch`, so Beetle PSX
+on Android gets a provider at all (PS1 was previously hardcoded to DuckStation, whose newer Android cards
+are unreadable 0600).
+
+**Setup-checklist requirements** (verified, not assumed): desktop DuckStation must use *Separate Card
+Per Game (File Title)*, **slot 1**; ROM file names must match on both machines; Beetle PSX writes
+`<rom>.srm` into RetroArch's save folder (the assumed extension — to confirm against the Thor's Beetle
+build). Other card schemes (title = DuckStation's DB title; serial) do not bridge, by design. No
+migration is written: pre-existing RetroArch-PS1 `.srm` cloud keys (unlikely — PS1-via-RetroArch was
+blocked on Android) stay in the cloud untouched under sync-never-deletes rather than being re-keyed.

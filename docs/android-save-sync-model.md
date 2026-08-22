@@ -57,7 +57,8 @@ checklist** enforces the matching on-disk format. No converter is written.
 | System | Desktop | Android | Cloud key | Config the checklist must enforce |
 |---|---|---|---|---|
 | PS2 | PCSX2 | ARMSX2 | `playstation2/` | Single-file `.ps2` memory card, matching filename (the `.ps2` card is "the universal currency" across PCSX2/AetherSX2/NetherSX2/ARMSX2). PCSX2 *folder* cards do **not** sync — the user must use a file card on both. |
-| DS | RetroArch (melonDS core) | WatermelonDS | `nds/` | WatermelonDS's *"use `.srm` not `.sav`"* toggle on, so the on-disk filename matches what the RetroArch provider syncs. |
+| DS | RetroArch (melonDS core) | WatermelonDS | `nds/` | WatermelonDS's *"use `.srm` not `.sav`"* toggle on, so the on-disk filename matches what the RetroArch provider syncs. Point the DS Save folder at WatermelonDS's directory; the RetroArch provider resolves an exact-folder override with no libretro core. |
+| PS1 | DuckStation | Beetle PSX (RetroArch) | `playstation/per-game/file-title/<name>_1.mcd` | DuckStation set to **Separate Card Per Game (File Title), slot 1** (its DB-title and serial schemes do *not* bridge); matching ROM file names on both. Same raw 128 KB card — the RetroArch PS1 provider emits DuckStation's file-title card key and lands a restore on Beetle's `<rom>.srm`. Not a converter; only the key/name is aligned. |
 
 The desktop and Android providers for these systems are already the same class (ARMSX2 reuses
 `Pcsx2SaveLocationProvider`, WatermelonDS reuses `RetroArchSaveLocationProvider`), so their `localId`

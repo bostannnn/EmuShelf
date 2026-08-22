@@ -138,6 +138,40 @@ public class SaveProviderRegistryTests
     }
 
     [Fact]
+    public void AndroidPlayStation_DefaultsToDuckStationButHonorsAConfiguredRetroArchCore()
+    {
+        // Default (no RetroArch configured) → DuckStation's package files root.
+        var duckStation = AppBootstrapper.ResolveAndroidEmulator(
+            "playstation",
+            new EmulatorConfiguration("playstation", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = "duckstation",
+            });
+        Assert.Equal("duckstation", duckStation!.EmulatorId);
+        Assert.Equal(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
+            duckStation.Directory);
+
+        // Configured for a RetroArch PS1 core (Beetle PSX) → routes to the RetroArch package root with
+        // the core carried, so PS1 saves sync through the readable RetroArch provider.
+        const string beetle = "/data/data/com.retroarch.aarch64/cores/mednafen_psx_hw_libretro_android.so";
+        var beetlePsx = AppBootstrapper.ResolveAndroidEmulator(
+            "playstation",
+            new EmulatorConfiguration("playstation", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = "retroarch",
+                CorePath = beetle,
+            });
+        Assert.Equal("retroarch", beetlePsx!.EmulatorId);
+        Assert.Equal(beetle, beetlePsx.CorePath);
+        Assert.Equal(
+            AndroidExternalStorageUri.ExternalAppFilesDirectory(
+                AndroidEmulatorLaunchProfiles.RetroArch.PackageName),
+            beetlePsx.Directory);
+    }
+
+    [Fact]
     public void AndroidRetroArchSystem_WithNoConfiguredEmulator_StaysNull()
     {
         // A RetroArch-served system whose emulator is not configured (or is a non-RetroArch emulator)

@@ -168,6 +168,21 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 {
     private const string ConfigFileName = "retroarch.cfg";
 
+    // PlayStation battery saves cross emulator: DuckStation and a RetroArch PS1 core (Beetle PSX) both
+    // write the same raw 128 KB memory card, so for PlayStation this provider mirrors DuckStation's
+    // "file-title" per-game card cloud key — playstation/per-game/file-title/<name>_1.mcd — instead of
+    // the bare "<system>/<file>.srm" every other system uses. Both emulators then key one game to one
+    // cloud entry and a card round-trips desktop DuckStation ↔ Android Beetle. Requires DuckStation
+    // "Separate Card Per Game (File Title)" and matching ROM file names on each machine (a setup-
+    // checklist item, not a converter — the payload is identical). See docs/android-save-sync-model.md.
+    private const string PlayStationSystemId = "playstation";
+    private const string PlayStationCardKeyPrefix = "per-game/file-title/";
+    private const string PlayStationCardKeySuffix = "_1.mcd";
+    // The extension a RetroArch PS1 core writes its card with; a fresh restore lands here so the core
+    // picks the card up. An existing card is read under whatever name it already has (see the probe).
+    private const string PlayStationCardExtension = ".srm";
+    private static readonly string[] PlayStationCardExtensions = [".srm", ".mcr", ".mcd", ".bin", ".ps"];
+
     // RetroArch's own artifacts in a save folder: save states (Game.state, .state1, .state.auto),
     // input replays, screenshots, and configuration. Everything else named after a game is that
     // game's data, whichever core wrote it.
@@ -280,8 +295,23 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
             return null;
 
-        var fileName = unitId[UnitIdPrefix.Length..];
+        var localId = unitId[UnitIdPrefix.Length..];
         var info = Resolve(CancellationToken.None);
+        string fileName;
+        if (IsPlayStation)
+        {
+            // Land the shared PS1 card key on this core's own card file: read the existing card
+            // whatever its extension, and for a fresh restore create the core's default <base>.srm.
+            if (PlayStationCardBaseName(localId) is not { } baseName)
+                return null;
+            fileName = FindExistingPlayStationCard(info.SaveDirectory, baseName)
+                ?? baseName + PlayStationCardExtension;
+        }
+        else
+        {
+            fileName = localId;
+        }
+
         if (!IsSafeSaveFileName(fileName) || !BelongsToThisSystem(fileName, info))
             return null;
 
@@ -289,6 +319,42 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             Path.Combine(info.SaveDirectory, fileName),
             info.SaveDirectory,
             SaveUnitKind.File);
+    }
+
+    private bool IsPlayStation => string.Equals(_systemId, PlayStationSystemId, StringComparison.Ordinal);
+
+    // The shared cross-emulator card key portion for a local PS1 save file (<base>.<ext>): mirrors the
+    // key DuckStation emits for a file-title per-game card, so the two emulators meet at one cloud entry.
+    private static string PlayStationCardLocalId(string fileName) =>
+        PlayStationCardKeyPrefix + Path.GetFileNameWithoutExtension(fileName) + PlayStationCardKeySuffix;
+
+    // The base game name inside such a key, or null when the id is not a PS1 card key.
+    private static string? PlayStationCardBaseName(string localId)
+    {
+        if (!localId.StartsWith(PlayStationCardKeyPrefix, StringComparison.Ordinal) ||
+            !localId.EndsWith(PlayStationCardKeySuffix, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var baseName = localId[PlayStationCardKeyPrefix.Length..^PlayStationCardKeySuffix.Length];
+        return baseName.Length == 0 || baseName.Contains('/') || baseName.Contains('\\') || baseName.Contains('\0')
+            ? null
+            : baseName;
+    }
+
+    // A card already on disk for this game keeps its own name (the core may write .srm or .mcr); only a
+    // fresh restore falls back to the default extension. Returns the file name, or null when none exists.
+    private static string? FindExistingPlayStationCard(string saveDirectory, string baseName)
+    {
+        foreach (var extension in PlayStationCardExtensions)
+        {
+            var candidate = baseName + extension;
+            if (File.Exists(Path.Combine(saveDirectory, candidate)))
+                return candidate;
+        }
+
+        return null;
     }
 
     private IReadOnlyList<SaveUnit> GetSaveUnits(CancellationToken cancellationToken)
@@ -304,7 +370,10 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             cancellationToken.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(path);
             if (IsSafeSaveFileName(fileName) && BelongsToThisSystem(fileName, info))
-                units.Add(new SaveUnit(UnitIdPrefix + fileName, fileName, SaveUnitKind.File));
+            {
+                var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
+                units.Add(new SaveUnit(UnitIdPrefix + localId, fileName, SaveUnitKind.File));
+            }
         }
 
         return units;

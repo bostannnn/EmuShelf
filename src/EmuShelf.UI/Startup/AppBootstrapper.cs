@@ -278,6 +278,13 @@ public sealed class AppBootstrapper
         string systemId,
         EmulatorConfiguration? configuration) => systemId switch
     {
+        // PS1 defaults to DuckStation on Android, but honors a configured RetroArch PS1 core (Beetle
+        // PSX) so its saves route through the RetroArch provider instead — which is the only way to sync
+        // PS1 on Android at all, since DuckStation's own newer cards are owner-only (0600) and
+        // unreadable (see docs/android-save-sync-model.md). Both keep the same file-title card key, so a
+        // card round-trips with a desktop DuckStation file-title card.
+        "playstation" when string.Equals(configuration?.EmulatorId, "retroarch", StringComparison.Ordinal)
+            => ResolveAndroidRetroArch(configuration),
         "playstation" => new SaveEmulatorInstallation(
             AndroidExternalStorageUri.ExternalAppFilesDirectory(
                 AndroidEmulatorLaunchProfiles.DuckStation.PackageName),
