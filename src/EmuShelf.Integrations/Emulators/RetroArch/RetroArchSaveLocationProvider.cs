@@ -346,6 +346,11 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             : baseName;
     }
 
+    // Whether a file in the PS1 save folder is an actual raw memory card (vs a core companion like
+    // Beetle's ".ldci" disc-control index), so only real cards are claimed and keyed.
+    private static bool IsPlayStationCardFile(string fileName) =>
+        PlayStationCardExtensions.Contains(Path.GetExtension(fileName), StringComparer.OrdinalIgnoreCase);
+
     // A card already on disk for this game keeps its own name (the core may write .srm or .mcr); only a
     // fresh restore falls back to the default extension. Returns the file name, or null when none exists.
     private static string? FindExistingPlayStationCard(string saveDirectory, string baseName)
@@ -372,11 +377,19 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
         {
             cancellationToken.ThrowIfCancellationRequested();
             var fileName = Path.GetFileName(path);
-            if (IsSafeSaveFileName(fileName) && BelongsToThisSystem(fileName, info))
-            {
-                var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
-                units.Add(new SaveUnit(UnitIdPrefix + localId, fileName, SaveUnitKind.File));
-            }
+            if (!IsSafeSaveFileName(fileName) || !BelongsToThisSystem(fileName, info))
+                continue;
+
+            // On PlayStation only the raw memory card is battery data; a PS1 core may drop a companion
+            // beside it — Beetle PSX writes a small ".ldci" disc-control index next to each multi-disc
+            // game's ".srm" — that shares the game's base name. Left in, it collapses onto the same
+            // file-title card key as the card and the whole PlayStation sync throws
+            // (Argument_AddingDuplicateWithKey). Claim only real memory-card files there.
+            if (IsPlayStation && !IsPlayStationCardFile(fileName))
+                continue;
+
+            var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
+            units.Add(new SaveUnit(UnitIdPrefix + localId, fileName, SaveUnitKind.File));
         }
 
         return units;

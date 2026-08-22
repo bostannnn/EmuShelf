@@ -181,6 +181,25 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public async Task PlayStationCard_IgnoresBeetlesDiscControlCompanionFile()
+    {
+        // Beetle PSX writes a small ".ldci" disc-control index beside a multi-disc game's ".srm". Both
+        // share the game's base name; if the provider claimed both they collapse onto one file-title
+        // card key and the whole PlayStation sync throws Argument_AddingDuplicateWithKey (seen on the
+        // Thor for "Metal Gear Solid (USA) (Rev 1)"). Only the real card must be claimed.
+        var folder = Path.Combine(BaseDirectory, "Beetle-multidisc");
+        Directory.CreateDirectory(folder);
+        await File.WriteAllTextAsync(Path.Combine(folder, "Metal Gear Solid (USA) (Rev 1).srm"), "ps1 card");
+        await File.WriteAllTextAsync(Path.Combine(folder, "Metal Gear Solid (USA) (Rev 1).ldci"), "disc index");
+
+        var units = await CreatePlayStationBeetleProvider(folder).GetSaveUnitsAsync();
+
+        Assert.Equal(
+            ["playstation/per-game/file-title/Metal Gear Solid (USA) (Rev 1)_1.mcd"],
+            units.Select(unit => unit.UnitId));
+    }
+
+    [Fact]
     public void PlayStationCardKey_FreshRestoreLandsOnTheCoresDefaultSrm()
     {
         // Pulling a desktop DuckStation card onto a Thor that has never made this card: the key must
