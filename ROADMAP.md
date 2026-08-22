@@ -2028,6 +2028,21 @@ breaks the whole-solution macOS build/test loop.
   - [ ] **C — controller + IME** (native analog-stick reading — the sticks do nothing today — + IME),
         **E-android** save providers/transport, **E-desktop** (one real Google sign-in). Land these to a
         working core, then:
+  - [ ] **SS — second screen (Thor dual-screen companion)**. Decided 2026-08-22 (was parked as "revisit
+        as its own item" in 0b): use the Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080,
+        `FLAG_PRESENTATION`) as a companion surface while EmuShelf is the active frontend — an app dock,
+        an all-apps drawer, a RetroAchievements panel, and a dimmed game-logo idle while a game plays on
+        the main screen. Native C# Android Views inside an `Android.App.Presentation`, reading the shared
+        Core services in-process (no second Avalonia surface, no new RA path). Owner calls: active
+        **whenever EmuShelf is open**; dock/drawer-launched apps open **on Screen-2**; achievements show
+        the **running-or-selected game, cache-first, pull only on the icon press**. Steps: **SS0** —
+        gating spike (does the Presentation survive an emulator taking the main screen; must AYN's
+        `com.odin.dualscreen.assistant` be dismissed to own Screen-2; keep-alive mechanism) → **SS1**
+        `SecondScreenController` host → **SS2** bottom bar (drawer/achievements icons + 5-slot dock) →
+        **SS3** app drawer (manifest `<intent>` LAUNCHER query, launch on Screen-2) → **SS4** dock
+        pinning (portable `Settings/second-screen-dock.json`, Core-tested) → **SS5** achievements panel
+        (reuse `IRetroAchievementsDetailsService` + 5-min staleness gate) → **SS6** dim+logo idle
+        (touch-to-wake). Full detail in the plan's "Milestone SS".
   - [ ] **S — stabilization passes (features first, then iterate until solid)**. Owner strategy
         (2026-08-20): the lettered milestones build features, each verified narrowly; they do not produce a
         polished build. After the core imports/launches/returns/syncs end to end, switch to **repeated

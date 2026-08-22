@@ -10337,6 +10337,47 @@ of MediaProvider/FUSE log churn and needless flash writes.
    file-split idea (volatile view-state in its own file) was rejected: the cost is write *frequency*
    — the temp+rename syscalls — not payload size, so fewer writes is the lever, not smaller ones.
 
+## 2026-08-22 — Android second screen: companion surface, built in native Android Views
+
+The Thor's bottom `Presentation` panel (`displayId=4`, 1240×1080, `FLAG_PRESENTATION`, measured in
+port-plan 0b) was left as an open product choice. Decided: EmuShelf takes it over while it is the
+active frontend and makes it a **companion surface** — an app dock, an all-apps drawer, a
+RetroAchievements panel, and a dimmed game-logo idle while a game plays on the main screen. Scoped as
+Milestone SS in [docs/android-port-plan.md](docs/android-port-plan.md) and [ROADMAP.md](ROADMAP.md).
+
+Owner product calls: active **whenever EmuShelf is open** (not in-game only); dock/drawer-launched apps
+open **on Screen-2** beside the running game (`ActivityOptions.setLaunchDisplayId`); the achievements
+panel shows the **running game, else the currently-selected game**, cache-first and refreshed **only on
+the icon press** (gated by the shipped 5-minute staleness check), not on any timer.
+
+Two non-obvious build decisions:
+
+1. **Native C# Android Views inside `Android.App.Presentation`, not a second Avalonia surface.** The
+   second screen is launcher chrome (app icons, dock, launch intents) that reads the *shared Core
+   services in-process* — the RetroAchievements stores are framework-neutral and
+   `IRetroAchievementsBadgeCache.GetBadgePathAsync` returns a file path an `ImageView` loads directly,
+   so nothing forces Avalonia. A second Avalonia `TopLevel` hosted on a Presentation is unproven on
+   `Avalonia.Android` and the wrong tool for a home-screen-like surface. Embedding an `AvaloniaView`
+   only for the achievements panel is kept as a fallback if native re-rendering proves not worth it.
+
+2. **No new RetroAchievements path; reuse the existing cache-first pipeline.** The shipped
+   `AchievementDetailsViewModel` is already cache-first with pull-on-press
+   (`IRetroAchievementsDetailsService.RefreshAsync(manual:…)` + a 5-minute `DetailRefreshAge`), which is
+   exactly the "cache and pull only on real press" requirement. The second screen reuses that service
+   and the details/progress/badge stores rather than adding a parallel fetcher or any polling.
+
+The one genuine unknown is deferred to the **SS0** on-device spike, not decided here: whether a
+`Presentation` survives EmuShelf being backgrounded when an emulator takes the main screen (a
+multi-resume device — the head already relies on `OnTopResumedActivityChanged`), what keep-alive it
+needs (expected: a foreground service; Thor is SDK 33 so the notification-permission escalation stays
+dormant), and whether AYN's `com.odin.dualscreen.assistant` must be dismissed for our Presentation to
+own Screen-2.
+
+App-drawer package visibility uses a `<queries><intent>` for `ACTION_MAIN`+`CATEGORY_LAUNCHER` rather
+than `QUERY_ALL_PACKAGES`: it returns every launchable app, stays Play-policy-safe, and mirrors the
+existing narrow per-emulator `<queries>` block. Dock pins persist to a portable
+`Settings/second-screen-dock.json` (the pattern `pending-play-session.json` already uses), with the
+model and store in Core so the desktop suite tests them.
 ## 2026-08-22 — Android: auto-update via the system package installer; hotkeys hidden; grid tile shadow dropped
 
 Four Milestone-S (stabilization) fixes from a Thor pass. Each is Android-only or a no-op off Android, so
