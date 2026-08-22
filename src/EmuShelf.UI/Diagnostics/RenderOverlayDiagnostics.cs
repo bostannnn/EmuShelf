@@ -11,9 +11,13 @@ namespace EmuShelf.App.Diagnostics;
 /// drawn by Avalonia's own render thread, so the overlay itself costs effectively nothing when off.
 /// </summary>
 /// <remarks>
-/// The overlays are a pure diagnostic. On Android there is no keyboard for the usual DevTools F-key
-/// toggles, so <c>MainActivity</c> cycles them from an otherwise-unused gamepad button (L3 / left-stick
-/// click). Cycling walks a small fixed list of useful combinations rather than exposing the raw flags.
+/// The overlays are a pure diagnostic and are off by default. On Android there is no keyboard for the
+/// usual DevTools F-key toggles, so <c>MainActivity</c> advances them with a deliberate <em>triple</em>
+/// click of the otherwise-unused L3 (left-stick) button — three quick clicks in a row, so a stray stick
+/// press can never turn them on. Nothing is auto-enabled, in Debug or Release. Each triple-click walks a
+/// small fixed list of useful combinations rather than exposing the raw flags, and <see cref="Cycle"/>
+/// gates the matching <see cref="PerfTrace"/> logcat sampler on the same switch so a clean library shows
+/// neither the panel nor the log.
 /// <see cref="RendererDebugOverlays.RenderTimeGraph"/> is the ms/frame signal; <see
 /// cref="RendererDebugOverlays.DirtyRects"/> shows how much of the screen repaints each frame (the
 /// overdraw tell — if the whole grid lights up while scrolling, the item template is the cost);
@@ -31,15 +35,13 @@ public static class RenderOverlayDiagnostics
             | RendererDebugOverlays.DirtyRects, "all (fps + render + layout + dirty rects)"),
     ];
 
-    // The index of the standard measurement set (fps + render time + dirty rects) within Modes, so
-    // SetEnabled and the initial state agree with the cycle order.
-    private const int StandardModeIndex = 2;
-
     private static int _index;
 
     /// <summary>
-    /// Advances to the next overlay combination on <paramref name="topLevel"/>. No-op when it is null
-    /// (the view is not attached yet).
+    /// Advances to the next overlay combination on <paramref name="topLevel"/> and starts or stops the
+    /// <see cref="PerfTrace"/> logcat sampler to match (running for any active mode, stopped at "off"), so
+    /// both halves of the diagnostic move together. No-op when <paramref name="topLevel"/> is null (the
+    /// view is not attached yet).
     /// </summary>
     /// <returns>A short label for the newly-selected mode, or null when there was no top level.</returns>
     public static string? Cycle(TopLevel? topLevel)
@@ -50,19 +52,12 @@ public static class RenderOverlayDiagnostics
         _index = (_index + 1) % Modes.Length;
         var (overlays, label) = Modes[_index];
         topLevel.RendererDiagnostics.DebugOverlays = overlays;
+
+        if (overlays == RendererDebugOverlays.None)
+            PerfTrace.StopSampling();
+        else
+            PerfTrace.StartSampling();
+
         return label;
-    }
-
-    /// <summary>
-    /// Turns the standard measurement set (FPS + render-time graph + dirty rects) on or off directly,
-    /// leaving the cycle position consistent with <see cref="Cycle"/>.
-    /// </summary>
-    public static void SetEnabled(TopLevel? topLevel, bool enabled)
-    {
-        if (topLevel is null)
-            return;
-
-        _index = enabled ? StandardModeIndex : 0;
-        topLevel.RendererDiagnostics.DebugOverlays = Modes[_index].Overlays;
     }
 }
