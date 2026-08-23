@@ -70,6 +70,14 @@ public partial class SecondScreenView : UserControl
         }
     }
 
+    // Tapping the dim scrim behind a floating overlay dismisses it, like tapping outside a sheet. The sheet
+    // sits above the scrim, so taps on the sheet's own controls never reach here.
+    private void OnOverlayScrimTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is SecondScreenViewModel viewModel && viewModel.CloseOverlayCommand.CanExecute(null))
+            viewModel.CloseOverlayCommand.Execute(null);
+    }
+
     // The target pitch (tile edge + both margins) the column count is derived from. Matches the pre-redesign
     // dense grid — a 70px tile with a 5px margin each side — so the Thor's panel lands on ~6 columns again
     // instead of the 3 the oversized (118px) tiles gave. Keep TileMargin in sync with the tile Margin in

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:views="using:EmuShelf.App.Views"
              xmlns:ai="using:Avalonia.Input"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -32,6 +33,96 @@
     <Style Selector="Border.ss-badge.selected">
       <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
       <Setter Property="BorderThickness" Value="3" />
+    </Style>
+
+    <!-- ===================== Overlay scrim + floating sheet =====================
+         The drawer and achievements overlays are floating rounded cards over a dim scrim, matching the
+         couch shell's overlays instead of the old edge-to-edge opaque slab. Both layers stay mounted and
+         are driven by an .open class (bound to IsDrawerOpen / IsAchievementsOpen) so opening reads as a
+         soft dissolve + scale-in rather than a hard cut. Hit testing is gated on the same class so a
+         closed overlay never swallows a tap on the resting surface. -->
+    <Style Selector="Border.ss-scrim">
+      <Setter Property="Background" Value="#66000000" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ss-scrim.open">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <Style Selector="Border.ss-sheet">
+      <Setter Property="Background" Value="{DynamicResource EmuPopoverBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="BoxShadow" Value="0 12 32 0 #5A000000" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Setter Property="RenderTransform" Value="scale(0.97)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ss-sheet.open">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+      <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <!-- ===================== Soft controls =====================
+         Rounded, touch-sized versions of the app's controls so the companion surface reads as the same
+         app: pill icon buttons with a hover wash, rounded dock slots and drawer tiles. All pick up the
+         same short Background transition the desktop toolbar buttons use. -->
+    <Style Selector="Button.ss-icon">
+      <Setter Property="CornerRadius" Value="21" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.ss-icon:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+    </Style>
+    <!-- Borderless bar icons (☰ / trophy): no resting chrome, just a rounded hover wash. -->
+    <Style Selector="Button.ss-bar-icon">
+      <Setter Property="CornerRadius" Value="23" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.ss-bar-icon:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+    </Style>
+    <!-- Dock slots and drawer app tiles: rounded cards with a hover wash. -->
+    <Style Selector="Button.ss-slot, Button.ss-app-tile">
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Button.ss-slot:pointerover /template/ ContentPresenter,
+                     Button.ss-app-tile:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
     </Style>
   </UserControl.Styles>
 
@@ -68,17 +159,20 @@
                  IsVisible="{Binding ShowBranding}"
                  Foreground="{DynamicResource EmuTextPrimaryBrush}" />
 
-      <!-- App drawer overlay -->
-      <Border IsVisible="{Binding IsDrawerOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
+      <!-- App drawer overlay: dim scrim (tap outside to dismiss) + a floating rounded sheet -->
+      <Border Classes="ss-scrim" Classes.open="{Binding IsDrawerOpen}" Tapped="OnOverlayScrimTapped" />
+      <Border Classes="ss-sheet" Classes.open="{Binding IsDrawerOpen}"
+              Margin="20" VerticalAlignment="Stretch">
         <Grid RowDefinitions="Auto,*" Margin="26,18,26,14">
-          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
+          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
             <TextBlock Grid.Column="0" Text="{Binding DrawerTitle}" FontSize="22" FontWeight="SemiBold"
                        VerticalAlignment="Center"
                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            <Button Grid.Column="1" Content="Clear slot" Margin="0,0,8,0"
+            <Button Grid.Column="1" Classes="toolbar-button" Content="Clear slot" Padding="12,8"
                     IsVisible="{Binding CanClearSlot}"
                     Command="{Binding ClearSlotCommand}" />
-            <Button Grid.Column="2" Content="Close" Command="{Binding CloseOverlayCommand}" />
+            <Button Grid.Column="2" Classes="toolbar-button" Content="Close" Padding="12,8"
+                    Command="{Binding CloseOverlayCommand}" />
           </Grid>
           <ScrollViewer Grid.Row="1" Margin="0,10,0,0">
             <ItemsControl ItemsSource="{Binding Apps}">
@@ -91,7 +185,7 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:SecondScreenAppViewModel">
-                  <Button Height="98" Margin="4" Padding="4"
+                  <Button Classes="ss-app-tile" Height="98" Margin="4" Padding="4"
                           HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                           Background="{DynamicResource EmuCardBrush}"
                           Command="{Binding DataContext.LaunchAppCommand, ElementName=Root}"
@@ -118,7 +212,8 @@
            strip beneath it. The app dock bar is hidden while this is up (see the bottom bar's IsVisible),
            giving the grid the full panel height. Locked badges are dimmed; hardcore unlocks get the gold
            ring; the tapped one gets the accent ring — see the styles at the top of this view. -->
-      <Border IsVisible="{Binding IsAchievementsOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
+      <Border Classes="ss-scrim" Classes.open="{Binding IsAchievementsOpen}" Tapped="OnOverlayScrimTapped" />
+      <Border Classes="ss-sheet" Classes.open="{Binding IsAchievementsOpen}" Margin="16">
         <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="26,18,26,14">
 
           <!-- Header: game name (left), progress summary, and Refresh / Close as icon buttons. This is the
@@ -131,16 +226,14 @@
             <TextBlock Grid.Column="1" Text="{Binding AchievementsSummary}" FontSize="13"
                        IsVisible="{Binding HasSummary}" VerticalAlignment="Center"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-            <Button Grid.Column="2" Width="42" Height="42" Padding="0" VerticalAlignment="Center"
-                    Background="Transparent" ToolTip.Tip="Refresh"
-                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+            <Button Grid.Column="2" Classes="ss-icon" Width="42" Height="42" Padding="0"
+                    VerticalAlignment="Center" ToolTip.Tip="Refresh"
                     IsVisible="{Binding CanRefresh}" Command="{Binding RefreshCommand}">
               <PathIcon Width="18" Height="18" Data="{DynamicResource EmuRefreshGeometry}"
                         Foreground="{DynamicResource EmuTextPrimaryBrush}" />
             </Button>
-            <Button Grid.Column="3" Width="42" Height="42" Padding="0" VerticalAlignment="Center"
-                    Background="Transparent" ToolTip.Tip="Close"
-                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+            <Button Grid.Column="3" Classes="ss-icon" Width="42" Height="42" Padding="0"
+                    VerticalAlignment="Center" ToolTip.Tip="Close"
                     Command="{Binding CloseOverlayCommand}">
               <PathIcon Width="16" Height="16" Data="{DynamicResource EmuCloseGeometry}"
                         Foreground="{DynamicResource EmuTextPrimaryBrush}" />
@@ -160,7 +253,7 @@
                viewport width (SizeChanged) so the row stride matches what is rendered. The ListBox is a
                passive renderer — its own selection/focus visuals are styled away; the tapped badge is
                tracked on the view model (SelectAchievement) and shown by the .selected accent ring. -->
-          <ListBox Grid.Row="2" x:Name="AchievementsBadgeList" IsVisible="{Binding HasAchievements}"
+          <ListBox Grid.Row="2" x:Name="AchievementsBadgeList" IsVisible="{Binding IsAchievementsGridRealized}"
                    ItemsSource="{Binding AchievementRows}"
                    Background="Transparent" BorderThickness="0" Padding="0"
                    SizeChanged="OnAchievementsBadgeListSizeChanged"
@@ -250,10 +343,10 @@
          badge grid + detail strip own the full square panel; Close (or Back) returns to it. -->
     <Border Grid.Row="1" Height="64" Background="{DynamicResource EmuToolbarBrush}"
             IsVisible="{Binding !IsAchievementsOpen}"
-            BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0">
+            CornerRadius="18,18,0,0" BoxShadow="0 -6 18 0 #33000000">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
 
-        <Button Grid.Column="0" Width="46" Height="46" Padding="0" Background="Transparent"
+        <Button Grid.Column="0" Classes="ss-bar-icon" Width="46" Height="46" Padding="0"
                 VerticalAlignment="Center" ToolTip.Tip="All apps"
                 Command="{Binding ToggleDrawerCommand}">
           <TextBlock Text="&#x2630;" FontSize="23" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -271,23 +364,27 @@
             <DataTemplate x:DataType="vm:SecondScreenSlotViewModel">
               <!-- Tap launches (or opens the picker if empty); long-press opens the picker to re-pin or
                    clear a filled slot (handled in code-behind via the Holding gesture). -->
-              <Button Width="50" Height="50" Padding="2" ai:InputElement.IsHoldingEnabled="True"
+              <Button Classes="ss-slot" Width="50" Height="50" Padding="2"
+                      ai:InputElement.IsHoldingEnabled="True"
                       Background="{DynamicResource EmuCardBrush}"
                       BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
                       Command="{Binding DataContext.ActivateSlotCommand, ElementName=Root}"
                       CommandParameter="{Binding}">
-                <Panel>
-                  <TextBlock Text="+" FontSize="22" IsVisible="{Binding IsEmpty}"
-                             HorizontalAlignment="Center" VerticalAlignment="Center"
-                             Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                  <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" />
-                </Panel>
+                <!-- Clip the app icon to the slot's rounded corners so a square icon never pokes past them. -->
+                <Border CornerRadius="12" ClipToBounds="True">
+                  <Panel>
+                    <TextBlock Text="+" FontSize="22" IsVisible="{Binding IsEmpty}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                    <Image Source="{Binding Icon}" IsVisible="{Binding HasIcon}" />
+                  </Panel>
+                </Border>
               </Button>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Button Grid.Column="2" Width="46" Height="46" Padding="0" Background="Transparent"
+        <Button Grid.Column="2" Classes="ss-bar-icon" Width="46" Height="46" Padding="0"
                 VerticalAlignment="Center" ToolTip.Tip="Achievements"
                 Command="{Binding ToggleAchievementsCommand}">
           <PathIcon Width="24" Height="24"
@@ -295,6 +392,22 @@
                     Foreground="{DynamicResource EmuAchievementBrush}" />
         </Button>
       </Grid>
+    </Border>
+
+    <!-- App-owned keyboard, mirrored from the main head during couch search / rename. Its own top-most
+         layer (spans both rows) so it covers the spotlight, dock, and any open overlay while typing, and
+         reveals them unchanged when it closes. The keys are driven by the main-screen gamepad dispatch;
+         taps also work here. -->
+    <Border Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding IsKeyboardOpen}"
+            Background="{DynamicResource EmuWindowBackgroundBrush}">
+      <ContentControl HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Content="{Binding Keyboard}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate x:DataType="vm:GamepadKeyboardViewModel">
+            <views:GamepadKeyboardView />
+          </DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
     </Border>
   </Grid>
 </UserControl>

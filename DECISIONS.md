@@ -10689,3 +10689,48 @@ The tap-to-read redesign left two usability regressions on the Thor companion. F
   to the couch, so the gamepad is never dead. Focus is cleared when a dock app takes Screen-2, when a game
   starts, and on teardown. Grid navigation is desktop-testable (`SecondScreenAchievementsLayoutTests`); the
   Android touch/key wiring is not.
+
+## 2026-08-23 — App-owned couch keyboard replaces the system IME (Android); mirrored onto the Thor second screen
+
+On a handheld the system keyboard (Gboard) opens over the whole main screen and hides the search field and
+results, and a third-party app **cannot** relocate the system IME to the second display: per-display IME
+placement (`setDisplayImePolicy` / system-decoration config) is system-signature only, AOSP refuses an IME on
+non-system-owned displays, and the Thor firmware has no root. So couch text entry (Search, Rename) on Android
+now uses `GamepadKeyboardViewModel` — an app-drawn, gamepad-navigable key grid that writes straight into the
+target field via delegates, with the system IME suppressed (the field is read-only and never focused, so
+Avalonia raises no IME). Key focus is view-model state (`IsFocused`), not Avalonia focus, so the same grid can
+render on two top levels at once and is driven entirely by the shared gamepad dispatch.
+
+Placement: **second screen when present, main-screen strip otherwise.** The Android `SecondScreenController`
+mirrors the live keyboard onto the Thor's Presentation and sets `MainViewModel.IsGamepadKeyboardHostedRemotely`
+so the main-screen strip yields — the search field stays visible on the main panel (behind the standard couch
+overlay scrim, which dims but does not hide the library) instead of being buried under a full-screen keyboard,
+while you type on the panel below. Desktop is unchanged (`UsesGamepadKeyboard` is Android-only): the hardware / OS
+keyboard still drives couch search there, so no desktop layout or visual-snapshot moves. Engine covered by
+`GamepadKeyboardViewModelTests`; on-device second-screen behaviour is pending a Thor pass (no device attached
+at implementation time). Follow-up: Settings text entry and the cover-search query field still use the system
+IME and could adopt the same component.
+## 2026-08-23 — Android CRT is a static sheen, not the full tube
+
+Turning the CRT effect on on Android now maps `MainViewModel.CouchCrt` to a new
+`CrtPresentation.AndroidSheen` instead of `CrtPresentation.Default` (desktop is
+unchanged). The full tube was slow and choppy and ramped the handheld's fan for two
+reasons, both worst on a battery/GPU-limited device: (1) its default motion knobs
+(RollSpeed, HumBar, Jitter, Flicker, Glitch, ChromaBleed) make `IsAnimated` true, which
+holds the couch screen at the compositor's frame rate redrawing an unchanging picture
+forever; (2) `crt.frag` runs ~14 dependent texture fetches per pixel at full native
+resolution — `ChromaBleed > 0` runs the whole scene+chrome composite 3× (one per channel)
+and `Bloom > 0` adds a 4-tap cross of the same composite — while the scene itself is
+already forced to 1× supersample on Android.
+
+`AndroidSheen` keeps the parts that actually read as a CRT (curvature, scanlines, phosphor
+mask, vignette, overscan) and zeroes every motion knob plus `ChromaBleed` and `Bloom`. So
+`IsAnimated` is false (couch screen redraws on demand, not at 60fps) and the post pass is
+~1 tube sample per pixel instead of ~14. On a six-inch handheld at arm's length the removed
+motion and chroma fringing barely read, so this is close to a free win.
+
+Deliberately **not** changed: the first-run default stays **off** on Android
+(`AppBootstrapper`). The cheap preset makes the effect pleasant when a user turns it on; it
+does not (yet) justify seeding it on by default. A full rewrite of the shader was rejected —
+the look was fine, only its Android delivery needed fixing. On-device fan/frame-time
+verification on the Thor is still pending (Milestone S).

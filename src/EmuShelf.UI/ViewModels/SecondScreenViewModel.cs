@@ -57,6 +57,21 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [ObservableProperty]
     public partial SecondScreenOverlayKind Overlay { get; set; }
 
+    // --- App-owned keyboard, mirrored here from the main head during couch text entry ---
+
+    /// <summary>
+    /// The couch keyboard while it is being entered on the main screen — the Android controller pushes the
+    /// main head's live <c>GamepadKeyboardViewModel</c> here so the Thor's second screen hosts the keys,
+    /// leaving the search field and results fully visible on the main panel. Null the rest of the time.
+    /// Rendered above every other surface (it is its own top-most layer), so whatever sits underneath —
+    /// spotlight, dock, achievements — is revealed unchanged when it closes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsKeyboardOpen))]
+    public partial GamepadKeyboardViewModel? Keyboard { get; set; }
+
+    public bool IsKeyboardOpen => Keyboard is not null;
+
     // --- Resting spotlight (fan art + logo) ---
 
     [ObservableProperty]
@@ -338,6 +353,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(AchievementCount));
         OnPropertyChanged(nameof(HasAchievements));
+        OnPropertyChanged(nameof(IsAchievementsGridRealized));
         OnPropertyChanged(nameof(HasInlineStatus));
     }
 
@@ -378,10 +394,16 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public bool IsAchievementsOpen => Overlay == SecondScreenOverlayKind.Achievements;
     public bool HasStatus => !string.IsNullOrEmpty(AchievementsStatus);
 
+    // The achievements sheet stays mounted (opacity-driven) so it can scale in when opened, but its badge
+    // ListBox must only realize rows while the sheet is actually up — otherwise a 400-badge set would keep
+    // its on-screen rows virtualized behind a closed, invisible overlay. Gate the grid on both.
+    public bool IsAchievementsGridRealized => IsAchievementsOpen && HasAchievements;
+
     partial void OnOverlayChanged(SecondScreenOverlayKind value)
     {
         OnPropertyChanged(nameof(IsDrawerOpen));
         OnPropertyChanged(nameof(IsAchievementsOpen));
+        OnPropertyChanged(nameof(IsAchievementsGridRealized));
     }
 
     partial void OnAchievementsStatusChanged(string? value)
