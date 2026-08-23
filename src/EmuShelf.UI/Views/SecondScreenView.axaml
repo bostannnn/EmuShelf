@@ -323,14 +323,21 @@
 
           <!-- Selected badge: title, description, and a compact "points · Earned date" line (Variant 2 —
                lock/hardcore state is omitted, the tile's dimming/gold ring already show it). This is the
-               touch answer to the grid's missing hover tooltip. Auto-populated with the first badge. -->
+               touch answer to the grid's missing hover tooltip. Auto-populated with the first badge.
+               FIXED HEIGHT so navigating badges never resizes this strip (and, since the grid above is the
+               "*" row, never reflows the grid either): the title is pinned to one line and the description
+               reserves exactly two lines via an explicit LineHeight × Height. A shorter description leaves
+               the second line blank; a longer one ellipsizes at the second line. -->
           <StackPanel Grid.Row="3" x:Name="AchievementsDetail" Margin="0,14,0,0" Spacing="3"
                       IsVisible="{Binding HasSelectedAchievement}">
             <TextBlock Text="{Binding SelectedAchievement.Title}" FontSize="19" FontWeight="SemiBold"
-                       TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                       MaxLines="1" TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            <!-- LineHeight × MaxLines == Height, so the box is always exactly two lines tall regardless of
+                 how many lines the text actually fills. -->
             <TextBlock Text="{Binding SelectedAchievement.Description}" FontSize="14"
-                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                       TextWrapping="Wrap" MaxLines="2" LineHeight="20" Height="40"
+                       TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             <TextBlock Text="{Binding SelectedAchievementMeta}" FontSize="12"
                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
