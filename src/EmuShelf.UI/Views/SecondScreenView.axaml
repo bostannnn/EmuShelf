@@ -195,10 +195,12 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:AchievementRowViewModel">
-                      <!-- Tile size is a deliberate knob: bigger than the desktop grid so badges are easy
-                           to hit on the small physical panel. Keep Width/Height and the code-behind's
-                           AchievementBadgePitch (tile + 2×Margin) in sync so the column math matches. -->
-                      <Border Width="118" Height="118" Margin="7" CornerRadius="16" ClipToBounds="True"
+                      <!-- The tile size is computed to fill the row (SizeChanged → AchievementTileSize) so a
+                           dense ~6-column grid packs the panel with no dead space on the right. The 5px
+                           margin here must match the code-behind's TileMargin so the column math lines up. -->
+                      <Border Width="{Binding DataContext.AchievementTileSize, ElementName=Root}"
+                              Height="{Binding DataContext.AchievementTileSize, ElementName=Root}"
+                              Margin="5" CornerRadius="12" ClipToBounds="True"
                               Classes="ss-badge" Classes.hardcore="{Binding IsHardcore}"
                               Classes.selected="{Binding IsFocused}"
                               Background="{DynamicResource EmuCoverWellBrush}"
@@ -206,7 +208,7 @@
                               AttachedToVisualTree="OnAchievementBadgeAttached"
                               DataContextChanged="OnAchievementBadgeDataContextChanged">
                         <Grid Classes="ss-badge-inner" Classes.locked="{Binding IsLocked}">
-                          <PathIcon Width="40" Height="40" IsVisible="{Binding !HasBadge}"
+                          <PathIcon Width="28" Height="28" IsVisible="{Binding !HasBadge}"
                                     Data="{DynamicResource AchievementTrophyGeometry}"
                                     Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                           <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />

@@ -5,6 +5,7 @@ using System.Linq;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using EmuShelf.App.Services;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -169,6 +170,89 @@ public sealed partial class SecondScreenViewModel : ObservableObject
             SelectedAchievement = achievement;
     }
 
+    /// <summary>
+    /// Raised when gamepad navigation moves the selection, carrying the flat badge index so the view can
+    /// scroll that badge's row into view. Touch selection doesn't raise it — the tapped tile is already
+    /// visible — so it fires only for D-pad moves.
+    /// </summary>
+    public event Action<int>? SelectionScrolledTo;
+
+    /// <summary>
+    /// Drives the achievement grid from the gamepad when the second screen owns input focus (the user last
+    /// touched it). The D-pad walks the selection across the same column stride the grid renders — mirroring
+    /// the couch achievements overlay — and B/Cancel closes the panel. Returns true when the action was
+    /// consumed; false lets the caller fall back to the couch (so the gamepad is never dead when the panel
+    /// isn't navigable). Only the achievements overlay is navigable here; the dock/drawer stay touch-only.
+    /// </summary>
+    public bool DispatchGamepadAction(GamepadAction action)
+    {
+        // Cancel always closes an open overlay (Back behaviour), even an empty/message achievements panel.
+        if (action == GamepadAction.Cancel && Overlay != SecondScreenOverlayKind.None)
+        {
+            OverlayClosed?.Invoke();
+            return true;
+        }
+
+        if (!IsAchievementsOpen || _achievements.Count == 0)
+            return false;
+
+        switch (action)
+        {
+            case GamepadAction.NavigateLeft:
+                MoveSelectionHorizontal(-1);
+                return true;
+            case GamepadAction.NavigateRight:
+                MoveSelectionHorizontal(1);
+                return true;
+            case GamepadAction.NavigateUp:
+                MoveSelectionVertical(-1);
+                return true;
+            case GamepadAction.NavigateDown:
+                MoveSelectionVertical(1);
+                return true;
+            // With a grid up the second screen owns the pad completely: every remaining action is swallowed
+            // so nothing leaks to the couch behind (which would open an overlay on the main screen the user
+            // isn't looking at — e.g. Y/Actions — leaving it stuck open and invisible). Confirm in
+            // particular has nothing more to open: the selected badge's title/description/points already sit
+            // in the detail strip. To browse to another game, touch the main screen (focus-follows-touch).
+            // The fall-through for the couch is the empty/spotlight case, handled by the guard above.
+            default:
+                return true;
+        }
+    }
+
+    private int SelectedIndex =>
+        SelectedAchievement is { } selected ? _achievements.IndexOf(selected) : -1;
+
+    private void MoveSelectionHorizontal(int direction)
+    {
+        var index = Math.Max(0, SelectedIndex);
+        var columns = Math.Max(1, _achievementColumnCount);
+        var column = index % columns;
+        var target = index + Math.Sign(direction);
+        // Guard the row edges so Right on the last column (or Left on the first) doesn't jump rows.
+        if (target >= 0 && target < _achievements.Count &&
+            (direction < 0 ? column > 0 : column < columns - 1))
+        {
+            MoveSelectionTo(target);
+        }
+    }
+
+    private void MoveSelectionVertical(int direction)
+    {
+        var index = Math.Max(0, SelectedIndex);
+        var columns = Math.Max(1, _achievementColumnCount);
+        var target = index + (Math.Sign(direction) * columns);
+        if (target >= 0 && target < _achievements.Count)
+            MoveSelectionTo(target);
+    }
+
+    private void MoveSelectionTo(int index)
+    {
+        SelectAchievement(_achievements[index]);
+        SelectionScrolledTo?.Invoke(index);
+    }
+
     public ObservableCollection<SecondScreenSlotViewModel> Dock { get; } =
         new(Enumerable.Range(0, 5).Select(index => new SecondScreenSlotViewModel(index)));
 
@@ -216,6 +300,14 @@ public sealed partial class SecondScreenViewModel : ObservableObject
                 RebuildAchievementRows();
         }
     }
+
+    /// <summary>
+    /// The edge length of each square badge tile, sized by the view's SizeChanged so the chosen column
+    /// count fills the panel width exactly (no dead space on the right). Defaults to a compact value so the
+    /// first frame — before layout runs — is already dense rather than showing a few oversized tiles.
+    /// </summary>
+    [ObservableProperty]
+    public partial double AchievementTileSize { get; set; } = 72;
 
     /// <summary>Replaces the badge set (disposing the previous one's bitmaps) and re-slices it into rows.</summary>
     public void SetAchievements(IReadOnlyList<AchievementRowViewModel> achievements)

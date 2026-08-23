@@ -10667,3 +10667,25 @@ you browse game to game instead of showing "Press Refresh" for anything never op
 only the settled game fetches, and `willRefresh` is still gated to uncached-or-stale sets, so cached games
 make no request. Covered by `SecondScreenAchievementsLayoutTests` (header→grid→detail order with no footer,
 auto-select, tap-to-select, meta format, inline-status gating, clear-drops-selection).
+
+## 2026-08-23 — Second-screen achievements: dense grid restored + gamepad-navigable
+
+The tap-to-read redesign left two usability regressions on the Thor companion. Fixed both.
+
+- **Density.** The redesign had enlarged badge tiles from 70px to 118px (132px pitch), dropping the square
+  panel from ~6 columns to 3 and leaving dead space on the right (rows are left-aligned fixed-width tiles).
+  Restored the pre-redesign 80px pitch (5px margin) so the column count lands on ~6 again, and made the tile
+  size fill the row (`AchievementTileSize`, computed in `SecondScreenView`'s `SizeChanged`) so there is no
+  right-hand gap. Column count is derived from the full width; the tile size fills width minus a scrollbar
+  allowance so the rightmost tile isn't clipped when the vertical scrollbar shows.
+- **Gamepad navigation.** The companion `Presentation` receives no gamepad input — all key events land on
+  `MainActivity` (Screen 1) and route to the couch view model. Added focus-follows-touch, the standard Thor
+  model: a touch on the companion (`ThorSecondScreenPresentation.DispatchTouchEvent`) makes it own the
+  gamepad; a touch on the main screen (`MainActivity.DispatchTouchEvent`) hands it back. While the second
+  screen owns input, `MainActivity.DispatchKeyEvent` offers each mapped action to `SecondScreenInputFocus`
+  (wired to `SecondScreenViewModel.DispatchGamepadAction`) BEFORE the couch, so the D-pad walks the badge
+  grid (same column-stride logic as the couch achievements overlay), B closes the panel, and Confirm is
+  swallowed. Anything the companion can't use (e.g. a D-pad press over the resting spotlight) falls through
+  to the couch, so the gamepad is never dead. Focus is cleared when a dock app takes Screen-2, when a game
+  starts, and on teardown. Grid navigation is desktop-testable (`SecondScreenAchievementsLayoutTests`); the
+  Android touch/key wiring is not.
