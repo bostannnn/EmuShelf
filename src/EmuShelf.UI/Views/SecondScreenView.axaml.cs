@@ -23,6 +23,33 @@ public partial class SecondScreenView : UserControl
         AddHandler(InputElement.HoldingEvent, OnHolding, RoutingStrategies.Bubble);
     }
 
+    private SecondScreenViewModel? _boundModel;
+
+    protected override void OnDataContextChanged(EventArgs e)
+    {
+        base.OnDataContextChanged(e);
+        if (_boundModel is not null)
+            _boundModel.SelectionScrolledTo -= OnSelectionScrolledTo;
+        _boundModel = DataContext as SecondScreenViewModel;
+        if (_boundModel is not null)
+            _boundModel.SelectionScrolledTo += OnSelectionScrolledTo;
+    }
+
+    // Gamepad navigation moves the selection on the view model; bring the newly selected badge's row into
+    // view so the highlight never runs off-screen. The ListBox items are rows, so scroll the row that holds
+    // the flat badge index.
+    private void OnSelectionScrolledTo(int badgeIndex)
+    {
+        if (this.FindControl<ListBox>("AchievementsBadgeList") is not { } list ||
+            DataContext is not SecondScreenViewModel viewModel)
+            return;
+
+        var columns = Math.Max(1, viewModel.AchievementColumnCount);
+        var rowIndex = badgeIndex / columns;
+        if (rowIndex >= 0 && rowIndex < list.ItemCount)
+            list.ScrollIntoView(rowIndex);
+    }
+
     private void OnHolding(object? sender, HoldingRoutedEventArgs e)
     {
         if (e.HoldingState != HoldingState.Started || DataContext is not SecondScreenViewModel viewModel)
@@ -51,14 +78,28 @@ public partial class SecondScreenView : UserControl
             viewModel.CloseOverlayCommand.Execute(null);
     }
 
-    // The badge tile is 118px wide with a 7px margin each side (a 132px pitch). Keep this in sync with the
-    // tile Width/Margin in the AXAML so the row stride the VM slices to matches what the grid renders.
-    private const double AchievementBadgePitch = 132;
+    // The target pitch (tile edge + both margins) the column count is derived from. Matches the pre-redesign
+    // dense grid — a 70px tile with a 5px margin each side — so the Thor's panel lands on ~6 columns again
+    // instead of the 3 the oversized (118px) tiles gave. Keep TileMargin in sync with the tile Margin in
+    // the AXAML.
+    private const double TargetBadgePitch = 80;
+    private const double TileMargin = 5;
+    // Headroom for the auto vertical scrollbar. Column count is derived from the FULL width (so a set that
+    // fits without a scrollbar still gets the full column count), but the tile size fills width MINUS this,
+    // so when the scrollbar does show the rightmost tile isn't clipped by it (horizontal scroll is off).
+    private const double ScrollbarAllowance = 14;
 
     private void OnAchievementsBadgeListSizeChanged(object? sender, SizeChangedEventArgs e)
     {
-        if (DataContext is SecondScreenViewModel viewModel && e.NewSize.Width > 0)
-            viewModel.AchievementColumnCount = Math.Max(1, (int)(e.NewSize.Width / AchievementBadgePitch));
+        if (DataContext is not SecondScreenViewModel viewModel || e.NewSize.Width <= 0)
+            return;
+
+        var columns = Math.Max(1, (int)(e.NewSize.Width / TargetBadgePitch));
+        // Grow each tile to fill the row exactly for that column count, so no strip is left on the right.
+        var fillWidth = Math.Max(TargetBadgePitch, e.NewSize.Width - ScrollbarAllowance);
+        var tileSize = Math.Max(1, (fillWidth / columns) - (2 * TileMargin));
+        viewModel.AchievementTileSize = tileSize;
+        viewModel.AchievementColumnCount = columns;
     }
 
     // Touch has no hover, so a tapped badge selects itself: the view model moves the accent ring to it and

@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
 using EmuShelf.Core.Achievements;
@@ -116,6 +117,51 @@ public class SecondScreenAchievementsLayoutTests
             // The grid actually realized badge tiles (all rows fit these window sizes).
             var tiles = list.GetVisualDescendants().OfType<Border>().Count(b => b.Classes.Contains("ss-badge"));
             Assert.Equal(24, tiles);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task AchievementsGrid_IsDenseAndFillsWidth_AtThorPanelSize()
+    {
+        // Guards the density regression the tap-to-read redesign introduced: oversized (118px) tiles that
+        // dropped the Thor's square panel from ~6 columns to 3 and left dead space on the right. At a
+        // Thor-like panel width the grid should stay dense (many columns) and the row should span nearly the
+        // whole list width — the tiles are sized to fill, not left-aligned at a fixed size.
+        var model = BuildModel(achievementCount: 24);
+        var view = new SecondScreenView { DataContext = model };
+        var window = new Window { Content = view, Width = 580, Height = 560 };
+        window.Show();
+        try
+        {
+            await SettleLayoutAsync();
+
+            Assert.True(
+                model.AchievementColumnCount >= 6,
+                $"Panel should restore the dense ~6-column grid at a Thor-sized width, was {model.AchievementColumnCount}.");
+
+            var list = view.FindControl<ListBox>("AchievementsBadgeList")!;
+            var tiles = list.GetVisualDescendants().OfType<Border>()
+                .Where(b => b.Classes.Contains("ss-badge"))
+                .ToList();
+            Assert.NotEmpty(tiles);
+
+            // The first row's tiles should reach close to the list's right edge — no wide strip of dead
+            // space. Compare the rightmost tile's right edge against the list width (minus the scrollbar
+            // allowance and one tile margin).
+            var rowTop = tiles.Min(t => t.TranslatePoint(default, list)!.Value.Y);
+            var firstRow = tiles
+                .Where(t => Math.Abs(t.TranslatePoint(default, list)!.Value.Y - rowTop) < 1)
+                .ToList();
+            Assert.Equal(model.AchievementColumnCount, firstRow.Count);
+            var rightmost = firstRow
+                .Max(t => t.TranslatePoint(new Point(t.Bounds.Width, 0), list)!.Value.X);
+            Assert.True(
+                rightmost >= list.Bounds.Width - 40,
+                $"First row right edge {rightmost:F0} should fill the list width {list.Bounds.Width:F0}.");
         }
         finally
         {
@@ -237,6 +283,122 @@ public class SecondScreenAchievementsLayoutTests
         Assert.True(third.IsFocused);
         Assert.Same(third, model.SelectedAchievement);
         Assert.Equal("Achievement 3", model.SelectedAchievement!.Title);
+    }
+
+    [Fact]
+    public void Gamepad_DpadWalksSelectionAcrossTheGrid()
+    {
+        var model = BuildModel(achievementCount: 12);
+        model.AchievementColumnCount = 4; // 3 rows of 4
+        // Auto-selected on the first badge.
+        Assert.Equal("Achievement 1", model.SelectedAchievement!.Title);
+
+        // Right walks along the row.
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal("Achievement 2", model.SelectedAchievement!.Title);
+
+        // Down moves one row (stride = columns).
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal("Achievement 6", model.SelectedAchievement!.Title);
+
+        // Left walks back.
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal("Achievement 5", model.SelectedAchievement!.Title);
+
+        // Up returns to the first row.
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Equal("Achievement 1", model.SelectedAchievement!.Title);
+    }
+
+    [Fact]
+    public void Gamepad_DpadStopsAtRowAndGridEdges()
+    {
+        var model = BuildModel(achievementCount: 12);
+        model.AchievementColumnCount = 4;
+
+        // Left on the first column of the first row is a no-op (no wrap to the previous row).
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.Equal("Achievement 1", model.SelectedAchievement!.Title);
+
+        // Up on the top row is a no-op.
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Equal("Achievement 1", model.SelectedAchievement!.Title);
+
+        // Move to the last column, then Right must not jump to the next row.
+        model.DispatchGamepadAction(GamepadAction.NavigateRight);
+        model.DispatchGamepadAction(GamepadAction.NavigateRight);
+        model.DispatchGamepadAction(GamepadAction.NavigateRight);
+        Assert.Equal("Achievement 4", model.SelectedAchievement!.Title);
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.Equal("Achievement 4", model.SelectedAchievement!.Title);
+    }
+
+    [Fact]
+    public void Gamepad_RaisesScrollRequestOnMove_NotOnEdgeNoOp()
+    {
+        var model = BuildModel(achievementCount: 12);
+        model.AchievementColumnCount = 4;
+        var scrolls = new List<int>();
+        model.SelectionScrolledTo += scrolls.Add;
+
+        model.DispatchGamepadAction(GamepadAction.NavigateRight); // 1 -> 2 (index 1)
+        model.DispatchGamepadAction(GamepadAction.NavigateDown);  // -> 6 (index 5)
+        Assert.Equal(new[] { 1, 5 }, scrolls);
+
+        scrolls.Clear();
+        // Up-up walks to the top row then a blocked edge — only the first move should scroll.
+        model.DispatchGamepadAction(GamepadAction.NavigateUp);   // index 5 -> 1
+        model.DispatchGamepadAction(GamepadAction.NavigateUp);   // blocked (top row)
+        Assert.Equal(new[] { 1 }, scrolls);
+    }
+
+    [Fact]
+    public void Gamepad_CancelClosesOpenOverlay_AndConfirmIsSwallowed()
+    {
+        var model = BuildModel(achievementCount: 6);
+        var closed = 0;
+        model.OverlayClosed = () => closed++;
+
+        // Confirm is swallowed (the detail strip already shows the badge) but doesn't close the panel.
+        Assert.True(model.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(0, closed);
+
+        // Cancel closes the open achievements overlay (Back behaviour).
+        Assert.True(model.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(1, closed);
+    }
+
+    [Fact]
+    public void Gamepad_SwallowsNonNavActionsWhileGridIsUp_SoNothingLeaksToTheCouch()
+    {
+        // With the grid up the second screen owns the pad completely: Search/Actions/Menu/platform switches
+        // must be consumed here, not fall through to the couch and open an overlay on the unseen main screen.
+        var model = BuildModel(achievementCount: 6);
+
+        Assert.True(model.DispatchGamepadAction(GamepadAction.Search));
+        Assert.True(model.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.True(model.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.True(model.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.True(model.DispatchGamepadAction(GamepadAction.PreviousPlatform));
+
+        // But an empty "select a game" panel (no badges) lets the couch keep the pad, so the user can still
+        // browse to a game that has achievements.
+        model.ClearAchievements();
+        Assert.True(model.IsAchievementsOpen);
+        Assert.False(model.HasAchievements);
+        Assert.False(model.DispatchGamepadAction(GamepadAction.NextPlatform));
+        Assert.False(model.DispatchGamepadAction(GamepadAction.NavigateRight));
+    }
+
+    [Fact]
+    public void Gamepad_FallsThroughWhenNothingNavigable()
+    {
+        var model = BuildModel(achievementCount: 6);
+        model.Overlay = SecondScreenOverlayKind.None; // resting spotlight, panel closed
+
+        // With no navigable overlay up, nav actions are not consumed — the couch keeps the gamepad.
+        Assert.False(model.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.False(model.DispatchGamepadAction(GamepadAction.Cancel));
     }
 
     [Fact]

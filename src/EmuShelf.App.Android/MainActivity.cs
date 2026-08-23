@@ -10,6 +10,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using EmuShelf.App.Android.Services;
 using EmuShelf.App.Diagnostics;
+using EmuShelf.App.Services;
 
 namespace EmuShelf.App.Android;
 
@@ -166,6 +167,16 @@ public class MainActivity : AvaloniaMainActivity
     /// so held D-pad still scrolls); unmapped keys and key-up fall through to Avalonia and the system, so
     /// text fields, the Back gesture, and volume keys behave normally.
     /// </summary>
+    // A touch on the main screen takes gamepad focus back from the second screen (the Thor's "last screen
+    // touched owns input" model; the companion's own touch sets it — ThorSecondScreenPresentation). Observe
+    // only, never consume, so Avalonia still receives the touch.
+    public override bool DispatchTouchEvent(MotionEvent? e)
+    {
+        if (e?.ActionMasked == MotionEventActions.Down)
+            SecondScreenInputFocus.IsActive = false;
+        return base.DispatchTouchEvent(e);
+    }
+
     public override bool DispatchKeyEvent(KeyEvent e)
     {
         // Back arbitration: if a couch overlay/menu is open, Back closes it (like B); at the root library it
@@ -174,6 +185,14 @@ public class MainActivity : AvaloniaMainActivity
         // dismisses on Back before the event reaches the activity at all.
         if (e.KeyCode == Keycode.Back)
         {
+            // While the second screen owns input, Back closes its overlay first (like B). If it had nothing
+            // to close, fall through to the couch's own Back arbitration.
+            if (e.Action == KeyEventActions.Up && SecondScreenInputFocus.IsActive &&
+                SecondScreenInputFocus.Dispatch?.Invoke(GamepadAction.Cancel) == true)
+            {
+                return true;
+            }
+
             if (e.Action == KeyEventActions.Up && AndroidGamepadInput.DispatchBack?.Invoke() == true)
                 return true;
 
@@ -207,10 +226,19 @@ public class MainActivity : AvaloniaMainActivity
         }
 
         if (e.Action == KeyEventActions.Down &&
-            AndroidGamepadInput.Map(e.KeyCode) is { } action &&
-            AndroidGamepadInput.Dispatch?.Invoke(action) == true)
+            AndroidGamepadInput.Map(e.KeyCode) is { } action)
         {
-            return true;
+            // When the second screen owns input, offer the action to the companion first. It consumes grid
+            // moves (and Confirm); anything it doesn't handle falls through to the couch, so the gamepad is
+            // never dead — e.g. a D-pad press while the companion only shows the resting spotlight.
+            if (SecondScreenInputFocus.IsActive &&
+                SecondScreenInputFocus.Dispatch?.Invoke(action) == true)
+            {
+                return true;
+            }
+
+            if (AndroidGamepadInput.Dispatch?.Invoke(action) == true)
+                return true;
         }
 
         return base.DispatchKeyEvent(e);

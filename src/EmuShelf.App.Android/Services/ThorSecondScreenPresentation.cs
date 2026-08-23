@@ -44,6 +44,18 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         SetContentView(_avaloniaView);
     }
 
+    // Any touch on the companion gives the second screen gamepad focus (the standard Thor model: the last
+    // screen you touched owns input), so the D-pad then walks its achievements grid. A touch on the main
+    // screen clears it again (MainActivity.DispatchTouchEvent). Only observe the event — never consume it,
+    // so Avalonia still gets the touch for tap-to-select and the dock.
+    public override bool DispatchTouchEvent(MotionEvent? e)
+    {
+        if (e?.ActionMasked == MotionEventActions.Down)
+            SecondScreenInputFocus.IsActive = true;
+        // The binding types the base parameter non-null, but Android may pass null; forward as-is.
+        return base.DispatchTouchEvent(e!);
+    }
+
     // Back on Screen-2 must behave like a launcher's Back, not a dialog's: close an open overlay
     // (all-apps drawer / achievements), otherwise swallow. Never call base.OnBackPressed — that cancels
     // the Presentation and reveals the stock app drawer underneath (the reported "press Back → app
