@@ -15,7 +15,7 @@
             <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="{DynamicResource EmuRadiusLarge}" />
             <Setter Property="Padding" Value="0" />
         </Style>
         <Style Selector="Border.achievement-badge-panel">
@@ -27,7 +27,7 @@
             <Setter Property="Background" Value="{DynamicResource EmuCoverWellBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="2" />
-            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="CornerRadius" Value="{DynamicResource EmuRadiusMedium}" />
         </Style>
         <Style Selector="Border.achievement-reward-panel">
             <Setter Property="Background" Value="{DynamicResource EmuFormatPillBrush}" />
@@ -39,7 +39,7 @@
             <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="CornerRadius" Value="{DynamicResource EmuRadiusMedium}" />
             <Setter Property="Padding" Value="7,3" />
         </Style>
         <Style Selector="Border.achievement-state.unlocked">
@@ -64,10 +64,10 @@
             <StackPanel Spacing="8">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                     <StackPanel Spacing="2">
-                        <TextBlock Text="ACHIEVEMENTS" FontSize="10" FontWeight="Bold"
+                        <TextBlock Text="ACHIEVEMENTS" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                    LetterSpacing="1.2"
                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                        <TextBlock Text="{Binding GameTitle}" FontSize="21" FontWeight="SemiBold"
+                        <TextBlock Text="{Binding GameTitle}" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                     </StackPanel>
@@ -79,7 +79,7 @@
                 <!-- Softcore (silver) and hardcore (gold) as two parallel rows: mode + count, a bar, and
                      that mode's points, aligned in shared columns so the two read as a matched pair. A
                      hardcore unlock implies the softcore one, so the gold bar can only trail the silver. -->
-                <Border Background="{DynamicResource EmuFormatPillBrush}" CornerRadius="10"
+                <Border Background="{DynamicResource EmuFormatPillBrush}" CornerRadius="{DynamicResource EmuRadiusLarge}"
                         Padding="14,12" IsVisible="{Binding HasAchievements}">
                     <Grid ColumnDefinitions="132,*,96" RowDefinitions="Auto,Auto"
                           ColumnSpacing="16" RowSpacing="11">
@@ -107,10 +107,10 @@
                     </Grid>
                 </Border>
                 <TextBlock Text="{Binding LastRefreshText}" IsVisible="{Binding HasAchievements}"
-                           FontSize="10.5" HorizontalAlignment="Right"
+                           FontSize="{DynamicResource EmuTextSmallSize}" HorizontalAlignment="Right"
                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                 <TextBlock Text="{Binding StatusText}" IsVisible="{Binding HasStatus}"
-                           TextWrapping="Wrap" FontSize="11"
+                           TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             </StackPanel>
         </Border>
@@ -138,7 +138,7 @@
                                                 ClipToBounds="True" HorizontalAlignment="Center"
                                                 VerticalAlignment="Center">
                                             <Panel>
-                                                <TextBlock Text="★" FontSize="26" HorizontalAlignment="Center"
+                                                <TextBlock Text="★" FontSize="{DynamicResource EmuTextDisplaySize}" HorizontalAlignment="Center"
                                                            VerticalAlignment="Center"
                                                            Foreground="{DynamicResource EmuAchievementBrush}" />
                                                 <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}"
@@ -149,16 +149,16 @@
 
                                     <Border Grid.Column="1" Padding="16,13">
                                         <Grid RowDefinitions="Auto,*,Auto">
-                                            <TextBlock Text="{Binding Title}" FontSize="15" FontWeight="SemiBold"
+                                            <TextBlock Text="{Binding Title}" FontSize="{DynamicResource EmuTextSubheadingSize}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                             <TextBlock Grid.Row="1" Text="{Binding Description}"
                                                        TextWrapping="Wrap" MaxLines="2"
-                                                       TextTrimming="CharacterEllipsis" FontSize="11.5"
+                                                       TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuTextBodySize}"
                                                        VerticalAlignment="Center"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             <TextBlock Grid.Row="2" Text="{Binding EarnedText}"
-                                                       FontSize="10.5"
+                                                       FontSize="{DynamicResource EmuTextSmallSize}"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                         </Grid>
                                     </Border>
@@ -171,10 +171,10 @@
                                             <StackPanel Classes="achievement-points-zone"
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Center" Spacing="2">
-                                                <TextBlock Text="REWARD" FontSize="8.5" FontWeight="Bold"
+                                                <TextBlock Text="REWARD" FontSize="{DynamicResource EmuTextCaptionSize}" FontWeight="Bold"
                                                            LetterSpacing="0.8" TextAlignment="Center"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                <TextBlock Text="{Binding PointsText}" FontSize="13"
+                                                <TextBlock Text="{Binding PointsText}" FontSize="{DynamicResource EmuTextLabelSize}"
                                                            FontWeight="SemiBold" TextAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"
                                                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
@@ -184,12 +184,12 @@
                                             <StackPanel Grid.Row="2" Classes="achievement-status-zone"
                                                         HorizontalAlignment="Stretch"
                                                         VerticalAlignment="Center" Spacing="3">
-                                                <TextBlock Text="STATUS" FontSize="8.5" FontWeight="Bold"
+                                                <TextBlock Text="STATUS" FontSize="{DynamicResource EmuTextCaptionSize}" FontWeight="Bold"
                                                            LetterSpacing="0.8" TextAlignment="Center"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 <Border Classes="achievement-state"
                                                         Classes.unlocked="{Binding IsUnlocked}">
-                                                    <TextBlock Text="{Binding UnlockStateText}" FontSize="10"
+                                                    <TextBlock Text="{Binding UnlockStateText}" FontSize="{DynamicResource EmuTextSmallSize}"
                                                                FontWeight="SemiBold" TextAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </Border>
@@ -204,15 +204,15 @@
             </ScrollViewer>
             <Border IsVisible="{Binding !HasAchievements}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="330"
-                    Padding="22,18" CornerRadius="10"
+                    Padding="22,18" CornerRadius="{DynamicResource EmuRadiusLarge}"
                     Background="{DynamicResource EmuCardBrush}"
                     BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="{Binding EmptyStateTitle}" FontSize="15" FontWeight="SemiBold"
+                    <TextBlock Text="{Binding EmptyStateTitle}" FontSize="{DynamicResource EmuTextSubheadingSize}" FontWeight="SemiBold"
                                TextAlignment="Center"
                                Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                     <TextBlock Text="{Binding EmptyStateDescription}" TextWrapping="Wrap"
-                               TextAlignment="Center" FontSize="11.5"
+                               TextAlignment="Center" FontSize="{DynamicResource EmuTextBodySize}"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </StackPanel>
             </Border>

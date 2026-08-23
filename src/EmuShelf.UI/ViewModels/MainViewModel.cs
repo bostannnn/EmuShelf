@@ -1524,6 +1524,10 @@ public partial class MainViewModel : ViewModelBase
         HotkeyCoordinator? hotkeys = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
+        // With the tube effect off the shelf renderer only draws when the pose changes, so an idle
+        // sway would keep it drawing every frame for no input. That is the fan-on-scroll cost the
+        // reduced-effects head avoids, so the resting hero only breathes where effects are full.
+        _shelfHeroRotation.IdleSwayEnabled = !IsReducedEffectsPlatform;
         _updates = updates;
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;

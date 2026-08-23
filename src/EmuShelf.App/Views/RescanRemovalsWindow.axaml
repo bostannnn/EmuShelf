@@ -12,7 +12,7 @@
 
     <StackPanel Margin="22" Spacing="16">
         <TextBlock Text="Remove missing games?"
-                   FontSize="20" FontWeight="SemiBold"
+                   FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
         <TextBlock Text="{Binding Message}"
                    TextWrapping="Wrap"

@@ -12,7 +12,7 @@
     <Grid RowDefinitions="Auto,Auto,*" Margin="24">
         <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,18">
             <StackPanel Spacing="5">
-                <TextBlock Text="Find a cover" FontSize="22" FontWeight="SemiBold"
+                <TextBlock Text="Find a cover" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                 <TextBlock Text="{Binding Description}" TextWrapping="Wrap"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -31,11 +31,11 @@
 
         <Border Grid.Row="2" Background="{DynamicResource EmuLibraryBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
-                CornerRadius="10" ClipToBounds="True">
+                CornerRadius="{DynamicResource EmuRadiusLarge}" ClipToBounds="True">
             <Grid>
                 <StackPanel IsVisible="{Binding ShowPrompt}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="8" MaxWidth="430">
-                    <TextBlock Text="Search for game covers" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="Search for game covers" FontSize="{DynamicResource EmuTextHeadingSize}" FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="Results are suggestions from the web. Nothing changes until you choose one."
                                TextWrapping="Wrap" TextAlignment="Center"
@@ -51,7 +51,7 @@
 
                 <StackPanel IsVisible="{Binding ShowNoResults}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="8" MaxWidth="450">
-                    <TextBlock Text="No covers found" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="No covers found" FontSize="{DynamicResource EmuTextHeadingSize}" FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" TextAlignment="Center"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -77,14 +77,14 @@
                                             VerticalContentAlignment="Stretch">
                                         <Grid RowDefinitions="196,Auto,Auto" RowSpacing="4">
                                             <Border Background="{DynamicResource EmuCoverWellBrush}"
-                                                    CornerRadius="5" ClipToBounds="True">
+                                                    CornerRadius="{DynamicResource EmuRadiusSmall}" ClipToBounds="True">
                                                 <Image Source="{Binding Preview}" Stretch="Uniform" />
                                             </Border>
                                             <TextBlock Grid.Row="1" Text="{Binding ResolutionText}"
-                                                       HorizontalAlignment="Center" FontSize="11"
+                                                       HorizontalAlignment="Center" FontSize="{DynamicResource EmuTextBodySize}"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             <TextBlock Grid.Row="2" Text="{Binding SourceText}"
-                                                       HorizontalAlignment="Center" FontSize="10"
+                                                       HorizontalAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}"
                                                        MaxWidth="148" TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                         </Grid>

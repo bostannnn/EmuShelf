@@ -11,15 +11,15 @@
 
     <Grid RowDefinitions="Auto,*,Auto" Margin="24">
         <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
-            <TextBlock Text="{Binding Heading}" FontSize="22" FontWeight="SemiBold"
+            <TextBlock Text="{Binding Heading}" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                        Foreground="{DynamicResource EmuTextPrimaryBrush}" TextWrapping="Wrap" />
-            <TextBlock Text="ScreenScraper" FontSize="13"
+            <TextBlock Text="ScreenScraper" FontSize="{DynamicResource EmuTextLabelSize}"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
         </StackPanel>
 
         <Border Grid.Row="1" Background="{DynamicResource EmuLibraryBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
-                CornerRadius="10" ClipToBounds="True">
+                CornerRadius="{DynamicResource EmuRadiusLarge}" ClipToBounds="True">
             <Grid>
                 <!-- Configure -->
                 <ScrollViewer IsVisible="{Binding IsConfiguring}" HorizontalScrollBarVisibility="Disabled">
@@ -29,7 +29,7 @@
                         <CheckBox Content="Replace values ScreenScraper already set (otherwise only fill blanks)"
                                   IsChecked="{Binding RefreshOwnedValues}" />
 
-                        <TextBlock Text="Apply" FontWeight="SemiBold" FontSize="14"
+                        <TextBlock Text="Apply" FontWeight="SemiBold" FontSize="{DynamicResource EmuTextSubheadingSize}"
                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                         <CheckBox Content="Metadata (title, developer, genre, descriptions…)"
                                   IsChecked="{Binding IncludeMetadata}" />
@@ -43,7 +43,7 @@
                         <CheckBox Content="Cartridge / disc" IsChecked="{Binding IncludePhysicalMedia}" />
                         <CheckBox Content="Cartridge / disc texture" IsChecked="{Binding IncludePhysicalMediaTexture}" />
 
-                        <TextBlock TextWrapping="Wrap" FontSize="12"
+                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                    Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                    Text="Only games matched by their hash or disc serial are scraped. Unmatched games are skipped — scrape those individually to search by title." />
                     </StackPanel>
@@ -64,7 +64,7 @@
                 <!-- Done -->
                 <StackPanel IsVisible="{Binding IsDone}" VerticalAlignment="Center"
                             HorizontalAlignment="Center" Spacing="10" MaxWidth="420">
-                    <TextBlock Text="{Binding DoneTitle}" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="{Binding DoneTitle}" FontSize="{DynamicResource EmuTextHeadingSize}" FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" TextAlignment="Center"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />

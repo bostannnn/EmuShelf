@@ -170,4 +170,110 @@ public class MediaRotationModelTests
         Assert.False(model.Update(1f, 0f, 0d));
         Assert.True(model.IsAtRest);
     }
+
+    // --- Idle sway: a resting hero breathes so it reads as a 3-D object and quietly invites the stick. ---
+
+    private static bool AdvanceCentred(MediaRotationModel model, int ticks, double msPerTick = 100d)
+    {
+        var moved = false;
+        for (var i = 0; i < ticks; i++)
+        {
+            moved |= model.Update(0f, 0f, msPerTick);
+        }
+
+        return moved;
+    }
+
+    [Fact]
+    public void RestingHeroBeginsToSwayOnlyAfterTheSettleDelay()
+    {
+        var model = new MediaRotationModel();
+
+        // Well inside the settle delay the hero holds its pose and asks for no redraws — a freshly
+        // focused cover gets a beat to arrive before it starts to move.
+        Assert.False(AdvanceCentred(model, ticks: 10));
+        Assert.Equal(MediaRotationModel.RestYaw, model.Yaw);
+
+        // Past the delay, it begins to drift.
+        Assert.True(AdvanceCentred(model, ticks: 20));
+        Assert.NotEqual(MediaRotationModel.RestYaw, model.Yaw);
+    }
+
+    [Fact]
+    public void IdleSwayGenuinelyMovesButStaysGentle()
+    {
+        var model = new MediaRotationModel();
+        AdvanceCentred(model, ticks: 25);
+
+        var maxYawTravel = 0f;
+        var maxPitchTravel = 0f;
+        // A little over one full yaw cycle, so the sway is sampled through a peak in each axis.
+        for (var i = 0; i < 70; i++)
+        {
+            model.Update(0f, 0f, 100d);
+            maxYawTravel = MathF.Max(maxYawTravel, MathF.Abs(model.Yaw - MediaRotationModel.RestYaw));
+            maxPitchTravel = MathF.Max(maxPitchTravel, MathF.Abs(model.Pitch - MediaRotationModel.RestPitch));
+        }
+
+        // It genuinely turns...
+        Assert.True(maxYawTravel > 0.04f, $"yaw travel {maxYawTravel}");
+        // ...but only a few degrees — a sheen of life, never a spin (0.12 rad is ~7 degrees).
+        Assert.True(maxYawTravel < 0.12f, $"yaw travel {maxYawTravel}");
+        Assert.True(maxPitchTravel is > 0f and < 0.05f, $"pitch travel {maxPitchTravel}");
+    }
+
+    [Fact]
+    public void AHeroTurnedByHandHoldsItsPoseInsteadOfSwaying()
+    {
+        var model = new MediaRotationModel();
+        model.Update(1f, 0f, 100d);
+        var parked = model.Yaw;
+
+        // Left alone away from rest, it keeps the inspection pose the player chose — the sway never
+        // fights a deliberate turn.
+        Assert.False(AdvanceCentred(model, ticks: 40));
+        Assert.Equal(parked, model.Yaw);
+    }
+
+    [Fact]
+    public void TheStickTakesOverAnIdleSwayAndDoesNotResumeIt()
+    {
+        var model = new MediaRotationModel();
+        AdvanceCentred(model, ticks: 25);
+        Assert.NotEqual(MediaRotationModel.RestYaw, model.Yaw);
+
+        // Grabbing the stick drives the hero and hands the sway off.
+        Assert.True(model.Update(1f, 0f, 100d));
+        Assert.False(model.IsAtRest);
+
+        // Releasing does not restart the sway: the pose is no longer at rest.
+        Assert.False(model.Update(0f, 0f, 100d));
+    }
+
+    [Fact]
+    public void RecentreClearsAnIdleSwayAndRestartsTheSettleDelay()
+    {
+        var model = new MediaRotationModel();
+        AdvanceCentred(model, ticks: 25);
+        Assert.NotEqual(MediaRotationModel.RestYaw, model.Yaw);
+
+        Assert.True(model.Recentre());
+        Assert.Equal(MediaRotationModel.RestYaw, model.Yaw);
+        Assert.Equal(MediaRotationModel.RestPitch, model.Pitch);
+
+        // The delay restarts, so the freshly-centred hero holds still again briefly.
+        Assert.False(model.Update(0f, 0f, 100d));
+    }
+
+    [Fact]
+    public void DisabledIdleSwayNeverMovesTheHero()
+    {
+        var model = new MediaRotationModel { IdleSwayEnabled = false };
+
+        // No matter how long it rests, a disabled sway never moves the hero nor asks for a redraw —
+        // the contract the reduced-effects head relies on.
+        Assert.False(AdvanceCentred(model, ticks: 60));
+        Assert.Equal(MediaRotationModel.RestYaw, model.Yaw);
+        Assert.True(model.IsAtRest);
+    }
 }

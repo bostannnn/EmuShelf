@@ -12,18 +12,18 @@
 
     <Grid RowDefinitions="Auto,*,Auto" Margin="24">
         <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
-            <TextBlock Text="{Binding GameTitle}" FontSize="22" FontWeight="SemiBold"
+            <TextBlock Text="{Binding GameTitle}" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                        Foreground="{DynamicResource EmuTextPrimaryBrush}" TextWrapping="Wrap" />
-            <TextBlock Text="ScreenScraper" FontSize="13"
+            <TextBlock Text="ScreenScraper" FontSize="{DynamicResource EmuTextLabelSize}"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             <TextBlock Text="{Binding QuotaText}"
                        IsVisible="{Binding QuotaText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                       FontSize="11" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                       FontSize="{DynamicResource EmuTextBodySize}" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
         </StackPanel>
 
         <Border Grid.Row="1" Background="{DynamicResource EmuLibraryBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
-                CornerRadius="10" ClipToBounds="True">
+                CornerRadius="{DynamicResource EmuRadiusLarge}" ClipToBounds="True">
             <Grid>
                 <!-- Loading -->
                 <StackPanel IsVisible="{Binding ShowLoading}" HorizontalAlignment="Center"
@@ -37,14 +37,14 @@
                 <StackPanel IsVisible="{Binding ShowMessage}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="14" MaxWidth="420">
                     <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" TextAlignment="Center"
-                               FontSize="15" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                               FontSize="{DynamicResource EmuTextSubheadingSize}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </StackPanel>
 
                 <!-- Fingerprint consent (kept distinct so its call to action is prominent) -->
                 <StackPanel IsVisible="{Binding ShowConsent}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="14" MaxWidth="420">
                     <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" TextAlignment="Center"
-                               FontSize="15" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                               FontSize="{DynamicResource EmuTextSubheadingSize}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                     <Button Content="Compute hash and match" Classes="accent"
                             HorizontalAlignment="Center"
                             Command="{Binding ComputeFingerprintCommand}" />
@@ -53,7 +53,7 @@
                 <!-- Connect (not connected / provider disabled) -->
                 <StackPanel IsVisible="{Binding ShowConnect}" HorizontalAlignment="Center"
                             VerticalAlignment="Center" Spacing="12" Width="330">
-                    <TextBlock Text="Connect your ScreenScraper account" FontSize="17" FontWeight="SemiBold"
+                    <TextBlock Text="Connect your ScreenScraper account" FontSize="{DynamicResource EmuTextHeadingSize}" FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="Sign in with your screenscraper.fr username and password."
                                TextWrapping="Wrap" TextAlignment="Center"
@@ -92,7 +92,7 @@
                                             CommandParameter="{Binding}">
                                         <StackPanel Spacing="1">
                                             <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding System}" FontSize="11"
+                                            <TextBlock Text="{Binding System}" FontSize="{DynamicResource EmuTextBodySize}"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                         </StackPanel>
                                     </Button>
@@ -110,7 +110,7 @@
                                   IsChecked="{Binding RefreshOwnedValues}" />
 
                         <StackPanel Spacing="8" IsVisible="{Binding HasFields}">
-                            <TextBlock Text="Details" FontWeight="SemiBold" FontSize="15"
+                            <TextBlock Text="Details" FontWeight="SemiBold" FontSize="{DynamicResource EmuTextSubheadingSize}"
                                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                             <ItemsControl ItemsSource="{Binding Fields}">
                                 <ItemsControl.ItemTemplate>
@@ -126,7 +126,7 @@
                                                            TextDecorations="Strikethrough" />
                                                 <TextBlock Text="{Binding ProposedValue}" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                <TextBlock Text="Kept — you edited this" FontSize="11"
+                                                <TextBlock Text="Kept — you edited this" FontSize="{DynamicResource EmuTextBodySize}"
                                                            IsVisible="{Binding IsUserOwned}"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                             </StackPanel>
@@ -137,7 +137,7 @@
                         </StackPanel>
 
                         <StackPanel Spacing="8" IsVisible="{Binding HasOtherMedia}">
-                            <TextBlock Text="Media" FontWeight="SemiBold" FontSize="15"
+                            <TextBlock Text="Media" FontWeight="SemiBold" FontSize="{DynamicResource EmuTextSubheadingSize}"
                                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                             <ItemsControl ItemsSource="{Binding OtherMedia}">
                                 <ItemsControl.ItemTemplate>
@@ -145,12 +145,12 @@
                                         <Grid ColumnDefinitions="Auto,Auto,*" Margin="0,6" ColumnSpacing="12">
                                             <CheckBox IsChecked="{Binding IsSelected}" IsEnabled="{Binding CanApply}"
                                                       VerticalAlignment="Center" />
-                                            <Border Grid.Column="1" Width="96" Height="128" CornerRadius="5"
+                                            <Border Grid.Column="1" Width="96" Height="128" CornerRadius="{DynamicResource EmuRadiusSmall}"
                                                     Background="{DynamicResource EmuCoverWellBrush}"
                                                     ClipToBounds="True" VerticalAlignment="Center">
                                                 <Panel>
                                                     <TextBlock Text="…" HorizontalAlignment="Center"
-                                                               VerticalAlignment="Center" FontSize="18"
+                                                               VerticalAlignment="Center" FontSize="{DynamicResource EmuTextHeadingSize}"
                                                                IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNull}}"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                     <Image Source="{Binding Preview}" Stretch="Uniform" />
@@ -160,7 +160,7 @@
                                                 <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
                                                 <TextBlock Text="{Binding ProposedText}"
                                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                <TextBlock Text="Your image — tick to replace it" FontSize="11"
+                                                <TextBlock Text="Your image — tick to replace it" FontSize="{DynamicResource EmuTextBodySize}"
                                                            IsVisible="{Binding IsUserOwned}"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                             </StackPanel>
@@ -175,13 +175,13 @@
                     <!-- Cover safe-zone: fixed area so the layout never shifts as the art loads -->
                     <StackPanel Grid.Column="1" Width="228" Margin="6,18,18,18" Spacing="8"
                                 VerticalAlignment="Top">
-                        <Border Width="204" Height="272" CornerRadius="8" ClipToBounds="True"
+                        <Border Width="204" Height="272" CornerRadius="{DynamicResource EmuRadiusMedium}" ClipToBounds="True"
                                 HorizontalAlignment="Center"
                                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
                                 Background="{DynamicResource EmuCoverWellBrush}">
                             <Panel>
                                 <TextBlock Text="{Binding CoverArtEmptyText}" HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" FontSize="12"
+                                           VerticalAlignment="Center" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                            IsVisible="{Binding CoverArtPreview, Converter={x:Static ObjectConverters.IsNull}}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <Image Source="{Binding CoverArtPreview}" Stretch="Uniform" />
