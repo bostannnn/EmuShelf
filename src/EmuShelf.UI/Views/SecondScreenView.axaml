@@ -10,6 +10,18 @@
              x:DataType="vm:SecondScreenViewModel"
              Background="{DynamicResource EmuWindowBackgroundBrush}">
 
+  <UserControl.Styles>
+    <!-- Achievement badge tiles: locked ones are dimmed, hardcore unlocks get the gold ring — the same
+         treatment as the gamepad achievements grid. Scoped class names so they never touch other tiles. -->
+    <Style Selector="Grid.ss-badge-inner.locked">
+      <Setter Property="Opacity" Value="0.42" />
+    </Style>
+    <Style Selector="Border.ss-badge.hardcore">
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuAchievementBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+  </UserControl.Styles>
+
   <!-- The Thor companion surface: an embedded Avalonia top level on Screen-2, so it inherits the app's
        palette, Inter font, and controls. The resting surface shows the focused/running game's fan art
        with its logo staggered in on top (Cocoon-style); the bottom bar carries the app dock plus the
@@ -87,40 +99,88 @@
         </Grid>
       </Border>
 
-      <!-- Achievements overlay -->
+      <!-- Achievements overlay: the whole badge set at a glance in a grid, with the game title + status
+           and the Refresh / Close controls pinned to the BOTTOM (mirrors the gamepad achievements
+           screen, moved down for the companion). Locked badges are dimmed; hardcore unlocks get the
+           gold ring — see the styles at the top of this view. -->
       <Border IsVisible="{Binding IsAchievementsOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
-        <Grid RowDefinitions="Auto,Auto,*" Margin="26,18,26,14">
-          <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
-            <TextBlock Grid.Column="0" Text="{Binding AchievementsTitle}" FontSize="22" FontWeight="SemiBold"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            <Button Grid.Column="1" Content="Refresh" Margin="0,0,8,0"
+        <Grid RowDefinitions="*,Auto" Margin="26,18,26,14">
+          <!-- Row-virtualized badge grid: a ListBox realizes one ROW per line (a vertical
+               VirtualizingStackPanel), each row an ItemsControl of AchievementColumnCount tiles, so a
+               400-badge set only realizes its on-screen rows. The column count is driven from the
+               viewport width (SizeChanged) so the row stride matches what is rendered. The ListBox is a
+               passive renderer — no selection/focus — so its selection visuals are styled away. -->
+          <ListBox Grid.Row="0" x:Name="AchievementsBadgeList"
+                   ItemsSource="{Binding AchievementRows}"
+                   Background="Transparent" BorderThickness="0" Padding="0"
+                   SizeChanged="OnAchievementsBadgeListSizeChanged"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   ScrollViewer.VerticalScrollBarVisibility="Auto">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel Orientation="Vertical" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="FocusAdorner" Value="{x:Null}" />
+              </Style>
+              <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
+                               ListBoxItem:pointerover /template/ ContentPresenter">
+                <Setter Property="Background" Value="Transparent" />
+              </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <ItemsControl ItemsSource="{Binding}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                      <Border Width="70" Height="70" Margin="5" CornerRadius="13" ClipToBounds="True"
+                              Classes="ss-badge" Classes.hardcore="{Binding IsHardcore}"
+                              ToolTip.Tip="{Binding Title}"
+                              Background="{DynamicResource EmuCoverWellBrush}"
+                              BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                              AttachedToVisualTree="OnAchievementBadgeAttached"
+                              DataContextChanged="OnAchievementBadgeDataContextChanged">
+                        <Grid Classes="ss-badge-inner" Classes.locked="{Binding IsLocked}">
+                          <PathIcon Width="26" Height="26" IsVisible="{Binding !HasBadge}"
+                                    Data="{DynamicResource AchievementTrophyGeometry}"
+                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                          <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- Bottom bar: game title over the status line, Refresh / Close on the right. -->
+          <Grid Grid.Row="1" x:Name="AchievementsFooter" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
+            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="{Binding AchievementsTitle}" FontSize="20" FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis"
+                         Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+              <TextBlock Text="{Binding AchievementsStatus}" FontSize="13" IsVisible="{Binding HasStatus}"
+                         TextTrimming="CharacterEllipsis"
+                         Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+            <Button Grid.Column="1" Content="Refresh" Margin="0,0,8,0" VerticalAlignment="Center"
                     IsVisible="{Binding CanRefresh}"
                     Command="{Binding RefreshCommand}" />
-            <Button Grid.Column="2" Content="Close" Command="{Binding CloseOverlayCommand}" />
+            <Button Grid.Column="2" Content="Close" VerticalAlignment="Center"
+                    Command="{Binding CloseOverlayCommand}" />
           </Grid>
-          <TextBlock Grid.Row="1" Text="{Binding AchievementsStatus}" FontSize="13" Margin="0,6,0,0"
-                     IsVisible="{Binding HasStatus}"
-                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-          <ScrollViewer Grid.Row="2" Margin="0,10,0,0">
-            <ItemsControl ItemsSource="{Binding Achievements}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:SecondScreenAchievementViewModel">
-                  <Grid ColumnDefinitions="Auto,*" Margin="0,7" Opacity="{Binding RowOpacity}">
-                    <PathIcon Grid.Column="0" Width="24" Height="24" VerticalAlignment="Top"
-                              Data="{DynamicResource AchievementTrophyGeometry}"
-                              Foreground="{DynamicResource EmuAchievementBrush}" />
-                    <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2">
-                      <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold"
-                                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                      <TextBlock Text="{Binding Detail}" FontSize="13"
-                                 Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                    </StackPanel>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
         </Grid>
       </Border>
     </Panel>

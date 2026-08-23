@@ -49,10 +49,20 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     private string? _runningGameTitle;
     private long? _achievementTargetGameId;
     private string? _achievementTargetTitle;
+    // Short-lived cache of the RA game-link table so the browse-follow does not open a fresh SQLite
+    // connection and full-scan it on the UI thread for every settled game. A newly linked game shows up
+    // within the TTL; links change rarely and only from the main app.
+    private IReadOnlyDictionary<long, RetroAchievementsGameLink>? _cachedLinks;
+    private DateTimeOffset _cachedLinksAt;
+    private static readonly TimeSpan LinksCacheTtl = TimeSpan.FromSeconds(3);
     private long _spotlightGeneration;
+    private long _achievementsFollowGeneration;
     private bool _disposed;
     private bool _appsLoaded;
     private bool _appsLoadInFlight;
+    // Set while a dock-launched app owns Screen-2. The companion Presentation is hidden for its duration
+    // (see LaunchOnSecondScreen) and re-shown when EmuShelf next returns to the foreground.
+    private bool _appLaunchedOnSecondScreen;
 
     public SecondScreenController(
         ISecondScreenDockStore dockStore,
@@ -67,7 +77,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         _readStore = readStore;
         _details = details;
         _account = account;
-        // Reserved for the next iteration (achievement badges + game-idle artwork as Avalonia bitmaps).
+        // Feeds the achievement grid's badge tiles (each AchievementRowViewModel loads its badge from here).
         _badges = badges;
         _gameDetails = gameDetails;
         _logger = logger;
@@ -87,8 +97,35 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         AndroidActivityLifecycle.ActivityAvailable += AttachActivity;
         AndroidActivityLifecycle.ActivityDestroyed += ActivityDestroyed;
         AndroidActivityLifecycle.TopResumedChanged += TopResumedChanged;
+        // The optional accessibility watcher re-shows the companion when a dock-launched app is dismissed
+        // (see SecondScreenReturnWatcher). It is only useful while EmuShelf drives Screen-2, so point it
+        // here; it is a no-op until the user enables the service in Settings → Accessibility.
+        SecondScreenAccessibility.ForegroundWindowChanged = OnForegroundWindowChanged;
         if (MainActivity.Current is { } activity)
             AttachActivity(activity);
+    }
+
+    // Fired by SecondScreenReturnWatcher (accessibility) on every window-state change, on any display.
+    private void OnForegroundWindowChanged(string? package, string? className)
+    {
+        // Only relevant while a dock app owns Screen-2 and the companion is hidden for it.
+        if (!_appLaunchedOnSecondScreen || className is null)
+            return;
+
+        // The stock secondary-display launcher returning to the front means the app we launched on Screen-2
+        // has been closed (backed out of). Re-show the companion over it immediately — NeoStation's instant
+        // dock-return. Its class is display-specific, so main-screen launcher events never match here.
+        if (!className.Contains("secondarydisplay.SecondaryDisplayLauncher", StringComparison.Ordinal))
+            return;
+
+        RunOnMain(() =>
+        {
+            if (!_appLaunchedOnSecondScreen)
+                return;
+            _appLaunchedOnSecondScreen = false;
+            _presentation?.Show();
+            _logger.Information("Second-screen: companion re-shown after a dock app closed on Screen-2.");
+        });
     }
 
     internal void GameStarted(Game game, string title)
@@ -98,13 +135,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         // nothing races the main-thread readers / Avalonia bindings.
         RunOnMain(() =>
         {
+            var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
             _runningGameId = game.Id;
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
             if (_presentation is { } presentation)
             {
-                presentation.Model.Overlay = SecondScreenOverlayKind.None;
+                ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
                 ScheduleSpotlightUpdate();
             }
             StartKeepAliveIfNeeded();
@@ -115,17 +153,30 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     {
         RunOnMain(() =>
         {
+            var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
             _runningGameId = null;
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
             if (_presentation is { } presentation)
             {
-                presentation.Model.Overlay = SecondScreenOverlayKind.None;
+                ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
                 ScheduleSpotlightUpdate();
             }
             StopKeepAlive();
         });
+    }
+
+    // A game start / return-to-browse resets the navigation overlay to None. The achievements panel is
+    // sticky, so if it was open, re-open it against the new context (running game, or focused game once
+    // browsing) instead of dropping to the spotlight — it stays up until the user closes it. Transient
+    // overlays (the app drawer) are simply left closed.
+    private void ReopenOrCloseOverlayForContextChange(ThorSecondScreenPresentation presentation, bool keepAchievements)
+    {
+        if (keepAchievements)
+            OpenAchievementsCore(forceRefresh: false);
+        else
+            presentation.Model.Overlay = SecondScreenOverlayKind.None;
     }
 
     private void ToggleDrawer()
@@ -250,6 +301,18 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         var state = topResumed ? "top-resumed" : "backgrounded";
         _logger.Information(
             $"Second-screen SS0 lifecycle: EmuShelf {state}; presentation showing={_presentation?.IsShowing == true}.");
+
+        // Coarse fallback re-show, ONLY when the accessibility watcher is not enabled. It brings the
+        // companion back when EmuShelf regains the foreground — but "EmuShelf is in front" is not the same
+        // as "the dock app closed": simply touching the main screen while a Screen-2 app is still open also
+        // regains the foreground, and re-showing there would cover the app the user deliberately left up.
+        // So when the watcher IS live, trust it exclusively (it re-shows the instant the app is dismissed,
+        // and leaves a still-open app alone); the fallback runs only in the degraded, no-service mode.
+        if (topResumed && _appLaunchedOnSecondScreen && !SecondScreenAccessibility.IsConnected)
+        {
+            _appLaunchedOnSecondScreen = false;
+            RunOnMain(() => _presentation?.Show());
+        }
     }
 
     private void EnsurePresentation()
@@ -586,6 +649,21 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 activity.StartActivity(intent);
             }
             _logger.Information($"Launched {flattenedComponent} on second-screen display {display.DisplayId}.");
+
+            // The launched app is an ordinary window (layer 21000); the companion is a Presentation
+            // (layer 31000), so the app would render *behind* the dock and be invisible. Match NeoStation:
+            // hide the companion while the app owns Screen-2, and re-show it when EmuShelf returns to the
+            // foreground (TopResumedChanged). A short delay lets the app's own window come up first so the
+            // stock secondary-display launcher never flashes through underneath during the hand-off.
+            _appLaunchedOnSecondScreen = true;
+            var launched = _presentation;
+            _mainHandler.PostDelayed(
+                () =>
+                {
+                    if (_appLaunchedOnSecondScreen && ReferenceEquals(launched, _presentation))
+                        launched?.Hide();
+                },
+                350);
         }
         catch (Exception ex)
         {
@@ -593,7 +671,11 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         }
     }
 
-    private void OpenAchievementsCore(bool forceRefresh)
+    // allowNetworkRefresh is false on the debounced browse-follow: while the panel follows the library
+    // selection, it shows only cached details and never fires a network refresh, so scrolling game to game
+    // can't burst the RetroAchievements API. The explicit Refresh button (forceRefresh) and the first
+    // manual open still fetch.
+    private void OpenAchievementsCore(bool forceRefresh, bool allowNetworkRefresh = true)
     {
         _navigation = _navigation.OpenAchievements();
         var surfaceRevision = _navigation.Revision;
@@ -610,8 +692,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             return;
         }
 
-        var links = _readStore.GetAllLinks();
-        if (!links.TryGetValue(gameId.Value, out var link) ||
+        if (!GetLinks().TryGetValue(gameId.Value, out var link) ||
             link is not { HasAchievements: true, RetroAchievementsGameId: { } raGameId })
         {
             ShowAchievementsMessage(title, "No RetroAchievements set is linked to this game.", canRefresh: false);
@@ -622,6 +703,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         _achievementTargetTitle = title;
         var cached = _details.GetCached(raGameId);
         var credentials = _account.CurrentCredentials;
+        var willRefresh = credentials is not null &&
+            (forceRefresh || (allowNetworkRefresh && (cached is null || IsAchievementDetailStale(cached))));
+
         if (cached is not null)
         {
             ShowAchievementsSnapshot(
@@ -629,7 +713,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 cached,
                 credentials is null
                     ? "Reconnect RetroAchievements to refresh these cached details."
-                    : forceRefresh
+                    : willRefresh
                         ? "Refreshing achievement details…"
                         : $"Updated {cached.LastRefreshedAt.LocalDateTime:g}",
                 canRefresh: credentials is not null);
@@ -640,14 +724,13 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 title,
                 credentials is null
                     ? "Connect RetroAchievements in Settings to load details."
-                    : "Loading achievement details…",
-                canRefresh: false);
+                    : willRefresh
+                        ? "Loading achievement details…"
+                        : "Press Refresh to load achievement details.",
+                canRefresh: credentials is not null && !willRefresh);
         }
 
-        var stale = cached is null || DateTimeOffset.UtcNow - cached.LastRefreshedAt >= DetailRefreshAge;
-        if (!forceRefresh && !stale)
-            return;
-        if (credentials is null)
+        if (!willRefresh)
             return;
 
         _ = Task.Run(async () =>
@@ -724,18 +807,15 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = status;
         presentation.Model.CanRefresh = canRefresh;
-        presentation.Model.Achievements.Clear();
-        foreach (var achievement in snapshot.Details.Achievements
-                     .OrderBy(item => item.DisplayOrder)
-                     .ThenBy(item => item.AchievementId))
-        {
-            var state = achievement.IsHardcore ? "Hardcore" : achievement.IsEarned ? "Unlocked" : "Locked";
-            var points = achievement.Points == 1 ? "1 pt" : $"{achievement.Points} pts";
-            presentation.Model.Achievements.Add(new SecondScreenAchievementViewModel(
-                achievement.Title,
-                $"{state}  •  {points}",
-                achievement.IsEarned));
-        }
+        // Badges are deferred (loadBadge:false) and requested per tile as it attaches (see the view), so
+        // only the on-screen badges of the virtualized grid load — a big set never fires hundreds at once.
+        // Locked/hardcore state drives the tile's dimming and gold ring.
+        var rows = snapshot.Details.Achievements
+            .OrderBy(item => item.DisplayOrder)
+            .ThenBy(item => item.AchievementId)
+            .Select(achievement => new AchievementRowViewModel(achievement, _badges, loadBadge: false))
+            .ToList();
+        presentation.Model.SetAchievements(rows);
         presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
@@ -747,7 +827,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = message;
         presentation.Model.CanRefresh = canRefresh;
-        presentation.Model.Achievements.Clear();
+        presentation.Model.ClearAchievements();
         presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
@@ -764,6 +844,21 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     {
         _achievementTargetGameId = null;
         _achievementTargetTitle = null;
+    }
+
+    private static bool IsAchievementDetailStale(RetroAchievementsDetailsSnapshot cached) =>
+        DateTimeOffset.UtcNow - cached.LastRefreshedAt >= DetailRefreshAge;
+
+    // Main-thread only (every OpenAchievementsCore caller is), so the cache needs no locking.
+    private IReadOnlyDictionary<long, RetroAchievementsGameLink> GetLinks()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedLinks is null || now - _cachedLinksAt >= LinksCacheTtl)
+        {
+            _cachedLinks = _readStore.GetAllLinks();
+            _cachedLinksAt = now;
+        }
+        return _cachedLinks;
     }
 
     private void StartKeepAliveIfNeeded()
@@ -794,11 +889,38 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
             return;
 
-        // An open panel remains a snapshot until the user asks for achievements again, but its pending
-        // request must no longer be allowed to overwrite the newly focused context.
+        // Any pending achievement request for the previously focused game must not overwrite the new
+        // context, so drop the target first.
         ResetAchievementTarget();
+        // The achievements panel is sticky and follows the library selection: while it is open, re-point
+        // it at the newly focused game (debounced so only the settled game loads) instead of leaving a
+        // stale snapshot. It stays open until the user closes it, so they can browse game to game with it up.
+        ScheduleAchievementsFollow();
         // While browsing, the spotlight follows the library selection (a running game always wins).
         ScheduleSpotlightUpdate();
+    }
+
+    // Debounced re-point of an open achievements panel to the currently focused game. Focus changes fire
+    // rapidly while scrolling the library, so only the settled game's achievements load — mirrors the
+    // spotlight debounce. A no-op unless the panel is open.
+    private void ScheduleAchievementsFollow()
+    {
+        if (_navigation.Overlay != SecondScreenOverlay.Achievements)
+            return;
+
+        var generation = ++_achievementsFollowGeneration;
+        _mainHandler.PostDelayed(
+            () =>
+            {
+                if (generation == _achievementsFollowGeneration &&
+                    _navigation.Overlay == SecondScreenOverlay.Achievements &&
+                    _runningGameId is null)
+                {
+                    // Cached-only: following the selection must not spray the RA API game by game.
+                    OpenAchievementsCore(forceRefresh: false, allowNetworkRefresh: false);
+                }
+            },
+            140);
     }
 
     private void DismissPresentation()
@@ -871,6 +993,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         AndroidActivityLifecycle.ActivityAvailable -= AttachActivity;
         AndroidActivityLifecycle.ActivityDestroyed -= ActivityDestroyed;
         AndroidActivityLifecycle.TopResumedChanged -= TopResumedChanged;
+        SecondScreenAccessibility.ForegroundWindowChanged = null;
         DismissPresentation();
         DetachDisplayManager();
         StopKeepAlive();

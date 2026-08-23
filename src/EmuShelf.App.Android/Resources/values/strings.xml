@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Shown in Settings → Accessibility for the EmuShelf companion return-watcher. -->
+  <string name="second_screen_accessibility_description">Lets EmuShelf bring its second-screen companion back automatically when an app you launched from the companion dock is closed. EmuShelf never reads screen contents; it only detects when the second screen returns to the launcher.</string>
+</resources>

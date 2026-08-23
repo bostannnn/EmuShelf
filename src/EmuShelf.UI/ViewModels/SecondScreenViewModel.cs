@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Media.Imaging;
@@ -41,15 +42,6 @@ public sealed partial class SecondScreenSlotViewModel(int index) : ObservableObj
     partial void OnLabelChanged(string? value) => OnPropertyChanged(nameof(IsEmpty));
 
     partial void OnIconChanged(Bitmap? value) => OnPropertyChanged(nameof(HasIcon));
-}
-
-/// <summary>One achievement row on the second-screen panel.</summary>
-public sealed class SecondScreenAchievementViewModel(string title, string detail, bool earned)
-{
-    public string Title { get; } = title;
-    public string Detail { get; } = detail;
-    public bool Earned { get; } = earned;
-    public double RowOpacity => Earned ? 1.0 : 0.55;
 }
 
 /// <summary>
@@ -130,7 +122,90 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     public ObservableCollection<SecondScreenAppViewModel> Apps { get; } = [];
 
-    public ObservableCollection<SecondScreenAchievementViewModel> Achievements { get; } = [];
+    // Reuses the gamepad achievements row VM so the companion badge grid gets the same cached-badge
+    // loading (off-thread, from IRetroAchievementsBadgeCache) and bitmap disposal, rather than a second
+    // implementation. Badges are deferred (loadBadge:false) and requested per tile on attach, so only the
+    // on-screen ones ever load.
+    private readonly List<AchievementRowViewModel> _achievements = [];
+
+    /// <summary>
+    /// The achievement badges sliced into rows of <see cref="AchievementColumnCount"/> for a virtualized
+    /// vertical list — the same shape as the gamepad grid, so a 400-achievement set realizes only its
+    /// on-screen rows instead of every tile. Rebuilt (reference-only) when the set or the column count
+    /// changes.
+    /// </summary>
+    public BulkObservableCollection<IReadOnlyList<AchievementRowViewModel>> AchievementRows { get; } = [];
+
+    /// <summary>Total badge count across all rows; drives the empty state.</summary>
+    public int AchievementCount => _achievements.Count;
+
+    private int _achievementColumnCount = 1;
+
+    /// <summary>
+    /// Columns the badge grid renders, derived from the viewport width by the view's SizeChanged. Setting
+    /// it re-slices the flat set into rows so the rendered column count always matches.
+    /// </summary>
+    public int AchievementColumnCount
+    {
+        get => _achievementColumnCount;
+        set
+        {
+            if (SetProperty(ref _achievementColumnCount, Math.Max(1, value)))
+                RebuildAchievementRows();
+        }
+    }
+
+    /// <summary>Replaces the badge set (disposing the previous one's bitmaps) and re-slices it into rows.</summary>
+    public void SetAchievements(IReadOnlyList<AchievementRowViewModel> achievements)
+    {
+        DisposeAchievements();
+        _achievements.AddRange(achievements);
+        OnPropertyChanged(nameof(AchievementCount));
+        RebuildAchievementRows();
+    }
+
+    /// <summary>
+    /// Empties the achievement grid, disposing each row's cached badge bitmap. Every rebuild (a game
+    /// change follow, a refresh) and the presentation teardown route through here so scrolling the
+    /// library with the panel open does not accumulate undisposed badge bitmaps.
+    /// </summary>
+    public void ClearAchievements()
+    {
+        DisposeAchievements();
+        OnPropertyChanged(nameof(AchievementCount));
+        if (AchievementRows.Count > 0)
+            AchievementRows.Clear();
+    }
+
+    private void DisposeAchievements()
+    {
+        foreach (var achievement in _achievements)
+            achievement.Dispose();
+        _achievements.Clear();
+    }
+
+    private void RebuildAchievementRows()
+    {
+        if (_achievements.Count == 0)
+        {
+            if (AchievementRows.Count > 0)
+                AchievementRows.Clear();
+            return;
+        }
+
+        var columns = Math.Max(1, _achievementColumnCount);
+        var rows = new List<IReadOnlyList<AchievementRowViewModel>>((_achievements.Count + columns - 1) / columns);
+        for (var start = 0; start < _achievements.Count; start += columns)
+        {
+            var take = Math.Min(columns, _achievements.Count - start);
+            var row = new AchievementRowViewModel[take];
+            for (var offset = 0; offset < take; offset++)
+                row[offset] = _achievements[start + offset];
+            rows.Add(row);
+        }
+
+        AchievementRows.ReplaceAll(rows);
+    }
 
     public bool IsDrawerOpen => Overlay == SecondScreenOverlayKind.Drawer;
     public bool IsAchievementsOpen => Overlay == SecondScreenOverlayKind.Achievements;
