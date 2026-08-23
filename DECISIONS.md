@@ -10782,3 +10782,33 @@ trap — a `DynamicResource` margin on the *root* of a `SizeToContent` dialog me
 resolves and collapses the auto-height (broke `RenderMetadataConsentInDarkTheme`) — so spacing tokens
 must be adopted inside a layout, never on its sizing root. Remaining M24 Phase-0 pieces (control
 heights, elevations, focus rings, motion) are untouched.
+## 2026-08-23 — Second-screen gamepad: handle keys ON the companion Presentation, not forwarded from MainActivity
+
+Corrects the gamepad-navigation half of the entry above. That design was built on a premise that turned out
+to be **false**: *"the companion `Presentation` receives no gamepad input — all key events land on
+`MainActivity` (Screen 1)."* It never held on the Thor. Android uses **per-display input focus** with a single
+*top-focused display*, and hardware key events (the gamepad D-pad/buttons) are delivered to the focused window
+of that display. `dumpsys window` on-device shows `mTopFocusedDisplayId=4` with the EmuShelf `Presentation` as
+display 4's `mCurrentFocus` — so the instant the user touches Screen-2 (exactly when they want to drive the
+grid), the pad routes to the **companion Presentation's embedded `AvaloniaView`**, and `MainActivity` stops
+receiving it. The forwarding branch in `MainActivity.DispatchKeyEvent` (gated on the old `SecondScreenInputFocus`
+flag) was therefore dead in the one case it was written for. With no gamepad handling of its own, the Presentation
+ran Avalonia's **default keyboard focus navigation**: with achievements open the ring bounced between the only
+focusable visible controls (Refresh/Close); with nothing open it wandered onto the dock chrome and the still-
+focusable, `Opacity=0` closed overlays — the reported "focuses Refresh/Close" and "moves on invisible elements"
+bugs.
+
+Fix: handle the pad **at the window that actually receives it**. `ThorSecondScreenPresentation` (a `Dialog`,
+whose `DispatchKeyEvent` runs at the top of the decor view before the event descends into the `AvaloniaView`)
+now overrides `DispatchKeyEvent`: any keycode `AndroidGamepadInput.Map` recognises is forwarded to
+`Model.DispatchGamepadAction` on key-down and **consumed on both edges**, so Avalonia never runs focus nav on
+Screen-2. This is the same pattern `MainActivity.DispatchKeyEvent` already uses for the couch on Screen 1. Back
+stays on `OnBackPressed` (not in the map). The whole cross-screen `SecondScreenInputFocus` static and its
+touch-driven `IsActive` flag were deleted — per-display top-focus (governed by the last-touched screen) already
+*is* the focus-follows-touch model, so nothing needs to mirror it. Scope was kept minimal (chosen with the
+user): the achievements grid walks and the wandering stops; the dock and all-apps drawer stay touch-only (their
+`DispatchGamepadAction` returns false, but the Presentation still consumes the key so nothing wanders).
+
+Verified on the Thor: builds/installs/boots, the companion re-attaches on display 4, and injected D-pad events
+at display 4 are consumed without crashing or dismissing the Presentation. The visual grid-walk itself needs a
+gamepad-in-hand pass on-device (Screen-2 is `FLAG_SECURE`, so no screenshot, and this Mac has no pad).

@@ -44,16 +44,28 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         SetContentView(_avaloniaView);
     }
 
-    // Any touch on the companion gives the second screen gamepad focus (the standard Thor model: the last
-    // screen you touched owns input), so the D-pad then walks its achievements grid. A touch on the main
-    // screen clears it again (MainActivity.DispatchTouchEvent). Only observe the event — never consume it,
-    // so Avalonia still gets the touch for tap-to-select and the dock.
-    public override bool DispatchTouchEvent(MotionEvent? e)
+    // The companion's gamepad surface. Android routes hardware key events to the focused window of the
+    // *top-focused display* (dumpsys: mTopFocusedDisplayId), and touching Screen-2 makes this Presentation
+    // that window — so the D-pad arrives here, NOT at MainActivity (Screen 1). A Presentation is a Dialog,
+    // whose DispatchKeyEvent is called at the top of the decor view before the event descends into the
+    // embedded AvaloniaView, so mapping it here intercepts before Avalonia's default focus navigation would
+    // otherwise wander the ring onto the Refresh/Close chrome and the invisible, still-focusable closed
+    // overlays. Mirrors MainActivity.DispatchKeyEvent, which is the same pattern for the couch on Screen 1.
+    public override bool DispatchKeyEvent(KeyEvent? e)
     {
-        if (e?.ActionMasked == MotionEventActions.Down)
-            SecondScreenInputFocus.IsActive = true;
+        // Every controller key is consumed here (both edges) so Avalonia never runs focus nav on Screen-2;
+        // the action is dispatched on key-down only (repeats included, so a held D-pad keeps walking the
+        // grid). Back is deliberately NOT in the map, so it falls through to OnBackPressed below (close an
+        // open overlay, else swallow) — matching B, which maps to Cancel and closes the overlay too.
+        if (e is not null && AndroidGamepadInput.Map(e.KeyCode) is { } action)
+        {
+            if (e.Action == KeyEventActions.Down)
+                Model.DispatchGamepadAction(action);
+            return true;
+        }
+
         // The binding types the base parameter non-null, but Android may pass null; forward as-is.
-        return base.DispatchTouchEvent(e!);
+        return base.DispatchKeyEvent(e!);
     }
 
     // Back on Screen-2 must behave like a launcher's Back, not a dialog's: close an open overlay
