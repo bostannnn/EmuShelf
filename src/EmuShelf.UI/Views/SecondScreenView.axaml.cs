@@ -43,14 +43,23 @@ public partial class SecondScreenView : UserControl
         }
     }
 
-    // The badge tile is 70px wide with a 5px margin each side (an 80px pitch). Derive the column count
-    // from the viewport width so the row stride the VM slices to matches what the grid renders.
-    private const double AchievementBadgePitch = 80;
+    // The badge tile is 118px wide with a 7px margin each side (a 132px pitch). Keep this in sync with the
+    // tile Width/Margin in the AXAML so the row stride the VM slices to matches what the grid renders.
+    private const double AchievementBadgePitch = 132;
 
     private void OnAchievementsBadgeListSizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is SecondScreenViewModel viewModel && e.NewSize.Width > 0)
             viewModel.AchievementColumnCount = Math.Max(1, (int)(e.NewSize.Width / AchievementBadgePitch));
+    }
+
+    // Touch has no hover, so a tapped badge selects itself: the view model moves the accent ring to it and
+    // shows its title/subtitle in the detail strip below the grid.
+    private void OnAchievementBadgeTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: AchievementRowViewModel row } &&
+            DataContext is SecondScreenViewModel viewModel)
+            viewModel.SelectAchievement(row);
     }
 
     // Deferred badge loading: each tile requests its badge only once it attaches to the visual tree (or is

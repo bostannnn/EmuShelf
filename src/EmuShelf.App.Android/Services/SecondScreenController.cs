@@ -715,7 +715,8 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                     ? "Reconnect RetroAchievements to refresh these cached details."
                     : willRefresh
                         ? "Refreshing achievement details…"
-                        : $"Updated {cached.LastRefreshedAt.LocalDateTime:g}",
+                        // Normal, up-to-date case: no status line — the grid speaks for itself.
+                        : null,
                 canRefresh: credentials is not null);
         }
         else
@@ -761,7 +762,8 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
 
         if (response.IsSuccess)
         {
-            ShowAchievementsSnapshot(title, response.Value!, "Updated just now", canRefresh: true);
+            // Freshly refreshed — no status line; the updated grid is the confirmation.
+            ShowAchievementsSnapshot(title, response.Value!, status: null, canRefresh: true);
             return;
         }
 
@@ -807,6 +809,10 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = status;
         presentation.Model.CanRefresh = canRefresh;
+        // Compact progress line for the header: softcore unlocked / total · earned points.
+        var details = snapshot.Details;
+        presentation.Model.AchievementsSummary =
+            $"{details.UnlockedAchievements} / {details.TotalAchievements} · {details.EarnedPoints} pts";
         // Badges are deferred (loadBadge:false) and requested per tile as it attaches (see the view), so
         // only the on-screen badges of the virtualized grid load — a big set never fires hundreds at once.
         // Locked/hardcore state drives the tile's dimming and gold ring.
@@ -827,6 +833,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = message;
         presentation.Model.CanRefresh = canRefresh;
+        presentation.Model.AchievementsSummary = null;
         presentation.Model.ClearAchievements();
         presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
@@ -901,7 +908,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     }
 
     // Debounced re-point of an open achievements panel to the currently focused game. Focus changes fire
-    // rapidly while scrolling the library, so only the settled game's achievements load — mirrors the
+    // rapidly while scrolling the library, so only the SETTLED game's achievements load — mirrors the
     // spotlight debounce. A no-op unless the panel is open.
     private void ScheduleAchievementsFollow()
     {
@@ -916,11 +923,16 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                     _navigation.Overlay == SecondScreenOverlay.Achievements &&
                     _runningGameId is null)
                 {
-                    // Cached-only: following the selection must not spray the RA API game by game.
-                    OpenAchievementsCore(forceRefresh: false, allowNetworkRefresh: false);
+                    // Follow the selection AND fetch: the panel should populate as the user browses game to
+                    // game, not sit on "Press Refresh" for anything never opened before. This is not a
+                    // burst risk — the debounce means only the settled game fetches, and willRefresh is
+                    // already gated to uncached-or-stale sets, so already-cached games make no request.
+                    OpenAchievementsCore(forceRefresh: false, allowNetworkRefresh: true);
                 }
             },
-            140);
+            // Longer than the spotlight debounce: this can hit the network, so give a fast scroll more time
+            // to settle before the settled game's set is fetched.
+            400);
     }
 
     private void DismissPresentation()
