@@ -200,6 +200,51 @@ public readonly record struct CrtPresentation
     };
 
     /// <summary>
+    /// The Android look: a static glass sheen rather than a powered television.
+    /// </summary>
+    /// <remarks>
+    /// Same tube as <see cref="Default"/> with three things taken out, each for the same reason — on a
+    /// handheld the expensive parts of the effect are the least visible parts:
+    /// <list type="bullet">
+    /// <item>Every motion knob is 0, so <see cref="IsAnimated"/> is false and the couch screen redraws
+    /// on demand instead of being held at the compositor's frame rate. Continuous 60fps redrawing an
+    /// unchanging picture is what spins a handheld's fan, and the roll, hum, jitter and glitch that pay
+    /// for it read as barely anything at arm's length on a six-inch panel.</item>
+    /// <item><see cref="ChromaBleed"/> is 0. It makes the shader run the whole scene-plus-chrome
+    /// composite three times per pixel, once per colour channel, for a fringe a handheld's pixel pitch
+    /// cannot show anyway.</item>
+    /// <item><see cref="Bloom"/> is 0. It adds a four-tap halation cross — four more full composites per
+    /// pixel — for a glow the scanlines and mask already imply here.</item>
+    /// </list>
+    /// What is left is the part that actually reads as a CRT: the curve, the scanlines, the phosphor
+    /// mask and the corner falloff, none of which move and all of which are one composite per pixel.
+    /// The scene renders at native (1x) on Android already; this keeps the post pass down to a single
+    /// tube sample too, which is what makes the effect cheap enough to leave on.
+    /// </remarks>
+    public static CrtPresentation AndroidSheen { get; } = new()
+    {
+        Intensity = 1f,
+        Curvature = 0.035f,
+        Overscan = 1.08f,
+        ChromeOverscan = 0f,
+        ScanlineDepth = 0.35f,
+        MaskStrength = 0.30f,
+        MaskPitch = 3f,
+        VirtualLines = 340f,
+        Bloom = 0f,
+        Vignette = 0.22f,
+        RollSpeed = 0f,
+        HumBar = 0f,
+        HumSpeed = 0f,
+        ChromaBleed = 0f,
+        Jitter = 0f,
+        Flicker = 0f,
+        Glitch = 0f,
+        GlitchPeriod = 14f,
+        Backdrop = Vector3.Zero,
+    };
+
+    /// <summary>
     /// Whether the pass is worth running at all. Below this the mix against the untouched image is
     /// invisible and the resolve blit is both cheaper and exactly equivalent.
     /// </summary>

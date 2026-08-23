@@ -10688,3 +10688,27 @@ keyboard still drives couch search there, so no desktop layout or visual-snapsho
 `GamepadKeyboardViewModelTests`; on-device second-screen behaviour is pending a Thor pass (no device attached
 at implementation time). Follow-up: Settings text entry and the cover-search query field still use the system
 IME and could adopt the same component.
+## 2026-08-23 — Android CRT is a static sheen, not the full tube
+
+Turning the CRT effect on on Android now maps `MainViewModel.CouchCrt` to a new
+`CrtPresentation.AndroidSheen` instead of `CrtPresentation.Default` (desktop is
+unchanged). The full tube was slow and choppy and ramped the handheld's fan for two
+reasons, both worst on a battery/GPU-limited device: (1) its default motion knobs
+(RollSpeed, HumBar, Jitter, Flicker, Glitch, ChromaBleed) make `IsAnimated` true, which
+holds the couch screen at the compositor's frame rate redrawing an unchanging picture
+forever; (2) `crt.frag` runs ~14 dependent texture fetches per pixel at full native
+resolution — `ChromaBleed > 0` runs the whole scene+chrome composite 3× (one per channel)
+and `Bloom > 0` adds a 4-tap cross of the same composite — while the scene itself is
+already forced to 1× supersample on Android.
+
+`AndroidSheen` keeps the parts that actually read as a CRT (curvature, scanlines, phosphor
+mask, vignette, overscan) and zeroes every motion knob plus `ChromaBleed` and `Bloom`. So
+`IsAnimated` is false (couch screen redraws on demand, not at 60fps) and the post pass is
+~1 tube sample per pixel instead of ~14. On a six-inch handheld at arm's length the removed
+motion and chroma fringing barely read, so this is close to a free win.
+
+Deliberately **not** changed: the first-run default stays **off** on Android
+(`AppBootstrapper`). The cheap preset makes the effect pleasant when a user turns it on; it
+does not (yet) justify seeding it on by default. A full rewrite of the shader was rejected —
+the look was fine, only its Android delivery needed fixing. On-device fan/frame-time
+verification on the Thor is still pending (Milestone S).

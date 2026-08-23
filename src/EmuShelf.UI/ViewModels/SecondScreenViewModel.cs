@@ -261,6 +261,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(AchievementCount));
         OnPropertyChanged(nameof(HasAchievements));
+        OnPropertyChanged(nameof(IsAchievementsGridRealized));
         OnPropertyChanged(nameof(HasInlineStatus));
     }
 
@@ -301,10 +302,16 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public bool IsAchievementsOpen => Overlay == SecondScreenOverlayKind.Achievements;
     public bool HasStatus => !string.IsNullOrEmpty(AchievementsStatus);
 
+    // The achievements sheet stays mounted (opacity-driven) so it can scale in when opened, but its badge
+    // ListBox must only realize rows while the sheet is actually up — otherwise a 400-badge set would keep
+    // its on-screen rows virtualized behind a closed, invisible overlay. Gate the grid on both.
+    public bool IsAchievementsGridRealized => IsAchievementsOpen && HasAchievements;
+
     partial void OnOverlayChanged(SecondScreenOverlayKind value)
     {
         OnPropertyChanged(nameof(IsDrawerOpen));
         OnPropertyChanged(nameof(IsAchievementsOpen));
+        OnPropertyChanged(nameof(IsAchievementsGridRealized));
     }
 
     partial void OnAchievementsStatusChanged(string? value)

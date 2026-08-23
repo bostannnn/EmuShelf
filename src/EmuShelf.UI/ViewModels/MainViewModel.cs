@@ -877,9 +877,16 @@ public partial class MainViewModel : ViewModelBase
     /// at zero) and <see cref="CrtPresentation.Off"/>'s bare resolve blit does not. Reusing the one
     /// context is what survives a driver (the Steam Deck's) that refuses to bring up a second — see
     /// DECISIONS 2026-08-16.
+    ///
+    /// On is <see cref="CrtPresentation.AndroidSheen"/> on Android and <see cref="CrtPresentation.Default"/>
+    /// everywhere else. The full tube's continuous animation and per-pixel chroma/bloom passes ramp a
+    /// handheld's fan for motion and fringing that barely read on a six-inch panel; the sheen keeps the
+    /// curve, scanlines and mask but redraws on demand, so the effect is cheap enough to leave on.
     /// </remarks>
     public CrtPresentation CouchCrt =>
-        CrtScreenEffect ? CrtPresentation.Default : CrtPresentation.Flat;
+        CrtScreenEffect
+            ? (OperatingSystem.IsAndroid() ? CrtPresentation.AndroidSheen : CrtPresentation.Default)
+            : CrtPresentation.Flat;
 
     /// <summary>
     /// The full-bleed capture tube is on screen.
