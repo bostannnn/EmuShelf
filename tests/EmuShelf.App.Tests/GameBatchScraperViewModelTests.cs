@@ -68,7 +68,7 @@ public class GameBatchScraperViewModelTests
         Assert.Contains("Stopped — ScreenScraper quota reached", vm.StatusMessage);
         Assert.Contains("1 scraped", vm.StatusMessage);
         Assert.Contains("1 no match", vm.StatusMessage);
-        Assert.Contains("3 not reached", vm.StatusMessage);
+        Assert.Contains("3 not scraped", vm.StatusMessage);
     }
 
     [Fact]
@@ -91,7 +91,7 @@ public class GameBatchScraperViewModelTests
         await vm.StartCommand.ExecuteAsync(null);
 
         Assert.Contains("1 scraped", vm.StatusMessage);
-        Assert.Contains("2 already complete", vm.StatusMessage);
+        Assert.Contains("2 already up to date", vm.StatusMessage);
         Assert.Contains("1 no match", vm.StatusMessage);
     }
 
@@ -112,7 +112,7 @@ public class GameBatchScraperViewModelTests
 
         await vm.StartCommand.ExecuteAsync(null);
 
-        Assert.Equal("2 already complete.", vm.StatusMessage);
+        Assert.Equal("2 already up to date.", vm.StatusMessage);
         Assert.DoesNotContain("0 scraped", vm.StatusMessage);
         Assert.False(vm.AppliedChanges);
     }
@@ -136,7 +136,7 @@ public class GameBatchScraperViewModelTests
 
         Assert.Equal("2 failed.", vm.StatusMessage);
         Assert.DoesNotContain("scraped", vm.StatusMessage);
-        Assert.DoesNotContain("already complete", vm.StatusMessage);
+        Assert.DoesNotContain("already up to date", vm.StatusMessage);
     }
 
     [Fact]
@@ -153,6 +153,128 @@ public class GameBatchScraperViewModelTests
 
         Assert.Equal(GameBatchScraperState.Done, vm.State);
         Assert.Contains("Cancelled", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void Configuring_WithSomeAlreadyScraped_ShowsRealRemainingWork()
+    {
+        var batch = new FakeBatch { AlreadyScraped = new HashSet<long> { 2, 3 } };
+        var vm = new GameBatchScraperViewModel([1, 2, 3, 4], "PS2", batch, Enabled());
+
+        Assert.Equal(2, vm.AlreadyScrapedCount);
+        Assert.Equal(2, vm.PendingCount);
+        Assert.Contains("2 already up to date", vm.StatusMessage);
+        Assert.Contains("2 to scrape", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void Configuring_TurningOnReplace_CountsEveryGameAsPending()
+    {
+        var batch = new FakeBatch { AlreadyScraped = new HashSet<long> { 2, 3 } };
+        var vm = new GameBatchScraperViewModel([1, 2, 3, 4], "PS2", batch, Enabled());
+
+        vm.RefreshOwnedValues = true;
+
+        Assert.Equal(4, vm.PendingCount);
+        Assert.DoesNotContain("already up to date", vm.StatusMessage);
+        Assert.Contains("replaced", vm.StatusMessage);
+    }
+
+    [Fact]
+    public void Configuring_WithEverythingAlreadyScraped_PromptsToReplace()
+    {
+        var batch = new FakeBatch { AlreadyScraped = new HashSet<long> { 1, 2 } };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS2", batch, Enabled());
+
+        Assert.Equal(0, vm.PendingCount);
+        Assert.Contains("already up to date", vm.StatusMessage);
+        Assert.Contains("Replace values", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Start_FillMissing_DropsAlreadyScrapedGames_FromTheRunAndProgress()
+    {
+        var batch = new FakeBatch
+        {
+            AlreadyScraped = new HashSet<long> { 1, 2 },
+            Result = new GameScrapeBatchSummary(
+                2,
+                GameScrapeBatchStopReason.Completed,
+                [
+                    new GameScrapeBatchItemResult(3, "c", GameScrapeBatchOutcome.Applied, 2, 1),
+                    new GameScrapeBatchItemResult(4, "d", GameScrapeBatchOutcome.Applied, 2, 1),
+                ]),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2, 3, 4], "PS2", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        // Only the two games that still need work were passed to the batch and measured by the bar.
+        Assert.Equal([3L, 4L], batch.ReceivedGameIds);
+        Assert.Equal(2, vm.ProgressTotal);
+        // The dropped games are still reported honestly, folded into "already up to date".
+        Assert.Contains("2 scraped", vm.StatusMessage);
+        Assert.Contains("2 already up to date", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Start_Refresh_RunsEveryGame_EvenAlreadyScrapedOnes()
+    {
+        var batch = new FakeBatch
+        {
+            AlreadyScraped = new HashSet<long> { 1, 2 },
+            Result = AppliedSummary(4),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2, 3, 4], "PS2", batch, Enabled())
+        {
+            RefreshOwnedValues = true,
+        };
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal([1L, 2L, 3L, 4L], batch.ReceivedGameIds);
+        Assert.Equal(4, vm.ProgressTotal);
+        Assert.DoesNotContain("already up to date", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task Start_WithEverythingAlreadyScraped_RunsNothing_AndReportsUpToDate()
+    {
+        var batch = new FakeBatch { AlreadyScraped = new HashSet<long> { 1, 2 } };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS2", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Empty(batch.ReceivedGameIds!);
+        Assert.Equal("2 already up to date.", vm.StatusMessage);
+        Assert.False(vm.AppliedChanges);
+    }
+
+    [Fact]
+    public async Task DoneTitle_ReadsAsCancelled_WhenTheRunWasCancelled()
+    {
+        var batch = new FakeBatch { BlockUntilCancelled = true };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS2", batch, Enabled());
+
+        var run = vm.StartCommand.ExecuteAsync(null);
+        vm.CancelCommand.Execute(null);
+        await run;
+
+        Assert.Equal("Batch cancelled", vm.DoneTitle);
+    }
+
+    [Fact]
+    public async Task DoneTitle_ReadsAsStopped_OnEarlyHalt()
+    {
+        var batch = new FakeBatch
+        {
+            Result = new GameScrapeBatchSummary(2, GameScrapeBatchStopReason.QuotaExhausted, []),
+        };
+        var vm = new GameBatchScraperViewModel([1, 2], "PS2", batch, Enabled());
+
+        await vm.StartCommand.ExecuteAsync(null);
+
+        Assert.Equal("Batch stopped", vm.DoneTitle);
     }
 
     [Fact]
@@ -189,6 +311,15 @@ public class GameBatchScraperViewModelTests
 
         public IReadOnlySet<GameMediaKind>? IncludeMedia { get; private set; }
 
+        /// <summary>Games the VM should treat as already up to date (fill-missing skips them up front).</summary>
+        public IReadOnlySet<long> AlreadyScraped { get; set; } = new HashSet<long>();
+
+        /// <summary>The game ids the last run actually received, so a test can assert pre-filtering.</summary>
+        public IReadOnlyList<long>? ReceivedGameIds { get; private set; }
+
+        public IReadOnlySet<long> GetAlreadyScrapedGameIds(IReadOnlyList<long> gameIds) =>
+            gameIds.Where(AlreadyScraped.Contains).ToHashSet();
+
         public async Task<GameScrapeBatchSummary> RunAsync(
             IReadOnlyList<long> gameIds,
             ScreenScraperSettings settings,
@@ -201,6 +332,7 @@ public class GameBatchScraperViewModelTests
             Mode = mode;
             IncludeFields = includeFields;
             IncludeMedia = includeMedia;
+            ReceivedGameIds = gameIds;
             if (BlockUntilCancelled)
                 await Task.Delay(Timeout.Infinite, cancellationToken);
             progress?.Report(new GameScrapeBatchProgress(gameIds.Count, gameIds.Count, "last"));

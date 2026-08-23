@@ -170,6 +170,32 @@ public class ScreenScraperBatchServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void GetAlreadyScrapedGameIds_ReturnsOnlyCoverageCompleteMatches_InTheSelection()
+    {
+        var ids = AddGames("Done.iso", "Partial.iso", "Fresh.iso");
+        RecordScreenScraperMatch(ids[0], coverageComplete: true);
+        RecordScreenScraperMatch(ids[1], coverageComplete: false); // matched but incomplete: still needs work
+        // ids[2] has no match at all.
+
+        var alreadyScraped = _batch.GetAlreadyScrapedGameIds(ids);
+
+        Assert.Equal([ids[0]], alreadyScraped.OrderBy(id => id));
+    }
+
+    [Fact]
+    public void GetAlreadyScrapedGameIds_IgnoresGamesOutsideTheSelection()
+    {
+        var ids = AddGames("A.iso", "B.iso");
+        RecordScreenScraperMatch(ids[0], coverageComplete: true);
+        RecordScreenScraperMatch(ids[1], coverageComplete: true);
+
+        // Only ask about the first game; the second must not leak in.
+        var alreadyScraped = _batch.GetAlreadyScrapedGameIds([ids[0]]);
+
+        Assert.Equal([ids[0]], alreadyScraped);
+    }
+
+    [Fact]
     public async Task Run_HonorsCancellation()
     {
         var ids = AddGames("One.iso", "Two.iso");

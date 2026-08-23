@@ -375,7 +375,7 @@ public sealed record GameScrapeBatchSummary(
 
     /// <summary>Games that matched but had nothing new to write — either skipped up front because they
     /// were already scraped, or matched via the provider and found already filled. Counted together so a
-    /// re-run reports "N already complete" instead of vanishing from the tally as "0 scraped".</summary>
+    /// re-run reports "N already up to date" instead of vanishing from the tally as "0 scraped".</summary>
     public int AlreadyComplete => Results.Count(result =>
         result.Outcome is GameScrapeBatchOutcome.AlreadyScraped or GameScrapeBatchOutcome.NothingToApply);
 

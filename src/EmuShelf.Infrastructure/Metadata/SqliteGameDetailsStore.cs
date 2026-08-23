@@ -161,6 +161,40 @@ public sealed class SqliteGameDetailsStore : IGameDetailsStore
         return paths;
     }
 
+    public IReadOnlySet<long> GetCoverageCompleteGameIds(string providerId, IReadOnlyCollection<long> gameIds)
+    {
+        if (gameIds.Count == 0)
+            return new HashSet<long>();
+
+        // One scan of the (small) matches table, intersected in memory against the requested set —
+        // cheaper and simpler than building a giant IN clause for a large selection. Matches
+        // HasCompleteScreenScraperScrape's per-game test: Matched status, coverage-complete, this provider.
+        var wanted = gameIds as IReadOnlySet<long> ?? new HashSet<long>(gameIds);
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT DISTINCT GameId
+            FROM GameProviderMatches
+            WHERE ProviderId = $providerId COLLATE NOCASE
+              AND Status = $matched
+              AND CoverageComplete = 1;
+            """;
+        command.Parameters.AddWithValue("$providerId", providerId);
+        command.Parameters.AddWithValue("$matched", (int)GameMetadataStatus.Matched);
+
+        var complete = new HashSet<long>();
+        using var reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            var id = reader.GetInt64(0);
+            if (wanted.Contains(id))
+                complete.Add(id);
+        }
+
+        return complete;
+    }
+
     public bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode)
     {
         ValidateMetadata(value, mode);

@@ -64,7 +64,7 @@
                 <!-- Done -->
                 <StackPanel IsVisible="{Binding IsDone}" VerticalAlignment="Center"
                             HorizontalAlignment="Center" Spacing="10" MaxWidth="420">
-                    <TextBlock Text="Batch complete" FontSize="18" FontWeight="SemiBold"
+                    <TextBlock Text="{Binding DoneTitle}" FontSize="18" FontWeight="SemiBold"
                                HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" TextAlignment="Center"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
