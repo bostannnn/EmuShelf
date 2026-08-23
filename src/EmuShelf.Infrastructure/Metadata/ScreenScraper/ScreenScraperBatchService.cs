@@ -114,6 +114,14 @@ public sealed class ScreenScraperBatchService : IScreenScraperBatchService
         return new GameScrapeBatchSummary(total, stopReason, results);
     }
 
+    public IReadOnlySet<long> GetAlreadyScrapedGameIds(IReadOnlyList<long> gameIds)
+    {
+        ArgumentNullException.ThrowIfNull(gameIds);
+        // Same test as the in-loop skip (HasCompleteScreenScraperScrape), done in one query so a large
+        // "scrape all in view" selection stays cheap to pre-count.
+        return _details.GetCoverageCompleteGameIds(ScreenScraperProvider.Id, gameIds);
+    }
+
     private async Task<GameScrapeBatchItemResult> ApplyOneAsync(
         long gameId,
         string title,

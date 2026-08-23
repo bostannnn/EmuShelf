@@ -136,6 +136,15 @@ public interface IGameDetailsStore
     IReadOnlyDictionary<long, string> GetSelectedMediaPaths(GameMediaKind kind) =>
         new Dictionary<long, string>();
 
+    /// <summary>
+    /// Of the given games, the subset that hold a coverage-complete match for
+    /// <paramref name="providerId"/> — the ones a fill-missing batch scrape would skip because a
+    /// previous scrape already pulled everything the provider offers. One query, never one per game.
+    /// Empty for stores that hold no details.
+    /// </summary>
+    IReadOnlySet<long> GetCoverageCompleteGameIds(string providerId, IReadOnlyCollection<long> gameIds) =>
+        new HashSet<long>();
+
     bool TryApplyMetadata(GameMetadataValue value, GameMetadataApplyMode mode);
 
     /// <summary>

@@ -24,6 +24,15 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
     private readonly IScreenScraperBatchService _batch;
     private readonly ScreenScraperSettings _settings;
     private readonly IAppLogger _logger;
+    // Games whose previous scrape already pulled everything the provider offers, so a fill-missing run
+    // would skip them. Pre-counted once at construction (one query) so the UI can show real remaining
+    // work up front instead of the raw selection count, and dropped from the run so the progress bar
+    // measures only the games actually being scraped.
+    private readonly IReadOnlySet<long> _alreadyScraped;
+    // How many games this run dropped up front as already up to date, folded into the final summary.
+    private int _preSkippedUpToDate;
+    // The finished run's stop reason, driving the Done-state title. Null means an unexpected failure.
+    private GameScrapeBatchStopReason? _doneStopReason;
     private CancellationTokenSource? _run;
     // Serialises OnProgress against the run's finalisation. Progress<T> without a captured
     // SynchronizationContext (e.g. under test) delivers callbacks on the thread pool, so a progress
@@ -82,6 +91,7 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
 
     /// <summary>Replace values ScreenScraper already owns, instead of only filling blanks.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PendingCount))]
     public partial bool RefreshOwnedValues { get; set; }
 
     [ObservableProperty]
@@ -100,6 +110,21 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
     public bool IsRunning => State == GameBatchScraperState.Running;
     public bool IsDone => State == GameBatchScraperState.Done;
 
+    /// <summary>Selected games a fill-missing run would skip because they are already up to date.</summary>
+    public int AlreadyScrapedCount => _alreadyScraped.Count;
+
+    /// <summary>How many games the next run will actually scrape: the whole selection when refreshing
+    /// owned values, otherwise the selection minus the games already up to date.</summary>
+    public int PendingCount => RefreshOwnedValues ? GameCount : GameCount - _alreadyScraped.Count;
+
+    /// <summary>Done-state heading, so a cancelled or halted run doesn't read as "Batch complete".</summary>
+    public string DoneTitle => _doneStopReason switch
+    {
+        GameScrapeBatchStopReason.Completed => "Batch complete",
+        GameScrapeBatchStopReason.Cancelled => "Batch cancelled",
+        _ => "Batch stopped",
+    };
+
     public GameBatchScraperViewModel(
         IReadOnlyList<long> gameIds,
         string systemName,
@@ -113,8 +138,59 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         _settings = settings;
         _logger = logger ?? NullAppLogger.Instance;
         ProgressTotal = gameIds.Count;
-        StatusMessage = "Only empty values are filled in unless you choose to replace them. "
-            + "Unmatched games are skipped — nothing is guessed.";
+        _alreadyScraped = PreCountAlreadyScraped(batch, gameIds);
+        UpdateConfiguringStatus();
+    }
+
+    // A quick local read (one query) of how many selected games are already up to date. A failure here
+    // is non-fatal: fall back to "nothing skipped" so the batch still runs, just without the head-start
+    // count. Never let it stop the scraper from opening.
+    private IReadOnlySet<long> PreCountAlreadyScraped(IScreenScraperBatchService batch, IReadOnlyList<long> gameIds)
+    {
+        try
+        {
+            return batch.GetAlreadyScrapedGameIds(gameIds);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not pre-count already-scraped games for the batch.", ex);
+            return new HashSet<long>();
+        }
+    }
+
+    // Configuring-state guidance. Leads with the real remaining work so a re-run over a mostly-scraped
+    // library doesn't look like it will re-do everything.
+    private void UpdateConfiguringStatus()
+    {
+        if (RefreshOwnedValues)
+        {
+            StatusMessage = "Values ScreenScraper already set will be replaced, not just blanks filled. "
+                + "Unmatched games are skipped — nothing is guessed.";
+            return;
+        }
+
+        if (_alreadyScraped.Count == 0)
+        {
+            StatusMessage = "Only empty values are filled in unless you choose to replace them. "
+                + "Unmatched games are skipped — nothing is guessed.";
+        }
+        else if (PendingCount == 0)
+        {
+            StatusMessage = GameCount == 1
+                ? "This game is already up to date. Turn on “Replace values” to scrape it again."
+                : $"All {GameCount} are already up to date. Turn on “Replace values” to scrape them again.";
+        }
+        else
+        {
+            StatusMessage = $"{_alreadyScraped.Count} already up to date — {PendingCount} to scrape. "
+                + "Only empty values are filled; unmatched games are skipped.";
+        }
+    }
+
+    partial void OnRefreshOwnedValuesChanged(bool value)
+    {
+        if (IsConfiguring)
+            UpdateConfiguringStatus();
     }
 
     private bool CanStart() => State == GameBatchScraperState.Configuring && _gameIds.Count > 0;
@@ -131,6 +207,16 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         var mode = RefreshOwnedValues
             ? GameMetadataApplyMode.RefreshProviderOwned
             : GameMetadataApplyMode.FillMissing;
+
+        // Drop the already-up-to-date games before the run (fill-missing only) so the progress total and
+        // bar measure only the games actually being scraped, not the whole selection. They are tallied
+        // separately in the summary. A refresh run re-queries everything, so nothing is dropped.
+        var idsToRun = mode == GameMetadataApplyMode.FillMissing && _alreadyScraped.Count > 0
+            ? _gameIds.Where(id => !_alreadyScraped.Contains(id)).ToList()
+            : _gameIds;
+        _preSkippedUpToDate = _gameIds.Count - idsToRun.Count;
+        ProgressTotal = idsToRun.Count;
+
         var includeFields = IncludeMetadata ? null : new HashSet<GameMetadataField>();
         var includeMedia = SelectedMediaKinds();
         var progress = new Progress<GameScrapeBatchProgress>(OnProgress);
@@ -139,20 +225,22 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         try
         {
             summary = await Task.Run(
-                () => _batch.RunAsync(_gameIds, _settings, mode, includeFields, includeMedia, progress, _run.Token),
+                () => _batch.RunAsync(idsToRun, _settings, mode, includeFields, includeMedia, progress, _run.Token),
                 _run.Token);
         }
         catch (OperationCanceledException)
         {
-            summary = new GameScrapeBatchSummary(_gameIds.Count, GameScrapeBatchStopReason.Cancelled, []);
+            summary = new GameScrapeBatchSummary(idsToRun.Count, GameScrapeBatchStopReason.Cancelled, []);
         }
         catch (Exception ex)
         {
             _logger.Error("The ScreenScraper batch failed.", ex);
             lock (_statusGate)
             {
+                _doneStopReason = null;
                 State = GameBatchScraperState.Done;
                 StatusMessage = "The batch could not be completed.";
+                OnPropertyChanged(nameof(DoneTitle));
             }
             return;
         }
@@ -163,10 +251,12 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         // "Scraping… N of N".
         lock (_statusGate)
         {
+            _doneStopReason = summary.StopReason;
             State = GameBatchScraperState.Done;
             ProgressCompleted = ProgressTotal;
             CurrentGameTitle = null;
             StatusMessage = Summarize(summary);
+            OnPropertyChanged(nameof(DoneTitle));
         }
     }
 
@@ -211,7 +301,7 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
         }
     }
 
-    private static string Summarize(GameScrapeBatchSummary summary)
+    private string Summarize(GameScrapeBatchSummary summary)
     {
         var prefix = summary.StopReason switch
         {
@@ -222,21 +312,25 @@ public sealed partial class GameBatchScraperViewModel : ViewModelBase
             GameScrapeBatchStopReason.ProviderDisabled => "Stopped — ScreenScraper is disabled. ",
             _ => string.Empty,
         };
-        // Only name buckets that actually have games, so a run doesn't lead with an alarming "0 scraped"
-        // when everything was already complete (or failed). "N scraped" appears only when N > 0.
+        // "Already up to date" folds two do-nothing cases: games dropped before the run because a prior
+        // scrape already pulled everything the provider offers, plus any the run matched but found nothing
+        // new to add. Only name buckets that actually have games, so a run doesn't lead with an alarming
+        // "0 scraped" when everything was already up to date (or failed).
+        var upToDate = _preSkippedUpToDate + summary.AlreadyComplete;
         var parts = new List<string>();
         if (summary.Applied > 0)
             parts.Add($"{summary.Applied} scraped");
-        if (summary.AlreadyComplete > 0)
-            parts.Add($"{summary.AlreadyComplete} already complete");
+        if (upToDate > 0)
+            parts.Add($"{upToDate} already up to date");
         if (summary.NoMatch > 0)
             parts.Add($"{summary.NoMatch} no match");
         if (summary.Unsupported > 0)
             parts.Add($"{summary.Unsupported} unsupported");
         if (summary.Failed > 0)
             parts.Add($"{summary.Failed} failed");
+        // Only appears on an early stop (cancel/quota/rate limit); a completed run reaches every game.
         if (summary.NotProcessed > 0)
-            parts.Add($"{summary.NotProcessed} not reached");
+            parts.Add($"{summary.NotProcessed} not scraped");
         if (parts.Count == 0)
             parts.Add("nothing to scrape");
         return prefix + string.Join(", ", parts) + ".";

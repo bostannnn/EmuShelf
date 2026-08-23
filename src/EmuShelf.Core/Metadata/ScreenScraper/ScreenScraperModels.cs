@@ -243,4 +243,11 @@ public interface IScreenScraperBatchService
         IReadOnlySet<GameMediaKind>? includeMedia,
         IProgress<GameScrapeBatchProgress>? progress,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Of these games, those a fill-missing run would skip up front because a previous scrape already
+    /// pulled everything ScreenScraper offers (a coverage-complete match). Lets a caller show the real
+    /// remaining work before starting, instead of the raw selection count. Empty by default.
+    /// </summary>
+    IReadOnlySet<long> GetAlreadyScrapedGameIds(IReadOnlyList<long> gameIds) => new HashSet<long>();
 }
