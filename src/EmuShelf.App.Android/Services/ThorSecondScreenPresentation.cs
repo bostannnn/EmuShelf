@@ -60,9 +60,11 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         if (_released)
             return;
         _released = true;
-        // Dispose the fan-art/logo bitmaps the model owns (they are loaded per focus, not shared), so
-        // tearing the presentation down — e.g. the second screen being unplugged — does not leak them.
+        // Dispose the fan-art/logo bitmaps and the achievement badge bitmaps the model owns (all loaded
+        // per focus, not shared), so tearing the presentation down — e.g. the second screen being
+        // unplugged — does not leak them.
         Model.SetSpotlight(null, null);
+        Model.ClearAchievements();
         // Detach the embedded Avalonia top level before the Presentation window is torn down, so its
         // render loop and input handlers do not outlive the display.
         _avaloniaView.Content = null;

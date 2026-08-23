@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
@@ -40,5 +41,29 @@ public partial class SecondScreenView : UserControl
             viewModel.EditSlotCommand.Execute(slot.Index);
             e.Handled = true;
         }
+    }
+
+    // The badge tile is 70px wide with a 5px margin each side (an 80px pitch). Derive the column count
+    // from the viewport width so the row stride the VM slices to matches what the grid renders.
+    private const double AchievementBadgePitch = 80;
+
+    private void OnAchievementsBadgeListSizeChanged(object? sender, SizeChangedEventArgs e)
+    {
+        if (DataContext is SecondScreenViewModel viewModel && e.NewSize.Width > 0)
+            viewModel.AchievementColumnCount = Math.Max(1, (int)(e.NewSize.Width / AchievementBadgePitch));
+    }
+
+    // Deferred badge loading: each tile requests its badge only once it attaches to the visual tree (or is
+    // recycled onto a new row), so the virtualized grid never loads more badges than are on screen.
+    private void OnAchievementBadgeAttached(object? sender, VisualTreeAttachmentEventArgs e) =>
+        RequestAchievementBadge(sender);
+
+    private void OnAchievementBadgeDataContextChanged(object? sender, EventArgs e) =>
+        RequestAchievementBadge(sender);
+
+    private static void RequestAchievementBadge(object? sender)
+    {
+        if (sender is Control { DataContext: AchievementRowViewModel row } && row.Badge is null)
+            _ = row.LoadBadgeAsync(row.BadgeName);
     }
 }

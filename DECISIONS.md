@@ -10602,3 +10602,37 @@ Requires the user to enable EmuShelf under Settings → Accessibility (exactly a
 on the Thor: companion sits above NeoStation + the drawer, Back stays, and Chrome / NordPass / Apple Music each
 launched in front and returned to the companion on close. Screen-2 is `FLAG_SECURE`, so it can't be
 screenshotted — verification was via `dumpsys window` window types/layers and the app's own logs.
+
+## 2026-08-23 — Second-screen return-watcher is `exported=true`; the TopResumed re-show only runs without it
+
+Follow-up hardening of the above. Two fixes:
+- `SecondScreenReturnWatcher` is declared `Exported = true` (was `false`). An `AccessibilityService` is bound by
+  `system_server` (a different uid); `exported=false` is a hard cross-uid barrier that `BIND_ACCESSIBILITY_SERVICE`
+  does not lift, so the service would never enumerate in Settings → Accessibility nor bind — silently disabling the
+  precise re-show. `true` is the standard accessibility-service declaration; the permission keeps the binder the system.
+- The coarse `TopResumedChanged` fallback re-show now runs ONLY when the watcher is not connected
+  (`SecondScreenAccessibility.IsConnected`, set in `OnServiceConnected`/`OnUnbind`). "EmuShelf regained the
+  foreground" is not "the dock app closed": merely touching the main screen while a Screen-2 app is still open also
+  regains the foreground, and re-showing there covered the app the user deliberately left up. When the watcher is
+  live it is authoritative (re-shows the instant the app is dismissed, leaves a still-open app alone).
+
+## 2026-08-23 — Companion achievements panel is a sticky badge grid that follows the library selection
+
+Two owner requests against the second-screen achievements overlay:
+1. **Sticky + follows selection.** The panel stays open until the user closes it (trophy toggle / Back / Close) and
+   re-points at whatever game is focused as they browse — a debounced re-query (140 ms, mirrors the spotlight
+   debounce) so only the settled game loads. Previously it held a stale snapshot of the game it was opened on. A
+   game start / return-to-browse keeps it open too (re-opened against the new context) rather than dropping to the
+   spotlight. A running game still wins over the browse selection. The browse-follow is **cached-only**
+   (`allowNetworkRefresh: false`): scrolling game to game shows cached details but never sprays the RetroAchievements
+   API — only the explicit Refresh button and the first manual open fetch. The RA game-link table is read through a
+   3 s TTL cache so the follow does not re-open a SQLite connection and full-scan it on the UI thread per settle.
+2. **Redesign to match the gamepad (Y-button) achievements screen.** The vertical trophy-row list became a badge
+   grid (70px tiles; locked dimmed, hardcore gold ring — the same treatment as the gamepad grid), with the game
+   title + status moved to a footer at the BOTTOM of the panel. The grid is **row-virtualized** exactly like the
+   gamepad one (a `ListBox` of rows, vertical `VirtualizingStackPanel`, column count derived from the viewport
+   width) and badges load **deferred, per tile on attach**, so a 400-achievement set realizes only its on-screen
+   rows/badges instead of every tile at once. The companion reuses the shared `AchievementRowViewModel` (its
+   off-thread badge load from `IRetroAchievementsBadgeCache` + bitmap disposal), retiring the badge-less
+   `SecondScreenAchievementViewModel`; `SecondScreenViewModel.ClearAchievements` disposes the badges on every
+   rebuild/teardown. Layout + virtualization guarded by `SecondScreenAchievementsLayoutTests` (headless render).
