@@ -43,6 +43,14 @@ public partial class SecondScreenView : UserControl
         }
     }
 
+    // Tapping the dim scrim behind a floating overlay dismisses it, like tapping outside a sheet. The sheet
+    // sits above the scrim, so taps on the sheet's own controls never reach here.
+    private void OnOverlayScrimTapped(object? sender, TappedEventArgs e)
+    {
+        if (DataContext is SecondScreenViewModel viewModel && viewModel.CloseOverlayCommand.CanExecute(null))
+            viewModel.CloseOverlayCommand.Execute(null);
+    }
+
     // The badge tile is 118px wide with a 7px margin each side (a 132px pitch). Keep this in sync with the
     // tile Width/Margin in the AXAML so the row stride the VM slices to matches what the grid renders.
     private const double AchievementBadgePitch = 132;
