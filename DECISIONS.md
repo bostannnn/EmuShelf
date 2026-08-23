@@ -10735,6 +10735,53 @@ does not (yet) justify seeding it on by default. A full rewrite of the shader wa
 the look was fine, only its Android delivery needed fixing. On-device fan/frame-time
 verification on the Thor is still pending (Milestone S).
 
+## 2026-08-23 — The resting couch hero breathes: an idle sway on the focused medium
+
+The focused 3D case in the couch shelf sat as one frozen frame until the right stick moved it, so a
+selected game read as the flat cover it replaced — the thickness and spine are there but with no
+motion nothing tells the eye it is a 3D object, and nothing invites the stick. `MediaRotationModel`
+now layers a slow idle sway on the resting pose: ±4.5° of yaw over ~5.5 s with a shallower ±1.5°
+pitch "breath" on a 7.5 s period (deliberately not a multiple, so the two never realign into a flat
+wobble — the drift wanders). It begins only after the hero has sat untouched for 2 s (a just-focused
+cover settles first), and **only when the stick-driven pose is exactly at rest** — a medium the
+player has turned to inspect holds the pose it was left in, never fought by the sway.
+
+Mechanics: the sway is an *offset* on top of the user pose, not the pose itself, so `IsAtRest` and
+the departure/recentre logic still key off the stick-driven angle. Grabbing the stick folds the
+current offset into the pose (no snap) and stops the drift; a change of focus or R3 clears it. The
+existing 60 Hz `GamepadInputService` tick already calls `ApplyRightStickRotation` every frame with a
+centred stick, so no new timer was needed — the drift rides that tick and republishes the bound pose,
+which the shelf control already redraws from. **Gated off on Android** (`IsReducedEffectsPlatform`):
+with the CRT effect off the shelf renderer only draws on pose changes, so a permanent sway would
+drive it every frame for no input — the fan-on-scroll cost that head avoids. Feel is pinned by
+`MediaRotationModelTests` (onset delay, bounded amplitude, hand-off, no-sway-when-parked, disabled).
+
+## 2026-08-23 — Desktop type/radius scale adopted; spacing scale defined but not yet adopted
+
+The couch shell routed its font sizes through six `EmuGp*Size` tokens; the Desktop shell had no
+equivalent and sized text ad hoc — ~22 distinct FontSize literals from 8 to 26 px and ~15 corner
+radii — which is the root of its faintly-inconsistent feel (contrast the two dozen polished colour
+palettes). Added a Desktop **type scale** (nine `EmuText*Size` steps) and **radius scale** (five
+`EmuRadius*`) in `App.axaml`, with values sitting on the dominant existing literals so adopting them
+barely moves any one control. All 170 desktop FontSize references and 44 corner radii now route
+through the tokens (radii only where the mapping was within ±1 px; genuine oddballs — 2, 6, 12, 13 —
+left as literals for review). Desktop snapshot tests are structural (control presence, caption-bar
+width), so the ≤1 px normalisations are safe.
+
+**Tokens are referenced via `DynamicResource`, not `StaticResource`.** `StaticResource` on a plain
+element attribute escalates to `Application.Resources` and resolves — which is why the `EmuGp*` tokens
+(only ever used on element attributes) never hit this — but `StaticResource` inside a `<Style>`/
+`ControlTheme` Setter does **not** reach `Application.Resources`, so the many `<Setter Property=
+"FontSize">` in the dialogs threw `Static resource not found`. `DynamicResource` resolves in both
+contexts and matches the `{DynamicResource Emu*Brush}` already used in those same setters.
+
+A **spacing scale** (`EmuSpace*`, 4 px base) is defined as the system of record but **not yet
+adopted**: Desktop spacing is genuinely off-grid (0,1,3,5,10,14,18…), so moving it onto the steps is
+a per-view layout pass, not a mechanical swap. A first attempt to swap exact matches also surfaced a
+trap — a `DynamicResource` margin on the *root* of a `SizeToContent` dialog measures before it
+resolves and collapses the auto-height (broke `RenderMetadataConsentInDarkTheme`) — so spacing tokens
+must be adopted inside a layout, never on its sizing root. Remaining M24 Phase-0 pieces (control
+heights, elevations, focus rings, motion) are untouched.
 ## 2026-08-23 — Second-screen gamepad: handle keys ON the companion Presentation, not forwarded from MainActivity
 
 Corrects the gamepad-navigation half of the entry above. That design was built on a premise that turned out

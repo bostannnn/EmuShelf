@@ -18,13 +18,13 @@
         <!-- One heading system for the whole window. section-eyebrow is the small all-caps label
              that leads every section/card; field-label is the slightly softer label above an input. -->
         <Style Selector="TextBlock.section-eyebrow">
-            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontSize" Value="{DynamicResource EmuTextSmallSize}" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="LetterSpacing" Value="1" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
         </Style>
         <Style Selector="TextBlock.field-label">
-            <Setter Property="FontSize" Value="10" />
+            <Setter Property="FontSize" Value="{DynamicResource EmuTextSmallSize}" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="LetterSpacing" Value="0.7" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
@@ -34,14 +34,14 @@
             <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="{DynamicResource EmuRadiusLarge}" />
             <Setter Property="Padding" Value="18" />
         </Style>
         <Style Selector="ToggleButton.platform-header">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="Padding" Value="18,13" />
-            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="CornerRadius" Value="{DynamicResource EmuRadiusLarge}" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
@@ -74,7 +74,7 @@
                 BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,0,0,1"
                 Padding="24,18">
             <StackPanel Spacing="5">
-                <TextBlock Text="Settings" FontSize="23" FontWeight="SemiBold"
+                <TextBlock Text="Settings" FontSize="{DynamicResource EmuTextDisplaySize}" FontWeight="SemiBold"
                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                 <TextBlock Text="{Binding SectionSubtitle}"
                            TextWrapping="Wrap"
@@ -91,7 +91,7 @@
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Converter={x:Static vm:SettingsSectionLabel.Converter}}"
-                                       FontSize="13.5" Padding="4,3" />
+                                       FontSize="{DynamicResource EmuTextLabelSize}" Padding="4,3" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
@@ -103,7 +103,7 @@
                 <Border Classes="settings-card" Margin="0,0,0,12">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                         <StackPanel Grid.Column="0" Spacing="3">
-                            <TextBlock Text="PLATFORM NAVIGATION" FontSize="10"
+                            <TextBlock Text="PLATFORM NAVIGATION" FontSize="{DynamicResource EmuTextSmallSize}"
                                        FontWeight="Bold" LetterSpacing="1"
                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                             <TextBlock Text="Empty platforms stay available when adding games and configuring emulators. Platforms with temporarily unavailable games remain visible."
@@ -122,7 +122,7 @@
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto"
                           ColumnSpacing="16" RowSpacing="8">
                         <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                            <TextBlock Text="LIBRARY MAINTENANCE" FontSize="10"
+                            <TextBlock Text="LIBRARY MAINTENANCE" FontSize="{DynamicResource EmuTextSmallSize}"
                                        FontWeight="Bold" LetterSpacing="1"
                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                             <TextBlock Text="Recheck every console's remembered folders. Individual rescans live inside each platform below."
@@ -142,7 +142,7 @@
                                          IsVisible="{Binding IsRescanningAllConsoles}" />
                             <TextBlock Text="{Binding MaintenanceStatusText}"
                                        IsVisible="{Binding HasMaintenanceStatus}"
-                                       FontSize="11" TextWrapping="Wrap"
+                                       FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                         </StackPanel>
                     </Grid>
@@ -152,7 +152,7 @@
                     <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto"
                           ColumnSpacing="16" RowSpacing="8">
                         <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                            <TextBlock Text="DATA FOLDER" FontSize="10"
+                            <TextBlock Text="DATA FOLDER" FontSize="{DynamicResource EmuTextSmallSize}"
                                        FontWeight="Bold" LetterSpacing="1"
                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                             <TextBlock Text="Your library database, covers, settings, and saves live here. EmuShelf never touches your game files."
@@ -164,13 +164,13 @@
                                 Command="{Binding OpenDataFolderCommand}"
                                 VerticalAlignment="Center" />
                         <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding DataDirectory}"
-                                   FontFamily="Monospace" FontSize="11" TextWrapping="Wrap"
+                                   FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                    ToolTip.Tip="{Binding DataDirectory}"
                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                         <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
                                    Text="{Binding DataFolderStatusText}"
                                    IsVisible="{Binding HasDataFolderStatus}"
-                                   FontSize="11" TextWrapping="Wrap"
+                                   FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                     </Grid>
                 </Border>
@@ -186,7 +186,7 @@
                                     <ToggleButton Grid.Row="0" Classes="platform-header"
                                                   IsChecked="{Binding IsExpanded, Mode=TwoWay}">
                                         <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="10">
-                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="{DynamicResource EmuRadiusMedium}"
                                                     Background="{DynamicResource EmuPlaceholderMedallionBrush}">
                                                 <Image Width="32" Height="32"
                                                        Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
@@ -195,7 +195,7 @@
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8"
                                                         VerticalAlignment="Center">
                                                 <TextBlock Text="{Binding SystemName}" FontWeight="SemiBold"
-                                                           FontSize="16"
+                                                           FontSize="{DynamicResource EmuTextHeadingSize}"
                                                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                                 <TextBlock Text="{Binding EmulatorName, StringFormat='— {0}'}"
                                                            VerticalAlignment="Center"
@@ -220,7 +220,7 @@
                                         <Border Height="1" Background="{DynamicResource EmuBorderBrush}"
                                                 Margin="0,0,0,5" />
                                         <StackPanel Spacing="5" IsVisible="{Binding HasEmulatorChoices}">
-                                            <TextBlock Text="EMULATOR" FontSize="10" FontWeight="SemiBold"
+                                            <TextBlock Text="EMULATOR" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                        LetterSpacing="0.7"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             <ComboBox ItemsSource="{Binding AvailableChoices}"
@@ -237,10 +237,10 @@
                                                 </ComboBox.ItemTemplate>
                                             </ComboBox>
                                             <TextBlock Text="RetroArch cores appear here as individual emulator choices after its executable or Flatpak target is configured."
-                                                       FontSize="11" TextWrapping="Wrap"
+                                                       FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                         </StackPanel>
-                                        <TextBlock Text="LAUNCH TARGET" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="LAUNCH TARGET" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                    IsVisible="{Binding IsLaunchTargetPickerVisible}"
                                                    LetterSpacing="0.7"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -249,7 +249,7 @@
                                             <x:String>Direct</x:String>
                                             <x:String>Flatpak</x:String>
                                         </ComboBox>
-                                        <TextBlock Text="{Binding DirectTargetLabel}" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding DirectTargetLabel}" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                    LetterSpacing="0.7" IsVisible="{Binding IsDirectTarget}"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
@@ -285,14 +285,14 @@
                                             </StackPanel>
                                         </Border>
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
-                                            <TextBlock Grid.Column="0" Text="LAUNCH ARGUMENTS" FontSize="10"
+                                            <TextBlock Grid.Column="0" Text="LAUNCH ARGUMENTS" FontSize="{DynamicResource EmuTextSmallSize}"
                                                        FontWeight="SemiBold" LetterSpacing="0.7"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                                        VerticalAlignment="Center" />
                                             <Button Grid.Column="1" Content="Reset default"
                                                     AutomationProperties.AutomationId="{Binding ResetArgumentsFieldId}"
                                                     Command="{Binding ResetArgumentsCommand}"
-                                                    Padding="8,3" FontSize="11" />
+                                                    Padding="8,3" FontSize="{DynamicResource EmuTextBodySize}" />
                                         </Grid>
                                         <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}"
                                                  AutomationProperties.AutomationId="{Binding LaunchArgumentsFieldId}"
@@ -300,18 +300,18 @@
                                                  BorderBrush="{DynamicResource EmuBorderBrush}"
                                                  FontFamily="Monospace" />
                                         <TextBlock Text="Placeholders: {GamePath}, {GameDirectory}, {GameFileName}, {EmulatorDirectory}, {CorePath}"
-                                                   FontFamily="Monospace" FontSize="11" TextWrapping="Wrap"
+                                                   FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                         <StackPanel IsVisible="{Binding HasFolderManagement}"
                                                     IsEnabled="{Binding CanManageLibraryFolders}"
                                                     Spacing="7" Margin="0,5,0,0">
                                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                 <StackPanel Grid.Column="0" Spacing="2">
-                                                    <TextBlock Text="GAME FOLDERS" FontSize="10" FontWeight="SemiBold"
+                                                    <TextBlock Text="GAME FOLDERS" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                                LetterSpacing="0.7"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Text="Recursive folders remembered for this platform's rescans."
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
                                                 <Button Grid.Column="1" Content="Add folder…"
@@ -321,7 +321,7 @@
                                             </Grid>
                                             <TextBlock Text="No folders remembered. Add one here or from the library toolbar."
                                                        IsVisible="{Binding !HasRememberedFolders}"
-                                                       FontSize="11" TextWrapping="Wrap"
+                                                       FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                             <ItemsControl ItemsSource="{Binding LibraryFolders}">
                                                 <ItemsControl.ItemTemplate>
@@ -333,8 +333,8 @@
                                                             <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                                                                 <StackPanel Grid.Column="0" Spacing="2">
                                                                     <TextBlock Text="{Binding Path}" FontFamily="Monospace"
-                                                                               FontSize="11" TextWrapping="Wrap" />
-                                                                    <TextBlock Text="{Binding AvailabilityText}" FontSize="10"
+                                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap" />
+                                                                    <TextBlock Text="{Binding AvailabilityText}" FontSize="{DynamicResource EmuTextSmallSize}"
                                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                                 </StackPanel>
                                                                 <Button Grid.Column="1" Content="Change…"
@@ -353,7 +353,7 @@
                                         <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" Margin="0,5,0,0">
                                             <TextBlock Grid.Column="0" Text="{Binding MaintenanceStatusText}"
                                                        IsVisible="{Binding HasMaintenanceStatus}"
-                                                       FontSize="11" TextWrapping="Wrap"
+                                                       FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                        VerticalAlignment="Center"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                             <Button Grid.Column="1" Content="Sync RPCS3 library"
@@ -381,7 +381,7 @@
                         <Border Classes="settings-card">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="RETROACHIEVEMENTS" FontSize="10"
+                                    <TextBlock Text="RETROACHIEVEMENTS" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
@@ -412,7 +412,7 @@
                                 </Grid>
 
                                 <StackPanel IsVisible="{Binding IsRetroAchievementsDisconnected}" Spacing="9">
-                                    <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="USERNAME" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding RetroAchievementsUsername, Mode=TwoWay}"
@@ -420,7 +420,7 @@
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="Your RetroAchievements username" />
-                                    <TextBlock Text="WEB API KEY" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="WEB API KEY" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding RetroAchievementsApiKey, Mode=TwoWay}"
@@ -443,7 +443,7 @@
 
                                 <StackPanel IsVisible="{Binding HasRetroAchievementsProgress}" Spacing="5">
                                     <TextBlock Text="{Binding RetroAchievementsProgressText}"
-                                               FontSize="11" TextTrimming="CharacterEllipsis"
+                                               FontSize="{DynamicResource EmuTextBodySize}" TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <ProgressBar Minimum="0"
                                                  Maximum="{Binding RetroAchievementsProgressTotal}"
@@ -453,7 +453,7 @@
 
                                 <TextBlock Text="{Binding RetroAchievementsStatusText}"
                                            IsVisible="{Binding HasRetroAchievementsStatus}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
@@ -464,7 +464,7 @@
                             <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto"
                                   ColumnSpacing="16" RowSpacing="8">
                                 <StackPanel Grid.Row="0" Grid.Column="0" Spacing="3">
-                                    <TextBlock Text="BUILT-IN CATALOGUE" FontSize="10"
+                                    <TextBlock Text="BUILT-IN CATALOGUE" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock Text="Exact titles and covers from bundled catalogues. Downloaded only after you opt in; game files and paths are never uploaded."
@@ -494,13 +494,13 @@
                                 <TextBlock Grid.Row="2" Grid.ColumnSpan="2"
                                            Text="{Binding MetadataStatusText}"
                                            IsVisible="{Binding HasMetadataStatus}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="4"
                                             IsVisible="{Binding HasMetadataProgress}">
                                     <ProgressBar Minimum="0" Maximum="{Binding MetadataProgressTotal}"
                                                  Value="{Binding MetadataProgressCompleted}" Height="6" />
-                                    <TextBlock Text="{Binding MetadataProgressText}" FontSize="11"
+                                    <TextBlock Text="{Binding MetadataProgressText}" FontSize="{DynamicResource EmuTextBodySize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
                             </Grid>
@@ -508,7 +508,7 @@
                         <Border Classes="settings-card" IsVisible="{Binding HasScreenScraper}">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="SCREENSCRAPER" FontSize="10"
+                                    <TextBlock Text="SCREENSCRAPER" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock TextWrapping="Wrap"
@@ -531,7 +531,7 @@
                                 </Grid>
 
                                 <StackPanel IsVisible="{Binding IsScreenScraperDisconnected}" Spacing="9">
-                                    <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="USERNAME" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding ScreenScraperUsername, Mode=TwoWay}"
@@ -539,7 +539,7 @@
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="Your screenscraper.fr username" />
-                                    <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="PASSWORD" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <TextBox Text="{Binding ScreenScraperPassword, Mode=TwoWay}"
@@ -561,14 +561,14 @@
 
                                 <TextBlock Text="{Binding ScreenScraperStatusText}"
                                            IsVisible="{Binding HasScreenScraperStatus}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
                         <Border Classes="settings-card">
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
                                 <StackPanel Grid.Column="0" Spacing="3">
-                                    <TextBlock Text="WEB IMAGE SEARCH" FontSize="10"
+                                    <TextBlock Text="WEB IMAGE SEARCH" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     <TextBlock Text="Let the &quot;Set cover&quot; picker search the web (DuckDuckGo) for cover images. Results are unverified and never applied automatically — you always choose."
@@ -594,7 +594,7 @@
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                                Text="Sync in-game saves between machines through your own Google Drive. You sign in through your browser — EmuShelf never sees your Google password or token." />
                                     <Expander Header="How save sync works" Padding="0" Margin="0,2,0,0">
-                                        <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}" Margin="0,6,0,0"
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                                    Text="In-game saves and opted-in, version-guarded save states sync before launch and after exit. Launch waits for the complete sync; a failure is advisory and uses the data currently on disk. Cheats and patches are not synced — on most emulators that folder holds the community database the emulator ships and can redownload, not your own files. Close externally launched emulators before a manual sync." />
                                     </Expander>
@@ -612,7 +612,7 @@
                                              Background="{DynamicResource EmuInputBrush}"
                                              BorderBrush="{DynamicResource EmuBorderBrush}"
                                              PlaceholderText="EmuShelf/Saves" />
-                                    <TextBlock TextWrapping="Wrap" FontSize="11"
+                                    <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                                Text="EmuShelf can only see files it creates in this folder. Each machine re-uploads its own saves on the first sync, and nothing in the cloud is ever deleted." />
                                     <Button Content="Connect Google Drive" Classes="accent"
@@ -653,7 +653,7 @@
                                                  each control sits next to the text that describes it. -->
                                             <StackPanel Spacing="12" Margin="0,0,0,12">
                                                 <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
-                                                    <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                    <Border Grid.Column="0" Width="42" Height="42" CornerRadius="{DynamicResource EmuRadiusMedium}"
                                                             Background="{DynamicResource EmuPlaceholderMedallionBrush}">
                                                         <Image Width="32" Height="32"
                                                                Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
@@ -661,10 +661,10 @@
                                                     </Border>
                                                     <StackPanel Grid.Column="1" Spacing="3">
                                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
-                                                                   FontSize="16"
+                                                                   FontSize="{DynamicResource EmuTextHeadingSize}"
                                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                                         <TextBlock Text="{Binding SaveShapeDescription}"
-                                                                   FontSize="11" TextWrapping="Wrap"
+                                                                   FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     </StackPanel>
                                                 </Grid>
@@ -700,15 +700,15 @@
                                                     </StackPanel>
                                                     <TextBlock Text="{Binding DetectedDirectory, StringFormat='Syncing {0}'}"
                                                                IsVisible="{Binding HasDetectedDirectory}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                     <TextBlock Text="{Binding CompatibilityWarning}"
                                                                IsVisible="{Binding HasCompatibilityWarning}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Text="{Binding DetectionErrorText}"
                                                                IsVisible="{Binding HasDetectionError}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuDangerBrush}" />
                                                 </StackPanel>
 
@@ -718,7 +718,7 @@
                                                             IsVisible="{Binding HasOptionalContent}">
                                                     <Border Height="1" Margin="0,3,0,3"
                                                             Background="{DynamicResource EmuBorderBrush}" />
-                                                    <TextBlock Text="SAVE STATES" FontSize="10" FontWeight="SemiBold"
+                                                    <TextBlock Text="SAVE STATES" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                                LetterSpacing="0.7"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <CheckBox Content="{Binding SaveStatesLabel}"
@@ -729,7 +729,7 @@
                                                               ToolTip.Tip="Only states from the same emulator version and CPU architecture are restored" />
                                                     <TextBlock Text="Manual states sync before launch, after exit, and during manual actions. Automatic, resume, undo, and backup states are excluded."
                                                                IsVisible="{Binding SupportsSaveStates}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                     <!-- Save states get their own folder override, mirroring the
                                                          save folder above, so a mis-detected state folder can be
@@ -748,7 +748,7 @@
                                                     </Grid>
                                                     <TextBlock Text="{Binding OptionalContentSummary}"
                                                                IsVisible="{Binding HasOptionalContentSummary}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
 
@@ -756,11 +756,11 @@
                                                 <StackPanel Margin="54,0,0,0" Spacing="7">
                                                     <TextBlock Text="{Binding LastResultText}"
                                                                IsVisible="{Binding HasLastResult}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                     <TextBlock Text="{Binding LastNoticeText}"
                                                                IsVisible="{Binding HasLastNotice}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </StackPanel>
                                             </StackPanel>
@@ -774,10 +774,10 @@
                                 <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource EmuBorderBrush}"
                                         Padding="0,12,0,0" Margin="0,4,0,0">
                                     <StackPanel Spacing="7">
-                                        <TextBlock Text="EXPORT SAVES" FontSize="10" FontWeight="SemiBold"
+                                        <TextBlock Text="EXPORT SAVES" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                    LetterSpacing="0.7"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                        <TextBlock TextWrapping="Wrap" FontSize="11"
+                                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                                    Text="Save a portable .zip of your saves (save states included), grouped by platform, to use on another device. Your saves and game files are left untouched." />
                                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -796,7 +796,7 @@
                                 <StackPanel IsVisible="{Binding HasCloudSyncProgress}" Spacing="5">
                                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                         <TextBlock Grid.Column="0" Text="{Binding CloudSyncProgressText}"
-                                                   FontSize="11" TextTrimming="CharacterEllipsis"
+                                                   FontSize="{DynamicResource EmuTextBodySize}" TextTrimming="CharacterEllipsis"
                                                    VerticalAlignment="Center"
                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         <Button Grid.Column="1" Content="Stop"
@@ -812,14 +812,14 @@
                                 </StackPanel>
 
                                 <StackPanel IsVisible="{Binding HasSyncLog}" Spacing="3">
-                                    <TextBlock Text="SYNC ACTIVITY" FontSize="10" FontWeight="SemiBold"
+                                    <TextBlock Text="SYNC ACTIVITY" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
                                                LetterSpacing="0.7"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <HyperlinkButton Content="Open sync activity log"
                                                      NavigateUri="{Binding SyncLogUri}"
                                                      HorizontalAlignment="Left" Padding="0" />
                                     <TextBlock Text="{Binding SyncLogPath}"
-                                               FontFamily="Monospace" FontSize="11"
+                                               FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodySize}"
                                                TextTrimming="CharacterEllipsis"
                                                ToolTip.Tip="The portable save-sync activity log"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
@@ -827,7 +827,7 @@
 
                                 <TextBlock Text="{Binding CloudStatusText}"
                                            IsVisible="{Binding HasCloudStatus}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
@@ -836,12 +836,12 @@
                     <StackPanel IsVisible="{Binding IsHotkeysSection}" Spacing="12">
                         <Border Classes="settings-card" Margin="0,0,0,12">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="KEYBOARD HOTKEYS" FontSize="10" FontWeight="Bold"
+                                <TextBlock Text="KEYBOARD HOTKEYS" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            LetterSpacing="1"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <TextBlock Text="{Binding HotkeySchemeSummary}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="EmuShelf backs up each file before changing it. Close an emulator before applying — changes take effect the next time you open it." />
                                 <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -855,45 +855,45 @@
                                 </StackPanel>
                                 <TextBlock Text="{Binding SteamTemplateStatus}"
                                            IsVisible="{Binding SteamTemplateStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
 
                         <Border Classes="settings-card" Margin="0,0,0,12">
                             <StackPanel Spacing="8">
-                                <TextBlock Text="CONTROLLER SETUP (STEAM INPUT)" FontSize="10" FontWeight="Bold"
+                                <TextBlock Text="CONTROLLER SETUP (STEAM INPUT)" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            LetterSpacing="1"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <TextBlock TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                            Text="Prefer the Install Steam Input template button above — it drops the bundled layout into Steam for you. To set it up by hand instead (or for a non-DualSense controller): every emulator listens for the same keys, so you build it once and it works for all of them. Hold Select (Back / View — the share-side button) and press a button:" />
                                 <Grid ColumnDefinitions="Auto,16,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="4,2,0,2">
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Select + Square" FontFamily="Monospace" FontSize="12"
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Select + Square" FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Rewind (R)" FontSize="12"
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Rewind (R)" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Select + Circle" FontFamily="Monospace" FontSize="12"
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Select + Circle" FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Fast-forward (L)" FontSize="12"
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Fast-forward (L)" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Select + Triangle" FontFamily="Monospace" FontSize="12"
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Select + Triangle" FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Save state (F2)" FontSize="12"
+                                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Save state (F2)" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Select + Cross" FontFamily="Monospace" FontSize="12"
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Select + Cross" FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Load state (F4)" FontSize="12"
+                                    <TextBlock Grid.Row="3" Grid.Column="2" Text="Load state (F4)" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Select + Start" FontFamily="Monospace" FontSize="12"
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Select + Start" FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    <TextBlock Grid.Row="4" Grid.Column="2" Text="Close game (F8)" FontSize="12"
+                                    <TextBlock Grid.Row="4" Grid.Column="2" Text="Close game (F8)" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </Grid>
-                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="Square / Circle / Triangle / Cross are the PlayStation face buttons; on an Xbox pad they are X / B / Y / A by position." />
-                                <TextBlock TextWrapping="Wrap" FontSize="11"
+                                <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="Steam Deck: add each emulator as a non-Steam game if it isn't already, open its Controller Settings → Edit Layout, make Select activate a hold Action Layer, and bind the buttons above to those keys. On desktop, launch the emulator through Steam so the layout applies." />
                             </StackPanel>
@@ -911,17 +911,17 @@
                                     <ColumnDefinition Width="60" />
                                     <ColumnDefinition Width="60" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="EMULATOR" FontSize="10" FontWeight="Bold" LetterSpacing="1"
+                                <TextBlock Grid.Column="0" Text="EMULATOR" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold" LetterSpacing="1"
                                            VerticalAlignment="Bottom" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                <TextBlock Grid.Column="1" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                <TextBlock Grid.Column="1" TextAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="rewind&#x0a;R" />
-                                <TextBlock Grid.Column="2" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                <TextBlock Grid.Column="2" TextAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="fast-fwd&#x0a;L" />
-                                <TextBlock Grid.Column="3" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                <TextBlock Grid.Column="3" TextAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="save&#x0a;F2" />
-                                <TextBlock Grid.Column="4" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                <TextBlock Grid.Column="4" TextAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="load&#x0a;F4" />
-                                <TextBlock Grid.Column="5" TextAlignment="Center" FontSize="10" FontWeight="Bold"
+                                <TextBlock Grid.Column="5" TextAlignment="Center" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" Text="close&#x0a;F8" />
                             </Grid>
                             <ItemsControl ItemsSource="{Binding HotkeyEmulators}">
@@ -939,30 +939,30 @@
                                                         <ColumnDefinition Width="60" />
                                                     </Grid.ColumnDefinitions>
                                                     <TextBlock Grid.Column="0" Text="{Binding DisplayName}"
-                                                               FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                                                               FontWeight="SemiBold" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center" />
                                                     <TextBlock Grid.Column="1" Text="{Binding Rewind.Mark}" ToolTip.Tip="{Binding Rewind.Detail}"
-                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               TextAlignment="Center" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="2" Text="{Binding FastForward.Mark}" ToolTip.Tip="{Binding FastForward.Detail}"
-                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               TextAlignment="Center" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="3" Text="{Binding SaveState.Mark}" ToolTip.Tip="{Binding SaveState.Detail}"
-                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               TextAlignment="Center" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="4" Text="{Binding LoadState.Mark}" ToolTip.Tip="{Binding LoadState.Detail}"
-                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               TextAlignment="Center" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Grid.Column="5" Text="{Binding CloseGame.Mark}" ToolTip.Tip="{Binding CloseGame.Detail}"
-                                                               TextAlignment="Center" FontSize="15" VerticalAlignment="Center"
+                                                               TextAlignment="Center" FontSize="{DynamicResource EmuTextSubheadingSize}" VerticalAlignment="Center"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </Grid>
                                                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-                                                    <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="11" TextWrapping="Wrap"
+                                                    <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                VerticalAlignment="Center" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                        <Button Content="Apply" Padding="10,4" FontSize="12"
+                                                        <Button Content="Apply" Padding="10,4" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                                 Command="{Binding ApplyCommand}" IsEnabled="{Binding CanRun}" />
-                                                        <Button Content="Revert" Padding="10,4" FontSize="12"
+                                                        <Button Content="Revert" Padding="10,4" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                                                                 Command="{Binding RevertCommand}" IsEnabled="{Binding CanRun}" />
                                                     </StackPanel>
                                                 </Grid>
@@ -983,7 +983,7 @@
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}"
                                                Text="Shows the replacement-texture packs your emulators already have installed and matches them to your library. Read-only — EmuShelf never installs, moves, or deletes a pack, and never edits emulator settings." />
                                     <Expander Header="About matching" Padding="0" Margin="0,2,0,0">
-                                        <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,6,0,0"
+                                        <TextBlock TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodySize}" Margin="0,6,0,0"
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                                    Text="Packs are matched to games by the exact identifier each emulator uses. A pack with no matching game is not a problem — the game may simply not be in your library." />
                                     </Expander>
@@ -994,7 +994,7 @@
                                         <TextBlock Text="{Binding TexturePackSummary}" FontWeight="SemiBold"
                                                    TextWrapping="Wrap"
                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                                        <TextBlock Text="{Binding TexturePackLastScanText}" FontSize="11"
+                                        <TextBlock Text="{Binding TexturePackLastScanText}" FontSize="{DynamicResource EmuTextBodySize}"
                                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                     </StackPanel>
                                     <Button Grid.Column="1" Content="Rescan"
@@ -1007,7 +1007,7 @@
                                 <ProgressBar IsIndeterminate="True" Height="4"
                                              IsVisible="{Binding IsTexturePackBusy}" />
                                 <TextBlock Text="{Binding TexturePackStatusText}"
-                                           FontSize="11" TextWrapping="Wrap"
+                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
 
                                 <!-- One row per registered texture platform. Adding a provider adds a
@@ -1017,7 +1017,7 @@
                                         <DataTemplate x:DataType="vm:TexturePackRowViewModel">
                                             <StackPanel Spacing="8" Margin="0,0,0,12">
                                                 <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
-                                                    <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                                                    <Border Grid.Column="0" Width="42" Height="42" CornerRadius="{DynamicResource EmuRadiusMedium}"
                                                             Background="{DynamicResource EmuPlaceholderMedallionBrush}">
                                                         <Image Width="32" Height="32"
                                                                Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
@@ -1025,9 +1025,9 @@
                                                     </Border>
                                                     <StackPanel Grid.Column="1" Spacing="3">
                                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
-                                                                   FontSize="16"
+                                                                   FontSize="{DynamicResource EmuTextHeadingSize}"
                                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                                                        <TextBlock Text="{Binding StatusText}" FontSize="11"
+                                                        <TextBlock Text="{Binding StatusText}" FontSize="{DynamicResource EmuTextBodySize}"
                                                                    TextWrapping="Wrap"
                                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     </StackPanel>
@@ -1054,11 +1054,11 @@
                                                 </StackPanel>
                                                 <TextBlock Margin="54,0,0,0" Text="{Binding DetectedRoot}"
                                                            IsVisible="{Binding CanOpenFolder}"
-                                                           FontFamily="Monospace" FontSize="11"
+                                                           FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodySize}"
                                                            TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 <TextBlock Margin="54,0,0,0" Text="{Binding LoadingText}"
-                                                           FontSize="11" TextWrapping="Wrap"
+                                                           FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                             </StackPanel>
                                         </DataTemplate>
@@ -1067,14 +1067,14 @@
 
                                 <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="8">
                                     <TextBlock Grid.Column="0" Text="Emulator" VerticalAlignment="Center"
-                                               FontSize="11"
+                                               FontSize="{DynamicResource EmuTextBodySize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <ComboBox Grid.Column="1" HorizontalAlignment="Stretch"
                                               AutomationProperties.AutomationId="textures.emulator-filter"
                                               ItemsSource="{Binding TextureEmulatorFilters}"
                                               SelectedItem="{Binding TextureEmulatorFilter, Mode=TwoWay}" />
                                     <TextBlock Grid.Column="2" Text="Status" VerticalAlignment="Center"
-                                               FontSize="11"
+                                               FontSize="{DynamicResource EmuTextBodySize}"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                     <ComboBox Grid.Column="3" HorizontalAlignment="Stretch"
                                               AutomationProperties.AutomationId="textures.status-filter"
@@ -1083,7 +1083,7 @@
                                 </Grid>
 
                                 <TextBlock IsVisible="{Binding HasNoTexturePacks}" TextWrapping="Wrap"
-                                           FontSize="11"
+                                           FontSize="{DynamicResource EmuTextBodySize}"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}"
                                            Text="No texture packs to show. Use Rescan after configuring an emulator, or change the filters above." />
 
@@ -1110,16 +1110,16 @@
                                                                    TextTrimming="CharacterEllipsis"
                                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                                         <TextBlock Grid.Column="1" Text="{Binding StatusText}"
-                                                                   FontSize="11"
+                                                                   FontSize="{DynamicResource EmuTextBodySize}"
                                                                    ToolTip.Tip="{Binding StatusTooltip}"
                                                                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     </Grid>
                                                     <TextBlock Text="{Binding MatchedGames}"
                                                                IsVisible="{Binding HasMatchedGames}"
-                                                               FontSize="11" TextWrapping="Wrap"
+                                                               FontSize="{DynamicResource EmuTextBodySize}" TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                     <TextBlock Text="{Binding SourcePath}"
-                                                               FontFamily="Monospace" FontSize="11"
+                                                               FontFamily="Monospace" FontSize="{DynamicResource EmuTextBodySize}"
                                                                TextWrapping="Wrap"
                                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                                 </StackPanel>
@@ -1163,7 +1163,7 @@
                                                     HorizontalAlignment="Stretch"
                                                     Command="{Binding SelectCommand}">
                                                 <StackPanel Spacing="10">
-                                                    <Border CornerRadius="9" Height="96" ClipToBounds="True"
+                                                    <Border CornerRadius="{DynamicResource EmuRadiusLarge}" Height="96" ClipToBounds="True"
                                                             Background="{Binding PreviewBackground}"
                                                             BorderBrush="{DynamicResource EmuBorderBrush}"
                                                             BorderThickness="1">
@@ -1173,15 +1173,15 @@
                                                                 <Ellipse Width="6" Height="6" Fill="{Binding PreviewText}" Opacity="0.4" />
                                                             </StackPanel>
                                                             <Grid Grid.Row="1" ColumnDefinitions="*,2.2*,*" ColumnSpacing="6">
-                                                                <Border Background="{Binding PreviewSurface}" CornerRadius="5" />
-                                                                <Border Grid.Column="1" Background="{Binding PreviewSurface}" CornerRadius="5">
+                                                                <Border Background="{Binding PreviewSurface}" CornerRadius="{DynamicResource EmuRadiusSmall}" />
+                                                                <Border Grid.Column="1" Background="{Binding PreviewSurface}" CornerRadius="{DynamicResource EmuRadiusSmall}">
                                                                     <Border Width="26" Height="26" CornerRadius="13"
                                                                             Background="{Binding PreviewAccent}"
                                                                             HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                                 </Border>
-                                                                <Border Grid.Column="2" Background="{Binding PreviewSurface}" CornerRadius="5" />
+                                                                <Border Grid.Column="2" Background="{Binding PreviewSurface}" CornerRadius="{DynamicResource EmuRadiusSmall}" />
                                                             </Grid>
-                                                            <Border Grid.Row="2" Width="22" Height="6" CornerRadius="3"
+                                                            <Border Grid.Row="2" Width="22" Height="6" CornerRadius="{DynamicResource EmuRadiusSmall}"
                                                                     HorizontalAlignment="Left"
                                                                     Background="{Binding PreviewAccent}" />
                                                         </Grid>
@@ -1191,9 +1191,9 @@
                                                                    VerticalAlignment="Center"
                                                                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                                         <Border Grid.Column="1" IsVisible="{Binding IsSelected}"
-                                                                Width="22" Height="22" CornerRadius="11"
+                                                                Width="22" Height="22" CornerRadius="{DynamicResource EmuRadiusLarge}"
                                                                 Background="{DynamicResource EmuAccentBrush}">
-                                                            <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
+                                                            <TextBlock Text="✓" FontSize="{DynamicResource EmuTextLabelSize}" FontWeight="Bold"
                                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                                        Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
                                                         </Border>
@@ -1211,10 +1211,10 @@
                         <Border Classes="settings-card" Margin="0,0,0,12">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
-                                    <TextBlock Text="ABOUT" FontSize="10"
+                                    <TextBlock Text="ABOUT" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                    <TextBlock Text="EmuShelf" FontSize="20" FontWeight="SemiBold"
+                                    <TextBlock Text="EmuShelf" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                                                Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                 </StackPanel>
 
@@ -1258,7 +1258,7 @@
 
                         <Border Classes="settings-card" IsVisible="{Binding HasUpdateChecker}">
                             <StackPanel Spacing="12">
-                                <TextBlock Text="UPDATES" FontSize="10" FontWeight="Bold"
+                                <TextBlock Text="UPDATES" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                            LetterSpacing="1"
                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                                 <TextBlock Text="EmuShelf checks GitHub for new releases and installs them in place, then restarts itself. Only the public releases page is contacted."
@@ -1274,7 +1274,7 @@
                                             Command="{Binding InstallUpdateCommand}" />
                                 </StackPanel>
                                 <TextBlock Text="{Binding UpdateStatusText}" TextWrapping="Wrap"
-                                           FontSize="12" IsVisible="{Binding HasUpdateStatus}"
+                                           FontSize="{DynamicResource EmuTextBodyStrongSize}" IsVisible="{Binding HasUpdateStatus}"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <!-- Same live download state the main-window banner binds, so the
                                      progress shows inline here instead of only behind this window. -->

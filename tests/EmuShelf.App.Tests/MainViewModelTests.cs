@@ -4873,16 +4873,35 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void RightStick_AtRest_RaisesNothing()
+    public void RightStick_AtRest_RaisesNothingWithinTheSettleDelay()
     {
         var vm = ShelfViewModel();
         var raised = new List<string>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
 
-        // A centred stick ticks constantly; requesting a frame each time would spin the CPU.
+        // A centred stick ticks constantly. For the first couple of seconds the just-focused hero
+        // holds still, so no frame is requested — requesting one each tick would spin the CPU.
         vm.ApplyRightStickRotation(0f, 0f, 100d);
 
         Assert.DoesNotContain(nameof(MainViewModel.ShelfHeroYaw), raised);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_AtRest_SwaysTheHeroAfterTheSettleDelay()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        // Left untouched past the settle delay, the resting hero begins to breathe so it reads as a
+        // 3-D object and invites the stick. That drift republishes the bound pose each tick.
+        for (var i = 0; i < 30; i++)
+        {
+            vm.ApplyRightStickRotation(0f, 0f, 100d);
+        }
+
+        Assert.Contains(nameof(MainViewModel.ShelfHeroYaw), raised);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
     }
 
     [AvaloniaFact]

@@ -12,18 +12,18 @@
 
     <StackPanel Margin="24" Spacing="14">
         <TextBlock Text="Download game metadata?"
-                   FontSize="20" FontWeight="SemiBold"
+                   FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
                    Foreground="{DynamicResource EmuTextPrimaryBrush}" />
         <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
                    Foreground="{DynamicResource EmuTextSecondaryBrush}" />
         <Border Background="{DynamicResource EmuCardBrush}"
                 BorderBrush="{DynamicResource EmuBorderBrush}"
-                BorderThickness="1" CornerRadius="8" Padding="12">
+                BorderThickness="1" CornerRadius="{DynamicResource EmuRadiusMedium}" Padding="12">
             <StackPanel Spacing="5">
                 <TextBlock Text="What leaves this computer" FontWeight="SemiBold"
                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                 <TextBlock Text="Only a game serial, disc ID, or canonical title is used in cover requests. Game files and local paths are never uploaded. Downloaded covers are stored in EmuShelf's portable Covers folder."
-                           TextWrapping="Wrap" FontSize="12"
+                           TextWrapping="Wrap" FontSize="{DynamicResource EmuTextBodyStrongSize}"
                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
             </StackPanel>
         </Border>
