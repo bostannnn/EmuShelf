@@ -136,9 +136,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         RunOnMain(() =>
         {
             var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
-            // A game is taking the main screen; the emulator owns the gamepad now, so the companion no
-            // longer holds input focus (a fresh touch on it reclaims it).
-            SecondScreenInputFocus.IsActive = false;
             _runningGameId = game.Id;
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
@@ -368,10 +365,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         model.SlotActivated = ActivateDockSlot;
         model.SlotEditRequested = EditDockSlot;
         model.AppLaunched = app => OnDrawerAppSelected(app.Component);
-        // Let the gamepad drive this companion's achievements grid while the second screen owns input focus
-        // (set by a touch on it; cleared by a touch on the main screen). The Activity offers each mapped
-        // action here before the couch view model — see MainActivity.DispatchKeyEvent.
-        SecondScreenInputFocus.Dispatch = model.DispatchGamepadAction;
+        // The gamepad drives this companion's achievements grid directly through the Presentation window:
+        // Android delivers Screen-2 key events to it when it is the top-focused display (a touch on Screen-2),
+        // and ThorSecondScreenPresentation.DispatchKeyEvent forwards each mapped action to model here.
     }
 
     // Long-press on a dock slot opens its picker, where a filled slot can be re-pinned or cleared. Tap
@@ -687,9 +683,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             // foreground (TopResumedChanged). A short delay lets the app's own window come up first so the
             // stock secondary-display launcher never flashes through underneath during the hand-off.
             _appLaunchedOnSecondScreen = true;
-            // The companion is about to be hidden for the launched app, so it can't own gamepad input any
-            // more — hand it back to the main screen.
-            SecondScreenInputFocus.IsActive = false;
             var launched = _presentation;
             _mainHandler.PostDelayed(
                 () =>
@@ -980,7 +973,6 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         if (_presentation is not { } presentation)
             return;
         _presentation = null;
-        SecondScreenInputFocus.Reset();
         StopKeepAlive();
         // The second screen is going away; if it was hosting the keyboard, hand it back to the main-screen
         // strip so text entry does not vanish mid-type.
