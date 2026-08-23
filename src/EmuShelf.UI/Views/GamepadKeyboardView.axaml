@@ -1,0 +1,98 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             x:Name="Root"
+             x:Class="EmuShelf.App.Views.GamepadKeyboardView"
+             x:DataType="vm:GamepadKeyboardViewModel">
+
+  <!-- App-owned couch keyboard. Focus is view-model state (per-key IsFocused), never Avalonia focus, so the
+       exact same grid renders whether it is shown as a main-screen strip or mirrored onto the Thor's second
+       screen, and is driven entirely by the shared gamepad dispatch. Taps still work (touch/mouse) via the
+       PressKey command. -->
+  <UserControl.Styles>
+    <Style Selector="Button.kbd-key">
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <!-- Function keys (Shift / ?123 / Space / Backspace / Done) read a shade apart from letter keys. -->
+    <Style Selector="Button.kbd-key.action">
+      <Setter Property="Background" Value="{DynamicResource EmuToolbarBrush}" />
+      <Setter Property="FontSize" Value="16" />
+    </Style>
+    <!-- The one focused key: a solid accent fill so the selector is unmistakable from across the room and,
+         crucially, legible on the second screen. Placed last so it wins over the .action background. -->
+    <Style Selector="Button.kbd-key.focused">
+      <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Padding="18,14" CornerRadius="16"
+          Background="{DynamicResource EmuPopoverBrush}"
+          BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+    <StackPanel Spacing="12" HorizontalAlignment="Center">
+
+      <TextBlock Text="{Binding Title}" FontSize="15" HorizontalAlignment="Center"
+                 Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
+      <!-- The field being edited, mirrored here so the user sees what they typed without looking at the
+           other screen. Placeholder shows through while empty. -->
+      <Border MinWidth="460" MinHeight="44" CornerRadius="10" Padding="14,8"
+              Background="{DynamicResource EmuCardBrush}"
+              BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
+        <Panel>
+          <TextBlock Text="{Binding Text}" IsVisible="{Binding HasText}" FontSize="22"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+          <TextBlock Text="{Binding Placeholder}" IsVisible="{Binding !HasText}" FontSize="22"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+        </Panel>
+      </Border>
+
+      <!-- Rows of keys. Each row centres its own keys; key width comes from the VM (Space is wider). -->
+      <ItemsControl ItemsSource="{Binding Rows}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="7" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate>
+            <ItemsControl ItemsSource="{Binding}" HorizontalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="7" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:GamepadKeyViewModel">
+                  <Button Classes="kbd-key"
+                          Classes.action="{Binding IsActionKey}"
+                          Classes.focused="{Binding IsFocused}"
+                          Width="{Binding KeyWidth}" Height="48"
+                          Content="{Binding Glyph}"
+                          Command="{Binding DataContext.PressKeyCommand, ElementName=Root}"
+                          CommandParameter="{Binding}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+
+    </StackPanel>
+  </Border>
+</UserControl>

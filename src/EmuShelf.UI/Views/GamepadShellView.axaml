@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
              xmlns:controls="using:EmuShelf.App.Controls"
+             xmlns:views="using:EmuShelf.App.Views"
              xmlns:sys="using:EmuShelf.Core.Systems"
              xmlns:settings="using:EmuShelf.Core.Settings"
              x:Class="EmuShelf.App.Views.GamepadShellView"
@@ -2081,16 +2082,39 @@
 
                         <StackPanel IsVisible="{Binding IsGamepadSearchOpen}" Spacing="14">
                             <TextBlock Text="Search your library" FontSize="17" />
+                            <!-- On Android the field is read-only so it never raises the system keyboard (which
+                                 covers the whole screen and can't be moved to the second display); the app-owned
+                                 keyboard below drives it. On desktop it stays editable for the hardware keyboard. -->
                             <TextBox x:Name="GamepadSearchBox" Text="{Binding SearchText, Mode=TwoWay}" FontSize="24"
+                                     IsReadOnly="{Binding UsesGamepadKeyboard}"
                                      PlaceholderText="Enter a game title" KeyDown="OnGamepadTextInputKeyDown" />
                             <TextBlock Text="{Binding LibraryCountText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            <ContentControl HorizontalAlignment="Center"
+                                            IsVisible="{Binding ShowGamepadKeyboardOnMainScreen}"
+                                            Content="{Binding GamepadKeyboard}">
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadKeyboardViewModel">
+                                        <views:GamepadKeyboardView />
+                                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
                         </StackPanel>
                         <StackPanel IsVisible="{Binding IsGamepadRenameOpen}" Spacing="14">
                             <TextBlock Text="Enter a new title" FontSize="17" />
                             <TextBlock Text="{Binding FocusedGame.Title}" FontSize="16" TextWrapping="Wrap"
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             <TextBox x:Name="GamepadRenameBox" Text="{Binding FocusedGame.DraftTitle, Mode=TwoWay}" FontSize="24"
+                                     IsReadOnly="{Binding UsesGamepadKeyboard}"
                                      PlaceholderText="Enter a new title" KeyDown="OnGamepadTextInputKeyDown" />
+                            <ContentControl HorizontalAlignment="Center"
+                                            IsVisible="{Binding ShowGamepadKeyboardOnMainScreen}"
+                                            Content="{Binding GamepadKeyboard}">
+                                <ContentControl.ContentTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadKeyboardViewModel">
+                                        <views:GamepadKeyboardView />
+                                    </DataTemplate>
+                                </ContentControl.ContentTemplate>
+                            </ContentControl>
                         </StackPanel>
                         <!-- Self-contained confirmation dialog (Remove / Desktop switch / Quit). Spans both
                              body rows and centres the whole group — title, explanation, then an equal-halves

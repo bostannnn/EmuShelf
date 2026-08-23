@@ -10668,6 +10668,26 @@ only the settled game fetches, and `willRefresh` is still gated to uncached-or-s
 make no request. Covered by `SecondScreenAchievementsLayoutTests` (header→grid→detail order with no footer,
 auto-select, tap-to-select, meta format, inline-status gating, clear-drops-selection).
 
+## 2026-08-23 — App-owned couch keyboard replaces the system IME (Android); mirrored onto the Thor second screen
+
+On a handheld the system keyboard (Gboard) opens over the whole main screen and hides the search field and
+results, and a third-party app **cannot** relocate the system IME to the second display: per-display IME
+placement (`setDisplayImePolicy` / system-decoration config) is system-signature only, AOSP refuses an IME on
+non-system-owned displays, and the Thor firmware has no root. So couch text entry (Search, Rename) on Android
+now uses `GamepadKeyboardViewModel` — an app-drawn, gamepad-navigable key grid that writes straight into the
+target field via delegates, with the system IME suppressed (the field is read-only and never focused, so
+Avalonia raises no IME). Key focus is view-model state (`IsFocused`), not Avalonia focus, so the same grid can
+render on two top levels at once and is driven entirely by the shared gamepad dispatch.
+
+Placement: **second screen when present, main-screen strip otherwise.** The Android `SecondScreenController`
+mirrors the live keyboard onto the Thor's Presentation and sets `MainViewModel.IsGamepadKeyboardHostedRemotely`
+so the main-screen strip yields — the search field stays visible on the main panel (behind the standard couch
+overlay scrim, which dims but does not hide the library) instead of being buried under a full-screen keyboard,
+while you type on the panel below. Desktop is unchanged (`UsesGamepadKeyboard` is Android-only): the hardware / OS
+keyboard still drives couch search there, so no desktop layout or visual-snapshot moves. Engine covered by
+`GamepadKeyboardViewModelTests`; on-device second-screen behaviour is pending a Thor pass (no device attached
+at implementation time). Follow-up: Settings text entry and the cover-search query field still use the system
+IME and could adopt the same component.
 ## 2026-08-23 — Android CRT is a static sheen, not the full tube
 
 Turning the CRT effect on on Android now maps `MainViewModel.CouchCrt` to a new
