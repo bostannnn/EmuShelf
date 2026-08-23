@@ -56,6 +56,21 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [ObservableProperty]
     public partial SecondScreenOverlayKind Overlay { get; set; }
 
+    // --- App-owned keyboard, mirrored here from the main head during couch text entry ---
+
+    /// <summary>
+    /// The couch keyboard while it is being entered on the main screen — the Android controller pushes the
+    /// main head's live <c>GamepadKeyboardViewModel</c> here so the Thor's second screen hosts the keys,
+    /// leaving the search field and results fully visible on the main panel. Null the rest of the time.
+    /// Rendered above every other surface (it is its own top-most layer), so whatever sits underneath —
+    /// spotlight, dock, achievements — is revealed unchanged when it closes.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsKeyboardOpen))]
+    public partial GamepadKeyboardViewModel? Keyboard { get; set; }
+
+    public bool IsKeyboardOpen => Keyboard is not null;
+
     // --- Resting spotlight (fan art + logo) ---
 
     [ObservableProperty]

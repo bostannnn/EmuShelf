@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:views="using:EmuShelf.App.Views"
              xmlns:ai="using:Avalonia.Input"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -293,6 +294,22 @@
                     Foreground="{DynamicResource EmuAchievementBrush}" />
         </Button>
       </Grid>
+    </Border>
+
+    <!-- App-owned keyboard, mirrored from the main head during couch search / rename. Its own top-most
+         layer (spans both rows) so it covers the spotlight, dock, and any open overlay while typing, and
+         reveals them unchanged when it closes. The keys are driven by the main-screen gamepad dispatch;
+         taps also work here. -->
+    <Border Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding IsKeyboardOpen}"
+            Background="{DynamicResource EmuWindowBackgroundBrush}">
+      <ContentControl HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Content="{Binding Keyboard}">
+        <ContentControl.ContentTemplate>
+          <DataTemplate x:DataType="vm:GamepadKeyboardViewModel">
+            <views:GamepadKeyboardView />
+          </DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
     </Border>
   </Grid>
 </UserControl>

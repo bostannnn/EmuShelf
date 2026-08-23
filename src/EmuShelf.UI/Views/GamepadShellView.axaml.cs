@@ -706,10 +706,19 @@ public partial class GamepadShellView : UserControl
             if (viewModel.IsGamepadControllerInputActive && rowButton is not null)
                 FocusManager?.Focus(rowButton, NavigationMethod.Directional);
         }
+        // Focusing the text box is what raises the system keyboard. On Android the app-owned keyboard drives
+        // the field instead (the OS keyboard covers the whole screen and can't be moved to the second
+        // display), so leave the box unfocused there; on desktop, focus it for the hardware / OS keyboard.
         else if (viewModel.IsGamepadSearchOpen)
-            GamepadSearchBox.Focus();
+        {
+            if (!viewModel.UsesGamepadKeyboard)
+                GamepadSearchBox.Focus();
+        }
         else if (viewModel.IsGamepadRenameOpen)
-            GamepadRenameBox.Focus();
+        {
+            if (!viewModel.UsesGamepadKeyboard)
+                GamepadRenameBox.Focus();
+        }
         else if (viewModel.FocusedGamepadAchievement is { } achievement)
         {
             var index = viewModel.GamepadAchievementDetails?.VisibleAchievements.IndexOf(achievement) ?? -1;
