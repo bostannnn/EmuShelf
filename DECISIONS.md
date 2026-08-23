@@ -10636,3 +10636,34 @@ Two owner requests against the second-screen achievements overlay:
    off-thread badge load from `IRetroAchievementsBadgeCache` + bitmap disposal), retiring the badge-less
    `SecondScreenAchievementViewModel`; `SecondScreenViewModel.ClearAchievements` disposes the badges on every
    rebuild/teardown. Layout + virtualization guarded by `SecondScreenAchievementsLayoutTests` (headless render).
+
+## 2026-08-23 — Second-screen achievements: tap-selectable grid + auto-fetch on game change
+
+The Thor companion achievements overlay (`SecondScreenView`, the `1240×1080` Screen-2 `Presentation`) was a
+wall of badge tiles with no way to read any of them: badges carried only a `ToolTip.Tip` (hover — dead on a
+touch panel), so tapping did nothing and titles/descriptions were unreachable. Redesigned for touch on a
+square panel: tapping a badge **selects** it (accent ring, via the shared `AchievementRowViewModel.IsFocused`,
+tracked on `SecondScreenViewModel.SelectedAchievement`) and its title, description, and a compact meta line
+show in a **detail strip beneath the grid**. A two-pane grid+detail layout was rejected because each pane
+would be too narrow/small to read on the physical panel; filters/sort were also deferred for lack of vertical
+room.
+
+Layout is **one header row + grid + detail** — no bottom footer. The header carries the game name, the
+`unlocked / total · points` progress summary, and Refresh / Close as **icon buttons** (`EmuRefreshGeometry` /
+`EmuCloseGeometry`, added to the theme). Text was deliberately trimmed after review — the earlier build stacked
+five lines (achievement title/subtitle/meta + game name + status): (1) the game name moved into the header;
+(2) the boring "Updated {time}" status is **no longer set** (the controller passes `null`) so the header stays
+quiet — status shows only for transient/actionable states (Refreshing…, offline, error) via `HasInlineStatus`,
+and empty/message states use a centered message; (3) the per-badge meta is one line of **points + earned date
+only** (`"50 pts · Earned 3 Aug"`), dropping the "Hardcore/Locked" word since the gold ring / dimming already
+show it. The first badge auto-selects so the strip is never blank. The **app-dock bar is hidden while the
+overlay is open** (Close/Back returns to it), giving the grid the full panel height. Badge tiles were enlarged
+(`118px`, `132px` pitch) for touch targets — the tile size is a documented knob (keep the AXAML `Width`/`Margin`
+and the code-behind `AchievementBadgePitch` in sync).
+
+This also **reverses the earlier "achievements pull only on the icon press"** decision (Milestone SS): the
+browse-follow now fetches (`allowNetworkRefresh: true`, debounce raised to `400ms`) so the panel populates as
+you browse game to game instead of showing "Press Refresh" for anything never opened. It is not a burst risk —
+only the settled game fetches, and `willRefresh` is still gated to uncached-or-stale sets, so cached games
+make no request. Covered by `SecondScreenAchievementsLayoutTests` (header→grid→detail order with no footer,
+auto-select, tap-to-select, meta format, inline-status gating, clear-drops-selection).

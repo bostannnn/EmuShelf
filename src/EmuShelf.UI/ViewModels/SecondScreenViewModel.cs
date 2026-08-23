@@ -114,8 +114,60 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [ObservableProperty]
     public partial string? AchievementsStatus { get; set; }
 
+    /// <summary>Compact progress line for the panel header (e.g. "12 / 40 · 340 pts"); null hides it.</summary>
+    [ObservableProperty]
+    public partial string? AchievementsSummary { get; set; }
+
     [ObservableProperty]
     public partial bool CanRefresh { get; set; }
+
+    // The tapped badge, whose title/description/meta the panel shows beneath the grid. A touch surface has
+    // no hover, so this replaces the grid's (useless) per-tile tooltip. Its IsFocused drives the tile's
+    // accent ring (reusing the gamepad row's logical-focus flag; the companion has its own row instances).
+    [ObservableProperty]
+    public partial AchievementRowViewModel? SelectedAchievement { get; set; }
+
+    public bool HasSelectedAchievement => SelectedAchievement is not null;
+    public bool HasSummary => !string.IsNullOrEmpty(AchievementsSummary);
+
+    /// <summary>
+    /// One compact line for the selected badge: points, plus the earned date when it is earned. The lock /
+    /// hardcore state is intentionally omitted — the tile's dimming (locked) and gold ring (hardcore)
+    /// already show it, so repeating it here is noise. Null when nothing is selected.
+    /// </summary>
+    public string? SelectedAchievementMeta
+    {
+        get
+        {
+            if (SelectedAchievement is not { } achievement)
+                return null;
+            var points = achievement.Points == 1 ? "1 pt" : $"{achievement.Points} pts";
+            return achievement.EarnedAt is { } earned
+                ? $"{points} · Earned {earned.ToLocalTime():d MMM}"
+                : points;
+        }
+    }
+
+    partial void OnAchievementsSummaryChanged(string? value) => OnPropertyChanged(nameof(HasSummary));
+
+    partial void OnSelectedAchievementChanged(
+        AchievementRowViewModel? oldValue,
+        AchievementRowViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.IsFocused = false;
+        if (newValue is not null)
+            newValue.IsFocused = true;
+        OnPropertyChanged(nameof(HasSelectedAchievement));
+        OnPropertyChanged(nameof(SelectedAchievementMeta));
+    }
+
+    /// <summary>Selects a badge (tapped in the grid), moving the accent ring and the detail strip to it.</summary>
+    public void SelectAchievement(AchievementRowViewModel? achievement)
+    {
+        if (!ReferenceEquals(SelectedAchievement, achievement))
+            SelectedAchievement = achievement;
+    }
 
     public ObservableCollection<SecondScreenSlotViewModel> Dock { get; } =
         new(Enumerable.Range(0, 5).Select(index => new SecondScreenSlotViewModel(index)));
@@ -139,6 +191,16 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     /// <summary>Total badge count across all rows; drives the empty state.</summary>
     public int AchievementCount => _achievements.Count;
 
+    /// <summary>True once a set is loaded; drives the grid vs the centered empty/message state.</summary>
+    public bool HasAchievements => _achievements.Count > 0;
+
+    /// <summary>
+    /// Shows the status line only when it is saying something over a loaded grid — "Refreshing…", offline,
+    /// an error. The boring "Updated {time}" case is left null by the controller, and empty/message states
+    /// use the centered message instead, so the header stays quiet in the normal loaded case.
+    /// </summary>
+    public bool HasInlineStatus => HasStatus && _achievements.Count > 0;
+
     private int _achievementColumnCount = 1;
 
     /// <summary>
@@ -160,8 +222,11 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     {
         DisposeAchievements();
         _achievements.AddRange(achievements);
-        OnPropertyChanged(nameof(AchievementCount));
+        RaiseAchievementCountDependents();
         RebuildAchievementRows();
+        // Land on the first badge so the title/subtitle strip is populated the moment the panel opens (and
+        // after every game-change follow), rather than sitting blank until the user taps.
+        SelectAchievement(_achievements.Count > 0 ? _achievements[0] : null);
     }
 
     /// <summary>
@@ -172,13 +237,23 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public void ClearAchievements()
     {
         DisposeAchievements();
-        OnPropertyChanged(nameof(AchievementCount));
+        RaiseAchievementCountDependents();
         if (AchievementRows.Count > 0)
             AchievementRows.Clear();
     }
 
+    private void RaiseAchievementCountDependents()
+    {
+        OnPropertyChanged(nameof(AchievementCount));
+        OnPropertyChanged(nameof(HasAchievements));
+        OnPropertyChanged(nameof(HasInlineStatus));
+    }
+
     private void DisposeAchievements()
     {
+        // Drop the selection before disposing the rows it points at, so the detail strip never binds a
+        // disposed badge bitmap.
+        SelectedAchievement = null;
         foreach (var achievement in _achievements)
             achievement.Dispose();
         _achievements.Clear();
@@ -217,7 +292,11 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         OnPropertyChanged(nameof(IsAchievementsOpen));
     }
 
-    partial void OnAchievementsStatusChanged(string? value) => OnPropertyChanged(nameof(HasStatus));
+    partial void OnAchievementsStatusChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasStatus));
+        OnPropertyChanged(nameof(HasInlineStatus));
+    }
 
     // Android-side actions, wired once by the controller. The commands below are pure indirection so the
     // AXAML never needs an Android type.

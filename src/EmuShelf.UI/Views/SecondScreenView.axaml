@@ -16,9 +16,22 @@
     <Style Selector="Grid.ss-badge-inner.locked">
       <Setter Property="Opacity" Value="0.42" />
     </Style>
+    <!-- Base tile border. The default MUST live here, not as a local BorderThickness/BorderBrush on the
+         tile: a local value outranks a class-selector style setter in Avalonia, so the .hardcore / .selected
+         thickness overrides below are only honoured when the default is itself a (less-specific) style. -->
+    <Style Selector="Border.ss-badge">
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
     <Style Selector="Border.ss-badge.hardcore">
       <Setter Property="BorderBrush" Value="{DynamicResource EmuAchievementBrush}" />
       <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <!-- The tapped badge gets the accent ring so it's clear which one the title/subtitle strip describes.
+         Placed after .hardcore so the accent wins over the gold ring while a hardcore tile is selected. -->
+    <Style Selector="Border.ss-badge.selected">
+      <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+      <Setter Property="BorderThickness" Value="3" />
     </Style>
   </UserControl.Styles>
 
@@ -99,21 +112,59 @@
         </Grid>
       </Border>
 
-      <!-- Achievements overlay: the whole badge set at a glance in a grid, with the game title + status
-           and the Refresh / Close controls pinned to the BOTTOM (mirrors the gamepad achievements
-           screen, moved down for the companion). Locked badges are dimmed; hardcore unlocks get the
-           gold ring — see the styles at the top of this view. -->
+      <!-- Achievements overlay (square Thor panel, touch): one header row carries the game name, the
+           progress summary, and the Refresh / Close icon buttons; the badge grid fills the middle; and —
+           because touch has no hover tooltip — the tapped badge's title/subtitle/points sit in a detail
+           strip beneath it. The app dock bar is hidden while this is up (see the bottom bar's IsVisible),
+           giving the grid the full panel height. Locked badges are dimmed; hardcore unlocks get the gold
+           ring; the tapped one gets the accent ring — see the styles at the top of this view. -->
       <Border IsVisible="{Binding IsAchievementsOpen}" Background="{DynamicResource EmuWindowBackgroundBrush}">
-        <Grid RowDefinitions="*,Auto" Margin="26,18,26,14">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="26,18,26,14">
+
+          <!-- Header: game name (left), progress summary, and Refresh / Close as icon buttons. This is the
+               only chrome — the old bottom footer is gone, so the grid + detail own the rest of the panel. -->
+          <Grid Grid.Row="0" x:Name="AchievementsHeader" ColumnDefinitions="*,Auto,Auto,Auto"
+                ColumnSpacing="10" Margin="0,0,0,12">
+            <TextBlock Grid.Column="0" Text="{Binding AchievementsTitle}" FontSize="18" FontWeight="SemiBold"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            <TextBlock Grid.Column="1" Text="{Binding AchievementsSummary}" FontSize="13"
+                       IsVisible="{Binding HasSummary}" VerticalAlignment="Center"
+                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            <Button Grid.Column="2" Width="42" Height="42" Padding="0" VerticalAlignment="Center"
+                    Background="Transparent" ToolTip.Tip="Refresh"
+                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                    IsVisible="{Binding CanRefresh}" Command="{Binding RefreshCommand}">
+              <PathIcon Width="18" Height="18" Data="{DynamicResource EmuRefreshGeometry}"
+                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            </Button>
+            <Button Grid.Column="3" Width="42" Height="42" Padding="0" VerticalAlignment="Center"
+                    Background="Transparent" ToolTip.Tip="Close"
+                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                    Command="{Binding CloseOverlayCommand}">
+              <PathIcon Width="16" Height="16" Data="{DynamicResource EmuCloseGeometry}"
+                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            </Button>
+          </Grid>
+
+          <!-- Transient status over a loaded grid ("Refreshing…", offline, an error). Hidden in the normal
+               loaded case (the controller leaves status null) and for empty states (the centered message
+               below handles those). -->
+          <TextBlock Grid.Row="1" Text="{Binding AchievementsStatus}" IsVisible="{Binding HasInlineStatus}"
+                     FontSize="13" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
           <!-- Row-virtualized badge grid: a ListBox realizes one ROW per line (a vertical
                VirtualizingStackPanel), each row an ItemsControl of AchievementColumnCount tiles, so a
                400-badge set only realizes its on-screen rows. The column count is driven from the
                viewport width (SizeChanged) so the row stride matches what is rendered. The ListBox is a
-               passive renderer — no selection/focus — so its selection visuals are styled away. -->
-          <ListBox Grid.Row="0" x:Name="AchievementsBadgeList"
+               passive renderer — its own selection/focus visuals are styled away; the tapped badge is
+               tracked on the view model (SelectAchievement) and shown by the .selected accent ring. -->
+          <ListBox Grid.Row="2" x:Name="AchievementsBadgeList" IsVisible="{Binding HasAchievements}"
                    ItemsSource="{Binding AchievementRows}"
                    Background="Transparent" BorderThickness="0" Padding="0"
                    SizeChanged="OnAchievementsBadgeListSizeChanged"
+                   AutoScrollToSelectedItem="False"
                    ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                    ScrollViewer.VerticalScrollBarVisibility="Auto">
             <ListBox.ItemsPanel>
@@ -144,15 +195,18 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:AchievementRowViewModel">
-                      <Border Width="70" Height="70" Margin="5" CornerRadius="13" ClipToBounds="True"
+                      <!-- Tile size is a deliberate knob: bigger than the desktop grid so badges are easy
+                           to hit on the small physical panel. Keep Width/Height and the code-behind's
+                           AchievementBadgePitch (tile + 2×Margin) in sync so the column math matches. -->
+                      <Border Width="118" Height="118" Margin="7" CornerRadius="16" ClipToBounds="True"
                               Classes="ss-badge" Classes.hardcore="{Binding IsHardcore}"
-                              ToolTip.Tip="{Binding Title}"
+                              Classes.selected="{Binding IsFocused}"
                               Background="{DynamicResource EmuCoverWellBrush}"
-                              BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1"
+                              Tapped="OnAchievementBadgeTapped"
                               AttachedToVisualTree="OnAchievementBadgeAttached"
                               DataContextChanged="OnAchievementBadgeDataContextChanged">
                         <Grid Classes="ss-badge-inner" Classes.locked="{Binding IsLocked}">
-                          <PathIcon Width="26" Height="26" IsVisible="{Binding !HasBadge}"
+                          <PathIcon Width="40" Height="40" IsVisible="{Binding !HasBadge}"
                                     Data="{DynamicResource AchievementTrophyGeometry}"
                                     Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                           <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />
@@ -165,28 +219,35 @@
             </ListBox.ItemTemplate>
           </ListBox>
 
-          <!-- Bottom bar: game title over the status line, Refresh / Close on the right. -->
-          <Grid Grid.Row="1" x:Name="AchievementsFooter" ColumnDefinitions="*,Auto,Auto" Margin="0,12,0,0">
-            <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-              <TextBlock Text="{Binding AchievementsTitle}" FontSize="20" FontWeight="SemiBold"
-                         TextTrimming="CharacterEllipsis"
-                         Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-              <TextBlock Text="{Binding AchievementsStatus}" FontSize="13" IsVisible="{Binding HasStatus}"
-                         TextTrimming="CharacterEllipsis"
-                         Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-            </StackPanel>
-            <Button Grid.Column="1" Content="Refresh" Margin="0,0,8,0" VerticalAlignment="Center"
-                    IsVisible="{Binding CanRefresh}"
-                    Command="{Binding RefreshCommand}" />
-            <Button Grid.Column="2" Content="Close" VerticalAlignment="Center"
-                    Command="{Binding CloseOverlayCommand}" />
-          </Grid>
+          <!-- Empty / message state (no set linked, not connected, loading, "select a game first"),
+               centered in the grid area so the panel never reads as blank when there are no badges. -->
+          <TextBlock Grid.Row="2" IsVisible="{Binding !HasAchievements}"
+                     Text="{Binding AchievementsStatus}" TextWrapping="Wrap" TextAlignment="Center"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" FontSize="16"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
+          <!-- Selected badge: title, description, and a compact "points · Earned date" line (Variant 2 —
+               lock/hardcore state is omitted, the tile's dimming/gold ring already show it). This is the
+               touch answer to the grid's missing hover tooltip. Auto-populated with the first badge. -->
+          <StackPanel Grid.Row="3" x:Name="AchievementsDetail" Margin="0,14,0,0" Spacing="3"
+                      IsVisible="{Binding HasSelectedAchievement}">
+            <TextBlock Text="{Binding SelectedAchievement.Title}" FontSize="19" FontWeight="SemiBold"
+                       TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+            <TextBlock Text="{Binding SelectedAchievement.Description}" FontSize="14"
+                       TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            <TextBlock Text="{Binding SelectedAchievementMeta}" FontSize="12"
+                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+          </StackPanel>
         </Grid>
       </Border>
     </Panel>
 
-    <!-- Bottom bar:  ☰  |  five dock slots  |  trophy -->
+    <!-- Bottom bar:  ☰  |  five dock slots  |  trophy. Hidden while the achievements overlay is open so the
+         badge grid + detail strip own the full square panel; Close (or Back) returns to it. -->
     <Border Grid.Row="1" Height="64" Background="{DynamicResource EmuToolbarBrush}"
+            IsVisible="{Binding !IsAchievementsOpen}"
             BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
 
