@@ -13,6 +13,10 @@
        user an install confirmation, and the first time also an "allow unknown apps" prompt. See the About →
        Check for updates flow and the package-android release APK in .github/workflows/build.yml. -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <!-- Keeps the Presentation process alive only while an emulator owns the main screen. Android 13
+       may otherwise reclaim the background frontend and tear down Screen-2 mid-session. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
   <!-- All-files access: the SAF folder picker resolves to a real path only when EmuShelf itself can
        read it, and the shared FolderScanner/disc readers do random access over multi-gigabyte files by
        absolute path. Declaring it is also what makes `appops set … MANAGE_EXTERNAL_STORAGE allow` stick
@@ -47,10 +51,16 @@
   <application android:label="EmuShelf"
                android:allowBackup="false"
                android:hardwareAccelerated="true">
-    <!-- The Thor companion (SecondScreenHomeActivity) is declared via [Activity]/[IntentFilter]
-         attributes: it registers as the secondary display's home (CATEGORY_SECONDARY_HOME) so the OS
-         hosts it on Screen-2, launches dock apps in front of it, and returns to it on Back/Home. No
-         foreground service is needed — a visible home activity keeps the process alive on its own. -->
+    <!-- Android 14+ requires every foreground service to declare a type. Keeping a user-visible
+         companion display alive is not one of the canned media/location/data types, so it uses the
+         platform's specialUse bucket with a narrowly stated subtype. On the Thor (Android 13) this is
+         simply ignored; the ordinary FOREGROUND_SERVICE permission remains the active rule. -->
+    <service android:name="com.emushelf.app.SecondScreenKeepAliveService"
+             android:exported="false"
+             android:foregroundServiceType="specialUse">
+      <property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the user-visible dual-screen companion surface alive while a game runs" />
+    </service>
     <!-- Mints the content:// URI the package installer reads the downloaded update APK from. The installer
          is a separate process, so a file:// URI is rejected since API 24 — only a granted FileProvider URI
          works. Authority mirrors AndroidUpdateApplier.FileProviderAuthority; exported=false + a per-URI read

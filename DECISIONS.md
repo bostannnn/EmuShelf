@@ -10568,37 +10568,3 @@ itself the maintained default (PS1: DuckStation is frozen, RetroArch sorts first
 RetroArch again, so the core prompt still stands — the deprioritised standalone is not silently substituted.
 The fix lives in the pure resolver so the desktop suite covers it; the launch service is unchanged and reads
 `resolution.Profile` for the install check, so it targets the fallback emulator, not the discarded RetroArch.
-
-## 2026-08-23 — Android second screen: companion is an Activity, not a Presentation (follow-up to SS)
-
-The SS milestone (2026-08-22) shipped the Thor companion as an `Android.App.Presentation`. On-device that
-made two things impossible: a `Presentation` window sits at `TYPE_PRESENTATION` (window layer 31000), far
-above ordinary application windows (21000), so **every app the dock launched onto Screen-2 rendered behind
-the companion and could not be seen or used**; and portrait-locked apps launched onto Screen-2 flipped the
-whole display, leaving the companion rotated 90° on the physically-landscape panel. Both were confirmed in
-`dumpsys window` on the Thor.
-
-The companion is now `SecondScreenHomeActivity`, an ordinary Activity that hosts the same embedded Avalonia
-view (`SecondScreenView` bound to the shared `SecondScreenController.Model`). As a normal 21000 window, an
-app launched onto Screen-2 draws in front of it, and Back returns to it — verified on the Thor. The activity
-pins `ScreenOrientation.Landscape`, so the companion is upright and returning from a portrait app restores
-landscape.
-
-Who shows it: the activity declares the `CATEGORY_SECONDARY_HOME` filter so it is *eligible* to be Screen-2's
-home, but the Thor's elected secondary home is the stock `SecondaryDisplayLauncher`; EmuShelf does not win
-that election. So `SecondScreenController.EnsureCompanionShown` explicitly launches the companion onto the
-FLAG_PRESENTATION display while EmuShelf is the active frontend (from `Start` and on return-to-foreground),
-replacing the stock drawer. The controller is now a process-wide singleton (`Active`) that owns the shared
-`Model`, so companion state survives the activity being recreated and the activity can bind whether it is
-created before or after the app composes. Back is consumed by an `OnBackInvokedCallback` (predictive back)
-plus an `OnBackPressed` fallback (the Thor has predictive back off), so the home never finishes itself.
-
-The gameplay keep-alive foreground service and its `FOREGROUND_SERVICE*` permissions are removed: a visible
-home activity on Screen-2 keeps the process alive on its own, so the service (and its permanent notification
-risk) is unnecessary.
-
-Known constraint — AYN NeoStation: NeoStation (`com.neogamelab.neostation`) is not a system-elected home; it
-is an app that, while running, keeps its own fullscreen `TYPE_PRESENTATION` overlay (31000) on Screen-2. It
-therefore covers the companion (and anything launched on Screen-2) until it is closed — this is inherent to
-NeoStation's overlay and affects any app, not only EmuShelf. Follow-up work remains before the experience is
-where the owner wants it; this entry records the architecture, not a finished feature.
