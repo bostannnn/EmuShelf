@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Config for SecondScreenReturnWatcher. It listens only for window-state changes so it can tell when a
+     dock-launched app on Screen-2 has closed (the stock secondary-display launcher returning to the front),
+     and re-shows the EmuShelf companion over it. It deliberately does NOT set canRetrieveWindowContent, so
+     it never reads screen contents — it only needs the foreground window's package/class from the event. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="0"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/second_screen_accessibility_description" />

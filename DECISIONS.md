@@ -10568,3 +10568,37 @@ itself the maintained default (PS1: DuckStation is frozen, RetroArch sorts first
 RetroArch again, so the core prompt still stands — the deprioritised standalone is not silently substituted.
 The fix lives in the pure resolver so the desktop suite covers it; the launch service is unchanged and reads
 `resolution.Profile` for the install check, so it targets the fallback emulator, not the discarded RetroArch.
+
+## 2026-08-23 — Android second screen matches NeoStation exactly: sticky Presentation + accessibility dock-return
+
+Goal (owner, on the Thor): the second screen should behave like AYN's **NeoStation** — EmuShelf's companion
+is Screen-2's home, backing out never drops to the stock app drawer, and the dock can launch apps that appear
+in front. We reverse-engineered NeoStation on-device (pulled its APK; watched `dumpsys window` while it ran)
+and copied its actual mechanism, which is **not** what either earlier cut assumed.
+
+What NeoStation actually does, verified: its dock is an `Android.App.Presentation` (window type
+`TYPE_PRESENTATION`, base layer **31000**) on the FLAG_PRESENTATION display — *above* every ordinary
+activity window (21000), so it beats the stock `com.android.launcher3…SecondaryDisplayLauncher` (the "app
+drawer") and any other app. It is **not** a `SECONDARY_HOME` activity and holds no `SYSTEM_ALERT_WINDOW`.
+Because a launched app is a 21000 window (below the dock), NeoStation **hides its Presentation** (window
+visibility → GONE) while a dock app is foreground on Screen-2, and **re-shows it via an AccessibilityService**
+the instant that app is dismissed (its accessibility service, which the owner had already granted).
+
+EmuShelf now does the same, in three parts:
+1. **Companion = `ThorSecondScreenPresentation` (a `Presentation`, 31000)**, restored over the short-lived
+   `SecondScreenHomeActivity`/`CATEGORY_SECONDARY_HOME` experiment (reverted). An ordinary 21000 activity can
+   never out-stack NeoStation's 31000 Presentation, and — being a home-election loser on the Thor — dropped to
+   the drawer on Back; the Presentation avoids both.
+2. **Sticky Back**: `SetCancelable(false)` + `SetCanceledOnTouchOutside(false)` + an `OnBackPressed` override
+   that closes an open overlay or swallows. A `Presentation` is a `Dialog`, whose default Back would `cancel()`
+   it and reveal the drawer — this is why Back "opened the app drawer" before. It never finishes now.
+3. **Dock launch hide/return**: `LaunchOnSecondScreen` starts the app on the presentation display, then hides
+   the companion after a 350 ms hand-off delay (so the stock drawer never flashes through). It returns via
+   `SecondScreenReturnWatcher`, a lightweight `AccessibilityService` (`canRetrieveWindowContent=false` — reads
+   no screen content) that re-shows the companion the moment the secondary-display launcher class comes back to
+   the front. A `TopResumedChanged`-based re-show is kept as the fallback for when the service is not enabled.
+
+Requires the user to enable EmuShelf under Settings → Accessibility (exactly as NeoStation requires). Verified
+on the Thor: companion sits above NeoStation + the drawer, Back stays, and Chrome / NordPass / Apple Music each
+launched in front and returned to the companion on close. Screen-2 is `FLAG_SECURE`, so it can't be
+screenshotted — verification was via `dumpsys window` window types/layers and the app's own logs.

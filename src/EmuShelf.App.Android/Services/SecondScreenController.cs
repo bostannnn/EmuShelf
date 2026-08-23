@@ -53,6 +53,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     private bool _disposed;
     private bool _appsLoaded;
     private bool _appsLoadInFlight;
+    // Set while a dock-launched app owns Screen-2. The companion Presentation is hidden for its duration
+    // (see LaunchOnSecondScreen) and re-shown when EmuShelf next returns to the foreground.
+    private bool _appLaunchedOnSecondScreen;
 
     public SecondScreenController(
         ISecondScreenDockStore dockStore,
@@ -87,8 +90,35 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         AndroidActivityLifecycle.ActivityAvailable += AttachActivity;
         AndroidActivityLifecycle.ActivityDestroyed += ActivityDestroyed;
         AndroidActivityLifecycle.TopResumedChanged += TopResumedChanged;
+        // The optional accessibility watcher re-shows the companion when a dock-launched app is dismissed
+        // (see SecondScreenReturnWatcher). It is only useful while EmuShelf drives Screen-2, so point it
+        // here; it is a no-op until the user enables the service in Settings → Accessibility.
+        SecondScreenAccessibility.ForegroundWindowChanged = OnForegroundWindowChanged;
         if (MainActivity.Current is { } activity)
             AttachActivity(activity);
+    }
+
+    // Fired by SecondScreenReturnWatcher (accessibility) on every window-state change, on any display.
+    private void OnForegroundWindowChanged(string? package, string? className)
+    {
+        // Only relevant while a dock app owns Screen-2 and the companion is hidden for it.
+        if (!_appLaunchedOnSecondScreen || className is null)
+            return;
+
+        // The stock secondary-display launcher returning to the front means the app we launched on Screen-2
+        // has been closed (backed out of). Re-show the companion over it immediately — NeoStation's instant
+        // dock-return. Its class is display-specific, so main-screen launcher events never match here.
+        if (!className.Contains("secondarydisplay.SecondaryDisplayLauncher", StringComparison.Ordinal))
+            return;
+
+        RunOnMain(() =>
+        {
+            if (!_appLaunchedOnSecondScreen)
+                return;
+            _appLaunchedOnSecondScreen = false;
+            _presentation?.Show();
+            _logger.Information("Second-screen: companion re-shown after a dock app closed on Screen-2.");
+        });
     }
 
     internal void GameStarted(Game game, string title)
@@ -250,6 +280,15 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         var state = topResumed ? "top-resumed" : "backgrounded";
         _logger.Information(
             $"Second-screen SS0 lifecycle: EmuShelf {state}; presentation showing={_presentation?.IsShowing == true}.");
+
+        // Returning to EmuShelf after a dock app owned Screen-2 is the fallback re-show path for when the
+        // accessibility watcher is not enabled: bring the companion back when EmuShelf regains the
+        // foreground. When the watcher IS enabled it re-shows sooner, the instant the app is dismissed.
+        if (topResumed && _appLaunchedOnSecondScreen)
+        {
+            _appLaunchedOnSecondScreen = false;
+            RunOnMain(() => _presentation?.Show());
+        }
     }
 
     private void EnsurePresentation()
@@ -586,6 +625,21 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
                 activity.StartActivity(intent);
             }
             _logger.Information($"Launched {flattenedComponent} on second-screen display {display.DisplayId}.");
+
+            // The launched app is an ordinary window (layer 21000); the companion is a Presentation
+            // (layer 31000), so the app would render *behind* the dock and be invisible. Match NeoStation:
+            // hide the companion while the app owns Screen-2, and re-show it when EmuShelf returns to the
+            // foreground (TopResumedChanged). A short delay lets the app's own window come up first so the
+            // stock secondary-display launcher never flashes through underneath during the hand-off.
+            _appLaunchedOnSecondScreen = true;
+            var launched = _presentation;
+            _mainHandler.PostDelayed(
+                () =>
+                {
+                    if (_appLaunchedOnSecondScreen && ReferenceEquals(launched, _presentation))
+                        launched?.Hide();
+                },
+                350);
         }
         catch (Exception ex)
         {
@@ -871,6 +925,7 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         AndroidActivityLifecycle.ActivityAvailable -= AttachActivity;
         AndroidActivityLifecycle.ActivityDestroyed -= ActivityDestroyed;
         AndroidActivityLifecycle.TopResumedChanged -= TopResumedChanged;
+        SecondScreenAccessibility.ForegroundWindowChanged = null;
         DismissPresentation();
         DetachDisplayManager();
         StopKeepAlive();
