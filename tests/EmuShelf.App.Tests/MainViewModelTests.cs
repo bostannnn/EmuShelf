@@ -4873,35 +4873,53 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void RightStick_AtRest_RaisesNothingWithinTheSettleDelay()
+    public void ShelfSway_WithinTheSettleDelay_RaisesNothing()
     {
         var vm = ShelfViewModel();
         var raised = new List<string>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
 
-        // A centred stick ticks constantly. For the first couple of seconds the just-focused hero
-        // holds still, so no frame is requested — requesting one each tick would spin the CPU.
-        vm.ApplyRightStickRotation(0f, 0f, 100d);
+        // For the first beat the just-focused hero holds still, so the sway timer requests no frame.
+        vm.AdvanceShelfSway(100d);
 
         Assert.DoesNotContain(nameof(MainViewModel.ShelfHeroYaw), raised);
     }
 
     [AvaloniaFact]
-    public void RightStick_AtRest_SwaysTheHeroAfterTheSettleDelay()
+    public void ShelfSway_AfterTheSettleDelay_RaisesTheBoundPose()
     {
         var vm = ShelfViewModel();
         var raised = new List<string>();
         vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
 
         // Left untouched past the settle delay, the resting hero begins to breathe so it reads as a
-        // 3-D object and invites the stick. That drift republishes the bound pose each tick.
+        // 3-D object and invites the stick. The sway runs on its own timer (AdvanceShelfSway), not the
+        // input poll — which is what lets it survive the poll stopping at rest on Android.
+        for (var i = 0; i < 30; i++)
+        {
+            vm.AdvanceShelfSway(100d);
+        }
+
+        Assert.Contains(nameof(MainViewModel.ShelfHeroYaw), raised);
+        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+    }
+
+    [AvaloniaFact]
+    public void RightStick_Centred_DoesNotDriveTheSway()
+    {
+        var vm = ShelfViewModel();
+        var raised = new List<string>();
+        vm.PropertyChanged += (_, e) => raised.Add(e.PropertyName ?? string.Empty);
+
+        // The input path no longer drives the idle sway. However long a centred stick ticks, it
+        // publishes nothing — decoupling the two is what unfroze the sway on Android, where the input
+        // poll stops at rest.
         for (var i = 0; i < 30; i++)
         {
             vm.ApplyRightStickRotation(0f, 0f, 100d);
         }
 
-        Assert.Contains(nameof(MainViewModel.ShelfHeroYaw), raised);
-        Assert.NotEqual(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+        Assert.DoesNotContain(nameof(MainViewModel.ShelfHeroYaw), raised);
     }
 
     [AvaloniaFact]

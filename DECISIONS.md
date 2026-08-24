@@ -10866,3 +10866,27 @@ Amplitude was also nudged up (yaw ±4.5°→±6°, pitch ±1.5°→±2°) and th
 the effect is actually noticeable in the Shelf layout. Lesson recorded: **do not conclude a couch cost
 from a raw `top` number without isolating it** (settle first; A/B the feature; read `PerfTrace`
 per-thread) — the whole detour came from skipping that.
+
+## 2026-08-24 — The idle sway runs on its own timer, decoupled from the controller poll
+
+The idle sway had been freeloading on the 60 Hz controller poll (`GamepadInputService`) — a convenient
+free clock. Then the idle-CPU fix made that poll **stop at rest on push-fed heads** (Android), and the
+two collided: the poll kept alive only while `IsSwaying`, but `IsSwaying` is false during the sway's
+1.2 s settle delay, so at rest the poll stopped before the sway could start — **the sway never ran on
+Android** (shipped frozen in v1.6.6). Desktop's SDL poll never stops, so it was unaffected.
+
+Fix: give the sway its own clock. `MediaRotationModel.Update` now handles input-driven rotation only
+(a centred stick is a no-op), and a new `MediaRotationModel.AdvanceSway(dt)` drives the drift. A
+dedicated ~15 fps `DispatcherTimer` in the view model (`_shelfSwayTimer`, started/stopped by
+`RefreshShelfSwayTimer` as `ShowGamepadShelf`/overlay/mode change) ticks `AdvanceShelfSway`. The input
+poll's stop-at-rest no longer references the sway (`IsShelfHeroAnimating` removed), so it stops freely.
+Driving from both would double-advance on desktop, where the poll never stops — hence the strict split.
+
+On-device (Thor, Release): the sway animates again, and the ~48 % input-poll cost is gone. But the sway
+itself costs **~30 % of a core while a game is focused**, and — measured at 15 and 20 fps — that barely
+moves with the logical frame rate. So the cost is a **fixed couch per-frame floor** (the compositor /
+GL render loop runs at its own cadence once anything animates), not the sway's rate. Making a perpetual
+sway genuinely cheap therefore needs the couch per-frame work cut (see
+`docs/couch-idle-cpu-investigation.md`) or an impostor (snapshot + cheap transform), not a lower fps.
+A one-shot "settle on select" would sidestep it entirely. Shipping the perpetual sway as the correct,
+working baseline; the cost/approach is a product call flagged to the owner.

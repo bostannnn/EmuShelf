@@ -79,13 +79,6 @@ public sealed class MediaRotationModel
     /// <remarks>Lets a just-focused cover settle at its pose first; only then does it start to breathe.</remarks>
     private const float IdleDelaySeconds = 1.2f;
 
-    /// <summary>
-    /// Minimum seconds between idle-sway redraws. The phase still advances every tick, but publishing
-    /// the pose (which runs the whole UI + render pipeline) is capped here — ~20fps, plenty for a slow
-    /// drift, and where the on-device cost actually is.
-    /// </summary>
-    private const float IdleRedrawIntervalSeconds = 1f / 20f;
-
     private const float Tau = 2f * MathF.PI;
 
     /// <summary>The pose the stick drives, before any idle sway is layered on. 0 faces the viewer.</summary>
@@ -97,20 +90,15 @@ public sealed class MediaRotationModel
     private float _restingSeconds;
     private float _idleYawPhase;
     private float _idlePitchPhase;
-    private float _secondsSinceIdleRedraw;
 
     /// <summary>
-    /// Whether the resting hero breathes on its own. On by default; the Android head turns it off
-    /// (its <c>IsReducedEffectsPlatform</c>) because with the tube effect off an idle sway would drive
-    /// the shelf renderer every frame for no user input — the fan-on-scroll cost that head avoids.
+    /// Whether the resting hero breathes on its own. On by default on every platform. It is ticked by
+    /// a dedicated low-rate sway timer (the view model), not the input poll, so the input poll can
+    /// still stop at rest — the two used to fight, which froze the sway on Android.
     /// </summary>
     public bool IdleSwayEnabled { get; set; } = true;
 
-    /// <summary>
-    /// Whether the resting hero is currently drifting on its own, and so needs redrawing every tick
-    /// without any stick input. Lets a push-fed poll loop keep ticking for the sway even when the pad
-    /// is at rest. Always false on the Android head, where <see cref="IdleSwayEnabled"/> is off.
-    /// </summary>
+    /// <summary>Whether the resting hero is currently drifting on its own (i.e. past the settle delay).</summary>
     public bool IsSwaying => IdleSwayEnabled && _idleActive;
 
     /// <summary>Rotation about the shell's up axis, in radians. 0 faces the viewer.</summary>
@@ -152,9 +140,33 @@ public sealed class MediaRotationModel
         var seconds = (float)(Math.Min(deltaMilliseconds, MaxDeltaMilliseconds) / 1000d);
         var magnitude = MathF.Sqrt((rightStickX * rightStickX) + (rightStickY * rightStickY));
 
-        return magnitude > Deadzone
-            ? ApplyStickRotation(rightStickX, rightStickY, magnitude, seconds)
-            : Drift(seconds);
+        // The idle sway is NOT driven from here — a centred stick does nothing on the input path. The
+        // sway has its own clock (<see cref="AdvanceSway"/>, ticked by the couch shell's sway timer) so
+        // it keeps breathing while the input poll stops at rest on Android. Driving it from both would
+        // double-advance it on desktop, where the poll never stops.
+        if (magnitude <= Deadzone)
+        {
+            return false;
+        }
+
+        return ApplyStickRotation(rightStickX, rightStickY, magnitude, seconds);
+    }
+
+    /// <summary>
+    /// Advances the resting hero's idle sway by one tick of its own animation clock, separate from the
+    /// input poll. Its cadence is set by the caller's timer, not by how fast input arrives.
+    /// </summary>
+    /// <param name="deltaMilliseconds">Real elapsed time since the previous sway tick.</param>
+    /// <returns>True when the pose changed and the hero needs redrawing.</returns>
+    public bool AdvanceSway(double deltaMilliseconds)
+    {
+        if (deltaMilliseconds <= 0d)
+        {
+            return false;
+        }
+
+        var seconds = (float)(Math.Min(deltaMilliseconds, MaxDeltaMilliseconds) / 1000d);
+        return Drift(seconds);
     }
 
     /// <summary>Turns the medium under the stick, taking the hero over cleanly from any idle sway.</summary>
@@ -191,9 +203,10 @@ public sealed class MediaRotationModel
     }
 
     /// <summary>
-    /// Advances the resting hero's idle sway while the stick is centred. Only a hero sitting at its
-    /// untouched pose breathes — a medium the player has deliberately turned to inspect stays put,
-    /// so the drift never fights a chosen pose.
+    /// Advances the resting hero's idle sway one tick. Only a hero sitting at its untouched pose
+    /// breathes — a medium the player has deliberately turned to inspect stays put, so the drift never
+    /// fights a chosen pose. Reached only through <see cref="AdvanceSway"/> (the sway timer), never the
+    /// input path.
     /// </summary>
     private bool Drift(float seconds)
     {
@@ -218,18 +231,6 @@ public sealed class MediaRotationModel
         // eases up from a standstill rather than snapping to full deflection.
         _idleYawPhase = (_idleYawPhase + seconds) % IdleYawPeriodSeconds;
         _idlePitchPhase = (_idlePitchPhase + seconds) % IdlePitchPeriodSeconds;
-
-        // The phase advances every tick (smooth), but the pose is only *published* — which drives the
-        // whole per-frame UI/render pipeline — at a capped rate. A slow drift reads fine at ~20fps, and
-        // the redraw pipeline is the real cost (the 3-D draw itself is cheap), so this is where the
-        // saving is.
-        _secondsSinceIdleRedraw += seconds;
-        if (_secondsSinceIdleRedraw < IdleRedrawIntervalSeconds)
-        {
-            return false;
-        }
-
-        _secondsSinceIdleRedraw = 0f;
         return true;
     }
 
@@ -257,7 +258,6 @@ public sealed class MediaRotationModel
         _restingSeconds = 0f;
         _idleYawPhase = 0f;
         _idlePitchPhase = 0f;
-        _secondsSinceIdleRedraw = 0f;
     }
 
     /// <summary>

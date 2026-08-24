@@ -121,6 +121,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly DispatcherTimer _shelfMotionTimer;
     private readonly PhysicalShelfMotionModel _shelfMotion = new();
     private long _shelfMotionTimestamp;
+    private readonly DispatcherTimer _shelfSwayTimer;
+    private long _shelfSwayTimestamp;
     private readonly DispatcherTimer _shelfLaunchTimer;
     private readonly PhysicalShelfLaunchTransitionModel _shelfLaunchTransition = new();
     private long _shelfLaunchTimestamp;
@@ -1622,6 +1624,27 @@ public partial class MainViewModel : ViewModelBase
             _shelfMotionTimestamp = now;
             AdvanceShelfMotion(elapsed);
         };
+        // The resting hero's idle sway runs on its own low-rate clock, separate from the 60fps travel
+        // timer above and from the controller poll. The couch's per-frame republish is not free (~1.5%
+        // of a core per fps on the Thor), and a slow drift reads fine at ~15fps, so the interval is the
+        // one knob that trades smoothness for battery. Started/stopped by RefreshShelfSwayTimer.
+        _shelfSwayTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(66) };
+        _shelfSwayTimer.Tick += (_, _) =>
+        {
+            var now = Stopwatch.GetTimestamp();
+            var elapsed = _shelfSwayTimestamp == 0
+                ? _shelfSwayTimer.Interval.TotalMilliseconds
+                : Stopwatch.GetElapsedTime(_shelfSwayTimestamp, now).TotalMilliseconds;
+            _shelfSwayTimestamp = now;
+            AdvanceShelfSway(elapsed);
+        };
+        // Start/stop the sway timer as the 3D shelf comes and goes. These three raise change
+        // notifications; input suspension does not, so AdvanceShelfSway guards that case itself.
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ShowGamepadShelf) or nameof(HasGamepadOverlay) or nameof(IsGamepadMode))
+                RefreshShelfSwayTimer();
+        };
         _shelfLaunchTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         _shelfLaunchTimer.Tick += (_, _) =>
         {
@@ -2618,12 +2641,6 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public double ShelfPosition => _shelfMotion.Position;
 
-    /// <summary>
-    /// Whether the shelf hero is animating on its own (the resting idle sway), and so needs the poll
-    /// loop to keep ticking even with the pad at rest. False on the Android head, where the sway is off.
-    /// </summary>
-    public bool IsShelfHeroAnimating => _shelfHeroRotation.IsSwaying;
-
     /// <summary>The shelf hero's yaw, in radians, bound straight to the 3D control.</summary>
     public double ShelfHeroYaw => _shelfHeroRotation.Yaw;
 
@@ -2662,6 +2679,59 @@ public partial class MainViewModel : ViewModelBase
     {
         if (_shelfHeroRotation.Recentre())
             NotifyShelfHeroPose();
+
+        // A recentre is a fresh presentation pose (focus change, R3, return from a game) — re-evaluate
+        // whether the idle sway timer should be running now.
+        RefreshShelfSwayTimer();
+    }
+
+    /// <summary>
+    /// Whether the resting hero should be breathing right now: the 3D shelf is on screen, the pad is not
+    /// mid-session, no overlay is up, and the sway is enabled.
+    /// </summary>
+    private bool ShouldShelfHeroSway =>
+        IsGamepadMode && !IsGamepadInputSuspended && ShowGamepadShelf && !HasGamepadOverlay
+        && _shelfHeroRotation.IdleSwayEnabled;
+
+    /// <summary>
+    /// Starts or stops the dedicated idle-sway timer to match <see cref="ShouldShelfHeroSway"/>. The
+    /// sway has its own ~20fps clock rather than riding the controller poll, which stops at rest on
+    /// Android — so the two no longer fight (that conflict is what froze the sway on device).
+    /// </summary>
+    private void RefreshShelfSwayTimer()
+    {
+        if (ShouldShelfHeroSway)
+        {
+            if (!_shelfSwayTimer.IsEnabled)
+            {
+                _shelfSwayTimestamp = 0;
+                _shelfSwayTimer.Start();
+            }
+        }
+        else if (_shelfSwayTimer.IsEnabled)
+        {
+            _shelfSwayTimer.Stop();
+            _shelfSwayTimestamp = 0;
+        }
+    }
+
+    /// <summary>Advances the idle sway one timer tick; public so headless tests exercise the exact path.</summary>
+    public bool AdvanceShelfSway(double deltaMilliseconds)
+    {
+        // Belt-and-braces against a state the timer's start/stop triggers do not observe (input
+        // suspension is a computed property that does not raise a change): just do nothing this tick.
+        if (!ShouldShelfHeroSway)
+        {
+            return false;
+        }
+
+        if (_shelfHeroRotation.AdvanceSway(deltaMilliseconds))
+        {
+            NotifyShelfHeroPose();
+            return true;
+        }
+
+        return false;
     }
 
     private void NotifyShelfHeroPose()
