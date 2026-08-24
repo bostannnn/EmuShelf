@@ -2615,6 +2615,12 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public double ShelfPosition => _shelfMotion.Position;
 
+    /// <summary>
+    /// Whether the shelf hero is animating on its own (the resting idle sway), and so needs the poll
+    /// loop to keep ticking even with the pad at rest. False on the Android head, where the sway is off.
+    /// </summary>
+    public bool IsShelfHeroAnimating => _shelfHeroRotation.IsSwaying;
+
     /// <summary>The shelf hero's yaw, in radians, bound straight to the 3D control.</summary>
     public double ShelfHeroYaw => _shelfHeroRotation.Yaw;
 

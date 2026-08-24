@@ -24,10 +24,17 @@ namespace EmuShelf.App.Android.Services;
 /// Fed and read on the same thread (Android's main thread, which is Avalonia's UI thread), so the plain
 /// fields need no synchronisation.
 /// </summary>
-public sealed class AndroidGamepadReader : IGamepadReader
+public sealed class AndroidGamepadReader : IGamepadReader, IPushGamepadSource
 {
     /// <summary>The single instance the Activity feeds; created and published by the Android application.</summary>
     public static AndroidGamepadReader? Current { get; set; }
+
+    /// <summary>
+    /// Raised after each stick/hat <see cref="MotionEvent"/> is stored, so the shared poll loop can stop
+    /// ticking while the pad rests and wake here instead of spinning ~60×/s. Fires on the Activity's
+    /// thread (the main/UI thread), where the loop also runs, so no marshalling is needed.
+    /// </summary>
+    public event Action? InputReceived;
 
     private float _leftX;
     private float _leftY;
@@ -78,6 +85,10 @@ public sealed class AndroidGamepadReader : IGamepadReader
             _dpad |= GamepadButtons.DpadUp;
         else if (hatY > 0.5f)
             _dpad |= GamepadButtons.DpadDown;
+
+        // Wake the poll loop (it stops itself when the pad is at rest). A release event lands here too —
+        // its axes are zero — so the loop gets one more tick to process the release, then quiets again.
+        InputReceived?.Invoke();
     }
 
     // IsConnected must be true or the shared GamepadNavigationController drops the whole reading; when no pad

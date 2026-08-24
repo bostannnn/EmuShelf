@@ -276,4 +276,47 @@ public class MediaRotationModelTests
         Assert.Equal(MediaRotationModel.RestYaw, model.Yaw);
         Assert.True(model.IsAtRest);
     }
+
+    // --- IsSwaying: the "keep the poll loop awake for the drift" signal the idle-aware poll reads. ---
+
+    [Fact]
+    public void IsSwaying_IsFalseUntilTheDriftActuallyBegins_ThenTrue()
+    {
+        var model = new MediaRotationModel();
+
+        // A freshly-rested hero is not yet swaying (still inside the settle delay).
+        Assert.False(model.IsSwaying);
+        AdvanceCentred(model, ticks: 10);
+        Assert.False(model.IsSwaying);
+
+        // Once past the delay and drifting, it reports swaying so the loop keeps redrawing it.
+        AdvanceCentred(model, ticks: 20);
+        Assert.True(model.IsSwaying);
+    }
+
+    [Fact]
+    public void IsSwaying_IsAlwaysFalseWhenTheSwayIsDisabled()
+    {
+        // The reduced-effects (Android) head runs with the sway off, so the poll loop can go fully
+        // idle at rest: IsSwaying must never latch on, however long the hero sits.
+        var model = new MediaRotationModel { IdleSwayEnabled = false };
+
+        AdvanceCentred(model, ticks: 60);
+        Assert.False(model.IsSwaying);
+    }
+
+    [Fact]
+    public void IsSwaying_StopsAfterTheStickTakesOver()
+    {
+        var model = new MediaRotationModel();
+        AdvanceCentred(model, ticks: 25);
+        Assert.True(model.IsSwaying);
+
+        // Driving the hero hands the sway off; a hero parked away from rest no longer breathes, so
+        // the loop is free to quiet once the stick is released.
+        model.Update(1f, 0f, 100d);
+        Assert.False(model.IsSwaying);
+        model.Update(0f, 0f, 100d);
+        Assert.False(model.IsSwaying);
+    }
 }

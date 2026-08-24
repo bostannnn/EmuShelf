@@ -98,6 +98,13 @@ public sealed class MediaRotationModel
     /// </summary>
     public bool IdleSwayEnabled { get; set; } = true;
 
+    /// <summary>
+    /// Whether the resting hero is currently drifting on its own, and so needs redrawing every tick
+    /// without any stick input. Lets a push-fed poll loop keep ticking for the sway even when the pad
+    /// is at rest. Always false on the Android head, where <see cref="IdleSwayEnabled"/> is off.
+    /// </summary>
+    public bool IsSwaying => IdleSwayEnabled && _idleActive;
+
     /// <summary>Rotation about the shell's up axis, in radians. 0 faces the viewer.</summary>
     /// <remarks>
     /// The stick-driven pose plus the current idle-sway offset, exposed as one angle so the bound

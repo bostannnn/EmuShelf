@@ -10812,3 +10812,33 @@ user): the achievements grid walks and the wandering stops; the dock and all-app
 Verified on the Thor: builds/installs/boots, the companion re-attaches on display 4, and injected D-pad events
 at display 4 are consumed without crashing or dismissing the Presentation. The visual grid-walk itself needs a
 gamepad-in-hand pass on-device (Screen-2 is `FLAG_SECURE`, so no screenshot, and this Mac has no pad).
+
+## 2026-08-24 — Couch idle CPU: the gamepad poll loop stops at rest on push-fed heads
+
+The couch (Gamepad) shell burned ~50% of one CPU core while completely idle on the AYN Thor —
+Shelf layout, CRT off, no input, drawing zero GL frames. Root cause: `GamepadInputService`'s 60 Hz
+`DispatcherTimer` (`DispatcherPriority.Input`). Each tick's *work* is trivial (read a struct, poll
+navigation, apply zero rotation), but the timer/dispatcher wakeup itself, 60×/s on Avalonia-Android,
+costs ~48% of a core on the UI thread — with no allocation and no rendering, which is why profiling
+(top / top -H / PerfTrace) pinned the cost to the UI thread with `glfps=0` and `allocMB/s=0`. It is a
+pre-existing cost, unrelated to the resting-hero idle sway (which is off on Android anyway).
+
+Fix: the loop now stops ticking once the pad is fully at rest, instead of polling forever. On Android
+input is event-driven — the Activity feeds `AndroidGamepadReader` from `MotionEvent`s — so the reader
+implements a new `IPushGamepadSource` (Core) that raises `InputReceived` on each event. When the reader
+is a push source, `GamepadInputService` stops its timer after any tick whose reading is neutral (nothing
+held — buttons/d-pad none, left stick inside `GamepadNavigationController.StickDeadZone`, right stick
+inside `MediaRotationModel.Deadzone`) and the hero is not mid idle sway (`MediaRotationModel.IsSwaying`),
+and restarts it from `InputReceived`. The rest test reads the *raw reading* rather than post-`Poll`
+navigation state so a still-held direction — latched in the reading, emitting no further events — keeps
+the loop alive even on the frame `Poll` swallows after a resume/reconnect reset, instead of being
+dropped. Buttons otherwise arrive as key events off this loop, so a released reading needs no further
+ticks. The desktop SDL reader is **not** a push source, so `_pushSource` is null and it keeps polling
+continuously, exactly as before — SDL has nothing to push input into the loop, and desktops are not the
+constrained target.
+
+Verified on the Thor (Release, settled): idle couch shell fell from ~50–61% to **0–1%**; a Menu press
+spikes the UI thread to process + render, then it returns to 0%. Sway is forced off on the Android head,
+so the "sway on" path is desktop-only and unaffected (the loop never stops there). Alternatives rejected:
+a lower fixed idle poll rate (still wakes forever and adds input latency), and an adaptive interval
+without an event wake (a held direction from rest would lag by the idle interval).
