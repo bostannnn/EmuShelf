@@ -10,7 +10,11 @@ namespace EmuShelf.App.Services;
 /// </summary>
 public sealed class GamepadNavigationController
 {
-    private const float StickDeadZone = 0.5f;
+    /// <summary>
+    /// How far the left stick must leave centre before it counts as a directional press. Public so the
+    /// poll loop can tell a physically resting stick from one that is driving navigation.
+    /// </summary>
+    public const float StickDeadZone = 0.5f;
 
     private static readonly (GamepadButtons Button, GamepadAction Action)[] PressActions =
     [

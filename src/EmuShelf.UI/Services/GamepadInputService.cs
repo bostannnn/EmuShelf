@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using Avalonia.Threading;
 using EmuShelf.App.ViewModels;
@@ -13,6 +14,14 @@ namespace EmuShelf.App.Services;
 /// <see cref="MainViewModel.DispatchGamepadAction"/> entry point that Steam-Input keyboard mapping
 /// uses, so both input paths behave identically. Polling only runs in Gamepad mode.
 /// </summary>
+/// <remarks>
+/// When the reader is an <see cref="IPushGamepadSource"/> (the Android head, fed by MotionEvents), the
+/// loop stops ticking once the pad is fully at rest and restarts from <see cref="OnInputReceived"/> on
+/// the next event. That removes the couch shell's resting UI-thread CPU cost: a 60 Hz timer that reads
+/// nothing and draws nothing still burns a core's worth on Android's dispatcher. A reader that is not a
+/// push source (the desktop SDL reader) has no event to wake on, so it keeps polling continuously,
+/// exactly as before.
+/// </remarks>
 public sealed class GamepadInputService : IDisposable
 {
     private readonly IGamepadReader _reader;
@@ -22,8 +31,13 @@ public sealed class GamepadInputService : IDisposable
     private readonly GamepadNavigationController _navigation = new();
     private readonly DispatcherTimer _timer;
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+    // Set when the reader delivers input by events, letting the loop stop at rest and wake on input
+    // (see class remarks). Null on desktop's SDL reader, which is polled continuously.
+    private readonly IPushGamepadSource? _pushSource;
     private long? _previousTickMs;
     private bool _loggedAvailability;
+    private bool _active;
     private bool _disposed;
 
     public GamepadInputService(
@@ -41,6 +55,10 @@ public sealed class GamepadInputService : IDisposable
             DispatcherPriority.Input,
             OnTick);
 
+        _pushSource = reader as IPushGamepadSource;
+        if (_pushSource is not null)
+            _pushSource.InputReceived += OnInputReceived;
+
         _modeService.ModeChanged += OnModeChanged;
         SetActive(_modeService.Current == InterfaceMode.Gamepad);
     }
@@ -50,10 +68,22 @@ public sealed class GamepadInputService : IDisposable
 
     private void SetActive(bool active)
     {
+        _active = active;
         if (active)
             _timer.Start();
         else
             _timer.Stop();
+    }
+
+    // A push reader (Android) fires this on the UI thread when input arrives. Wake the loop if it went
+    // idle; the next tick reads the fresh input. The timebase is dropped so the first frame after an
+    // idle gap starts from dt 0 rather than one huge delta that would spin the hero.
+    private void OnInputReceived()
+    {
+        if (!_active || _timer.IsEnabled)
+            return;
+        _previousTickMs = null;
+        _timer.Start();
     }
 
     private void OnTick(object? sender, EventArgs e)
@@ -84,6 +114,37 @@ public sealed class GamepadInputService : IDisposable
         // controller exists to turn continuous input into repeated discrete edges, which is the
         // opposite of what a rotation wants.
         _viewModel.ApplyRightStickRotation(reading.RightStickX, reading.RightStickY, deltaMs);
+
+        // With a push reader, once nothing is being held or animated there is nothing left to do until
+        // the next event — so stop, instead of spinning the UI thread 60×/s. OnInputReceived restarts
+        // the loop. Desktop's SDL reader is not a push source, so _pushSource is null and it keeps
+        // polling. See class remarks.
+        if (_pushSource is not null && IsReadingNeutral(reading) && !_viewModel.IsShelfHeroAnimating)
+        {
+            _timer.Stop();
+            _previousTickMs = null;
+        }
+    }
+
+    // Whether the pad is physically at rest this frame: nothing held (d-pad/buttons), the left stick
+    // inside the navigation dead zone, and the right stick inside the rotation dead zone. Read from the
+    // raw reading, not from post-Poll navigation state, on purpose: a held direction is latched in the
+    // reading every tick (Android sends no further MotionEvents while it is held), so a still-held input
+    // keeps the loop alive here even on the frame Poll swallows after a resume/reconnect reset — which
+    // post-Poll state would miss, dropping the input until release. A neutral reading guarantees no
+    // future work without a new event, so the loop is free to stop (the idle-sway animation is handled
+    // separately by the caller).
+    private static bool IsReadingNeutral(GamepadReading reading) =>
+        reading.Buttons == GamepadButtons.None
+        && MathF.Abs(reading.LeftStickX) <= GamepadNavigationController.StickDeadZone
+        && MathF.Abs(reading.LeftStickY) <= GamepadNavigationController.StickDeadZone
+        && !IsRightStickDeflected(reading);
+
+    private static bool IsRightStickDeflected(GamepadReading reading)
+    {
+        var magnitude = MathF.Sqrt(
+            (reading.RightStickX * reading.RightStickX) + (reading.RightStickY * reading.RightStickY));
+        return magnitude > MediaRotationModel.Deadzone;
     }
 
     private void LogAvailabilityOnce()
@@ -103,6 +164,8 @@ public sealed class GamepadInputService : IDisposable
         _disposed = true;
 
         _modeService.ModeChanged -= OnModeChanged;
+        if (_pushSource is not null)
+            _pushSource.InputReceived -= OnInputReceived;
         _timer.Stop();
         (_reader as IDisposable)?.Dispose();
     }
