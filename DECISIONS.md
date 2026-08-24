@@ -10890,3 +10890,30 @@ sway genuinely cheap therefore needs the couch per-frame work cut (see
 `docs/couch-idle-cpu-investigation.md`) or an impostor (snapshot + cheap transform), not a lower fps.
 A one-shot "settle on select" would sidestep it entirely. Shipping the perpetual sway as the correct,
 working baseline; the cost/approach is a product call flagged to the owner.
+
+## 2026-08-24 — EmuShelf delegates its own SAF read grant so emulators like Azahar stop asking for media access
+
+Launching a 3DS game handed Azahar a `content://com.android.externalstorage.documents` tree/document
+URI *without* `FLAG_GRANT_READ_URI_PERMISSION` — the launcher drops the flag whenever EmuShelf holds no
+grantable permission for the URI (the all-files/`MANAGE_EXTERNAL_STORAGE` model synthesizes the URI from a
+real path, never via SAF, so `CheckUriPermission` fails and the flag is dropped). The design assumed every
+scoped-storage emulator reads through its *own* persisted `roms/<system>` tree grant. PPSSPP/Dolphin/ARMSX2
+do; **Azahar does not** — handed a URI it cannot read via a grant, it falls back to prompting the user for
+`READ_MEDIA_IMAGES` ("view photos/images"). NeoStation avoids this because it is a SAF launcher that holds
+its own grant and *passes* the flag.
+
+Fix (the previously-deferred "EmuShelf holds its own grant and delegates" option, now built): a new
+`IAndroidReadGrantBroker` (Core seam; Android impl `AndroidReadGrantBroker`) makes EmuShelf acquire and
+persist its *own* SAF grant to the library folder — a one-time system folder pick per folder, pre-navigated
+so the user just confirms, `TakePersistableUriPermission` taken explicitly. `AndroidEmulatorLaunchService`
+calls it before firing (no-op once held; non-blocking if the user declines — launch still proceeds with the
+old behaviour). Once EmuShelf holds the grant, the launcher's existing `CheckUriPermission` gate passes and
+the read is delegated — no emulator change, works for any current or future emulator.
+
+Generalized to the extra-URI emulators too: a read grant follows the intent's data URI and its `ClipData`,
+never an arbitrary string extra, so for Dolphin (`AutoStartFile`), DuckStation (`bootPath`) and WatermelonDS
+(`uri`) the launcher now also attaches the ROM URI as `ClipData` when granting. The grantable URI is recorded
+on `AndroidIntentRequest.RomContentUri` by the pure `AndroidIntentFactory` (tested), and coverage of a game
+by a held grant is decided by the pure, tested `AndroidUriGrantCoverage`. This is **not** a duplicate of the
+all-files onboarding grant (`IStoragePermissionService`): that grant cannot be delegated to another app; only
+a SAF grant can. On-device verification on the Thor is still pending (built and desktop-suite-green here).

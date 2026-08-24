@@ -123,6 +123,32 @@ public static class AndroidExternalStorageUri
 
         var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
         var documentId = ExtractId(segments, "document") ?? ExtractId(segments, "tree");
+        return ResolveDocumentId(documentId);
+    }
+
+    /// <summary>
+    /// Resolves only the <c>/tree/</c> id of a SAF URI to its real <c>/storage/…</c> path, ignoring any
+    /// <c>/document/</c> segment — i.e. the folder a persisted grant to this URI covers. Returns null for a
+    /// URI with no tree, another provider, or one that would escape its volume. This is the folder to ask the
+    /// user to grant so a read of the (document) URI can be delegated: it is always an ancestor-or-self of the
+    /// document, so granting it always covers the launch.
+    /// </summary>
+    public static string? TryResolveTreePath(Uri? uri)
+    {
+        if (uri is null || !uri.Host.Equals(Authority, StringComparison.Ordinal))
+            return null;
+
+        var segments = uri.AbsolutePath.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        return ResolveDocumentId(ExtractId(segments, "tree"));
+    }
+
+    /// <summary>String overload of <see cref="TryResolveTreePath(Uri?)"/>.</summary>
+    public static string? TryResolveTreePath(string? uri) =>
+        Uri.TryCreate(uri, UriKind.Absolute, out var parsed) ? TryResolveTreePath(parsed) : null;
+
+    // Resolves a <volume>:<relative> document id to its /storage/… path, or null for a missing/unsafe id.
+    private static string? ResolveDocumentId(string? documentId)
+    {
         if (documentId is null)
             return null;
 
