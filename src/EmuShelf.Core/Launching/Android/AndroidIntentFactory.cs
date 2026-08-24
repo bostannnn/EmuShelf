@@ -109,6 +109,13 @@ public static class AndroidIntentFactory
                 throw new ArgumentOutOfRangeException(nameof(profile));
         }
 
+        // The ROM's content URI, wherever it rides (data slot or a string extra), so the head knows exactly
+        // which URI a read grant must cover. Null for RetroArch's plain filesystem path, which is not a
+        // grantable content URI (RetroArch holds all-files and reads it directly).
+        var romContentUri = romReference.StartsWith("content://", StringComparison.Ordinal)
+            ? romReference
+            : null;
+
         return new AndroidIntentRequest(
             profile.PackageName,
             profile.ActivityName,
@@ -119,6 +126,7 @@ public static class AndroidIntentFactory
             // Launches target an explicit component, which bypasses intent-filter matching, so no
             // category is needed even for the action-carrying (VIEW) shapes.
             [],
-            grantRead);
+            grantRead,
+            romContentUri);
     }
 }
