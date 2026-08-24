@@ -1524,10 +1524,13 @@ public partial class MainViewModel : ViewModelBase
         HotkeyCoordinator? hotkeys = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
-        // With the tube effect off the shelf renderer only draws when the pose changes, so an idle
-        // sway would keep it drawing every frame for no input. That is the fan-on-scroll cost the
-        // reduced-effects head avoids, so the resting hero only breathes where effects are full.
-        _shelfHeroRotation.IdleSwayEnabled = !IsReducedEffectsPlatform;
+        // The resting hero breathes on every platform. It was nearly gated off the reduced-effects
+        // head over a fan-cost worry, but on-device profiling on the Thor (Release) showed the sway is
+        // cheap: with its redraw capped (see MediaRotationModel.IdleRedrawIntervalSeconds) it adds only
+        // a render-thread frame every ~50 ms, and the 3-D draw is ~0.8 ms. The couch shell's real idle
+        // cost is a separate ~50% main-thread load, present with the sway off and tracked apart from
+        // this feature. See DECISIONS 2026-08-24 (on-device Thor profiling).
+        _shelfHeroRotation.IdleSwayEnabled = true;
         _updates = updates;
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;

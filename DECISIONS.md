@@ -10782,6 +10782,7 @@ trap — a `DynamicResource` margin on the *root* of a `SizeToContent` dialog me
 resolves and collapses the auto-height (broke `RenderMetadataConsentInDarkTheme`) — so spacing tokens
 must be adopted inside a layout, never on its sizing root. Remaining M24 Phase-0 pieces (control
 heights, elevations, focus rings, motion) are untouched.
+
 ## 2026-08-23 — Second-screen gamepad: handle keys ON the companion Presentation, not forwarded from MainActivity
 
 Corrects the gamepad-navigation half of the entry above. That design was built on a premise that turned out
@@ -10842,3 +10843,26 @@ spikes the UI thread to process + render, then it returns to 0%. Sway is forced 
 so the "sway on" path is desktop-only and unaffected (the loop never stops there). Alternatives rejected:
 a lower fixed idle poll rate (still wakes forever and adds input latency), and an adaptive interval
 without an event wake (a held direction from rest would lag by the idle interval).
+## 2026-08-24 — Idle sway is cheap after on-device profiling; its redraw is capped and it ships on Android too
+
+Corrects the same-day-earlier assumption that the resting-hero idle sway had to be gated off the
+reduced-effects (Android) head for cost. On-device profiling on the Thor (Release build,
+`-p:RunAOTCompilation=false`, non-debuggable) in the Shelf layout with CRT off settled the question:
+
+- The 3-D shelf **render is cheap** — `PerfTrace` reported `glRenderMaxMs≈0.8`, `allocMB/s=0.0`,
+  `gen0/s=0` while the sway ran at 60 fps. The render thread was ~15% at 60 fps.
+- The scary ~70% CPU number that first drove the Android gate was a **contaminated `top` reading**:
+  measured too soon after launch it caught startup background work (cover prefetch, achievements,
+  availability), and the couch shell has a **separate ~50% idle main-thread cost** present even with
+  the sway *off* and nothing rendering (`glfps=0`). That idle cost is a real bug but unrelated to this
+  feature — handed off in `docs/couch-idle-cpu-investigation.md`.
+
+So the sway now runs on **every** platform (`IdleSwayEnabled = true`, no `IsReducedEffectsPlatform`
+gate). Its redraw is **capped** (`MediaRotationModel.IdleRedrawIntervalSeconds`, ~20 fps): the phase
+still advances every tick so the motion is smooth, but the pose is only *published* — which drives the
+whole per-frame UI/render pipeline — at the capped rate, so on Android the sway adds ~3% instead of
+~15%. A slow drift reads fine at 20 fps and the redraw pipeline (not the 3-D draw) is where the cost is.
+Amplitude was also nudged up (yaw ±4.5°→±6°, pitch ±1.5°→±2°) and the settle delay down (2 s→1.2 s) so
+the effect is actually noticeable in the Shelf layout. Lesson recorded: **do not conclude a couch cost
+from a raw `top` number without isolating it** (settle first; A/B the feature; read `PerfTrace`
+per-thread) — the whole detour came from skipping that.
