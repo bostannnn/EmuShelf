@@ -61,10 +61,10 @@ public sealed class MediaRotationModel
     /// fixes both. Kept deliberately tiny: this is a sheen of life on the presentation pose, not a
     /// carousel, and it must never compete with the deliberate rotation the stick performs.
     /// </remarks>
-    private const float IdleYawAmplitude = 4.5f * MathF.PI / 180f;
+    private const float IdleYawAmplitude = 6f * MathF.PI / 180f;
 
     /// <summary>A shallower vertical "breath" layered on the yaw sway. See <see cref="IdleYawAmplitude"/>.</summary>
-    private const float IdlePitchAmplitude = 1.5f * MathF.PI / 180f;
+    private const float IdlePitchAmplitude = 2f * MathF.PI / 180f;
 
     /// <summary>Seconds for one full yaw sway cycle.</summary>
     private const float IdleYawPeriodSeconds = 5.5f;
@@ -77,7 +77,14 @@ public sealed class MediaRotationModel
 
     /// <summary>How long the hero must sit untouched before the idle sway begins.</summary>
     /// <remarks>Lets a just-focused cover settle at its pose first; only then does it start to breathe.</remarks>
-    private const float IdleDelaySeconds = 2f;
+    private const float IdleDelaySeconds = 1.2f;
+
+    /// <summary>
+    /// Minimum seconds between idle-sway redraws. The phase still advances every tick, but publishing
+    /// the pose (which runs the whole UI + render pipeline) is capped here — ~20fps, plenty for a slow
+    /// drift, and where the on-device cost actually is.
+    /// </summary>
+    private const float IdleRedrawIntervalSeconds = 1f / 20f;
 
     private const float Tau = 2f * MathF.PI;
 
@@ -90,6 +97,7 @@ public sealed class MediaRotationModel
     private float _restingSeconds;
     private float _idleYawPhase;
     private float _idlePitchPhase;
+    private float _secondsSinceIdleRedraw;
 
     /// <summary>
     /// Whether the resting hero breathes on its own. On by default; the Android head turns it off
@@ -203,6 +211,18 @@ public sealed class MediaRotationModel
         // eases up from a standstill rather than snapping to full deflection.
         _idleYawPhase = (_idleYawPhase + seconds) % IdleYawPeriodSeconds;
         _idlePitchPhase = (_idlePitchPhase + seconds) % IdlePitchPeriodSeconds;
+
+        // The phase advances every tick (smooth), but the pose is only *published* — which drives the
+        // whole per-frame UI/render pipeline — at a capped rate. A slow drift reads fine at ~20fps, and
+        // the redraw pipeline is the real cost (the 3-D draw itself is cheap), so this is where the
+        // saving is.
+        _secondsSinceIdleRedraw += seconds;
+        if (_secondsSinceIdleRedraw < IdleRedrawIntervalSeconds)
+        {
+            return false;
+        }
+
+        _secondsSinceIdleRedraw = 0f;
         return true;
     }
 
@@ -230,6 +250,7 @@ public sealed class MediaRotationModel
         _restingSeconds = 0f;
         _idleYawPhase = 0f;
         _idlePitchPhase = 0f;
+        _secondsSinceIdleRedraw = 0f;
     }
 
     /// <summary>
