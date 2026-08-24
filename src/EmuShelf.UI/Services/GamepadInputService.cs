@@ -115,11 +115,12 @@ public sealed class GamepadInputService : IDisposable
         // opposite of what a rotation wants.
         _viewModel.ApplyRightStickRotation(reading.RightStickX, reading.RightStickY, deltaMs);
 
-        // With a push reader, once nothing is being held or animated there is nothing left to do until
-        // the next event — so stop, instead of spinning the UI thread 60×/s. OnInputReceived restarts
-        // the loop. Desktop's SDL reader is not a push source, so _pushSource is null and it keeps
-        // polling. See class remarks.
-        if (_pushSource is not null && IsReadingNeutral(reading) && !_viewModel.IsShelfHeroAnimating)
+        // With a push reader, once nothing is being held there is nothing to read until the next event —
+        // so stop, instead of spinning the UI thread 60×/s. OnInputReceived restarts the loop. This poll
+        // is only for *input*: the resting hero's idle sway runs on its own timer in the view model, so
+        // stopping here at rest does not freeze it. Desktop's SDL reader is not a push source, so
+        // _pushSource is null and it keeps polling. See class remarks.
+        if (_pushSource is not null && IsReadingNeutral(reading))
         {
             _timer.Stop();
             _previousTickMs = null;

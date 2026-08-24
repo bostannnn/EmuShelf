@@ -173,12 +173,14 @@ public class MediaRotationModelTests
 
     // --- Idle sway: a resting hero breathes so it reads as a 3-D object and quietly invites the stick. ---
 
+    // The idle sway is driven by its own clock (AdvanceSway), not the input path, so exercise it that
+    // way — Update(0,0,...) is now a no-op on the input path.
     private static bool AdvanceCentred(MediaRotationModel model, int ticks, double msPerTick = 100d)
     {
         var moved = false;
         for (var i = 0; i < ticks; i++)
         {
-            moved |= model.Update(0f, 0f, msPerTick);
+            moved |= model.AdvanceSway(msPerTick);
         }
 
         return moved;
@@ -210,7 +212,7 @@ public class MediaRotationModelTests
         // A little over one full yaw cycle, so the sway is sampled through a peak in each axis.
         for (var i = 0; i < 70; i++)
         {
-            model.Update(0f, 0f, 100d);
+            model.AdvanceSway(100d);
             maxYawTravel = MathF.Max(maxYawTravel, MathF.Abs(model.Yaw - MediaRotationModel.RestYaw));
             maxPitchTravel = MathF.Max(maxPitchTravel, MathF.Abs(model.Pitch - MediaRotationModel.RestPitch));
         }
@@ -246,8 +248,8 @@ public class MediaRotationModelTests
         Assert.True(model.Update(1f, 0f, 100d));
         Assert.False(model.IsAtRest);
 
-        // Releasing does not restart the sway: the pose is no longer at rest.
-        Assert.False(model.Update(0f, 0f, 100d));
+        // The sway does not restart: the pose is no longer at rest.
+        Assert.False(model.AdvanceSway(100d));
     }
 
     [Fact]
@@ -262,7 +264,7 @@ public class MediaRotationModelTests
         Assert.Equal(MediaRotationModel.RestPitch, model.Pitch);
 
         // The delay restarts, so the freshly-centred hero holds still again briefly.
-        Assert.False(model.Update(0f, 0f, 100d));
+        Assert.False(model.AdvanceSway(100d));
     }
 
     [Fact]
@@ -270,14 +272,13 @@ public class MediaRotationModelTests
     {
         var model = new MediaRotationModel { IdleSwayEnabled = false };
 
-        // No matter how long it rests, a disabled sway never moves the hero nor asks for a redraw —
-        // the contract the reduced-effects head relies on.
+        // No matter how long it rests, a disabled sway never moves the hero nor asks for a redraw.
         Assert.False(AdvanceCentred(model, ticks: 60));
         Assert.Equal(MediaRotationModel.RestYaw, model.Yaw);
         Assert.True(model.IsAtRest);
     }
 
-    // --- IsSwaying: the "keep the poll loop awake for the drift" signal the idle-aware poll reads. ---
+    // --- IsSwaying: whether the resting hero is currently drifting on its own. ---
 
     [Fact]
     public void IsSwaying_IsFalseUntilTheDriftActuallyBegins_ThenTrue()
@@ -289,7 +290,7 @@ public class MediaRotationModelTests
         AdvanceCentred(model, ticks: 10);
         Assert.False(model.IsSwaying);
 
-        // Once past the delay and drifting, it reports swaying so the loop keeps redrawing it.
+        // Once past the delay and drifting, it reports swaying.
         AdvanceCentred(model, ticks: 20);
         Assert.True(model.IsSwaying);
     }
@@ -297,8 +298,7 @@ public class MediaRotationModelTests
     [Fact]
     public void IsSwaying_IsAlwaysFalseWhenTheSwayIsDisabled()
     {
-        // The reduced-effects (Android) head runs with the sway off, so the poll loop can go fully
-        // idle at rest: IsSwaying must never latch on, however long the hero sits.
+        // With the sway disabled, IsSwaying must never latch on, however long the hero sits.
         var model = new MediaRotationModel { IdleSwayEnabled = false };
 
         AdvanceCentred(model, ticks: 60);
@@ -312,11 +312,10 @@ public class MediaRotationModelTests
         AdvanceCentred(model, ticks: 25);
         Assert.True(model.IsSwaying);
 
-        // Driving the hero hands the sway off; a hero parked away from rest no longer breathes, so
-        // the loop is free to quiet once the stick is released.
+        // Driving the hero hands the sway off; a hero parked away from rest no longer breathes.
         model.Update(1f, 0f, 100d);
         Assert.False(model.IsSwaying);
-        model.Update(0f, 0f, 100d);
+        model.AdvanceSway(100d);
         Assert.False(model.IsSwaying);
     }
 }
