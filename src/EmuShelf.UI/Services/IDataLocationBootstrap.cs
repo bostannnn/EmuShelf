@@ -75,4 +75,20 @@ public interface IDataLocationBootstrap
     /// For users who want their data somewhere other than <see cref="RecommendedBaseDirectory"/>.
     /// </summary>
     Task<DataLocationPickResult> PickFolderAsync();
+
+    /// <summary>
+    /// Whether to offer the optional "enable second-screen return" step during onboarding — true only on a
+    /// device that actually has a second display (the Thor). It wires the accessibility watcher that returns
+    /// EmuShelf to the library when a game launched onto the second screen is closed. Defaults off, so the
+    /// desktop path and any platform without a companion display never shows it.
+    /// </summary>
+    bool ShowSecondScreenReturnStep => false;
+
+    /// <summary>Whether that watcher is currently enabled. Re-read on foreground return, like the grant.</summary>
+    bool IsSecondScreenReturnEnabled => false;
+
+    /// <summary>Sends the user to the system accessibility screen to enable the watcher. A no-op by default.</summary>
+    void RequestSecondScreenReturn()
+    {
+    }
 }

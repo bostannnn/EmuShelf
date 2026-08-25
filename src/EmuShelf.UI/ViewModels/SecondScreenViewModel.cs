@@ -55,7 +55,28 @@ public sealed partial class SecondScreenSlotViewModel(int index) : ObservableObj
 public sealed partial class SecondScreenViewModel : ObservableObject
 {
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStandby))]
     public partial SecondScreenOverlayKind Overlay { get; set; }
+
+    // --- Playing-elsewhere standby ---
+
+    /// <summary>
+    /// True while a game is running on the *other* screen, so this idle EmuShelf surface should sit in a
+    /// dim, low-burn-in standby (a near-black wash with the game's logo faintly visible) instead of the
+    /// full-brightness browse spotlight. Set by the Android controller on game start / return; the same
+    /// flag drives whichever surface is idle (Screen-2 while the game is on the built-in panel, or the
+    /// built-in companion while the game is on Screen-2), since both bind this one view model.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStandby))]
+    public partial bool IsGameRunning { get; set; }
+
+    /// <summary>
+    /// Whether the dim standby wash is showing right now: a game is running and nothing sits above it. An
+    /// open overlay (achievements / the app drawer) or the couch keyboard takes precedence, so opening
+    /// achievements over a running game lifts the dim and closing it restores it — the requested behaviour.
+    /// </summary>
+    public bool IsStandby => IsGameRunning && Overlay == SecondScreenOverlayKind.None && !IsKeyboardOpen;
 
     // --- App-owned keyboard, mirrored here from the main head during couch text entry ---
 
@@ -68,6 +89,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsKeyboardOpen))]
+    [NotifyPropertyChangedFor(nameof(IsStandby))]
     public partial GamepadKeyboardViewModel? Keyboard { get; set; }
 
     public bool IsKeyboardOpen => Keyboard is not null;

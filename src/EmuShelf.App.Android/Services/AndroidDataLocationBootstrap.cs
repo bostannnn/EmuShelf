@@ -75,6 +75,74 @@ public sealed class AndroidDataLocationBootstrap : IDataLocationBootstrap
 
     public void RequestStoragePermission() => _permission.RequestGrant();
 
+    /// <summary>
+    /// Offer the second-screen-return step only on a device that actually has a companion display (the Thor).
+    /// Probed via the display manager rather than assumed, so a single-screen phone never sees the step.
+    /// </summary>
+    public bool ShowSecondScreenReturnStep
+    {
+        get
+        {
+            try
+            {
+                var context = global::Android.App.Application.Context;
+                if (context.GetSystemService(global::Android.Content.Context.DisplayService)
+                    is not global::Android.Hardware.Display.DisplayManager manager)
+                {
+                    return false;
+                }
+
+                var displays = manager.GetDisplays(
+                    global::Android.Hardware.Display.DisplayManager.DisplayCategoryPresentation);
+                return displays is { Length: > 0 };
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Could not probe for a second display during onboarding.", ex);
+                return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the <c>SecondScreenReturnWatcher</c> accessibility service is enabled, read from the system's
+    /// enabled-services list so it is authoritative regardless of whether the service has bound yet.
+    /// </summary>
+    public bool IsSecondScreenReturnEnabled
+    {
+        get
+        {
+            try
+            {
+                var context = global::Android.App.Application.Context;
+                var enabled = global::Android.Provider.Settings.Secure.GetString(
+                    context.ContentResolver,
+                    global::Android.Provider.Settings.Secure.EnabledAccessibilityServices);
+                return !string.IsNullOrEmpty(enabled)
+                    && enabled.Contains("SecondScreenReturnWatcher", StringComparison.Ordinal);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public void RequestSecondScreenReturn()
+    {
+        try
+        {
+            using var intent = new global::Android.Content.Intent(
+                global::Android.Provider.Settings.ActionAccessibilitySettings);
+            intent.AddFlags(global::Android.Content.ActivityFlags.NewTask);
+            global::Android.App.Application.Context.StartActivity(intent);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not open the accessibility settings screen.", ex);
+        }
+    }
+
     public Task<DataLocationPickResult> UseRecommendedFolderAsync()
     {
         var baseDirectory = RecommendedBaseDirectory;
