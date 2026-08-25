@@ -31,6 +31,7 @@ internal sealed class AndroidEmulatorLaunchService(
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
     IAppLogger logger,
+    IAndroidReadGrantBroker grantBroker,
     ISecondScreenLaunchCoordinator? secondScreen = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
@@ -72,6 +73,14 @@ internal sealed class AndroidEmulatorLaunchService(
             return new GameLaunchResult(
                 false, $"Cannot launch {title}: {profile.DisplayName} is not installed.");
 
+        // Make EmuShelf hold its own SAF grant covering this game before firing the intent, so the launcher
+        // can delegate the read (FLAG_GRANT_READ_URI_PERMISSION) to the emulator. Without this, an emulator
+        // that does not read through its own persisted roms/<system> grant (Azahar) falls back to prompting
+        // the user for media/storage access. One-time per library folder; a no-op once the grant is held, and
+        // non-blocking — if the user declines, the launch still proceeds with today's behaviour. RetroArch's
+        // plain-path launch has no content URI, so this is a no-op there.
+        await grantBroker.EnsureReadGrantAsync(resolution.Intent!.RomContentUri, cancellationToken);
+
         // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
         // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.
         if (beforeStart is not null)
@@ -80,7 +89,7 @@ internal sealed class AndroidEmulatorLaunchService(
         logger.Information(
             $"Launching {profile.DisplayName} for {game.Title} on the " +
             $"{(effectiveScreen == GameLaunchScreen.External ? "external" : "built-in")} screen.");
-        if (launcher.Launch(resolution.Intent!, BuildRomHandoff(resolution.Intent!, profile, game.Path), externalDisplayId))
+        if (launcher.Launch(resolution.Intent!, externalDisplayId))
         {
             // Record the session durably *before* returning: EmuShelf is now a prime kill candidate
             // (a heavy emulator just took the foreground), so the return signal — or the next startup
@@ -110,25 +119,6 @@ internal sealed class AndroidEmulatorLaunchService(
         return new GameLaunchResult(
             false, $"Cannot launch {title}: {profile.DisplayName} did not start.");
     }
-
-    /// <summary>
-    /// How the launcher should expose <paramref name="gamePath"/> to <paramref name="profile"/>: mint and
-    /// grant a FileProvider URI for the scoped-storage emulators (so no per-launch SAF folder pick is needed),
-    /// or leave RetroArch's plain-path reference alone. The FileProvider-vs-real-path split is the pure
-    /// <see cref="AndroidRomHandoffRules"/> decision. See <see cref="AndroidRomHandoff"/> / DECISIONS 2026-08-25.
-    /// </summary>
-    private static AndroidRomHandoff BuildRomHandoff(
-        Core.Launching.Android.AndroidIntentRequest intent,
-        Core.Launching.Android.AndroidLaunchProfile profile,
-        string gamePath) =>
-        new(
-            // A null RomContentUri means RetroArch's plain path: no content URI to mint or grant.
-            DelegateViaFileProvider: intent.RomContentUri is not null,
-            RealPath: gamePath,
-            PayloadExtraName: profile.PayloadSlot == AndroidRomPayloadSlot.ExtraUri
-                ? profile.PayloadExtraName
-                : null,
-            PreferRealPath: AndroidRomHandoffRules.PrefersRealPath(profile, gamePath));
 
     /// <summary>
     /// The synchronous, IO-bound part of a launch — path probe, emulator selection and intent
