@@ -25,12 +25,19 @@ public static class LaunchScreenResolver
     /// Resolves what to do for one launch. With no external display attached the answer is always
     /// <see cref="LaunchScreenDecision.BuiltIn"/> — even for a system pinned to <see
     /// cref="GameLaunchScreen.External"/> — so unplugging the second screen degrades gracefully to the
-    /// built-in panel instead of failing. When a second screen is present, an unset (<see
-    /// cref="GameLaunchScreen.Ask"/>) preference prompts, and a pinned preference is obeyed.
+    /// built-in panel instead of failing. A dual-screen console (the DS/3DS, see <see
+    /// cref="Systems.GameSystem.IsDualScreen"/>) is likewise always <see
+    /// cref="LaunchScreenDecision.BuiltIn"/>: its emulator draws both console screens itself on one
+    /// display, so "which physical screen?" has no answer and is never asked. When a second screen is
+    /// present and the system is single-screen, an unset (<see cref="GameLaunchScreen.Ask"/>)
+    /// preference prompts, and a pinned preference is obeyed.
     /// </summary>
-    public static LaunchScreenDecision Resolve(GameLaunchScreen preference, bool externalDisplayAvailable)
+    public static LaunchScreenDecision Resolve(
+        GameLaunchScreen preference,
+        bool externalDisplayAvailable,
+        bool isDualScreenSystem = false)
     {
-        if (!externalDisplayAvailable)
+        if (!externalDisplayAvailable || isDualScreenSystem)
             return LaunchScreenDecision.BuiltIn;
 
         return preference switch
