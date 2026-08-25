@@ -16,10 +16,18 @@ namespace EmuShelf.Core.Systems;
 /// purely a grouping key — the empty default leaves a system ungrouped. The chronological
 /// order <em>within</em> a manufacturer is the authored order in <c>KnownSystems.All</c>.
 /// </param>
+/// <param name="IsDualScreen">
+/// True for consoles whose own hardware has two screens the emulator renders together (the DS and
+/// 3DS). EmuShelf launches such an emulator as a single external app that draws both console screens
+/// itself, so the "which physical display?" launch-screen choice is meaningless for them — the
+/// launch path forces the built-in screen and the setting is hidden. See
+/// <see cref="Launching.LaunchScreenResolver"/>.
+/// </param>
 public sealed record GameSystem(
     string Id,
     string Name,
     string ShortName,
     string AccentColor,
     double CoverAspectRatio,
-    string Manufacturer = "");
+    string Manufacturer = "",
+    bool IsDualScreen = false);

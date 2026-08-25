@@ -41,4 +41,18 @@ public class LaunchScreenResolverTests
             LaunchScreenDecision.External,
             LaunchScreenResolver.Resolve(GameLaunchScreen.External, externalDisplayAvailable: true));
     }
+
+    [Theory]
+    [InlineData(GameLaunchScreen.Ask)]
+    [InlineData(GameLaunchScreen.BuiltIn)]
+    [InlineData(GameLaunchScreen.External)]
+    public void DualScreenSystem_AlwaysBuiltIn_NeverPrompts(GameLaunchScreen preference)
+    {
+        // A dual-screen console (DS/3DS) draws both console screens in one emulator app, so "which
+        // physical screen?" has no answer: it always launches built-in and never prompts, even with a
+        // second screen attached and whatever preference happens to be stored.
+        Assert.Equal(
+            LaunchScreenDecision.BuiltIn,
+            LaunchScreenResolver.Resolve(preference, externalDisplayAvailable: true, isDualScreenSystem: true));
+    }
 }
