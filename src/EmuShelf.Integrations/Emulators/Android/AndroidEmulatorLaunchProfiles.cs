@@ -75,7 +75,7 @@ public static class AndroidEmulatorLaunchProfiles
         Action: AndroidIntentActions.View,
         // Citra's single EmulationActivity re-foregrounds its existing task instead of loading the new ROM
         // when launched again from recents (the "3DS game does nothing, no error" report). CLEAR_TASK +
-        // CLEAR_TOP force a fresh start — matching every Citra-family entry in NeoStation's launch configs.
+        // CLEAR_TOP force a fresh start — matching every Citra-family entry in NeoStation's and Cocoon's configs.
         ClearTaskOnLaunch: true);
 
     /// <summary>DS — WatermelonDS (melonDS fork; kept melonDS's package id). Custom action + <c>uri</c> extra.</summary>

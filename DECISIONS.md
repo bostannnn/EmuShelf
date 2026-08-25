@@ -11037,3 +11037,24 @@ FileProvider handoff), so this stays surgical. NeoStation applies the flags univ
 per-emulator if the same "relaunch does nothing" symptom appears elsewhere. Reading the ROM is separate: Azahar
 still needs read access to the game, so completing (not cancelling) the folder-grant prompt once — or Azahar
 holding its own roms/3ds grant — remains required. On-device Thor verification pending.
+
+## 2026-08-26 — The Android launch-time folder picker is removed entirely (no emulator needed it)
+
+The SAF read-grant broker (2026-08-24) prompted with a system folder picker before every content-URI launch
+so EmuShelf could hold and delegate a read grant. On the Thor it turned out **no emulator needs this**:
+cancelling the picker still launched and read every one of them — DuckStation, Dolphin, WatermelonDS, PPSSPP,
+ARMSX2, **and Azahar**. They all read the ROM through their own persisted `roms/<system>` SAF grant (the
+folder the user granted that emulator during its own setup). The broker's founding premise — that Azahar
+does not read via its own grant — was simply wrong.
+
+Cross-checked against the other Android frontends the user pointed to: **Cocoon** (`inssekt/CocoonFE`,
+`platforms/*.json`) and **NeoStation** (`misobadev/neostation-frontend`, `assets/systems/*.json`) both hand
+the emulator the SAF `content://` URI (`{file.uri}`) or a plain path (`{file.path}` / all-files) and let the
+emulator read it via its own access. Neither prompts at launch. Cocoon's Azahar entry is literally
+`-n org.azahar_emu.azahar/… -d {file.uri} --activity-clear-task` — no picker.
+
+So: removed `IAndroidReadGrantBroker`/`AndroidReadGrantBroker`, the `EnsureReadGrantAsync` call, and the
+launcher's now-dead `FLAG_GRANT_READ_URI_PERMISSION` path (with no broker, `CheckUriPermission` could never
+pass, so `withGrant` was always false — behaviour-preserving deletion). The launch is now: build the intent
+with the SAF URI (or RetroArch's plain path), `NEW_TASK`, plus `CLEAR_TASK`+`CLEAR_TOP` for Azahar
+(2026-08-25). No prompt anywhere. Reading depends on each emulator's own folder grant, as it always did.

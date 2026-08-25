@@ -61,43 +61,14 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
             return false;
         }
 
-        // FLAG_GRANT_READ_URI_PERMISSION grants the intent's data URI (and its ClipData), and Android rejects
-        // the whole startActivity with a SecurityException if we ask to pass a grant for a URI we do not
-        // ourselves hold. Historically the ROM URI was synthesized from a MANAGE_EXTERNAL_STORAGE path (never
-        // obtained via SAF), so we held no grantable permission and the flag was always dropped — which made
-        // emulators that do not read through their own persisted roms/<system> tree grant (Azahar) fall back
-        // to prompting the user for media/storage access. Now the launch service acquires EmuShelf's own
-        // persisted SAF grant to the library folder first (IAndroidReadGrantBroker), so this CheckUriPermission
-        // passes and we delegate the read — removing the dependency on each emulator's own grant.
-        var withGrant = request.GrantReadUriPermission && CanGrantUri(ctx, request.RomContentUri);
-
-        if (TryStart(ctx, request, withGrant, launchDisplayId))
-            return true;
-
-        // Safety net: if the grant slipped through the CheckUriPermission gate and startActivity still
-        // rejected it, retry once without the flag rather than reporting the game as unlaunchable.
-        if (withGrant && TryStart(ctx, request, withGrant: false, launchDisplayId))
-            return true;
-
-        return false;
+        // EmuShelf hands the emulator the ROM's SAF content:// URI and does not pass its own read grant: every
+        // emulator it targets reads the URI through its own persisted roms/<system> SAF grant (the folder the
+        // user granted it during that emulator's setup), the same way Cocoon and NeoStation hand off. RetroArch
+        // gets a plain path (no content URI at all). So there is no FLAG_GRANT_READ_URI_PERMISSION to manage.
+        return TryStart(ctx, request, launchDisplayId);
     }
 
-    // True only when EmuShelf itself holds a read grant for the ROM URI, so passing it on will not be
-    // rejected. False when EmuShelf holds no SAF grant covering it, or when there is no content URI to grant
-    // (RetroArch's plain path).
-    private static bool CanGrantUri(Context ctx, string? romContentUri)
-    {
-        if (string.IsNullOrEmpty(romContentUri))
-            return false;
-
-        return ctx.CheckUriPermission(
-            global::Android.Net.Uri.Parse(romContentUri),
-            global::Android.OS.Process.MyPid(),
-            global::Android.OS.Process.MyUid(),
-            ActivityFlags.GrantReadUriPermission) == global::Android.Content.PM.Permission.Granted;
-    }
-
-    private bool TryStart(Context ctx, AndroidIntentRequest request, bool withGrant, int? launchDisplayId = null)
+    private bool TryStart(Context ctx, AndroidIntentRequest request, int? launchDisplayId = null)
     {
         using var intent = new Intent();
         intent.SetComponent(new ComponentName(request.PackageName, request.ActivityName));
@@ -113,21 +84,6 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
 
         foreach (var (key, value) in request.BoolExtras)
             intent.PutExtra(key, value);
-
-        if (withGrant)
-        {
-            intent.AddFlags(ActivityFlags.GrantReadUriPermission);
-
-            // A read grant follows the intent's data URI and its ClipData, never an arbitrary string extra.
-            // For the emulators that take the ROM as an extra (Dolphin's AutoStartFile, DuckStation's
-            // bootPath, WatermelonDS's uri) the URI is not in the data slot, so attach it as ClipData too;
-            // otherwise the flag would grant nothing and the emulator would be back to needing its own grant.
-            if (request.RomUriRidesInExtra)
-            {
-                intent.ClipData = ClipData.NewRawUri(
-                    "rom", global::Android.Net.Uri.Parse(request.RomContentUri));
-            }
-        }
 
         // The emulator runs as its own task and becomes the top-resumed activity; NEW_TASK is required
         // because we may be starting it from a non-Activity context, and it is what makes the eventual
@@ -167,15 +123,6 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         catch (ActivityNotFoundException ex)
         {
             logger.Error($"Could not launch {request.Component}: activity not found.", ex);
-            return false;
-        }
-        catch (Java.Lang.SecurityException ex) when (withGrant)
-        {
-            // We asked to pass a read grant for a URI we cannot grant. This is expected under the all-files
-            // model; the caller retries without the flag, so log at a lower level and let it fall through.
-            logger.Warning(
-                $"Cannot pass a read grant to {request.Component} (EmuShelf does not hold the URI permission); " +
-                $"retrying without it: {ex.Message}");
             return false;
         }
         catch (Exception ex)
