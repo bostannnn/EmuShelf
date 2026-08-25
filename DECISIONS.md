@@ -10955,3 +10955,67 @@ on `AndroidIntentRequest.RomContentUri` by the pure `AndroidIntentFactory` (test
 by a held grant is decided by the pure, tested `AndroidUriGrantCoverage`. This is **not** a duplicate of the
 all-files onboarding grant (`IStoragePermissionService`): that grant cannot be delegated to another app; only
 a SAF grant can. On-device verification on the Thor is still pending (built and desktop-suite-green here).
+## 2026-08-25 — The FileProvider ROM handoff was reverted (broke every SAF-native emulator on the Thor)
+
+An attempt to replace the 2026-08-24 SAF read-grant broker with a NeoStation-style FileProvider handoff
+(re-expose the ROM through EmuShelf's own `com.emushelf.app.romprovider` and `grantUriPermission` it to the
+emulator) was **built, merged to this branch, and reverted after on-device testing** (commit reverted in
+a735e9b). It broke launching for every emulator except RetroArch: Dolphin reported *"the specified file …
+does not exist"* and WatermelonDS *"Could not find ROM"* when handed
+`content://com.emushelf.app.romprovider/root/…`.
+
+Root cause: EmuShelf's emulators (DuckStation, ARMSX2, Dolphin, PPSSPP, Azahar, WatermelonDS) are all
+**SAF-native** — they expect a real `DocumentsProvider` URI (`com.android.externalstorage.documents` tree
+URI) that they read through their **own** persisted `roms/<system>` grant, and they resolve it via
+`DocumentsContract`/`DocumentFile`. A **FileProvider URI is not a DocumentsProvider URI**, so their loaders
+reject it. NeoStation only FileProvider-wraps for emulators that take a plain content URI (its ".emu
+series"); it keeps the original SAF URI for SAF-native ones (its `keep_saf_uri` flag). EmuShelf's set has
+**no** ".emu-style" emulators, so FileProvider fits none of them and breaks six to chase the one (Azahar).
+
+Lesson: the picker complaint has a simpler answer — only Azahar ever needed a delegated grant; the other
+five already read via their own grant, so the broker's picker should simply be **scoped to Azahar** rather
+than replaced wholesale. That is the next attempt, and it must be validated on the Thor per emulator before
+merge, not just desktop-green. See [[android-rom-fileprovider-handoff]] recorded in agent memory.
+
+## 2026-08-25 — Second-screen "playing elsewhere" dim standby, and the game-on-external return signal
+
+Two coupled Android second-screen changes.
+
+**Dim standby.** While a game runs, the idle EmuShelf surface (Screen-2 when the game is on the built-in
+panel; the built-in companion when the game is on Screen-2) now drops into a near-black wash with the game's
+logo faintly visible, instead of the full-brightness browse spotlight — kinder to the Thor's burn-in-prone
+Screen-2 and a clear "it's playing over there" cue. Implemented as one `SecondScreenViewModel.IsStandby`
+(`IsGameRunning && Overlay == None && !IsKeyboardOpen`) that both surfaces bind, so opening the achievements
+grid or app drawer (or the couch keyboard) lifts the dim and closing it restores it — no separate wiring per
+surface. Reuses the existing spotlight art/logo, per the request to keep the current visual constants.
+
+**Game-on-external return is detected ONLY by the accessibility watcher, never by the top-resumed edge.**
+When a game launches on the built-in screen, EmuShelf loses the foreground and regaining it is the correct
+"the game returned" signal (`OnTopResumedActivityChanged(true)` → complete the play session). When the game
+launches on Screen-2, EmuShelf stays interactive on the built-in panel, so that same edge fires every time the
+user merely taps the main panel — which was tearing the still-running game down (re-showing the companion
+Presentation over it and prematurely closing the play session): the reported "tap the main screen and the game
+closes" bug. Fix: `SingleViewShell` now ignores the top-resumed return while `SecondScreenController
+.IsGameOnExternalScreen`, and the real close is signalled by the `SecondScreenReturnWatcher` accessibility
+service (the stock `SecondaryDisplayLauncher` reappearing on Screen-2), which the controller already uses for
+dock-app return. Consequence: game-on-external return requires that optional service to be enabled — so
+onboarding gained an optional, second-screen-only step to turn it on (mirrors the all-files grant step:
+deep-links to Accessibility settings, state re-read on foreground return). Deliberately no top-resumed
+fallback for the external case; a coarse fallback is exactly what caused the bug. On-device verification on
+the Thor is pending (Core/VM/onboarding unit-tested; the display swap + watcher aren't reproducible in the
+desktop headless suite).
+## 2026-08-25 — Dual-screen consoles (DS/3DS) opt out of launch-screen selection
+
+The launch-screen chooser asks which *single physical* display a game opens on, which is meaningless for
+the DS and 3DS: their emulators (melonDS/DraStic, Azahar) draw both console screens themselves inside one
+app that EmuShelf launches on one display, so there is no screen to choose. Yet the Ask-default prompt was
+firing for them on the Thor exactly like a single-screen system — the reported bug.
+
+Marked these systems with a new `GameSystem.IsDualScreen` flag (single source of truth in
+`KnownSystems`, set only for `nds`/`3ds`). The pure `LaunchScreenResolver.Resolve` gained an
+`isDualScreenSystem` parameter that forces `BuiltIn` (alongside the existing no-external-display case), so
+the policy — and the fact that it never prompts — stays unit-tested. `MainViewModel` looks the flag up via
+`_systemsById` and short-circuits before the SQLite preference read; the Settings → Emulators "Launch
+screen" row is omitted for these platforms. Nintendo hardware that genuinely spans two physical displays is
+out of scope: EmuShelf launches these emulators as ordinary single-display apps and cannot make a
+third-party app span two Android displays.

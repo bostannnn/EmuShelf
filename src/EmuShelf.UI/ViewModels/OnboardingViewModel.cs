@@ -29,6 +29,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         Grant,
         UseRecommended,
         ChooseDifferent,
+        EnableSecondScreenReturn,
     }
 
     private int _focusIndex;
@@ -78,6 +79,21 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     /// <summary>The controller focus ring is on the "Choose a different folder" button.</summary>
     public bool IsChooseFocused => Focused == OnboardingAction.ChooseDifferent;
 
+    /// <summary>The controller focus ring is on the "Enable second-screen return" button.</summary>
+    public bool IsSecondScreenReturnFocused => Focused == OnboardingAction.EnableSecondScreenReturn;
+
+    /// <summary>
+    /// Whether the optional second-screen-return step is offered on this device (a Thor with Screen-2).
+    /// Read once at construction — the companion display is stable for the life of the onboarding screen,
+    /// and the Android probe behind it (a display-manager query) is walked repeatedly by the focus ring.
+    /// </summary>
+    public bool ShowSecondScreenReturn { get; }
+
+    /// <summary>Whether the second-screen return watcher is enabled; drives the step's Enable button vs. checkmark.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSecondScreenReturnFocused))]
+    public partial bool IsSecondScreenReturnEnabled { get; set; }
+
     public OnboardingViewModel(
         IDataLocationBootstrap bootstrap,
         DataLocationOnboardingReason reason,
@@ -88,16 +104,31 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         _onCompleted = onCompleted;
         _logger = logger ?? NullAppLogger.Instance;
         IsPermissionGranted = bootstrap.IsStoragePermissionGranted;
+        ShowSecondScreenReturn = bootstrap.ShowSecondScreenReturnStep;
+        IsSecondScreenReturnEnabled = bootstrap.IsSecondScreenReturnEnabled;
         StatusMessage = InitialMessageFor(reason);
         bootstrap.StoragePermissionMaybeChanged += OnStoragePermissionMaybeChanged;
     }
 
-    // The actions that currently have a live button, in visual order — the set the focus ring walks.
-    private IReadOnlyList<OnboardingAction> LiveActions => IsGrantStepActive
-        ? [OnboardingAction.Grant]
-        : ShowRecommended
-            ? [OnboardingAction.UseRecommended, OnboardingAction.ChooseDifferent]
-            : [OnboardingAction.ChooseDifferent];
+    // The actions that currently have a live button, in visual order — the set the focus ring walks. The
+    // optional second-screen-return step is appended last (once any grant is held and while it's still
+    // outstanding) so it never steals the folder actions' initial focus.
+    private IReadOnlyList<OnboardingAction> LiveActions
+    {
+        get
+        {
+            if (IsGrantStepActive)
+                return [OnboardingAction.Grant];
+
+            var actions = new List<OnboardingAction>(3);
+            if (ShowRecommended)
+                actions.Add(OnboardingAction.UseRecommended);
+            actions.Add(OnboardingAction.ChooseDifferent);
+            if (ShowSecondScreenReturn && !IsSecondScreenReturnEnabled)
+                actions.Add(OnboardingAction.EnableSecondScreenReturn);
+            return actions;
+        }
+    }
 
     private OnboardingAction Focused
     {
@@ -152,6 +183,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGrantFocused));
         OnPropertyChanged(nameof(IsRecommendedFocused));
         OnPropertyChanged(nameof(IsChooseFocused));
+        OnPropertyChanged(nameof(IsSecondScreenReturnFocused));
     }
 
     private void ActivateFocused()
@@ -166,6 +198,9 @@ public sealed partial class OnboardingViewModel : ViewModelBase
                 break;
             case OnboardingAction.ChooseDifferent when CanChooseFolder:
                 ChooseDifferentCommand.Execute(null);
+                break;
+            case OnboardingAction.EnableSecondScreenReturn:
+                RequestSecondScreenReturnCommand.Execute(null);
                 break;
         }
     }
@@ -193,9 +228,13 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     public void RefreshPermissionState()
     {
         // Setting IsPermissionGranted raises the focus/step properties. Reset the ring to the first live
-        // action so it lands on the recommended button the moment the grant clears.
+        // action so it lands on the recommended button the moment the grant clears. Also re-read the
+        // second-screen-return switch: enabling it in system Settings and returning drops that step and its
+        // focus flag without a manual refresh, mirroring the grant.
         _focusIndex = 0;
         IsPermissionGranted = _bootstrap.IsStoragePermissionGranted;
+        IsSecondScreenReturnEnabled = _bootstrap.IsSecondScreenReturnEnabled;
+        RaiseFocusChanged();
         if (IsPermissionGranted && RequiresPermission)
             StatusMessage = "All-files access granted. Now choose where your data lives.";
     }
@@ -206,6 +245,14 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         _bootstrap.RequestStoragePermission();
         // The result is observed when EmuShelf regains the foreground via RefreshPermissionState; there is
         // nothing to await here since the grant happens in the system Settings app.
+    }
+
+    [RelayCommand]
+    private void RequestSecondScreenReturn()
+    {
+        _bootstrap.RequestSecondScreenReturn();
+        // The result is observed when EmuShelf regains the foreground via RefreshPermissionState; the switch
+        // is flipped in the system accessibility screen, so there is nothing to await here.
     }
 
     [RelayCommand]
