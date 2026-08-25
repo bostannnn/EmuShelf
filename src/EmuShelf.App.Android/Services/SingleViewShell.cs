@@ -57,15 +57,6 @@ public sealed class SingleViewShell : IPlatformShell
             () => global::Android.App.Application.Context,
             boot.Logger);
 
-        // Lets the launch path acquire EmuShelf's own persisted SAF grant to a library folder (a one-time
-        // folder pick, using the live view's TopLevel for the picker), so it can delegate the read grant to
-        // any emulator — fixing emulators like Azahar that otherwise prompt for media access. Same lazy
-        // TopLevel resolver as the dialog service above.
-        var grantBroker = new AndroidReadGrantBroker(
-            () => global::Android.App.Application.Context,
-            () => _currentView is { } view ? TopLevel.GetTopLevel(view) : null,
-            boot.Logger);
-
         // A durable single-slot record of a launch awaiting post-play completion, in the durable Settings
         // dir (not Cache) so it survives EmuShelf being killed while an emulator is foregrounded.
         _pendingSessions = new FilePendingPlaySessionStore(
@@ -90,7 +81,6 @@ public sealed class SingleViewShell : IPlatformShell
             _pendingSessions,
             boot.Library,
             boot.Logger,
-            grantBroker,
             _secondScreen);
     }
 

@@ -27,6 +27,9 @@ public static class AndroidEmulatorLaunchProfiles
         Action: null,
         PayloadExtraName: "bootPath",
         BootOneShot: true,
+        // DuckStation reads a multi-disc .cue/.m3u and opens the sibling .bin tracks it names by relative
+        // path, so it needs a real filesystem path for those; a FileProvider URI would hide the base folder.
+        NeedsRealPathForMultiFile: true,
         Maintenance: AndroidEmulatorMaintenance.Frozen);
 
     /// <summary>PS2 — ARMSX2 (PCSX2 fork). VIEW + content URI as data; declares all-files access.</summary>

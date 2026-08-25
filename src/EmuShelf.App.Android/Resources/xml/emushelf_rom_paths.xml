@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider path map for the ROM provider (com.emushelf.app.romprovider), used by AndroidGameLauncher
+     to hand emulators a grantable content:// URI for a game the user's library points at anywhere on the
+     device. <root-path path="."> maps the whole filesystem so a ROM on the removable microSD
+     (/storage/XXXX-XXXX/...) is covered as well as one on internal storage; <external-path> is kept for the
+     primary-external case some builds resolve there first. Nothing is exposed until the launcher mints a URI
+     for a specific ROM and grants it to a specific emulator package for that one launch. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <root-path name="root" path="." />
+    <external-path name="external" path="." />
+</paths>
