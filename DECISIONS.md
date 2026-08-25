@@ -10891,6 +10891,44 @@ sway genuinely cheap therefore needs the couch per-frame work cut (see
 A one-shot "settle on select" would sidestep it entirely. Shipping the perpetual sway as the correct,
 working baseline; the cost/approach is a product call flagged to the owner.
 
+## 2026-08-25 — Per-platform launch-screen selection on multi-screen devices (Thor)
+
+On a device with a second screen (the Thor's `FLAG_PRESENTATION` display), a game can now launch on the
+built-in panel or the external screen, chosen per system. Mechanism: the Android launch path passes
+`ActivityOptions.setLaunchDisplayId(displayId)` to `startActivity` (`AndroidGameLauncher.Launch` gained
+an optional display id); `SecondScreenController` is both the display id source and the
+`IExternalDisplayProbe`. Desktop cannot place an external emulator on a chosen monitor (the window
+manager decides), so the whole feature is gated behind a non-null `IPlatformShell.ExternalDisplays` —
+present only on the Android head — and is invisible everywhere else.
+
+Design choices worth recording:
+
+- **Preference lives on `EmulatorConfiguration` (per system), schema v20** (`LaunchScreen` column,
+  `0=Ask` default → no backfill, single-screen users unaffected). The resolver
+  (`LaunchScreenResolver`, pure/tested) maps `(preference, externalPresent)` → `BuiltIn | External |
+  Prompt`. With no external screen the answer is always `BuiltIn`, even for a system pinned to External,
+  so unplugging degrades gracefully instead of failing.
+- **One overlay covers "launch once" and "save per platform."** The pre-launch chooser (couch
+  `GamepadOverlayKind.LaunchScreen`) offers two "play once" picks and two "Always … for <System>" picks
+  that also pin the preference. Chosen over a separate remember-toggle because the D-pad option list
+  can't host a persistent toggle cleanly. Only shown in gamepad mode (the Android head is always in it);
+  desktop mode falls through to built-in rather than swallowing the launch.
+- **Change/reset lives in Settings, not the game Actions menu.** A per-platform "Launch screen" choice
+  row (Ask / Built-in / External) in Settings → Emulators, Android-gated. This is the only way back to
+  the prompt once a preference is pinned to Always. (An earlier draft put it in the per-game Actions
+  menu; moved to Settings on the owner's call.)
+- **The two screens swap.** When a game takes the external screen, the second-screen companion
+  (spotlight + achievements) moves onto the built-in panel for the session and swaps back on return
+  (`SecondScreenController.SwapCompanionToMainScreen` / `RestoreCompanionToSecondScreen`); the same
+  `SecondScreenViewModel` instance is hosted by `MainView` as a full-bleed overlay
+  (`MainViewModel.MainScreenCompanion`) while the Presentation is hidden. The companion and the game
+  cannot share Screen-2, so choosing the external screen for the game inherently relocates the companion
+  rather than dropping it.
+- **`setLaunchDisplayId` is a request.** Some emulators force their own display or ignore it; the launch
+  path can't guarantee placement for a third-party app. Needs per-emulator on-device verification on the
+  Thor (Core/persistence/UI are unit-tested; the Android display-targeting + swap are not reproducible
+  in the desktop headless suite).
+
 ## 2026-08-24 — EmuShelf delegates its own SAF read grant so emulators like Azahar stop asking for media access
 
 Launching a 3DS game handed Azahar a `content://com.android.externalstorage.documents` tree/document

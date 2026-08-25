@@ -36,6 +36,14 @@ public interface IPlatformShell
     IEmulatorLaunchService? LaunchService => null;
 
     /// <summary>
+    /// Reports whether a second physical screen is currently attached, or null when the surface has no
+    /// concept of one (every desktop head, and Android before a presentation display appears). Non-null
+    /// only on the Android head; it gates the per-system launch-screen feature — with no probe, or no
+    /// screen, launches always go to the built-in display and the chooser never appears.
+    /// </summary>
+    IExternalDisplayProbe? ExternalDisplays => null;
+
+    /// <summary>
     /// Attaches the fully-built <paramref name="viewModel"/> to the surface and shows it. The shell
     /// wires <paramref name="callbacks"/> to its own surface lifecycle — on desktop that is the
     /// window's <c>Opened</c>/<c>Closing</c> events and the application's <c>Exit</c> event.

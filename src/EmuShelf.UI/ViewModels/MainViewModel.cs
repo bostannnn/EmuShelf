@@ -74,6 +74,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IEmulatorLaunchService _launchService;
     private readonly IFileRevealService _fileReveal;
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
+    // Non-null only on the Android head; gates the per-system launch-screen chooser (see LaunchGameCoreAsync).
+    private IExternalDisplayProbe? _externalDisplays;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
     private readonly IGameDetailsStore? _gameDetails;
@@ -1047,6 +1049,10 @@ public partial class MainViewModel : ViewModelBase
     // handoff overlay — so B has to return to whichever one opened it rather than always the menu.
     private GamepadOverlayKind _desktopModeConfirmationParent = GamepadOverlayKind.SystemMenu;
 
+    // The game awaiting a screen choice while the LaunchScreen chooser is open. Set when the chooser
+    // opens, consumed when the user picks a screen, and cleared if they back out (see CloseGamepadOverlay).
+    private GameViewModel? _launchScreenPromptGame;
+
     // The folder chosen in the gamepad import flow, held between the OS folder pick and the system
     // choice made in the ImportSystem overlay. Cleared once the import runs or the overlay is cancelled.
     private string? _pendingImportFolder;
@@ -1140,7 +1146,7 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
-        GamepadOverlayKind.ImportSystem;
+        GamepadOverlayKind.ImportSystem or GamepadOverlayKind.LaunchScreen;
     /// <summary>
     /// A floor, in DIP, for the option-list scroll region — <b>Android only</b>. The overlay Border is
     /// vertically centred and sizes to its content; on the Thor the option ScrollViewer contributes no
@@ -1179,6 +1185,9 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
+        GamepadOverlayKind.LaunchScreen => _launchScreenPromptGame is { } launching
+            ? $"{launching.DisplayTitle} — choose a screen"
+            : "Choose a screen",
         GamepadOverlayKind.ImportSystem => "Add games — choose system",
         GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
@@ -1194,6 +1203,16 @@ public partial class MainViewModel : ViewModelBase
     };
     [ObservableProperty]
     public partial double GamepadViewportWidth { get; set; }
+
+    // The second-screen companion, temporarily hosted on the built-in panel while a game runs on the
+    // external screen (Android only). Set by the Android SecondScreenController when it swaps the
+    // companion here, and cleared when the game returns; MainView renders it as a full-bleed overlay.
+    // Null everywhere else, so the overlay never shows on desktop or when the game is on the built-in panel.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsCompanionOnMainScreen))]
+    public partial SecondScreenViewModel? MainScreenCompanion { get; set; }
+
+    public bool IsCompanionOnMainScreen => MainScreenCompanion is not null;
 
     private int _gamepadColumnCount = 1;
     // Observable so the gamepad grid's UniformGrid binds its Columns to it: the rendered column count
@@ -1523,7 +1542,8 @@ public partial class MainViewModel : ViewModelBase
         IAppPaths? appPaths = null,
         AppUpdateCoordinator? updates = null,
         IFileRevealService? fileReveal = null,
-        HotkeyCoordinator? hotkeys = null)
+        HotkeyCoordinator? hotkeys = null,
+        IExternalDisplayProbe? externalDisplays = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
         // The resting hero breathes on every platform. It was nearly gated off the reduced-effects
@@ -1550,6 +1570,7 @@ public partial class MainViewModel : ViewModelBase
         _launchService = launchService ?? new NullEmulatorLaunchService();
         _fileReveal = fileReveal ?? new NullFileRevealService();
         _emulatorConfigurations = emulatorConfigurations ?? new NullEmulatorConfigurationStore();
+        _externalDisplays = externalDisplays;
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
         _gameDetails = gameDetails;
@@ -2531,6 +2552,8 @@ public partial class MainViewModel : ViewModelBase
         FocusedGamepadAchievement = null;
         if (closingOverlay == GamepadOverlayKind.ImportSystem)
             _pendingImportFolder = null; // a cancelled import must not leave a stale folder pending
+        if (closingOverlay == GamepadOverlayKind.LaunchScreen)
+            _launchScreenPromptGame = null; // backing out of the screen chooser cancels the pending launch
         GamepadOverlayOptions.Clear();
         GamepadOverlay = GamepadOverlayKind.None;
         IsGameActionsOpen = false;
@@ -3239,6 +3262,9 @@ public partial class MainViewModel : ViewModelBase
             case GamepadOverlayKind.DiscSelection:
                 AddDiscSelectionOptions();
                 break;
+            case GamepadOverlayKind.LaunchScreen:
+                AddLaunchScreenOptions();
+                break;
             case GamepadOverlayKind.ImportSystem:
                 AddImportSystemOptions();
                 break;
@@ -3323,6 +3349,66 @@ public partial class MainViewModel : ViewModelBase
                     $"Disc {disc.Number}{current}",
                     new AsyncRelayCommand(() => SelectDiscFromGamepadAsync(disc)));
             }
+        }
+    }
+
+    // The one-time pre-launch screen chooser. Two "play once" picks and two "always" picks that also pin
+    // the per-system preference — one overlay covering both the one-off launch and the save-per-platform
+    // choice, with no separate toggle widget the D-pad list can't host cleanly. Changing or resetting a
+    // pinned preference later lives in Settings → Emulators, not here.
+    private void AddLaunchScreenOptions()
+    {
+        if (_launchScreenPromptGame is not { } game)
+            return;
+
+        AddOption(
+            "Play on the built-in screen",
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.BuiltIn, remember: false)));
+        AddOption(
+            "Play on the external screen",
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.External, remember: false)));
+        AddOption(
+            $"Always use the built-in screen for {game.SystemName}",
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.BuiltIn, remember: true)));
+        AddOption(
+            $"Always use the external screen for {game.SystemName}",
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.External, remember: true)));
+    }
+
+    private void OpenLaunchScreenPrompt(GameViewModel game)
+    {
+        _launchScreenPromptGame = game;
+        OpenGamepadOverlay(GamepadOverlayKind.LaunchScreen);
+    }
+
+    private async Task ChooseLaunchScreenAsync(GameLaunchScreen screen, bool remember)
+    {
+        var game = _launchScreenPromptGame;
+        _launchScreenPromptGame = null;
+        CloseGamepadOverlay();
+        if (game is null)
+            return;
+
+        if (remember)
+            RememberLaunchScreenPreference(game.SystemId, screen);
+
+        // screenOverride short-circuits the resolver in LaunchGameCoreAsync — this pick launches directly.
+        await LaunchGameCoreAsync(game, screenOverride: screen);
+    }
+
+    // Pins the system's launch-screen preference. SetLaunchScreen touches only the LaunchScreen column and
+    // never the active-emulator selection, so remembering a screen for a system the user has never opened
+    // in Settings can't corrupt which emulator launches. Best-effort: a write failure must never block the
+    // launch the user just asked for.
+    private void RememberLaunchScreenPreference(string systemId, GameLaunchScreen screen)
+    {
+        try
+        {
+            _emulatorConfigurations.SetLaunchScreen(systemId, screen);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not save the launch-screen preference for {systemId}.", ex);
         }
     }
 
@@ -6010,10 +6096,39 @@ public partial class MainViewModel : ViewModelBase
         await _shelfLaunchCompletion.Task;
     }
 
-    private async Task LaunchGameCoreAsync(GameViewModel? game)
+    private async Task LaunchGameCoreAsync(GameViewModel? game, GameLaunchScreen? screenOverride = null)
     {
         if (game is null || IsBusy)
             return;
+
+        // Decide which physical screen this launch targets. Only meaningful with a live second screen
+        // (the Thor); everywhere else _externalDisplays is null and the launch always goes to the
+        // built-in display. screenOverride is set when the one-time chooser has already resolved it, so
+        // that path skips straight to launching. Done before IsBusy so opening the chooser doesn't lock
+        // the UI into a busy launch that never happened.
+        // The chooser is a couch overlay, so it only makes sense in gamepad mode — which is exactly where
+        // the Android head that owns this feature always runs. In desktop mode there is no couch overlay to
+        // show, so fall through to the built-in default rather than silently swallowing the launch.
+        var targetScreen = screenOverride ?? GameLaunchScreen.BuiltIn;
+        if (screenOverride is null && IsGamepadMode && _externalDisplays?.HasExternalDisplay == true)
+        {
+            // Read the preference off the UI thread: it hits SQLite, and the Android launch path keeps
+            // such reads off the launch frame (Preflight) to avoid a hitch — or an ANR on slow storage.
+            var preference = await Task.Run(
+                () => _emulatorConfigurations.Get(game.SystemId)?.LaunchScreen ?? GameLaunchScreen.Ask);
+            switch (LaunchScreenResolver.Resolve(preference, externalDisplayAvailable: true))
+            {
+                case LaunchScreenDecision.External:
+                    targetScreen = GameLaunchScreen.External;
+                    break;
+                case LaunchScreenDecision.Prompt:
+                    OpenLaunchScreenPrompt(game);
+                    return;
+                default:
+                    targetScreen = GameLaunchScreen.BuiltIn;
+                    break;
+            }
+        }
 
         // The name the user sees on the tile (the normalized scraped title when one exists), reused
         // for every status toast in this launch — including the save-sync ones, which only have the
@@ -6090,7 +6205,8 @@ public partial class MainViewModel : ViewModelBase
                         () => _library.RecordLaunchStarted(launchGame.Id, DateTimeOffset.UtcNow),
                         cancellationToken);
                     recordedPlay = true;
-                });
+                },
+                targetScreen);
             // The launch service returns only after a tracked emulator exits, or immediately when
             // process start fails. The medium comes back *beside* the post-exit save sync rather
             // than in front of it — the mirror of what the outward launch already does, and for the

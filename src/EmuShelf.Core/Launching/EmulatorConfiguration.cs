@@ -27,4 +27,11 @@ public sealed record EmulatorConfiguration(
 
     /// <summary>Optional per-system Libretro core path for core-aware launchers.</summary>
     public string? CorePath { get; init; }
+
+    /// <summary>
+    /// Which screen this system launches on when the device has a second display (the Thor). Defaults
+    /// to <see cref="GameLaunchScreen.Ask"/> — prompt once, with a "remember" choice that pins it. Only
+    /// meaningful on the Android head with an external display present; ignored everywhere else.
+    /// </summary>
+    public GameLaunchScreen LaunchScreen { get; init; } = GameLaunchScreen.Ask;
 }

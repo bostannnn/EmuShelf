@@ -25,22 +25,34 @@ namespace EmuShelf.App.Android.Services;
 /// return, or the next startup if EmuShelf was killed) completes play-time accrual and the push-on-return
 /// save sync from that record — see <c>SingleViewShell.CompletePendingSession</c>.
 /// </summary>
-public sealed class AndroidEmulatorLaunchService(
+internal sealed class AndroidEmulatorLaunchService(
     AndroidGameLauncher launcher,
     IEmulatorConfigurationStore configurations,
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
     IAppLogger logger,
     IAndroidReadGrantBroker grantBroker,
-    Action<Game, string>? gameStarted = null) : IEmulatorLaunchService
+    ISecondScreenLaunchCoordinator? secondScreen = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
         Game game,
         string? displayName = null,
         Func<CancellationToken, Task>? beforeStart = null,
+        GameLaunchScreen targetScreen = GameLaunchScreen.BuiltIn,
         CancellationToken cancellationToken = default)
     {
         var title = string.IsNullOrWhiteSpace(displayName) ? game.Title : displayName;
+
+        // Resolve the target display up front. External is honoured only while a second screen is actually
+        // attached; if it vanished between the caller's check and here, fall back to the built-in panel
+        // (displayId null) so the game still launches rather than failing on a gone display. The effective
+        // screen is what the companion coordination below reacts to.
+        var externalDisplayId = targetScreen == GameLaunchScreen.External
+            ? secondScreen?.ExternalDisplayId
+            : null;
+        var effectiveScreen = externalDisplayId is not null
+            ? GameLaunchScreen.External
+            : GameLaunchScreen.BuiltIn;
 
         // Preflight off the calling (UI) thread: the existence probe stats removable storage and the
         // config/library lookups hit SQLite, either of which can hitch the launch frame — and on a slow
@@ -74,8 +86,10 @@ public sealed class AndroidEmulatorLaunchService(
         if (beforeStart is not null)
             await beforeStart(cancellationToken);
 
-        logger.Information($"Launching {profile.DisplayName} for {game.Title}.");
-        if (launcher.Launch(resolution.Intent!))
+        logger.Information(
+            $"Launching {profile.DisplayName} for {game.Title} on the " +
+            $"{(effectiveScreen == GameLaunchScreen.External ? "external" : "built-in")} screen.");
+        if (launcher.Launch(resolution.Intent!, externalDisplayId))
         {
             // Record the session durably *before* returning: EmuShelf is now a prime kill candidate
             // (a heavy emulator just took the foreground), so the return signal — or the next startup
@@ -86,7 +100,10 @@ public sealed class AndroidEmulatorLaunchService(
                 DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
             try
             {
-                gameStarted?.Invoke(game, title);
+                // Tell the companion where the game went: on the built-in screen it keeps the spotlight on
+                // Screen-2; on the external screen it swaps — the game takes Screen-2 and the companion
+                // moves onto the built-in panel (see SecondScreenController.GameStarted).
+                secondScreen?.GameStarted(game, title, effectiveScreen);
             }
             catch (Exception ex)
             {

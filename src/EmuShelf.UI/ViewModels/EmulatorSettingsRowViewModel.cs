@@ -108,6 +108,25 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public partial string LaunchArguments { get; set; }
 
     /// <summary>
+    /// Which screen this platform launches on when a second screen is present (the Thor). Per system, not
+    /// per emulator, so switching the emulator picker keeps it; applied to every saved profile in
+    /// <see cref="ConfigurationFrom"/>. Only surfaced by the Android couch settings; ignored elsewhere.
+    /// </summary>
+    [ObservableProperty]
+    public partial GameLaunchScreen LaunchScreen { get; set; }
+
+    /// <summary>The launch-screen options and their labels, in picker order (couch settings, Android).</summary>
+    public static IReadOnlyList<GameLaunchScreen> LaunchScreenOrder { get; } =
+        [GameLaunchScreen.Ask, GameLaunchScreen.BuiltIn, GameLaunchScreen.External];
+
+    public static string LaunchScreenLabel(GameLaunchScreen screen) => screen switch
+    {
+        GameLaunchScreen.BuiltIn => "Built-in screen",
+        GameLaunchScreen.External => "External screen",
+        _ => "Ask each time",
+    };
+
+    /// <summary>
     /// The complete emulator/core selection. Changing the underlying emulator swaps editable drafts;
     /// changing only a RetroArch core keeps the same executable/argument draft.
     /// </summary>
@@ -276,6 +295,10 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         RefreshAvailableCores();
         IsExpanded = isExpanded;
         RefreshLibraryFolders(initialLibraryFolders);
+
+        // Per-system, so it is seeded from the active profile (whichever emulator was current) and kept
+        // across picker changes. A brand-new system with no stored config reads as Ask.
+        LaunchScreen = profiles?.Active?.LaunchScreen ?? configuration?.LaunchScreen ?? GameLaunchScreen.Ask;
     }
 
     private static ProfileDraft DraftFor(
@@ -796,6 +819,9 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
             EmulatorId = emulatorId,
             EmulatorInstallationId = draft.InstallationId,
             CorePath = string.IsNullOrWhiteSpace(draft.CorePath) ? null : draft.CorePath.Trim(),
+            // Per-system: stamped onto every profile so the preference is the same whichever emulator is
+            // active, and reading it back through the active-selection Get() always agrees.
+            LaunchScreen = LaunchScreen,
         };
     }
 

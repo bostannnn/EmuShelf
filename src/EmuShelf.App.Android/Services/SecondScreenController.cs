@@ -12,6 +12,7 @@ using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
 using EmuShelf.Core.SecondScreen;
@@ -25,7 +26,8 @@ namespace EmuShelf.App.Android.Services;
 /// launches them on Screen-2, and keeps the process alive while a game owns the main panel. Only dock
 /// mutation and running-vs-focused target selection cross into Core.
 /// </summary>
-internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.IDisplayListener, IDisposable
+internal sealed class SecondScreenController
+    : Java.Lang.Object, DisplayManager.IDisplayListener, IExternalDisplayProbe, ISecondScreenLaunchCoordinator, IDisposable
 {
     private static readonly TimeSpan DetailRefreshAge = TimeSpan.FromMinutes(5);
 
@@ -63,6 +65,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
     // Set while a dock-launched app owns Screen-2. The companion Presentation is hidden for its duration
     // (see LaunchOnSecondScreen) and re-shown when EmuShelf next returns to the foreground.
     private bool _appLaunchedOnSecondScreen;
+    // Set while a *game* owns Screen-2 (launched there from the library). The companion swaps onto the
+    // built-in panel for its duration and swaps back on return (see GameStarted / ReturnedToBrowse).
+    private bool _gameOnSecondScreen;
 
     public SecondScreenController(
         ISecondScreenDockStore dockStore,
@@ -128,7 +133,18 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
         });
     }
 
-    internal void GameStarted(Game game, string title)
+    // The display id of the second screen we own, or null when the companion is not attached (no second
+    // screen, or another app owns the presentation display). This is the target a game-on-external launch
+    // aims at, so gating on our own presentation is deliberate: if we can't put the companion there, we
+    // shouldn't send a game there either.
+    public int? ExternalDisplayId => _presentation?.Display?.DisplayId;
+
+    public bool HasExternalDisplay => _presentation?.Display is not null;
+
+    void ISecondScreenLaunchCoordinator.GameStarted(Game game, string title, GameLaunchScreen screen) =>
+        GameStarted(game, title, screen);
+
+    internal void GameStarted(Game game, string title, GameLaunchScreen screen = GameLaunchScreen.BuiltIn)
     {
         // All companion state lives on the main thread. GameStarted runs on the launch continuation,
         // which is not guaranteed to be the main thread, so marshal the whole transition onto it so
@@ -140,6 +156,11 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
+            // The game took Screen-2: hand the companion's view model to the built-in panel (MainView hosts
+            // it as an overlay) and hide the Presentation so the game is visible underneath. The spotlight
+            // update below then renders on the built-in panel through the same model.
+            if (screen == GameLaunchScreen.External)
+                SwapCompanionToMainScreen();
             if (_presentation is { } presentation)
             {
                 ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
@@ -147,6 +168,30 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             }
             StartKeepAliveIfNeeded();
         });
+    }
+
+    // Moves the companion onto the built-in screen for the duration of a game on Screen-2. The Presentation
+    // keeps its model (so its bitmaps and state survive); MainView renders a second view bound to the same
+    // model. Only one is visible at a time — the Presentation is hidden here and re-shown on return.
+    private void SwapCompanionToMainScreen()
+    {
+        if (_gameOnSecondScreen || _presentation is not { } presentation || _viewModel is null)
+            return;
+        _gameOnSecondScreen = true;
+        _viewModel.MainScreenCompanion = presentation.Model;
+        presentation.Hide();
+        _logger.Information("Second-screen: game took Screen-2; companion moved to the built-in panel.");
+    }
+
+    private void RestoreCompanionToSecondScreen()
+    {
+        if (!_gameOnSecondScreen)
+            return;
+        _gameOnSecondScreen = false;
+        if (_viewModel is not null)
+            _viewModel.MainScreenCompanion = null;
+        _presentation?.Show();
+        _logger.Information("Second-screen: game left Screen-2; companion restored to the second screen.");
     }
 
     internal void ReturnedToBrowse()
@@ -158,6 +203,9 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
+            // If a game had taken Screen-2, swap the companion back before touching its overlay/spotlight,
+            // so the restored surface renders on the second screen it now owns again.
+            RestoreCompanionToSecondScreen();
             if (_presentation is { } presentation)
             {
                 ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
@@ -974,6 +1022,14 @@ internal sealed class SecondScreenController : Java.Lang.Object, DisplayManager.
             return;
         _presentation = null;
         StopKeepAlive();
+        // The second screen is going away. If a game had swapped the companion onto the built-in panel,
+        // drop that overlay — its model belongs to the presentation we are tearing down.
+        if (_gameOnSecondScreen)
+        {
+            _gameOnSecondScreen = false;
+            if (_viewModel is not null)
+                _viewModel.MainScreenCompanion = null;
+        }
         // The second screen is going away; if it was hosting the keyboard, hand it back to the main-screen
         // strip so text entry does not vanish mid-type.
         if (_viewModel is { GamepadKeyboard: not null } viewModel)

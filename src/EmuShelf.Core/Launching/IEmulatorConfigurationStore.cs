@@ -64,6 +64,18 @@ public interface IEmulatorConfigurationStore
     {
     }
 
+    /// <summary>
+    /// Pins a system's <see cref="EmulatorConfiguration.LaunchScreen"/> without touching its active
+    /// emulator selection or any other field. Updates every stored profile for the system so the choice
+    /// is read back whichever emulator is active; when the system has no stored profile yet it seeds a
+    /// minimal one carrying only the preference. Unlike <see cref="Save"/>, it never (re)pins the active
+    /// emulator — so remembering a screen for a never-configured system can't corrupt which emulator
+    /// launches. The default is a no-op for single-emulator test doubles.
+    /// </summary>
+    void SetLaunchScreen(string systemId, GameLaunchScreen screen)
+    {
+    }
+
     void Save(EmulatorConfiguration configuration);
 
     void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations);

@@ -42,7 +42,8 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                configurations.LaunchArguments,
                configurations.EmulatorId,
                configurations.EmulatorInstallationId,
-               configurations.CorePath
+               configurations.CorePath,
+               configurations.LaunchScreen
         FROM EmulatorConfigs AS configurations
         LEFT JOIN EmulatorInstallations AS installations
             ON installations.InstallationId = configurations.EmulatorInstallationId
@@ -201,7 +202,48 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             CorePath = reader.IsDBNull(6)
                 ? null
                 : _pathResolver.ToAbsolutePath(reader.GetString(6)),
+            // An out-of-range persisted value (a downgrade, a hand-edited db) reads back as the safe
+            // default rather than an invalid enum, so it never launches on a screen that isn't there.
+            LaunchScreen = reader.IsDBNull(7)
+                ? GameLaunchScreen.Ask
+                : reader.GetInt32(7) switch
+                {
+                    (int)GameLaunchScreen.BuiltIn => GameLaunchScreen.BuiltIn,
+                    (int)GameLaunchScreen.External => GameLaunchScreen.External,
+                    _ => GameLaunchScreen.Ask,
+                },
         };
+    }
+
+    public void SetLaunchScreen(string systemId, GameLaunchScreen screen)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(systemId);
+        using var connection = _database.CreateConnection();
+        using var update = connection.CreateCommand();
+        // Update every stored profile for the system so the preference is read back regardless of which
+        // emulator is active. Deliberately touches only LaunchScreen — never SystemEmulatorSelection — so
+        // pinning a screen can't change which emulator launches.
+        update.CommandText =
+            "UPDATE EmulatorConfigs SET LaunchScreen = $screen WHERE SystemId = $systemId;";
+        update.Parameters.AddWithValue("$screen", (int)screen);
+        update.Parameters.AddWithValue("$systemId", systemId);
+        if (update.ExecuteNonQuery() > 0)
+            return;
+
+        // No profile is stored yet (a system launchable from the maintained-first default without ever
+        // being configured). Seed a minimal row carrying only the preference. EmulatorId is the system id
+        // — a sentinel, not a real emulator — but no selection points at it, so Get reads it back via the
+        // COALESCE fallback and a later Settings save writes the preference onto the real emulator's row.
+        using var insert = connection.CreateCommand();
+        insert.CommandText =
+            """
+            INSERT INTO EmulatorConfigs (SystemId, EmulatorId, EmulatorInstallationId, LaunchScreen)
+            VALUES ($systemId, $systemId, $installationId, $screen);
+            """;
+        insert.Parameters.AddWithValue("$systemId", systemId);
+        insert.Parameters.AddWithValue("$installationId", systemId + "-" + systemId);
+        insert.Parameters.AddWithValue("$screen", (int)screen);
+        insert.ExecuteNonQuery();
     }
 
     public void Save(EmulatorConfiguration configuration) => SaveAll([configuration]);
@@ -257,15 +299,16 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 """
                 INSERT INTO EmulatorConfigs (
                     SystemId, ExecutablePath, LaunchArguments, EmulatorId,
-                    EmulatorInstallationId, CorePath)
+                    EmulatorInstallationId, CorePath, LaunchScreen)
                 VALUES (
                     $systemId, $executablePath, $launchArguments, $emulatorId,
-                    $installationId, $corePath)
+                    $installationId, $corePath, $launchScreen)
                 ON CONFLICT(SystemId, EmulatorId) DO UPDATE SET
                     ExecutablePath = excluded.ExecutablePath,
                     LaunchArguments = excluded.LaunchArguments,
                     EmulatorInstallationId = excluded.EmulatorInstallationId,
-                    CorePath = excluded.CorePath;
+                    CorePath = excluded.CorePath,
+                    LaunchScreen = excluded.LaunchScreen;
                 """;
             var systemId = command.Parameters.Add("$systemId", SqliteType.Text);
             var executablePath = command.Parameters.Add("$executablePath", SqliteType.Text);
@@ -273,6 +316,7 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
             var emulatorId = command.Parameters.Add("$emulatorId", SqliteType.Text);
             var installationId = command.Parameters.Add("$installationId", SqliteType.Text);
             var corePath = command.Parameters.Add("$corePath", SqliteType.Text);
+            var launchScreen = command.Parameters.Add("$launchScreen", SqliteType.Integer);
 
             foreach (var configuration in normalized)
             {
@@ -288,6 +332,7 @@ public sealed class SqliteEmulatorConfigurationStore : IEmulatorConfigurationSto
                 corePath.Value = string.IsNullOrWhiteSpace(configuration.CorePath)
                     ? DBNull.Value
                     : _pathResolver.ToStorablePath(configuration.CorePath);
+                launchScreen.Value = (int)configuration.LaunchScreen;
                 command.ExecuteNonQuery();
             }
         }

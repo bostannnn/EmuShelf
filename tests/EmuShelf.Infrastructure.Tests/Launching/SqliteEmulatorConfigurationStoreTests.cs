@@ -36,6 +36,86 @@ public class SqliteEmulatorConfigurationStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void Save_LaunchScreen_RoundTrips()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        store.Save(new EmulatorConfiguration("playstation2", "/usr/bin/pcsx2", "{GamePath}")
+        {
+            EmulatorId = "pcsx2",
+            EmulatorInstallationId = "pcsx2-direct",
+            LaunchScreen = GameLaunchScreen.External,
+        });
+
+        Assert.Equal(GameLaunchScreen.External, store.Get("playstation2")!.LaunchScreen);
+    }
+
+    [Fact]
+    public void SetLaunchScreen_UpdatesActiveProfile_WithoutRepinningEmulatorSelection()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        store.Save(new EmulatorConfiguration("playstation2", "/usr/bin/pcsx2", "{GamePath}")
+        {
+            EmulatorId = "pcsx2",
+            EmulatorInstallationId = "pcsx2-direct",
+        });
+
+        store.SetLaunchScreen("playstation2", GameLaunchScreen.External);
+
+        var loaded = store.Get("playstation2")!;
+        Assert.Equal(GameLaunchScreen.External, loaded.LaunchScreen);
+        // The real emulator selection is untouched (not clobbered to the system id), and the rest of the
+        // config round-trips unchanged.
+        Assert.Equal("pcsx2", loaded.EmulatorId);
+        Assert.Equal("pcsx2", store.GetActiveEmulatorId("playstation2"));
+    }
+
+    [Fact]
+    public void SetLaunchScreen_UnconfiguredSystem_PersistsWithoutPinningSelection()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        // A system launchable from the maintained-first default that was never configured has no row and
+        // no selection. The preference is still stored, and no active-emulator selection is invented.
+        store.SetLaunchScreen("playstation", GameLaunchScreen.External);
+
+        Assert.Equal(GameLaunchScreen.External, store.Get("playstation")!.LaunchScreen);
+        Assert.Null(store.GetActiveEmulatorId("playstation"));
+    }
+
+    [Fact]
+    public void Get_LaunchScreenDefaultsToAsk_WhenNeverSet()
+    {
+        var paths = AppPaths;
+        paths.EnsureDirectoriesExist();
+        var database = new LibraryDatabase(paths);
+        database.Initialize();
+        var store = new SqliteEmulatorConfigurationStore(database, new RelativePathResolver(paths));
+
+        // A config saved with no explicit screen (the migration default) reads back as Ask.
+        store.Save(new EmulatorConfiguration("playstation2", "/usr/bin/pcsx2", "{GamePath}")
+        {
+            EmulatorId = "pcsx2",
+            EmulatorInstallationId = "pcsx2-direct",
+        });
+
+        Assert.Equal(GameLaunchScreen.Ask, store.Get("playstation2")!.LaunchScreen);
+    }
+
+    [Fact]
     public void Save_BranchPinnedFlatpakTarget_RoundTripsTheBranch()
     {
         var paths = AppPaths;

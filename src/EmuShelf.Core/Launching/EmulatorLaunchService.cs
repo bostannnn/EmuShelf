@@ -36,6 +36,9 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
         Game game,
         string? displayName = null,
         Func<CancellationToken, Task>? beforeStart = null,
+        // Ignored on desktop: the window manager, not EmuShelf, decides which monitor an emulator opens
+        // on. Present only to satisfy the shared contract for the Android head, which acts on it.
+        GameLaunchScreen targetScreen = GameLaunchScreen.BuiltIn,
         CancellationToken cancellationToken = default)
     {
         // The name shown to the user in the launch status. The App passes the normalized scraped

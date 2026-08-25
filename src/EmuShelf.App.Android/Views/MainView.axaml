@@ -18,5 +18,23 @@
       gamepad buttons arrive as Activity key events that Avalonia's own KeyDown does not surface. Full
       native analog-stick reading and IME are the rest of Milestone C.
     -->
-    <views:GamepadShellView />
+    <Panel>
+        <views:GamepadShellView />
+
+        <!--
+          While a game runs on the external screen, the second-screen companion swaps onto this built-in
+          panel (SecondScreenController.SwapCompanionToMainScreen sets MainScreenCompanion). It is a
+          full-bleed overlay over the library so the player looks down at the running game's spotlight and
+          achievements while the game itself is on Screen-2. Hidden — and null — otherwise, so it never
+          shows during normal browsing or when the game is on the built-in screen.
+        -->
+        <ContentControl Content="{Binding MainScreenCompanion}"
+                        IsVisible="{Binding IsCompanionOnMainScreen}">
+            <ContentControl.ContentTemplate>
+                <DataTemplate x:DataType="vm:SecondScreenViewModel">
+                    <views:SecondScreenView />
+                </DataTemplate>
+            </ContentControl.ContentTemplate>
+        </ContentControl>
+    </Panel>
 </UserControl>
