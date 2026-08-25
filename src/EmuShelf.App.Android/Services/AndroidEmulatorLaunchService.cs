@@ -31,7 +31,6 @@ internal sealed class AndroidEmulatorLaunchService(
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
     IAppLogger logger,
-    IAndroidReadGrantBroker grantBroker,
     ISecondScreenLaunchCoordinator? secondScreen = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
@@ -73,13 +72,13 @@ internal sealed class AndroidEmulatorLaunchService(
             return new GameLaunchResult(
                 false, $"Cannot launch {title}: {profile.DisplayName} is not installed.");
 
-        // Make EmuShelf hold its own SAF grant covering this game before firing the intent, so the launcher
-        // can delegate the read (FLAG_GRANT_READ_URI_PERMISSION) to the emulator. Without this, an emulator
-        // that does not read through its own persisted roms/<system> grant (Azahar) falls back to prompting
-        // the user for media/storage access. One-time per library folder; a no-op once the grant is held, and
-        // non-blocking — if the user declines, the launch still proceeds with today's behaviour. RetroArch's
-        // plain-path launch has no content URI, so this is a no-op there.
-        await grantBroker.EnsureReadGrantAsync(resolution.Intent!.RomContentUri, cancellationToken);
+        // No launch-time folder pick. Every Android emulator EmuShelf targets reads the ROM through its own
+        // persisted roms/<system> SAF grant (the folder the user granted it during that emulator's setup) —
+        // confirmed on the Thor, where cancelling the old prompt still launched and read every emulator,
+        // Azahar included — and this is exactly how every other frontend works (Cocoon, NeoStation hand the
+        // SAF content:// URI and let the emulator read it via its own grant; none prompt at launch). EmuShelf's
+        // earlier delegated-grant broker was built on the false premise that Azahar needed EmuShelf to hold and
+        // pass a grant; it does not, so the prompt was pure friction and has been removed. See DECISIONS 2026-08-26.
 
         // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
         // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.
