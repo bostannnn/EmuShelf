@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Launching.Android;
 using EmuShelf.Core.Library;
 using EmuShelf.Integrations.Emulators.Android;
 
@@ -18,7 +19,7 @@ namespace EmuShelf.App.Android.Services;
 ///
 /// Fire-and-forget by design: there is no child process to await, so it returns as soon as the emulator is
 /// started (<see cref="GameLaunchResult.ProcessExited"/> is false, so this method itself accrues no play time
-/// and runs no inline post-play sync). The pre-launch <paramref name="beforeStart"/> hook still runs, so a
+/// and runs no inline post-play sync). The pre-launch <c>beforeStart</c> hook still runs, so a
 /// cloud-save <em>pull</em> happens before the emulator reads the save. Post-play work is deferred, not
 /// skipped: a durable <see cref="PendingPlaySession"/> is recorded here, and return detection (foreground
 /// return, or the next startup if EmuShelf was killed) completes play-time accrual and the push-on-return
@@ -30,6 +31,7 @@ internal sealed class AndroidEmulatorLaunchService(
     IPendingPlaySessionStore pendingSessions,
     IGameLibrary library,
     IAppLogger logger,
+    IAndroidReadGrantBroker grantBroker,
     ISecondScreenLaunchCoordinator? secondScreen = null) : IEmulatorLaunchService
 {
     public async Task<GameLaunchResult> LaunchAsync(
@@ -70,6 +72,14 @@ internal sealed class AndroidEmulatorLaunchService(
         if (!launcher.IsInstalled(profile.PackageName))
             return new GameLaunchResult(
                 false, $"Cannot launch {title}: {profile.DisplayName} is not installed.");
+
+        // Make EmuShelf hold its own SAF grant covering this game before firing the intent, so the launcher
+        // can delegate the read (FLAG_GRANT_READ_URI_PERMISSION) to the emulator. Without this, an emulator
+        // that does not read through its own persisted roms/<system> grant (Azahar) falls back to prompting
+        // the user for media/storage access. One-time per library folder; a no-op once the grant is held, and
+        // non-blocking — if the user declines, the launch still proceeds with today's behaviour. RetroArch's
+        // plain-path launch has no content URI, so this is a no-op there.
+        await grantBroker.EnsureReadGrantAsync(resolution.Intent!.RomContentUri, cancellationToken);
 
         // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
         // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.

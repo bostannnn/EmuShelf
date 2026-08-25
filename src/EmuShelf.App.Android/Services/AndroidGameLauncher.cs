@@ -61,13 +61,15 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
             return false;
         }
 
-        // FLAG_GRANT_READ_URI_PERMISSION only grants the intent's data URI, and Android rejects the whole
-        // startActivity with a SecurityException if we ask to pass a grant for a URI we do not ourselves
-        // hold. Under the shipped all-files model the ROM URI is synthesized from a MANAGE_EXTERNAL_STORAGE
-        // path (never obtained via SAF), so we hold no grantable permission — attach the flag only when a
-        // CheckUriPermission proves we do. Dropping it is safe: every scoped-storage emulator here reads
-        // through its own persisted roms/<system> tree grant, so it needs no grant from us.
-        var withGrant = request.GrantReadUriPermission && CanGrantDataUri(ctx, request.DataUri);
+        // FLAG_GRANT_READ_URI_PERMISSION grants the intent's data URI (and its ClipData), and Android rejects
+        // the whole startActivity with a SecurityException if we ask to pass a grant for a URI we do not
+        // ourselves hold. Historically the ROM URI was synthesized from a MANAGE_EXTERNAL_STORAGE path (never
+        // obtained via SAF), so we held no grantable permission and the flag was always dropped — which made
+        // emulators that do not read through their own persisted roms/<system> tree grant (Azahar) fall back
+        // to prompting the user for media/storage access. Now the launch service acquires EmuShelf's own
+        // persisted SAF grant to the library folder first (IAndroidReadGrantBroker), so this CheckUriPermission
+        // passes and we delegate the read — removing the dependency on each emulator's own grant.
+        var withGrant = request.GrantReadUriPermission && CanGrantUri(ctx, request.RomContentUri);
 
         if (TryStart(ctx, request, withGrant, launchDisplayId))
             return true;
@@ -80,15 +82,16 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         return false;
     }
 
-    // True only when EmuShelf itself holds a read grant for the data URI, so passing it on will not be
-    // rejected. False for a synthesized all-files URI (no SAF grant) or when there is no data URI to grant.
-    private static bool CanGrantDataUri(Context ctx, string? dataUri)
+    // True only when EmuShelf itself holds a read grant for the ROM URI, so passing it on will not be
+    // rejected. False when EmuShelf holds no SAF grant covering it, or when there is no content URI to grant
+    // (RetroArch's plain path).
+    private static bool CanGrantUri(Context ctx, string? romContentUri)
     {
-        if (string.IsNullOrEmpty(dataUri))
+        if (string.IsNullOrEmpty(romContentUri))
             return false;
 
         return ctx.CheckUriPermission(
-            global::Android.Net.Uri.Parse(dataUri),
+            global::Android.Net.Uri.Parse(romContentUri),
             global::Android.OS.Process.MyPid(),
             global::Android.OS.Process.MyUid(),
             ActivityFlags.GrantReadUriPermission) == global::Android.Content.PM.Permission.Granted;
@@ -112,7 +115,19 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
             intent.PutExtra(key, value);
 
         if (withGrant)
+        {
             intent.AddFlags(ActivityFlags.GrantReadUriPermission);
+
+            // A read grant follows the intent's data URI and its ClipData, never an arbitrary string extra.
+            // For the emulators that take the ROM as an extra (Dolphin's AutoStartFile, DuckStation's
+            // bootPath, WatermelonDS's uri) the URI is not in the data slot, so attach it as ClipData too;
+            // otherwise the flag would grant nothing and the emulator would be back to needing its own grant.
+            if (request.RomUriRidesInExtra)
+            {
+                intent.ClipData = ClipData.NewRawUri(
+                    "rom", global::Android.Net.Uri.Parse(request.RomContentUri));
+            }
+        }
 
         // The emulator runs as its own task and becomes the top-resumed activity; NEW_TASK is required
         // because we may be starting it from a non-Activity context, and it is what makes the eventual
