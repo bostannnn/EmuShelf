@@ -1399,6 +1399,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
             if (_androidEmulatorChoices.TryGetValue(row.SystemId, out var choices) && choices.Count > 0)
                 yield return AndroidEmulatorChoiceRow(row);
+            // Second-screen launch preference. Only a device with a second screen (the Android handheld)
+            // can honour it, so it is Android-only; this is where a pinned "always" choice — or the launch
+            // prompt itself — is changed or reset.
+            if (OperatingSystem.IsAndroid())
+                yield return LaunchScreenChoiceRow(row);
             // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
             // the sync always dead-ends — hide the row on the handheld (the import overlay already
             // filters playstation3 the same way).
@@ -1459,6 +1464,25 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 }
             }
         }
+    }
+
+    private GamepadSettingsRowSpec LaunchScreenChoiceRow(EmulatorSettingsRowViewModel row)
+    {
+        var labels = EmulatorSettingsRowViewModel.LaunchScreenOrder
+            .Select(EmulatorSettingsRowViewModel.LaunchScreenLabel)
+            .ToList();
+        return ChoiceRow(
+            $"emulators.{row.SystemId}.launch-screen",
+            "Launch screen",
+            "Which screen this platform's games open on when a second screen is connected. “Ask each time” shows a chooser at launch; pick a screen here to skip it, or set it back to reset.",
+            EmulatorSettingsRowViewModel.LaunchScreenLabel(row.LaunchScreen),
+            labels,
+            selected => row.LaunchScreen = EmulatorSettingsRowViewModel.LaunchScreenOrder
+                .First(screen => string.Equals(
+                    EmulatorSettingsRowViewModel.LaunchScreenLabel(screen), selected, StringComparison.Ordinal)),
+            isGrouped: true,
+            systemId: row.SystemId,
+            excludeFromParity: true);
     }
 
     private GamepadSettingsRowSpec AndroidEmulatorChoiceRow(EmulatorSettingsRowViewModel row)

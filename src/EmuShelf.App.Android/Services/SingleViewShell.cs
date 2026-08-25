@@ -81,7 +81,7 @@ public sealed class SingleViewShell : IPlatformShell
             _pendingSessions,
             boot.Library,
             boot.Logger,
-            _secondScreen.GameStarted);
+            _secondScreen);
     }
 
     private readonly IPendingPlaySessionStore _pendingSessions;
@@ -94,6 +94,9 @@ public sealed class SingleViewShell : IPlatformShell
     public IApplicationLifetimeService Lifetime { get; }
     public IDialogService Dialog { get; }
     public IEmulatorLaunchService LaunchService { get; }
+    // The second-screen controller is the external-display probe: it knows whether the companion display
+    // is attached and gates the launch-screen chooser/preference in the shared UI.
+    public IExternalDisplayProbe? ExternalDisplays => _secondScreen;
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {

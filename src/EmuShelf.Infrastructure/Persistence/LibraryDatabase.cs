@@ -11,7 +11,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 19;
+    private const int CurrentSchemaVersion = 20;
 
     private readonly IAppPaths _appPaths;
 
@@ -163,7 +163,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 19)
+        {
             ApplyMigrationV19(connection);
+            version = 19;
+        }
+
+        if (version < 20)
+            ApplyMigrationV20(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -887,6 +893,42 @@ public sealed class LibraryDatabase
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "UPDATE SchemaVersion SET Version = 19;";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV20(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+
+        // Per-system launch-screen preference for multi-display devices (the Thor): 0 = Ask (prompt once,
+        // the default), 1 = built-in, 2 = external. Every existing row reads as Ask with no backfill, so
+        // nothing changes for single-screen users. A database migrated from below v16 may not have
+        // EmulatorConfigs yet; heal it before the ALTER, matching the v8/v11/v16 IF NOT EXISTS pattern.
+        using (var create = connection.CreateCommand())
+        {
+            create.Transaction = transaction;
+            create.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS EmulatorConfigs (
+                    SystemId TEXT NOT NULL,
+                    EmulatorId TEXT NOT NULL,
+                    ExecutablePath TEXT NULL,
+                    LaunchArguments TEXT NULL,
+                    EmulatorInstallationId TEXT NULL,
+                    CorePath TEXT NULL,
+                    PRIMARY KEY (SystemId, EmulatorId)
+                );
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        AddTableColumnIfMissing(
+            connection, transaction, "EmulatorConfigs", "LaunchScreen", "INTEGER NOT NULL DEFAULT 0");
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE SchemaVersion SET Version = 20;";
         command.ExecuteNonQuery();
         transaction.Commit();
     }

@@ -457,7 +457,8 @@ public partial class App : Application
             gameDetails: Bootstrapper.GameDetailsStore,
             appPaths: Bootstrapper.Paths,
             updates: updateCoordinator,
-            fileReveal: new FileRevealService());
+            fileReveal: new FileRevealService(),
+            externalDisplays: shell.ExternalDisplays);
 
         // Native controller input drives the same Gamepad-mode routing as Steam Input's keyboard
         // mapping. It polls only in Gamepad mode and degrades to no-op if no controller is available,

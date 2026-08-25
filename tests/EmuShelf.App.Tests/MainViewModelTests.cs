@@ -90,7 +90,8 @@ public class MainViewModelTests : IDisposable
         IGameArtworkSearchProvider? artworkSearch = null,
         IRemoteArtworkDownloader? artworkDownloader = null,
         TexturePackCoordinator? texturePacks = null,
-        IFileRevealService? fileReveal = null)
+        IFileRevealService? fileReveal = null,
+        IExternalDisplayProbe? externalDisplays = null)
     {
         importRules ??= new FileImportRules();
         return new(
@@ -125,7 +126,8 @@ public class MainViewModelTests : IDisposable
             settingsService: settingsService,
             artworkSearch: artworkSearch,
             artworkDownloader: artworkDownloader,
-            fileReveal: fileReveal);
+            fileReveal: fileReveal,
+            externalDisplays: externalDisplays);
     }
 
     private string MakeRomsFolder()
@@ -2750,6 +2752,137 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_NoExternalProbe_LaunchesOnBuiltInWithoutPrompt()
+    {
+        var (vm, launcher) = await AddAlphaAsync(externalDisplays: null);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Equal("Alpha", launcher.Game?.Title);
+        Assert.Equal(GameLaunchScreen.BuiltIn, launcher.TargetScreen);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_ExternalPresentButNoPreference_OpensChooserWithoutLaunching()
+    {
+        var (vm, launcher) = await AddAlphaAsync(externalDisplays: new StubExternalDisplayProbe(true));
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        // The one-time chooser opens instead of launching; nothing has started yet.
+        Assert.Equal(GamepadOverlayKind.LaunchScreen, vm.GamepadOverlay);
+        Assert.Null(launcher.Game);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(4, vm.GamepadOverlayOptions.Count);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_ExternalDisplayMissing_HonoursNoPromptEvenIfPinnedExternal()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.External);
+        var (vm, launcher) = await AddAlphaAsync(
+            externalDisplays: new StubExternalDisplayProbe(false),
+            configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        // Pinned to External, but no screen is attached: it launches on the built-in panel, no chooser.
+        Assert.Equal("Alpha", launcher.Game?.Title);
+        Assert.Equal(GameLaunchScreen.BuiltIn, launcher.TargetScreen);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_PinnedExternalWithDisplay_LaunchesExternalWithoutPrompt()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.External);
+        var (vm, launcher) = await AddAlphaAsync(
+            externalDisplays: new StubExternalDisplayProbe(true),
+            configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        Assert.Equal(GameLaunchScreen.External, launcher.TargetScreen);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_PlayOnceExternal_LaunchesExternalAndDoesNotPersist()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.Ask);
+        var (vm, launcher) = await AddAlphaAsync(
+            externalDisplays: new StubExternalDisplayProbe(true),
+            configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        // "Play on the external screen" is the second option (index 1).
+        await ActivateOverlayOptionAsync(vm, 1);
+
+        Assert.Equal(GameLaunchScreen.External, launcher.TargetScreen);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        // "Play once" must not pin the preference.
+        Assert.Equal(GameLaunchScreen.Ask, configs.Saved(Ps1.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_AlwaysExternal_PersistsPreferenceAndLaunches()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.Ask);
+        var (vm, launcher) = await AddAlphaAsync(
+            externalDisplays: new StubExternalDisplayProbe(true),
+            configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        // "Always use the external screen for …" is the fourth option (index 3).
+        await ActivateOverlayOptionAsync(vm, 3);
+
+        Assert.Equal(GameLaunchScreen.External, launcher.TargetScreen);
+        Assert.Equal(GameLaunchScreen.External, configs.Saved(Ps1.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_BackCancelsLaunch()
+    {
+        var (vm, launcher) = await AddAlphaAsync(externalDisplays: new StubExternalDisplayProbe(true));
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        Assert.Equal(GamepadOverlayKind.LaunchScreen, vm.GamepadOverlay);
+        vm.BackFromGamepadOverlayCommand.Execute(null);
+
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Null(launcher.Game);
+    }
+
+    private async Task<(MainViewModel Vm, RecordingLaunchService Launcher)> AddAlphaAsync(
+        IExternalDisplayProbe? externalDisplays,
+        IEmulatorConfigurationStore? configurations = null)
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var launcher = new RecordingLaunchService(new GameLaunchResult(true, "Alpha finished"));
+        var vm = CreateViewModel(
+            launchService: launcher,
+            emulatorConfigurations: configurations,
+            externalDisplays: externalDisplays,
+            // The screen chooser is a couch overlay, so the launch-screen flow only engages in gamepad mode
+            // (the Android head is always in it). Build these view models there so the chooser can open.
+            interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Gamepad));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        return (vm, launcher);
+    }
+
+    private static async Task ActivateOverlayOptionAsync(MainViewModel vm, int index)
+    {
+        var option = vm.GamepadOverlayOptions[index];
+        if (option.Command is IAsyncRelayCommand asyncCommand)
+            await asyncCommand.ExecuteAsync(null);
+        else
+            option.Command.Execute(null);
+    }
+
+    [AvaloniaFact]
     public async Task LaunchGame_UnavailableSingleDisc_ReportsContextAwareStatusNotDiscWording()
     {
         var folder = MakeRomsFolder();
@@ -4213,14 +4346,17 @@ public class MainViewModelTests : IDisposable
         Action? onLaunch = null) : IEmulatorLaunchService
     {
         public Game? Game { get; private set; }
+        public GameLaunchScreen TargetScreen { get; private set; }
 
         public Task<GameLaunchResult> LaunchAsync(
             Game game,
             string? displayName = null,
             Func<CancellationToken, Task>? beforeStart = null,
+            GameLaunchScreen targetScreen = GameLaunchScreen.BuiltIn,
             CancellationToken cancellationToken = default)
         {
             Game = game;
+            TargetScreen = targetScreen;
             return LaunchCoreAsync(beforeStart, cancellationToken);
         }
 
@@ -4232,6 +4368,47 @@ public class MainViewModelTests : IDisposable
                 await beforeStart(cancellationToken);
             onLaunch?.Invoke();
             return result;
+        }
+    }
+
+    private sealed class StubExternalDisplayProbe(bool hasExternalDisplay) : IExternalDisplayProbe
+    {
+        public bool HasExternalDisplay { get; } = hasExternalDisplay;
+    }
+
+    // A minimal per-system config store that only carries the launch-screen preference, so the launch
+    // flow can read a stored preference and assert what a "remember"/settings save persists.
+    private sealed class FakeLaunchScreenStore : IEmulatorConfigurationStore
+    {
+        private readonly Dictionary<string, EmulatorConfiguration> _configs = new(StringComparer.Ordinal);
+
+        public FakeLaunchScreenStore(string systemId, GameLaunchScreen initial) =>
+            _configs[systemId] = new EmulatorConfiguration(systemId, null, null)
+            {
+                EmulatorId = systemId,
+                LaunchScreen = initial,
+            };
+
+        public GameLaunchScreen Saved(string systemId) =>
+            _configs.TryGetValue(systemId, out var config) ? config.LaunchScreen : GameLaunchScreen.Ask;
+
+        public EmulatorConfiguration? Get(string systemId) =>
+            _configs.GetValueOrDefault(systemId);
+
+        public void SetLaunchScreen(string systemId, GameLaunchScreen screen)
+        {
+            var existing = _configs.GetValueOrDefault(systemId)
+                ?? new EmulatorConfiguration(systemId, null, null) { EmulatorId = systemId };
+            _configs[systemId] = existing with { LaunchScreen = screen };
+        }
+
+        public void Save(EmulatorConfiguration configuration) =>
+            _configs[configuration.SystemId] = configuration;
+
+        public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations)
+        {
+            foreach (var configuration in configurations)
+                Save(configuration);
         }
     }
 
@@ -4288,6 +4465,7 @@ public class MainViewModelTests : IDisposable
             Game game,
             string? displayName = null,
             Func<CancellationToken, Task>? beforeStart = null,
+            GameLaunchScreen targetScreen = GameLaunchScreen.BuiltIn,
             CancellationToken cancellationToken = default)
         {
             if (beforeStart is not null)

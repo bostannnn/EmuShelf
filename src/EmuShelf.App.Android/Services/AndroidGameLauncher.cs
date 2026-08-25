@@ -1,4 +1,5 @@
 using System;
+using Android.App;
 using Android.Content;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching.Android;
@@ -44,8 +45,12 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
     /// Fires <paramref name="request"/> at its emulator. Returns false (without throwing) when there is no
     /// context to start from or the target activity cannot be resolved — e.g. the emulator is not
     /// installed, which the caller should have caught with a package-visibility check first.
+    /// <paramref name="launchDisplayId"/>, when set, targets a specific physical display (the Thor's
+    /// second screen) via <c>ActivityOptions.setLaunchDisplayId</c>; null launches on the default display.
+    /// The target is a request Android forwards to the emulator — an app that forces its own display or
+    /// ignores the option still lands where it insists, which is why the caller verifies on-device.
     /// </summary>
-    public bool Launch(AndroidIntentRequest request)
+    public bool Launch(AndroidIntentRequest request, int? launchDisplayId = null)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -64,12 +69,12 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         // through its own persisted roms/<system> tree grant, so it needs no grant from us.
         var withGrant = request.GrantReadUriPermission && CanGrantDataUri(ctx, request.DataUri);
 
-        if (TryStart(ctx, request, withGrant))
+        if (TryStart(ctx, request, withGrant, launchDisplayId))
             return true;
 
         // Safety net: if the grant slipped through the CheckUriPermission gate and startActivity still
         // rejected it, retry once without the flag rather than reporting the game as unlaunchable.
-        if (withGrant && TryStart(ctx, request, withGrant: false))
+        if (withGrant && TryStart(ctx, request, withGrant: false, launchDisplayId))
             return true;
 
         return false;
@@ -89,7 +94,7 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
             ActivityFlags.GrantReadUriPermission) == global::Android.Content.PM.Permission.Granted;
     }
 
-    private bool TryStart(Context ctx, AndroidIntentRequest request, bool withGrant)
+    private bool TryStart(Context ctx, AndroidIntentRequest request, bool withGrant, int? launchDisplayId = null)
     {
         using var intent = new Intent();
         intent.SetComponent(new ComponentName(request.PackageName, request.ActivityName));
@@ -116,6 +121,21 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
 
         try
         {
+            // Target a specific display when asked and the platform supports it (setLaunchDisplayId is
+            // API 26+). MakeBasic can return null on some OEM builds; fall back to a plain start there so
+            // the launch still happens (on the default display) rather than failing.
+            if (launchDisplayId is { } displayId && OperatingSystem.IsAndroidVersionAtLeast(26))
+            {
+                using var options = ActivityOptions.MakeBasic();
+                if (options is not null)
+                {
+                    options.SetLaunchDisplayId(displayId);
+                    ctx.StartActivity(intent, options.ToBundle());
+                    logger.Information($"Launched {request.Component} on display {displayId}.");
+                    return true;
+                }
+            }
+
             ctx.StartActivity(intent);
             logger.Information($"Launched {request.Component}.");
             return true;
