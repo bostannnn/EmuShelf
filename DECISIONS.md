@@ -10955,45 +10955,28 @@ on `AndroidIntentRequest.RomContentUri` by the pure `AndroidIntentFactory` (test
 by a held grant is decided by the pure, tested `AndroidUriGrantCoverage`. This is **not** a duplicate of the
 all-files onboarding grant (`IStoragePermissionService`): that grant cannot be delegated to another app; only
 a SAF grant can. On-device verification on the Thor is still pending (built and desktop-suite-green here).
+## 2026-08-25 — The FileProvider ROM handoff was reverted (broke every SAF-native emulator on the Thor)
 
-## 2026-08-25 — Android ROM handoff via EmuShelf's own FileProvider (supersedes the SAF read-grant broker)
+An attempt to replace the 2026-08-24 SAF read-grant broker with a NeoStation-style FileProvider handoff
+(re-expose the ROM through EmuShelf's own `com.emushelf.app.romprovider` and `grantUriPermission` it to the
+emulator) was **built, merged to this branch, and reverted after on-device testing** (commit reverted in
+a735e9b). It broke launching for every emulator except RetroArch: Dolphin reported *"the specified file …
+does not exist"* and WatermelonDS *"Could not find ROM"* when handed
+`content://com.emushelf.app.romprovider/root/…`.
 
-**Supersedes the 2026-08-24 `IAndroidReadGrantBroker` decision.** That fix worked but paid for the delegated
-grant with a system folder picker at launch: because EmuShelf reads ROMs by real path under all-files and
-synthesizes a `content://com.android.externalstorage.documents` URI it holds no SAF grant for, it had nothing
-grantable to hand an emulator — so it acquired its *own* SAF grant via a one-time folder pick, then delegated
-that. On device the picker showed on **every** content-URI launch (DuckStation, Dolphin, …), not just Azahar,
-and because it is dismissable friction the user cancels it — which means it never persists and re-prompts
-forever. Only Azahar actually needed a delegated grant; everyone else already reads through their own
-`roms/<system>` grant, so the picker was pure noise.
+Root cause: EmuShelf's emulators (DuckStation, ARMSX2, Dolphin, PPSSPP, Azahar, WatermelonDS) are all
+**SAF-native** — they expect a real `DocumentsProvider` URI (`com.android.externalstorage.documents` tree
+URI) that they read through their **own** persisted `roms/<system>` grant, and they resolve it via
+`DocumentsContract`/`DocumentFile`. A **FileProvider URI is not a DocumentsProvider URI**, so their loaders
+reject it. NeoStation only FileProvider-wraps for emulators that take a plain content URI (its ".emu
+series"); it keeps the original SAF URI for SAF-native ones (its `keep_saf_uri` flag). EmuShelf's set has
+**no** ".emu-style" emulators, so FileProvider fits none of them and breaks six to chase the one (Azahar).
 
-Researched how NeoStation (full source, `misobadev/neostation-frontend`) does it: it **never** pickers at
-launch. Its `EmulatorLauncher.kt` re-exposes the ROM through NeoStation's *own* `FileProvider` and calls
-`context.grantUriPermission(emulatorPkg, uri, READ|WRITE)` — a synchronous, explicit grant on a URI it
-inherently owns, so it always succeeds. A FileProvider URI needs no SAF grant and no user prompt.
+Lesson: the picker complaint has a simpler answer — only Azahar ever needed a delegated grant; the other
+five already read via their own grant, so the broker's picker should simply be **scoped to Azahar** rather
+than replaced wholesale. That is the next attempt, and it must be validated on the Thor per emulator before
+merge, not just desktop-green. See [[android-rom-fileprovider-handoff]] recorded in agent memory.
 
-Adopted the same model (Option A):
-
-- New ROM FileProvider `com.emushelf.app.romprovider` (`<root-path>` map, so a ROM on the removable microSD
-  `/storage/XXXX-XXXX` is covered as well as internal storage), distinct from the update-installer provider.
-- `AndroidGameLauncher` mints a FileProvider `content://` URI for the game's real path, `grantUriPermission`s
-  it to the emulator package (synchronously — the intent flag alone races the first read), and attaches it as
-  `ClipData` so the grant follows the URI whether it rides in the data slot or a string extra.
-- **DuckStation exception**, mirroring NeoStation: an emulator that resolves a multi-file disc descriptor
-  (`.cue`/`.gdi`/`.m3u`) by opening the *relative* sibling names inside it cannot use a FileProvider URI (it
-  hides the base folder). Those get a real `file://` path in the extra (safe: a path in a string extra is not
-  subject to the file-URI-exposure check), plus the descriptor and its sibling tracks granted as FileProvider
-  URIs in `ClipData` as a content-read fallback. Marked by the new
-  `AndroidLaunchProfile.NeedsRealPathForMultiFile` (DuckStation only); the FileProvider-vs-real-path split is
-  the pure, tested `AndroidRomHandoffRules`.
-- Removed the `IAndroidReadGrantBroker`/`AndroidReadGrantBroker` and the launch-time folder pick entirely.
-  **No ROM folder is added to onboarding** — the FileProvider is EmuShelf's own, so nothing needs granting
-  beyond the all-files access onboarding already requests to read the ROM in the first place.
-
-Desktop suite green (1298 pass, incl. new `AndroidRomHandoffRulesTests`); Android head compiles clean.
-**On-device verification on the Thor is pending** and is the real test: Azahar (the original fix), DuckStation
-single-file (`.chd`/`.pbp`) *and* multi-disc (`.cue`/`.bin`, `.m3u`) via the real-path branch, Dolphin, and
-the PS2/PSP/DS single-file emulators — confirm each launches with no picker and reads its ROM and saves.
 ## 2026-08-25 — Second-screen "playing elsewhere" dim standby, and the game-on-external return signal
 
 Two coupled Android second-screen changes.
@@ -11058,3 +11041,20 @@ the built-in-screen return and the second-screen `ExternalGameReturned`. The set
 Android (the couch Settings → Emulators section), via `LibraryMaintenanceActions` get/set delegates the
 desktop head leaves null; on desktop the emulator is a child process that exits on its own, so the option is
 absent and has no effect.
+## 2026-08-25 — Azahar (3DS) launches need CLEAR_TASK + CLEAR_TOP
+
+Azahar games did nothing on the Thor — no error, no load. Root cause: Azahar is Citra's single
+`EmulationActivity`, and EmuShelf fired the VIEW intent with only `FLAG_ACTIVITY_NEW_TASK`. When Azahar is
+already in recents, NEW_TASK alone just re-foregrounds the existing instance without re-running `onCreate`,
+so the new ROM is never read. Confirmed against NeoStation's launch configs (`assets/systems/3ds.json`):
+its Azahar entry — and every Citra-family and standalone entry (Dolphin, PPSSPP, AetherSX2) — carries
+`--activity-clear-task --activity-clear-top`. The activity name EmuShelf already used
+(`org.citra.citra_emu.activities.EmulationActivity`) matches NeoStation exactly, so that was never the issue.
+
+Fix: a new `AndroidLaunchProfile.ClearTaskOnLaunch` (threaded to `AndroidIntentRequest.ClearTask`, applied by
+the head as `FLAG_ACTIVITY_CLEAR_TASK` + `FLAG_ACTIVITY_CLEAR_TOP`). Set **only on Azahar**, deliberately: the
+other five SAF emulators launch correctly today and were just broken by an over-broad change (the reverted
+FileProvider handoff), so this stays surgical. NeoStation applies the flags universally; EmuShelf can extend
+per-emulator if the same "relaunch does nothing" symptom appears elsewhere. Reading the ROM is separate: Azahar
+still needs read access to the game, so completing (not cancelling) the folder-grant prompt once — or Azahar
+holding its own roms/3ds grant — remains required. On-device Thor verification pending.
