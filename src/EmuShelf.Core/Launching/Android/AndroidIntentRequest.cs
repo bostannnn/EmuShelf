@@ -6,6 +6,7 @@ namespace EmuShelf.Core.Launching.Android;
 /// <c>net10.0</c> assembly, not behind an emulator). The Android head translates this one-to-one into a
 /// framework <c>Android.Content.Intent</c> — set the component, the action, the data <see cref="DataUri"/>,
 /// each extra, each category, and <c>FLAG_GRANT_READ_URI_PERMISSION</c> when <see cref="GrantReadUriPermission"/>.
+/// The head also adds <c>FLAG_ACTIVITY_CLEAR_TASK</c> + <c>FLAG_ACTIVITY_CLEAR_TOP</c> when <see cref="ClearTask"/>.
 /// </summary>
 public sealed record AndroidIntentRequest(
     string PackageName,
@@ -16,7 +17,8 @@ public sealed record AndroidIntentRequest(
     IReadOnlyDictionary<string, bool> BoolExtras,
     IReadOnlyList<string> Categories,
     bool GrantReadUriPermission,
-    string? RomContentUri = null)
+    string? RomContentUri = null,
+    bool ClearTask = false)
 {
     /// <summary>The explicit <c>package/activity</c> component this intent targets.</summary>
     public string Component => $"{PackageName}/{ActivityName}";

@@ -127,6 +127,7 @@ public static class AndroidIntentFactory
             // category is needed even for the action-carrying (VIEW) shapes.
             [],
             grantRead,
-            romContentUri);
+            romContentUri,
+            profile.ClearTaskOnLaunch);
     }
 }

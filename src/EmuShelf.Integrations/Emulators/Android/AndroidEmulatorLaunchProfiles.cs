@@ -27,9 +27,6 @@ public static class AndroidEmulatorLaunchProfiles
         Action: null,
         PayloadExtraName: "bootPath",
         BootOneShot: true,
-        // DuckStation reads a multi-disc .cue/.m3u and opens the sibling .bin tracks it names by relative
-        // path, so it needs a real filesystem path for those; a FileProvider URI would hide the base folder.
-        NeedsRealPathForMultiFile: true,
         Maintenance: AndroidEmulatorMaintenance.Frozen);
 
     /// <summary>PS2 — ARMSX2 (PCSX2 fork). VIEW + content URI as data; declares all-files access.</summary>
@@ -75,7 +72,11 @@ public static class AndroidEmulatorLaunchProfiles
         PackageName: "org.azahar_emu.azahar",
         ActivityName: "org.citra.citra_emu.activities.EmulationActivity",
         PayloadSlot: AndroidRomPayloadSlot.DataUri,
-        Action: AndroidIntentActions.View);
+        Action: AndroidIntentActions.View,
+        // Citra's single EmulationActivity re-foregrounds its existing task instead of loading the new ROM
+        // when launched again from recents (the "3DS game does nothing, no error" report). CLEAR_TASK +
+        // CLEAR_TOP force a fresh start — matching every Citra-family entry in NeoStation's launch configs.
+        ClearTaskOnLaunch: true);
 
     /// <summary>DS — WatermelonDS (melonDS fork; kept melonDS's package id). Custom action + <c>uri</c> extra.</summary>
     public static AndroidLaunchProfile WatermelonDs { get; } = new(
