@@ -110,26 +110,46 @@ internal sealed class SecondScreenController
             AttachActivity(activity);
     }
 
+    /// <summary>
+    /// Invoked when a game running on Screen-2 is detected as closed (via the accessibility watcher), so the
+    /// head can finish the deferred play session — the game-on-external mirror of the top-resumed return the
+    /// head uses when the game is on the built-in screen. Set by <c>SingleViewShell</c>.
+    /// </summary>
+    public Action? ExternalGameReturned { get; set; }
+
     // Fired by SecondScreenReturnWatcher (accessibility) on every window-state change, on any display.
     private void OnForegroundWindowChanged(string? package, string? className)
     {
-        // Only relevant while a dock app owns Screen-2 and the companion is hidden for it.
-        if (!_appLaunchedOnSecondScreen || className is null)
+        // Relevant only while EmuShelf has handed Screen-2 to something else: a dock app (companion hidden)
+        // or a library game launched onto the external screen (companion swapped to the built-in panel).
+        if (className is null || !(_appLaunchedOnSecondScreen || _gameOnSecondScreen))
             return;
 
-        // The stock secondary-display launcher returning to the front means the app we launched on Screen-2
-        // has been closed (backed out of). Re-show the companion over it immediately — NeoStation's instant
-        // dock-return. Its class is display-specific, so main-screen launcher events never match here.
+        // The stock secondary-display launcher returning to the front means whatever we put on Screen-2 has
+        // been closed (backed out of / exited). Its class is display-specific, so main-screen launcher events
+        // never match here.
         if (!className.Contains("secondarydisplay.SecondaryDisplayLauncher", StringComparison.Ordinal))
             return;
 
         RunOnMain(() =>
         {
-            if (!_appLaunchedOnSecondScreen)
-                return;
-            _appLaunchedOnSecondScreen = false;
-            _presentation?.Show();
-            _logger.Information("Second-screen: companion re-shown after a dock app closed on Screen-2.");
+            if (_appLaunchedOnSecondScreen)
+            {
+                // A dock app closed: re-show the companion over it immediately — NeoStation's instant return.
+                _appLaunchedOnSecondScreen = false;
+                _presentation?.Show();
+                _logger.Information("Second-screen: companion re-shown after a dock app closed on Screen-2.");
+            }
+            else if (_gameOnSecondScreen)
+            {
+                // A game on Screen-2 was closed. Return to browsing (swaps the companion back to Screen-2 and
+                // lifts the dim standby) and let the head finish the play session. This is the ONLY return
+                // signal for a game-on-external launch: unlike a game on the built-in screen, EmuShelf never
+                // lost the foreground, so the top-resumed edge cannot be used (see SingleViewShell).
+                _logger.Information("Second-screen: game closed on Screen-2; returning to browse.");
+                ReturnedToBrowse();
+                ExternalGameReturned?.Invoke();
+            }
         });
     }
 
@@ -140,6 +160,14 @@ internal sealed class SecondScreenController
     public int? ExternalDisplayId => _presentation?.Display?.DisplayId;
 
     public bool HasExternalDisplay => _presentation?.Display is not null;
+
+    // True while a game launched from the library owns Screen-2 and EmuShelf stays interactive on the
+    // built-in panel. The head gates its top-resumed "returned from a game" handling on this: with the game
+    // on the second screen, EmuShelf regaining the foreground (e.g. the user taps the built-in panel) does
+    // NOT mean the game ended — treating it as a return would re-show the companion over the still-running
+    // game and prematurely close out the play session (the "tap closes the game" bug). The real return is
+    // detected by the accessibility watcher (OnForegroundWindowChanged) instead.
+    public bool IsGameOnExternalScreen => _gameOnSecondScreen;
 
     void ISecondScreenLaunchCoordinator.GameStarted(Game game, string title, GameLaunchScreen screen) =>
         GameStarted(game, title, screen);
@@ -163,6 +191,10 @@ internal sealed class SecondScreenController
                 SwapCompanionToMainScreen();
             if (_presentation is { } presentation)
             {
+                // A game is now playing on the other screen: this idle surface drops into the dim standby
+                // (unless an overlay is/becomes open — IsStandby gates on that). Both surfaces bind this one
+                // model, so setting it here covers the Screen-2 presentation and the built-in companion alike.
+                presentation.Model.IsGameRunning = true;
                 ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
                 ScheduleSpotlightUpdate();
             }
@@ -208,6 +240,8 @@ internal sealed class SecondScreenController
             RestoreCompanionToSecondScreen();
             if (_presentation is { } presentation)
             {
+                // The game is gone: lift the dim standby back to the browse spotlight.
+                presentation.Model.IsGameRunning = false;
                 ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
                 ScheduleSpotlightUpdate();
             }

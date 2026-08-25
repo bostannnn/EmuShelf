@@ -35,6 +35,27 @@
       <Setter Property="BorderThickness" Value="3" />
     </Style>
 
+    <!-- ===================== Playing-elsewhere dim standby =====================
+         While a game runs on the other screen this idle surface sits under a near-black wash with the
+         running game's logo faintly visible — dark and easy on the panel (the Thor's Screen-2 is
+         burn-in-prone) rather than the full-brightness browse spotlight. Mounted always and driven by an
+         .on class (bound to IsStandby) so it dissolves in when a game starts and out when an overlay
+         (achievements / drawer) or the keyboard opens over it. Non-hit-test so it never eats a tap on the
+         dock bar below it. -->
+    <Style Selector="Border.ss-standby">
+      <Setter Property="Background" Value="#F2000000" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.35" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ss-standby.on">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
     <!-- ===================== Overlay scrim + floating sheet =====================
          The drawer and achievements overlays are floating rounded cards over a dim scrim, matching the
          couch shell's overlays instead of the old edge-to-edge opaque slab. Both layers stay mounted and
@@ -399,6 +420,28 @@
                     Foreground="{DynamicResource EmuAchievementBrush}" />
         </Button>
       </Grid>
+    </Border>
+
+    <!-- Dim standby wash for "a game is playing on the other screen" (see the style above). Spans BOTH rows
+         so the whole surface — spotlight and the dock bar below it — goes dark together, with the running
+         game's logo faintly visible. Non-hit-test, so the trophy/dock underneath stay tappable: tapping the
+         trophy opens achievements, which lifts the dim (IsStandby then false). Sits below the keyboard layer,
+         and IsStandby is false whenever an overlay or the keyboard is open, so those always read clean. -->
+    <Border Grid.Row="0" Grid.RowSpan="2" Classes="ss-standby" Classes.on="{Binding IsStandby}">
+      <!-- IsHitTestVisible=False on the wash Border alone doesn't stop its children being hit, so the whole
+           subtree is marked non-hit-test — otherwise the centered logo could intercept a tap aimed at the
+           trophy/dock beneath it on some panel sizes. -->
+      <Panel IsHitTestVisible="False">
+        <!-- The running game's logo, faintly, as the "slightly visible logo" over the black. -->
+        <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
+               Opacity="0.16" IsVisible="{Binding HasWheel}" IsHitTestVisible="False"
+               HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <!-- No game logo: fall back to the app wordmark, equally faint. -->
+        <TextBlock Text="EmuShelf" FontSize="40" FontWeight="Bold" Opacity="0.14"
+                   IsVisible="{Binding !HasWheel}" IsHitTestVisible="False"
+                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+      </Panel>
     </Border>
 
     <!-- App-owned keyboard, mirrored from the main head during couch search / rename. Its own top-most

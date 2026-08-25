@@ -83,6 +83,37 @@
 
                 <TextBlock Text="EmuShelf only writes inside the folder you choose. Your game files are never moved."
                            FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="#8E8E93" />
+
+                <!-- Optional, second-screen devices only (the Thor): enable the accessibility watcher that
+                     returns EmuShelf to the library when a game launched onto the second screen is closed.
+                     Not required to finish onboarding — choosing a folder above completes it either way. -->
+                <StackPanel Spacing="10" IsVisible="{Binding ShowSecondScreenReturn}">
+                    <Border Padding="16,12" CornerRadius="10" Background="#2A2A30">
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                                    <TextBlock Text="Second-screen return (optional)"
+                                               FontSize="15" FontWeight="Medium" Foreground="#F2F2F4" />
+                                    <TextBlock Text="Enabled"
+                                               FontSize="13" Foreground="#7FD98A"
+                                               IsVisible="{Binding IsSecondScreenReturnEnabled}" />
+                                    <TextBlock Text="Returns to your library when a game on the second screen closes"
+                                               FontSize="13" TextWrapping="Wrap" Foreground="#C7C7CC"
+                                               IsVisible="{Binding !IsSecondScreenReturnEnabled}" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="Enable"
+                                        Padding="18,8" FontSize="15" VerticalAlignment="Top"
+                                        Background="#3A3A42" Foreground="#F2F2F4"
+                                        Classes.focused="{Binding IsSecondScreenReturnFocused}"
+                                        IsVisible="{Binding !IsSecondScreenReturnEnabled}"
+                                        Command="{Binding RequestSecondScreenReturnCommand}" />
+                            </Grid>
+                            <TextBlock Text="Opens Android's Accessibility settings. EmuShelf only reads which window is in front on the second screen — never your screen content."
+                                       FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="#8E8E93"
+                                       IsVisible="{Binding !IsSecondScreenReturnEnabled}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
             </StackPanel>
         </Border>
     </Border>

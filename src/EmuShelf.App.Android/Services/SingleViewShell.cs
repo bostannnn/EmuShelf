@@ -123,9 +123,20 @@ public sealed class SingleViewShell : IPlatformShell
         // session interrupted by process death: if a pending record exists, complete it; otherwise no-op.
         AndroidActivityLifecycle.ReturnedToForeground = () =>
         {
+            // A game on the SECOND screen keeps EmuShelf interactive on the built-in panel, so regaining the
+            // top-resumed slot here (e.g. the user taps the panel) is NOT the game returning. Ignore it — the
+            // accessibility watcher signals the real close via ExternalGameReturned below. This is what stops
+            // a tap on the main screen from tearing down a game still running on Screen-2.
+            if (_secondScreen.IsGameOnExternalScreen)
+                return;
             _secondScreen.ReturnedToBrowse();
             CompletePendingSession(viewModel);
         };
+
+        // A game launched onto Screen-2 reports its return here instead (the controller detects the close via
+        // the accessibility watcher and has already swapped the companion back); complete the play session the
+        // same way the top-resumed return above does for a game on the built-in screen.
+        _secondScreen.ExternalGameReturned = () => CompletePendingSession(viewModel);
 
         // Opened must run exactly ONCE per process — the shared contract, honoured on desktop by
         // Window.Opened. AttachedToVisualTree is a *recurring* event: with the factory below a NEW view

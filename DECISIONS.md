@@ -10994,3 +10994,45 @@ Desktop suite green (1298 pass, incl. new `AndroidRomHandoffRulesTests`); Androi
 **On-device verification on the Thor is pending** and is the real test: Azahar (the original fix), DuckStation
 single-file (`.chd`/`.pbp`) *and* multi-disc (`.cue`/`.bin`, `.m3u`) via the real-path branch, Dolphin, and
 the PS2/PSP/DS single-file emulators — confirm each launches with no picker and reads its ROM and saves.
+## 2026-08-25 — Second-screen "playing elsewhere" dim standby, and the game-on-external return signal
+
+Two coupled Android second-screen changes.
+
+**Dim standby.** While a game runs, the idle EmuShelf surface (Screen-2 when the game is on the built-in
+panel; the built-in companion when the game is on Screen-2) now drops into a near-black wash with the game's
+logo faintly visible, instead of the full-brightness browse spotlight — kinder to the Thor's burn-in-prone
+Screen-2 and a clear "it's playing over there" cue. Implemented as one `SecondScreenViewModel.IsStandby`
+(`IsGameRunning && Overlay == None && !IsKeyboardOpen`) that both surfaces bind, so opening the achievements
+grid or app drawer (or the couch keyboard) lifts the dim and closing it restores it — no separate wiring per
+surface. Reuses the existing spotlight art/logo, per the request to keep the current visual constants.
+
+**Game-on-external return is detected ONLY by the accessibility watcher, never by the top-resumed edge.**
+When a game launches on the built-in screen, EmuShelf loses the foreground and regaining it is the correct
+"the game returned" signal (`OnTopResumedActivityChanged(true)` → complete the play session). When the game
+launches on Screen-2, EmuShelf stays interactive on the built-in panel, so that same edge fires every time the
+user merely taps the main panel — which was tearing the still-running game down (re-showing the companion
+Presentation over it and prematurely closing the play session): the reported "tap the main screen and the game
+closes" bug. Fix: `SingleViewShell` now ignores the top-resumed return while `SecondScreenController
+.IsGameOnExternalScreen`, and the real close is signalled by the `SecondScreenReturnWatcher` accessibility
+service (the stock `SecondaryDisplayLauncher` reappearing on Screen-2), which the controller already uses for
+dock-app return. Consequence: game-on-external return requires that optional service to be enabled — so
+onboarding gained an optional, second-screen-only step to turn it on (mirrors the all-files grant step:
+deep-links to Accessibility settings, state re-read on foreground return). Deliberately no top-resumed
+fallback for the external case; a coarse fallback is exactly what caused the bug. On-device verification on
+the Thor is pending (Core/VM/onboarding unit-tested; the display swap + watcher aren't reproducible in the
+desktop headless suite).
+## 2026-08-25 — Dual-screen consoles (DS/3DS) opt out of launch-screen selection
+
+The launch-screen chooser asks which *single physical* display a game opens on, which is meaningless for
+the DS and 3DS: their emulators (melonDS/DraStic, Azahar) draw both console screens themselves inside one
+app that EmuShelf launches on one display, so there is no screen to choose. Yet the Ask-default prompt was
+firing for them on the Thor exactly like a single-screen system — the reported bug.
+
+Marked these systems with a new `GameSystem.IsDualScreen` flag (single source of truth in
+`KnownSystems`, set only for `nds`/`3ds`). The pure `LaunchScreenResolver.Resolve` gained an
+`isDualScreenSystem` parameter that forces `BuiltIn` (alongside the existing no-external-display case), so
+the policy — and the fact that it never prompts — stays unit-tested. `MainViewModel` looks the flag up via
+`_systemsById` and short-circuits before the SQLite preference read; the Settings → Emulators "Launch
+screen" row is omitted for these platforms. Nintendo hardware that genuinely spans two physical displays is
+out of scope: EmuShelf launches these emulators as ordinary single-display apps and cannot make a
+third-party app span two Android displays.

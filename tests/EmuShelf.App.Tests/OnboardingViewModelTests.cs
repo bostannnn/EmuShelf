@@ -223,6 +223,95 @@ public sealed class OnboardingViewModelTests
         Assert.False(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
     }
 
+    [Fact]
+    public void SecondScreenReturnStep_HiddenWhenDeviceHasNoSecondScreen()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            IsStoragePermissionGranted = true,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            ShowSecondScreenReturnStep = false,
+        };
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+
+        Assert.False(vm.ShowSecondScreenReturn);
+
+        // The focus ring skips it entirely: down from Recommended lands on Choose, not the (absent) step.
+        Assert.True(vm.IsRecommendedFocused);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsChooseFocused);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsRecommendedFocused);
+    }
+
+    [Fact]
+    public void SecondScreenReturnStep_JoinsTheFocusRing_WhenShownAndDisabled()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            IsStoragePermissionGranted = true,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            ShowSecondScreenReturnStep = true,
+            IsSecondScreenReturnEnabled = false,
+        };
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+
+        Assert.True(vm.ShowSecondScreenReturn);
+        // Appended last, so the folder actions keep their initial focus.
+        Assert.True(vm.IsRecommendedFocused);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsChooseFocused);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsSecondScreenReturnFocused);
+    }
+
+    [Fact]
+    public void SecondScreenReturnConfirm_SendsUserToTheAccessibilityScreen()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            IsStoragePermissionGranted = true,
+            ShowSecondScreenReturnStep = true,
+            IsSecondScreenReturnEnabled = false,
+        };
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+        // Only Choose + the step are live (no recommended folder), so one Down reaches the step.
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsSecondScreenReturnFocused);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+
+        Assert.Equal(1, bootstrap.SecondScreenReturnRequests);
+    }
+
+    [Fact]
+    public void EnablingSecondScreenReturn_DropsTheStep_OnForegroundReturn()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            IsStoragePermissionGranted = true,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            ShowSecondScreenReturnStep = true,
+            IsSecondScreenReturnEnabled = false,
+        };
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.True(vm.IsSecondScreenReturnFocused);
+
+        bootstrap.IsSecondScreenReturnEnabled = true;
+        bootstrap.RaisePermissionMaybeChanged();
+
+        Assert.True(vm.IsSecondScreenReturnEnabled);
+        // The step is gone from the ring; focus fell back to the first live action.
+        Assert.True(vm.IsRecommendedFocused);
+        Assert.False(vm.IsSecondScreenReturnFocused);
+    }
+
     private sealed class FakeBootstrap : IDataLocationBootstrap
     {
         public string? ResolvedBaseDirectory => null;
@@ -234,10 +323,15 @@ public sealed class OnboardingViewModelTests
         public DataLocationPickResult PickResult { get; set; } = DataLocationPickResult.Cancelled();
         public DataLocationPickResult RecommendedResult { get; set; } = DataLocationPickResult.Cancelled();
 
+        public bool ShowSecondScreenReturnStep { get; set; }
+        public bool IsSecondScreenReturnEnabled { get; set; }
+        public int SecondScreenReturnRequests { get; private set; }
+
         public event Action? StoragePermissionMaybeChanged;
         public void RaisePermissionMaybeChanged() => StoragePermissionMaybeChanged?.Invoke();
 
         public void RequestStoragePermission() => GrantRequests++;
+        public void RequestSecondScreenReturn() => SecondScreenReturnRequests++;
         public Task<DataLocationPickResult> UseRecommendedFolderAsync() => Task.FromResult(RecommendedResult);
         public Task<DataLocationPickResult> PickFolderAsync() => Task.FromResult(PickResult);
     }
