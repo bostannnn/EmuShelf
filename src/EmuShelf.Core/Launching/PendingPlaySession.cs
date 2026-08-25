@@ -10,4 +10,13 @@ namespace EmuShelf.Core.Launching;
 /// <param name="GameId">The launched game's library id.</param>
 /// <param name="GameTitle">The display title, for the completion status message.</param>
 /// <param name="StartedAtUnixMs">When the launch fired, Unix epoch milliseconds (UTC).</param>
-public sealed record PendingPlaySession(long GameId, string GameTitle, long StartedAtUnixMs);
+/// <param name="EmulatorPackage">
+/// Android only: the package name of the emulator this launch fired at, so the return handler can ask
+/// Android to close it (see <c>AppSettings.CloseEmulatorOnReturn</c>). Null on desktop and for older
+/// records written before the field existed, in which case no emulator is closed.
+/// </param>
+public sealed record PendingPlaySession(
+    long GameId,
+    string GameTitle,
+    long StartedAtUnixMs,
+    string? EmulatorPackage = null);

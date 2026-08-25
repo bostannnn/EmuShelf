@@ -88,7 +88,10 @@ internal sealed class AndroidEmulatorLaunchService(
             pendingSessions.Set(new PendingPlaySession(
                 game.Id,
                 title,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                // Remember which emulator took the foreground so the return handler can close it (opt-in
+                // via AppSettings.CloseEmulatorOnReturn) instead of letting it linger and drain the battery.
+                profile.PackageName));
             try
             {
                 // Tell the companion where the game went: on the built-in screen it keeps the spotlight on

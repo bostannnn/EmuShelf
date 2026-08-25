@@ -244,6 +244,47 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task EmulatorsSection_CloseOnReturnToggle_AppearsOnlyWhenWired_AndPersistsOnSave()
+    {
+        bool? saved = null;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            });
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
+        Assert.Equal("CLOSE", row.Value);
+
+        // Activating the toggle flips it (the row re-renders to KEEP) and Save persists the new value.
+        await row.SelectCommand.ExecuteAsync(null);
+        Assert.False(viewModel.CloseEmulatorOnReturn);
+        Assert.Equal("KEEP", viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return").Value);
+
+        await viewModel.Settings.SaveCommand.ExecuteAsync(null);
+        Assert.False(saved);
+    }
+
+    [AvaloniaFact]
+    public void EmulatorsSection_OmitsCloseOnReturnToggle_WhenNotWired()
+    {
+        // Desktop wires no close-on-return delegate, so the row is absent.
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.close-on-return");
+    }
+
+    [AvaloniaFact]
     public async Task AndroidEmulatorChoice_ListsStandaloneAndCoreEntriesAndPersistsThePair()
     {
         using var viewModel = CreateGamepadSettings(

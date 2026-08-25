@@ -11036,3 +11036,25 @@ the policy — and the fact that it never prompts — stays unit-tested. `MainVi
 screen" row is omitted for these platforms. Nintendo hardware that genuinely spans two physical displays is
 out of scope: EmuShelf launches these emulators as ordinary single-display apps and cannot make a
 third-party app span two Android displays.
+
+## 2026-08-25 — Android: close the emulator when EmuShelf returns to the foreground (opt-in)
+
+A launched emulator on Android is another app EmuShelf fires an intent at; nothing exits it when the user
+comes back, so it lingers in the background draining the Thor's battery. EmuShelf now asks Android to close
+it on return, gated by `AppSettings.CloseEmulatorOnReturn` (default on — the battery drain is the whole
+reason for the option; a user who wants the emulator kept warm for a fast return can turn it off).
+
+The only mechanism a non-root third-party app has is `ActivityManager.killBackgroundProcesses(package)`
+(manifest permission `KILL_BACKGROUND_PROCESSES`, install-time and silent). It can only terminate a
+*background* process — a true force-stop of a foreground app needs root — but by the time the return handler
+runs EmuShelf has regained the top-resumed slot, so the emulator is already backgrounded and is a legal
+target. Deliberately best-effort: OEM firmware may ignore it and a sticky foreground service can survive it,
+so `AndroidEmulatorProcessTerminator` catches and logs every failure and the launch/return never breaks.
+
+Wiring reuses what the deferred-play-session path already built: the launched emulator's package rides in
+`PendingPlaySession.EmulatorPackage`, and the close fires from `SingleViewShell.CompletePendingSession`
+*after* play-time accrual and the save-sync push (which reads the emulator's save files) have run — for both
+the built-in-screen return and the second-screen `ExternalGameReturned`. The setting is surfaced only on
+Android (the couch Settings → Emulators section), via `LibraryMaintenanceActions` get/set delegates the
+desktop head leaves null; on desktop the emulator is a child process that exits on its own, so the option is
+absent and has no effect.

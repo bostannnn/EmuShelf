@@ -14,6 +14,10 @@ public sealed record LibraryMaintenanceActions(
     Func<Task<string>>? SyncRpcs3Library = null,
     Func<bool>? GetShowEmptyPlatforms = null,
     Func<bool, Task>? SetShowEmptyPlatforms = null,
+    // Android-only "close the emulator when I return" preference (AppSettings.CloseEmulatorOnReturn).
+    // Null on desktop, where the emulator is a child process that exits on its own.
+    Func<bool>? GetCloseEmulatorOnReturn = null,
+    Func<bool, Task>? SetCloseEmulatorOnReturn = null,
     LibraryFolderManagementActions? Folders = null,
     // EmuShelf's data root (database, covers, settings, saves), so Settings can reveal it in the
     // desktop file manager. Where this lives is platform-specific; see IAppPaths.

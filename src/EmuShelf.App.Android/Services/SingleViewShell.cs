@@ -64,6 +64,14 @@ public sealed class SingleViewShell : IPlatformShell
             boot.Logger);
         _logger = boot.Logger;
 
+        // Closes the launched emulator when EmuShelf returns to the foreground, when the user has left the
+        // opt-in on (AppSettings.CloseEmulatorOnReturn). Read fresh from the shared settings service at
+        // return time so toggling the option takes effect on the next return without a restart.
+        _settingsService = boot.SettingsService;
+        _emulatorTerminator = new AndroidEmulatorProcessTerminator(
+            () => global::Android.App.Application.Context,
+            boot.Logger);
+
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(
                 Path.Combine(boot.Paths.SettingsDirectory, "second-screen-dock.json"),
@@ -87,6 +95,8 @@ public sealed class SingleViewShell : IPlatformShell
     private readonly IPendingPlaySessionStore _pendingSessions;
     private readonly IAppLogger _logger;
     private readonly SecondScreenController _secondScreen;
+    private readonly ISettingsService _settingsService;
+    private readonly AndroidEmulatorProcessTerminator _emulatorTerminator;
     private bool _completingSession;
 
     public IInterfaceModeService InterfaceMode { get; }
@@ -217,6 +227,11 @@ public sealed class SingleViewShell : IPlatformShell
             try
             {
                 await viewModel.CompleteDeferredPlaySessionAsync(session.GameId, duration);
+                // Now that the post-play work (play-time accrual and the save-sync push, which reads the
+                // emulator's save files) has run, close the emulator so it stops draining the battery in the
+                // background. Opt-in and best-effort — see AndroidEmulatorProcessTerminator; a failure or a
+                // disabled toggle simply leaves it running.
+                CloseEmulatorIfRequested(session.EmulatorPackage);
                 // Clear only on success, so an in-process failure — not just a process-death crash —
                 // leaves the session for the next return/startup to retry, matching the stated intent.
                 _pendingSessions.Clear();
@@ -231,5 +246,19 @@ public sealed class SingleViewShell : IPlatformShell
                 _completingSession = false;
             }
         });
+    }
+
+    // Closes the emulator recorded with the pending session, when the user has left the opt-in enabled. The
+    // setting is read fresh from disk each time so a toggle takes effect on the next return; a null package
+    // (desktop-shaped record, or a pre-existing record written before the field existed) closes nothing.
+    private void CloseEmulatorIfRequested(string? emulatorPackage)
+    {
+        if (string.IsNullOrEmpty(emulatorPackage))
+            return;
+
+        if (!_settingsService.Load().CloseEmulatorOnReturn)
+            return;
+
+        _emulatorTerminator.CloseEmulator(emulatorPackage);
     }
 }

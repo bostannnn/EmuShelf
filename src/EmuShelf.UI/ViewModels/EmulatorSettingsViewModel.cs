@@ -318,6 +318,15 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     [ObservableProperty]
     public partial bool ShowEmptyPlatforms { get; set; }
 
+    /// <summary>Android only: close the launched emulator when EmuShelf returns to the foreground so it
+    /// stops draining the battery in the background. Backed by the maintenance host callback; unavailable
+    /// (and hidden) on desktop, where the emulator is a child process that exits on its own.</summary>
+    [ObservableProperty]
+    public partial bool CloseEmulatorOnReturn { get; set; }
+
+    /// <summary>Whether the host wired the close-on-return preference — true only on Android.</summary>
+    public bool HasCloseEmulatorOnReturn => _maintenance?.SetCloseEmulatorOnReturn is not null;
+
     /// <summary>EmuShelf's data folder (database, covers, settings, saves), shown in General so the
     /// user can open it. Empty when the host did not supply it (design-time and tests).</summary>
     public string DataDirectory => _maintenance?.DataDirectory ?? string.Empty;
@@ -666,6 +675,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             metadataPreferences?.AutomaticallyFetchAfterImport ?? false;
         WebImageSearchEnabled = metadataPreferences?.WebImageSearchEnabled ?? true;
         ShowEmptyPlatforms = maintenance?.GetShowEmptyPlatforms?.Invoke() ?? false;
+        CloseEmulatorOnReturn = maintenance?.GetCloseEmulatorOnReturn?.Invoke() ?? true;
     }
 
     /// <summary>
@@ -981,6 +991,8 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
             }
             if (_maintenance?.SetShowEmptyPlatforms is not null)
                 await _maintenance.SetShowEmptyPlatforms(ShowEmptyPlatforms);
+            if (_maintenance?.SetCloseEmulatorOnReturn is not null)
+                await _maintenance.SetCloseEmulatorOnReturn(CloseEmulatorOnReturn);
             PersistCloudSaveLocations();
             CloseRequested?.Invoke(true);
         }
