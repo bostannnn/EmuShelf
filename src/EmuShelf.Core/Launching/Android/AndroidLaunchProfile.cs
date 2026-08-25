@@ -54,6 +54,13 @@ public enum AndroidEmulatorMaintenance
 /// than an executable and an argument template, so it is a distinct record populated from the measured
 /// intents rather than an overload of the desktop one.
 /// </summary>
+/// <param name="NeedsRealPathForMultiFile">
+/// True for an emulator that resolves a multi-file disc descriptor (<c>.cue</c>/<c>.gdi</c>/<c>.m3u</c>)
+/// by reading the <em>relative</em> sibling names inside it and opening them as local files — DuckStation.
+/// Such an emulator cannot use a <c>content://</c> URI for the descriptor (it has no base directory to
+/// resolve the siblings against), so the launcher hands it a real <c>file://</c> path instead. Single-file
+/// ROMs are unaffected. See <see cref="AndroidRomHandoffRules"/> and the FileProvider handoff in the head.
+/// </param>
 public sealed record AndroidLaunchProfile(
     string Id,
     string SelectionId,
@@ -66,6 +73,7 @@ public sealed record AndroidLaunchProfile(
     string? PayloadExtraName = null,
     bool BootOneShot = false,
     bool RequiresOwnTreeGrant = true,
+    bool NeedsRealPathForMultiFile = false,
     AndroidEmulatorMaintenance Maintenance = AndroidEmulatorMaintenance.Maintained)
 {
     /// <summary>True when this emulator is a launch option for <paramref name="systemId"/>.</summary>

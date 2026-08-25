@@ -73,5 +73,18 @@
       <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
                  android:resource="@xml/emushelf_update_paths" />
     </provider>
+    <!-- Re-exposes a game's ROM (which EmuShelf reads by real path under all-files access) as a content://
+         URI EmuShelf can grant, so the launcher delegates a read to any emulator without a per-launch SAF
+         folder pick (see AndroidGameLauncher, DECISIONS 2026-08-25). A distinct authority from the update
+         provider so their path maps never overlap; exported=false + a per-launch, per-package read grant keep
+         it reachable only by the emulator EmuShelf is starting. The <root-path> map covers every mount so a
+         ROM on the removable microSD (/storage/XXXX-XXXX) is exposed as well as one on internal storage. -->
+    <provider android:name="androidx.core.content.FileProvider"
+              android:authorities="com.emushelf.app.romprovider"
+              android:exported="false"
+              android:grantUriPermissions="true">
+      <meta-data android:name="android.support.FILE_PROVIDER_PATHS"
+                 android:resource="@xml/emushelf_rom_paths" />
+    </provider>
   </application>
 </manifest>
