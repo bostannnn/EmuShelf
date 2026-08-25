@@ -11019,3 +11019,21 @@ the policy — and the fact that it never prompts — stays unit-tested. `MainVi
 screen" row is omitted for these platforms. Nintendo hardware that genuinely spans two physical displays is
 out of scope: EmuShelf launches these emulators as ordinary single-display apps and cannot make a
 third-party app span two Android displays.
+
+## 2026-08-25 — Azahar (3DS) launches need CLEAR_TASK + CLEAR_TOP
+
+Azahar games did nothing on the Thor — no error, no load. Root cause: Azahar is Citra's single
+`EmulationActivity`, and EmuShelf fired the VIEW intent with only `FLAG_ACTIVITY_NEW_TASK`. When Azahar is
+already in recents, NEW_TASK alone just re-foregrounds the existing instance without re-running `onCreate`,
+so the new ROM is never read. Confirmed against NeoStation's launch configs (`assets/systems/3ds.json`):
+its Azahar entry — and every Citra-family and standalone entry (Dolphin, PPSSPP, AetherSX2) — carries
+`--activity-clear-task --activity-clear-top`. The activity name EmuShelf already used
+(`org.citra.citra_emu.activities.EmulationActivity`) matches NeoStation exactly, so that was never the issue.
+
+Fix: a new `AndroidLaunchProfile.ClearTaskOnLaunch` (threaded to `AndroidIntentRequest.ClearTask`, applied by
+the head as `FLAG_ACTIVITY_CLEAR_TASK` + `FLAG_ACTIVITY_CLEAR_TOP`). Set **only on Azahar**, deliberately: the
+other five SAF emulators launch correctly today and were just broken by an over-broad change (the reverted
+FileProvider handoff), so this stays surgical. NeoStation applies the flags universally; EmuShelf can extend
+per-emulator if the same "relaunch does nothing" symptom appears elsewhere. Reading the ROM is separate: Azahar
+still needs read access to the game, so completing (not cancelling) the folder-grant prompt once — or Azahar
+holding its own roms/3ds grant — remains required. On-device Thor verification pending.

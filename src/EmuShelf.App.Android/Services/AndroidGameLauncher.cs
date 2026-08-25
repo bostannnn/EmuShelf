@@ -134,6 +134,15 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         // onTopResumedActivityChanged exit signal (Milestone B) fire when the user returns to EmuShelf.
         intent.AddFlags(ActivityFlags.NewTask);
 
+        // A single-activity emulator (Citra/Azahar) that is already in recents would otherwise be merely
+        // re-foregrounded by NEW_TASK, ignoring the new ROM — the "3DS game does nothing" symptom. CLEAR_TASK
+        // + CLEAR_TOP force a fresh start so onCreate reads the new ROM. Set only for profiles that need it.
+        if (request.ClearTask)
+        {
+            intent.AddFlags(ActivityFlags.ClearTask);
+            intent.AddFlags(ActivityFlags.ClearTop);
+        }
+
         try
         {
             // Target a specific display when asked and the platform supports it (setLaunchDisplayId is

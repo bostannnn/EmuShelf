@@ -54,6 +54,14 @@ public enum AndroidEmulatorMaintenance
 /// than an executable and an argument template, so it is a distinct record populated from the measured
 /// intents rather than an overload of the desktop one.
 /// </summary>
+/// <param name="ClearTaskOnLaunch">
+/// True for a single-activity emulator that reuses its existing task instead of reloading the ROM when it is
+/// re-launched while already sitting in recents — the Citra family (Azahar). Adds
+/// <c>FLAG_ACTIVITY_CLEAR_TASK</c> + <c>FLAG_ACTIVITY_CLEAR_TOP</c> so each launch starts the activity fresh
+/// and its <c>onCreate</c> reads the new ROM; without it a second launch silently re-foregrounds the old
+/// session with nothing loaded. Every standalone emulator in NeoStation's launch configs sets these flags;
+/// EmuShelf enables it only where a symptom is known, to stay minimal.
+/// </param>
 public sealed record AndroidLaunchProfile(
     string Id,
     string SelectionId,
@@ -66,6 +74,7 @@ public sealed record AndroidLaunchProfile(
     string? PayloadExtraName = null,
     bool BootOneShot = false,
     bool RequiresOwnTreeGrant = true,
+    bool ClearTaskOnLaunch = false,
     AndroidEmulatorMaintenance Maintenance = AndroidEmulatorMaintenance.Maintained)
 {
     /// <summary>True when this emulator is a launch option for <paramref name="systemId"/>.</summary>
