@@ -32,6 +32,12 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public string SystemName { get; }
     public string SystemShortName { get; }
     public string AccentColor { get; }
+
+    /// <summary>
+    /// True for a dual-screen console (DS/3DS). Its games always launch on the built-in display, so the
+    /// launch-screen preference row is hidden for it — see <see cref="GameSystem.IsDualScreen"/>.
+    /// </summary>
+    public bool IsDualScreen { get; }
     public string EmulatorName { get; private set; }
     public string DefaultLaunchArguments { get; private set; }
     public string EmulatorId { get; private set; }
@@ -200,6 +206,7 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
         SystemName = system.Name;
         SystemShortName = system.ShortName;
         AccentColor = system.AccentColor;
+        IsDualScreen = system.IsDualScreen;
 
         // Registered definitions own editable drafts. A fixed platform catalog may add selection-only
         // Android emulators that have no desktop executable definition.

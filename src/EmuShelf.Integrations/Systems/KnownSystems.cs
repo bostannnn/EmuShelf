@@ -37,12 +37,14 @@ public static class KnownSystems
         new("gbc",          "Game Boy Color", "GBC", "#4FAE9C", 1.0,   "Nintendo"),
         new("gba",          "Game Boy Advance", "GBA", "#7065A7", 1.0, "Nintendo"),
         new("gamecube",     "GameCube",      "GC",  "#7B68C9", 0.708, "Nintendo"),
-        new("nds",          "Nintendo DS",   "DS",  "#7580B9", 1.115, "Nintendo"),
+        // The DS renders two screens the emulator draws together in one app, so the launch-screen
+        // chooser (which single physical display?) does not apply — see GameSystem.IsDualScreen.
+        new("nds",          "Nintendo DS",   "DS",  "#7580B9", 1.115, "Nintendo", IsDualScreen: true),
         new("wii",          "Wii",           "Wii", "#49B3C9", 0.708, "Nintendo"),
         // 3DS launches through the standalone Azahar emulator (not RetroArch). GameTDB serves its
         // 2D front covers on a fixed 768×680 canvas (1.129, near-square landscape) — measured from
         // representative coverHQ scans — so the frame matches the downloaded art with no letterbox.
-        new("3ds",          "Nintendo 3DS",  "3DS", "#C0568E", 1.129, "Nintendo"),
+        new("3ds",          "Nintendo 3DS",  "3DS", "#C0568E", 1.129, "Nintendo", IsDualScreen: true),
 
         // ── Sega ──
         new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708, "Sega"),

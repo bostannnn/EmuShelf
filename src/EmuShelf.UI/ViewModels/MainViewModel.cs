@@ -6110,13 +6110,21 @@ public partial class MainViewModel : ViewModelBase
         // the Android head that owns this feature always runs. In desktop mode there is no couch overlay to
         // show, so fall through to the built-in default rather than silently swallowing the launch.
         var targetScreen = screenOverride ?? GameLaunchScreen.BuiltIn;
+        // A dual-screen console (DS/3DS) always launches on the built-in display: its emulator draws
+        // both console screens itself, so there is no single physical screen to choose and no prompt to
+        // show. The resolver owns that rule (below); here it only lets us skip the SQLite preference read.
+        var isDualScreenSystem =
+            _systemsById.TryGetValue(game.SystemId, out var launchSystem) && launchSystem.IsDualScreen;
         if (screenOverride is null && IsGamepadMode && _externalDisplays?.HasExternalDisplay == true)
         {
             // Read the preference off the UI thread: it hits SQLite, and the Android launch path keeps
             // such reads off the launch frame (Preflight) to avoid a hitch — or an ANR on slow storage.
-            var preference = await Task.Run(
-                () => _emulatorConfigurations.Get(game.SystemId)?.LaunchScreen ?? GameLaunchScreen.Ask);
-            switch (LaunchScreenResolver.Resolve(preference, externalDisplayAvailable: true))
+            // A dual-screen system ignores the preference, so don't pay for the read at all.
+            var preference = isDualScreenSystem
+                ? GameLaunchScreen.Ask
+                : await Task.Run(
+                    () => _emulatorConfigurations.Get(game.SystemId)?.LaunchScreen ?? GameLaunchScreen.Ask);
+            switch (LaunchScreenResolver.Resolve(preference, externalDisplayAvailable: true, isDualScreenSystem))
             {
                 case LaunchScreenDecision.External:
                     targetScreen = GameLaunchScreen.External;

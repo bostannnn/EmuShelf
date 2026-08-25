@@ -10955,3 +10955,19 @@ on `AndroidIntentRequest.RomContentUri` by the pure `AndroidIntentFactory` (test
 by a held grant is decided by the pure, tested `AndroidUriGrantCoverage`. This is **not** a duplicate of the
 all-files onboarding grant (`IStoragePermissionService`): that grant cannot be delegated to another app; only
 a SAF grant can. On-device verification on the Thor is still pending (built and desktop-suite-green here).
+
+## 2026-08-25 — Dual-screen consoles (DS/3DS) opt out of launch-screen selection
+
+The launch-screen chooser asks which *single physical* display a game opens on, which is meaningless for
+the DS and 3DS: their emulators (melonDS/DraStic, Azahar) draw both console screens themselves inside one
+app that EmuShelf launches on one display, so there is no screen to choose. Yet the Ask-default prompt was
+firing for them on the Thor exactly like a single-screen system — the reported bug.
+
+Marked these systems with a new `GameSystem.IsDualScreen` flag (single source of truth in
+`KnownSystems`, set only for `nds`/`3ds`). The pure `LaunchScreenResolver.Resolve` gained an
+`isDualScreenSystem` parameter that forces `BuiltIn` (alongside the existing no-external-display case), so
+the policy — and the fact that it never prompts — stays unit-tested. `MainViewModel` looks the flag up via
+`_systemsById` and short-circuits before the SQLite preference read; the Settings → Emulators "Launch
+screen" row is omitted for these platforms. Nintendo hardware that genuinely spans two physical displays is
+out of scope: EmuShelf launches these emulators as ordinary single-display apps and cannot make a
+third-party app span two Android displays.

@@ -1401,8 +1401,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 yield return AndroidEmulatorChoiceRow(row);
             // Second-screen launch preference. Only a device with a second screen (the Android handheld)
             // can honour it, so it is Android-only; this is where a pinned "always" choice — or the launch
-            // prompt itself — is changed or reset.
-            if (OperatingSystem.IsAndroid())
+            // prompt itself — is changed or reset. Dual-screen consoles (DS/3DS) always use the built-in
+            // display, so the choice is meaningless for them and the row is omitted.
+            if (OperatingSystem.IsAndroid() && !row.IsDualScreen)
                 yield return LaunchScreenChoiceRow(row);
             // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
             // the sync always dead-ends — hide the row on the handheld (the import overlay already
