@@ -357,6 +357,20 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>Android only: close the launched emulator when EmuShelf returns to the foreground. Applied
+    /// on Save through the underlying settings model, like the other Emulators-section toggles.</summary>
+    public bool CloseEmulatorOnReturn
+    {
+        get => _settings.CloseEmulatorOnReturn;
+        set
+        {
+            if (_settings.CloseEmulatorOnReturn == value)
+                return;
+            _settings.CloseEmulatorOnReturn = value;
+            OnPropertyChanged();
+        }
+    }
+
     /// <summary>
     /// True when the ambient toggle owns focus, marked by the -1 sentinel of
     /// <see cref="FocusedThemeIndex"/>.
@@ -1391,6 +1405,22 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// </summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
+        // A global launch-behavior toggle above the per-platform cards: close the emulator when EmuShelf
+        // returns to the foreground so it stops draining the battery in the background. Android-only — the
+        // host wires the preference only there — so the row is absent on Desktop, where the emulator is a
+        // child process that exits on its own.
+        if (_settings.HasCloseEmulatorOnReturn)
+        {
+            yield return ToggleRow(
+                "emulators.close-on-return",
+                "Close emulator on return",
+                "When you come back to EmuShelf, close the game's emulator so it stops running in the background and draining the battery. Turn this off to keep it warm for a faster return.",
+                CloseEmulatorOnReturn,
+                value => CloseEmulatorOnReturn = value,
+                onLabel: "CLOSE",
+                offLabel: "KEEP");
+        }
+
         // Header then action cards per platform, matching how Saves and Texture Packs render. No
         // per-platform read-only info line: the emulator picker is the binding source on Android, then
         // the existing library actions follow unchanged.

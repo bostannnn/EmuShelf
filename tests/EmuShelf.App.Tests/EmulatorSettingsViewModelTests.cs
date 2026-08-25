@@ -189,6 +189,46 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void CloseEmulatorOnReturn_IsSeededFromMaintenance_AndExposedOnlyWhenWired()
+    {
+        var wired = new LibraryMaintenanceActions(
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => false,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+
+        var withPreference = CreateViewModel(maintenance: wired);
+        Assert.True(withPreference.HasCloseEmulatorOnReturn);
+        Assert.False(withPreference.CloseEmulatorOnReturn);
+
+        // Desktop wires neither delegate, so the preference is hidden (and defaults on when unseeded).
+        var withoutPreference = CreateViewModel();
+        Assert.False(withoutPreference.HasCloseEmulatorOnReturn);
+        Assert.True(withoutPreference.CloseEmulatorOnReturn);
+    }
+
+    [AvaloniaFact]
+    public async Task CloseEmulatorOnReturn_IsPersistedOnSave()
+    {
+        bool? saved = null;
+        var maintenance = new LibraryMaintenanceActions(
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: value =>
+            {
+                saved = value;
+                return Task.CompletedTask;
+            });
+
+        var viewModel = CreateViewModel(maintenance: maintenance);
+        viewModel.CloseEmulatorOnReturn = false;
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        Assert.False(saved);
+    }
+
+    [AvaloniaFact]
     public async Task RetroArchRows_ShareTheExecutableButKeepIndependentCores()
     {
         _dialogs.LibretroCoreToReturn = "/portable/RetroArch/cores/melonds_libretro.dll";

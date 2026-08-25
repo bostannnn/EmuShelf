@@ -13,6 +13,12 @@
        user an install confirmation, and the first time also an "allow unknown apps" prompt. See the About →
        Check for updates flow and the package-android release APK in .github/workflows/build.yml. -->
   <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+  <!-- Close the launched emulator when EmuShelf returns to the foreground, so a heavy emulator does not
+       linger in the background draining the battery (AppSettings.CloseEmulatorOnReturn, opt-in). This is
+       install-time and silent — no runtime prompt. It only permits killing *background* processes of the
+       target package, which is exactly the emulator's state once EmuShelf is back in front; a true
+       force-stop of a foreground app is not possible without root. See AndroidEmulatorProcessTerminator. -->
+  <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
   <!-- Keeps the Presentation process alive only while an emulator owns the main screen. Android 13
        may otherwise reclaim the background frontend and tear down Screen-2 mid-session. -->
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

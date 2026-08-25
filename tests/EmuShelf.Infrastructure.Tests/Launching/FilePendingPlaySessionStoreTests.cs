@@ -19,12 +19,30 @@ public class FilePendingPlaySessionStoreTests : IDisposable
     [Fact]
     public void SetThenGet_RoundTripsAcrossInstances()
     {
-        // A fresh instance simulates a process restart: the record must survive on disk.
-        new FilePendingPlaySessionStore(FilePath).Set(new PendingPlaySession(42, "Castlevania SotN", 1_700_000_000_000));
+        // A fresh instance simulates a process restart: the record must survive on disk, including the
+        // emulator package the return handler needs to close it.
+        new FilePendingPlaySessionStore(FilePath).Set(
+            new PendingPlaySession(42, "Castlevania SotN", 1_700_000_000_000, "com.github.stenzek.duckstation"));
 
         var recovered = new FilePendingPlaySessionStore(FilePath).Get();
 
-        Assert.Equal(new PendingPlaySession(42, "Castlevania SotN", 1_700_000_000_000), recovered);
+        Assert.Equal(
+            new PendingPlaySession(42, "Castlevania SotN", 1_700_000_000_000, "com.github.stenzek.duckstation"),
+            recovered);
+    }
+
+    [Fact]
+    public void Get_FromRecordWithoutEmulatorPackage_LeavesItNull()
+    {
+        // Records written before the field existed (and desktop-shaped ones) have no package; the store
+        // must read them back with a null EmulatorPackage rather than failing, so nothing is closed.
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(FilePath, """{"GameId":9,"GameTitle":"Ico","StartedAtUnixMs":1000}""");
+
+        var recovered = new FilePendingPlaySessionStore(FilePath).Get();
+
+        Assert.Equal(new PendingPlaySession(9, "Ico", 1000), recovered);
+        Assert.Null(recovered!.EmulatorPackage);
     }
 
     [Fact]

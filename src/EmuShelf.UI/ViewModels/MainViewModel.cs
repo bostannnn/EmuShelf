@@ -7120,13 +7120,29 @@ public partial class MainViewModel : ViewModelBase
         SyncRpcs3LibraryFromSettingsAsync,
         () => ShowEmptyPlatforms,
         SetShowEmptyPlatformsAsync,
-        new LibraryFolderManagementActions(
+        // Android only: the emulator is fired at as another app, so nothing exits it for us; this opt-in
+        // asks Android to close it on return. Left null on desktop, where the child process exits on its own.
+        GetCloseEmulatorOnReturn: OperatingSystem.IsAndroid()
+            ? () => _settingsService?.Load().CloseEmulatorOnReturn ?? true
+            : null,
+        SetCloseEmulatorOnReturn: OperatingSystem.IsAndroid()
+            ? SetCloseEmulatorOnReturnAsync
+            : null,
+        Folders: new LibraryFolderManagementActions(
             GetLibraryFoldersForSettings,
             AddLibraryFolderFromSettingsAsync,
             ChangeLibraryFolderFromSettingsAsync,
             ForgetLibraryFolderFromSettingsAsync,
             GetAll: GetAllLibraryFoldersForSettings),
         DataDirectory: _dataDirectory);
+
+    private Task SetCloseEmulatorOnReturnAsync(bool value)
+    {
+        // Persist through the shared settings service so the Android shell reads the latest value when it
+        // returns to the foreground. No-op when no service was injected (design-time / tests).
+        _settingsService?.Update(settings => settings with { CloseEmulatorOnReturn = value });
+        return Task.CompletedTask;
+    }
 
     private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
         _retroAccount is null

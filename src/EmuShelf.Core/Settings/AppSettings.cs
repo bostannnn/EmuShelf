@@ -23,6 +23,17 @@ public sealed record AppSettings
     /// <summary>Persisted library layout. Steam Input maps controller actions to keyboard input.</summary>
     public InterfaceMode InterfaceMode { get; init; } = InterfaceMode.Desktop;
 
+    /// <summary>
+    /// Android only: when true, EmuShelf asks Android to close the launched emulator's process the moment
+    /// EmuShelf returns to the foreground, so a heavy emulator does not linger in the background draining
+    /// the battery. Defaults on because that drain is the whole reason for the option; a user who wants
+    /// the emulator kept warm for fast re-entry can turn it off. Best-effort — it can only kill a
+    /// backgrounded process (which the emulator is, once EmuShelf is back in front) and some OEM firmware
+    /// or a sticky foreground service can keep it alive. No effect on desktop, where the emulator is a
+    /// child process that exits on its own.
+    /// </summary>
+    public bool CloseEmulatorOnReturn { get; init; } = true;
+
     /// <summary>Network metadata work is disabled until the user explicitly opts in.</summary>
     public bool AutomaticallyFetchMetadataAfterImport { get; init; }
 
