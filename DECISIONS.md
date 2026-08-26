@@ -11079,3 +11079,21 @@ launcher's now-dead `FLAG_GRANT_READ_URI_PERMISSION` path (with no broker, `Chec
 pass, so `withGrant` was always false — behaviour-preserving deletion). The launch is now: build the intent
 with the SAF URI (or RetroArch's plain path), `NEW_TASK`, plus `CLEAR_TASK`+`CLEAR_TOP` for Azahar
 (2026-08-25). No prompt anywhere. Reading depends on each emulator's own folder grant, as it always did.
+
+## 2026-08-26 — External-screen launch requires the second-screen return watcher
+
+Playing a game on the Thor's second screen relies on the `SecondScreenReturnWatcher` accessibility service to
+detect the game closing and bring EmuShelf's library back (the head stays foregrounded on the built-in panel
+the whole time, so the top-resumed edge never fires — the watcher is the only return signal). That service is
+user-opt-in and off by default, and nothing gated the feature on it: a system pinned to "external screen"
+would launch onto Screen-2 with the watcher off and then have no way back — the companion stranded in dim
+standby, the play session never completed, the app wedged until the display was unplugged.
+
+Decided to make the return watcher a hard requirement of the external-screen feature (not the whole app,
+which runs fine single-screen and on desktop). Two gates: (1) onboarding — when a second screen is attached
+at first run, the "enable second-screen return" step is now mandatory (the folder actions that finish
+onboarding stay disabled until it is enabled), not the optional extra it was; (2) launch — for a screen
+attached after onboarding, `LaunchGameCoreAsync` blocks any external launch while the watcher is off, shows a
+status explaining why, and routes the user to Accessibility settings via `IExternalDisplayProbe`
+`.IsSecondScreenReturnReady`/`.RequestSecondScreenReturn` (Android reports the live bound state; desktop
+defaults ready). No silent fallback to the built-in screen — the user asked for the assertive behaviour.

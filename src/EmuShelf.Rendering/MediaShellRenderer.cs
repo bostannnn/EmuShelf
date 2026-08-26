@@ -1552,15 +1552,16 @@ public sealed class MediaShellRenderer : IDisposable
         // A shell that refuses the tint fallback contributes only the panels it actually has art
         // for, and they take consecutive shader slots. The slot a panel lands in is not the face it
         // draws — that is ArtIndex, which is looked up separately — so closing the gaps here cannot
-        // move a picture onto the wrong surface.
-        var panels = definition.RequiresArtwork
-            ? resources.Panels
-                .Where(panel => definition.TakesScrapedArtwork
-                    && _activePanelArt?.Get(panel.ArtIndex) is not null)
-                .ToList()
-            : resources.Panels;
+        // move a picture onto the wrong surface. Walked in place rather than materialised via
+        // Where/ToList: BindPanels runs per visible shell every scene frame, so a per-frame list +
+        // delegate would churn gen0 on the render thread during a scroll (uPanelCount is set after the
+        // walk, once the kept-panel count is known).
+        var sourcePanels = resources.Panels;
+        var takesScrapedArtwork = definition.TakesScrapedArtwork;
+        // A shell that requires artwork drops any panel it has no active art for; every other shell keeps
+        // all of its panels, in order.
+        var dropPanelsWithoutArt = definition.RequiresArtwork;
 
-        _program.Set("uPanelCount", panels.Count);
         _program.Set("uPanelRoughness", definition.PanelRoughness);
         _program.Set("uPanelFlattenNormal", definition.FlattenPanelNormal ? 1f : 0f);
 
@@ -1575,9 +1576,19 @@ public sealed class MediaShellRenderer : IDisposable
                 Math.Clamp(definition.PanelTintLift, 0f, 1f)),
             1f);
 
-        for (var i = 0; i < panels.Count; i++)
+        var panelCount = 0;
+        for (var source = 0; source < sourcePanels.Count; source++)
         {
-            var panel = panels[i];
+            var panel = sourcePanels[source];
+            // Kept panels take consecutive slots; a required-artwork shell skips the faces it has no
+            // active art for (or refuses scraped art outright), exactly as the old filter did.
+            if (dropPanelsWithoutArt
+                && (!takesScrapedArtwork || _activePanelArt?.Get(panel.ArtIndex) is null))
+            {
+                continue;
+            }
+
+            var i = panelCount;
             var placement = panel.Placement;
             _program.Set(PanelOriginNames[i], placement.Origin);
             _program.Set(PanelUEdgeNames[i], placement.UEdge);
@@ -1622,11 +1633,14 @@ public sealed class MediaShellRenderer : IDisposable
             _program.Set(PanelArtSamplerNames[i], 5 + i);
             // On for the whole shell unless a scoped panel turns it off again per mesh below.
             _program.Set(PanelEnabledNames[i], 1f);
+            panelCount++;
         }
+
+        _program.Set("uPanelCount", panelCount);
 
         // Keep every declared sampler pointing at a complete texture even when the shell uses fewer
         // panels than the shader declares.
-        for (var i = panels.Count; i < MaxPanels; i++)
+        for (var i = panelCount; i < MaxPanels; i++)
         {
             _whitePixel.Bind((uint)(5 + i));
             _program.Set(PanelArtSamplerNames[i], 5 + i);

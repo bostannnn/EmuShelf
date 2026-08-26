@@ -20,11 +20,6 @@ public class AndroidIntentFactoryTests
         Assert.Null(intent.DataUri);
         Assert.Equal(MgsUri, intent.StringExtras["bootPath"]);
         Assert.True(intent.BoolExtras[AndroidIntentFactory.OneShotExtra]);
-        Assert.True(intent.GrantReadUriPermission);
-        // The ROM rides in a string extra, so the grant can only be delegated via ClipData: the factory
-        // records the grantable URI and flags that it is not the data URI.
-        Assert.Equal(MgsUri, intent.RomContentUri);
-        Assert.True(intent.RomUriRidesInExtra);
     }
 
     [Fact]
@@ -36,10 +31,6 @@ public class AndroidIntentFactoryTests
         Assert.Equal(AndroidIntentActions.View, intent.Action);
         Assert.Equal(MgsUri, intent.DataUri);
         Assert.Empty(intent.StringExtras);
-        Assert.True(intent.GrantReadUriPermission);
-        // The ROM is the data URI, so the grant follows it directly — no ClipData needed.
-        Assert.Equal(MgsUri, intent.RomContentUri);
-        Assert.False(intent.RomUriRidesInExtra);
     }
 
     [Fact]
@@ -75,10 +66,6 @@ public class AndroidIntentFactoryTests
         Assert.Equal(AndroidIntentActions.View, intent.Action);
         Assert.Equal(romPath, intent.StringExtras[AndroidIntentFactory.RetroArchRomExtra]);
         Assert.Equal(corePath, intent.StringExtras[AndroidIntentFactory.RetroArchCoreExtra]);
-        Assert.False(intent.GrantReadUriPermission);
-        // A plain filesystem path is not a grantable content URI, so nothing to delegate.
-        Assert.Null(intent.RomContentUri);
-        Assert.False(intent.RomUriRidesInExtra);
     }
 
     [Fact]

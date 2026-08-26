@@ -246,7 +246,7 @@ public sealed class OnboardingViewModelTests
     }
 
     [Fact]
-    public void SecondScreenReturnStep_JoinsTheFocusRing_WhenShownAndDisabled()
+    public void SecondScreenReturnStep_IsAMandatoryGate_WhenShownAndDisabled()
     {
         var bootstrap = new FakeBootstrap
         {
@@ -259,12 +259,43 @@ public sealed class OnboardingViewModelTests
         var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
 
         Assert.True(vm.ShowSecondScreenReturn);
-        // Appended last, so the folder actions keep their initial focus.
-        Assert.True(vm.IsRecommendedFocused);
-        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
-        Assert.True(vm.IsChooseFocused);
+        // The step is the exclusive live action until it is enabled: the folder actions that finish
+        // onboarding stay disabled, and the focus ring sits on the step (not on a folder button).
+        Assert.True(vm.IsSecondScreenReturnStepActive);
+        Assert.False(vm.CanChooseFolder);
+        Assert.True(vm.IsSecondScreenReturnFocused);
+        Assert.False(vm.IsRecommendedFocused);
+        // With one live action the ring cannot move off it.
         vm.DispatchGamepadAction(GamepadAction.NavigateDown);
         Assert.True(vm.IsSecondScreenReturnFocused);
+    }
+
+    [Fact]
+    public async Task FolderActionCannotCompleteOnboarding_WhileTheSecondScreenGateIsOutstanding()
+    {
+        var completed = false;
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            IsStoragePermissionGranted = true,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            RecommendedResult = DataLocationPickResult.Success("/storage/emulated/0/EmuShelf"),
+            ShowSecondScreenReturnStep = true,
+            IsSecondScreenReturnEnabled = false,
+        };
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => completed = true);
+
+        // The folder action is gated: invoking it is a no-op while the second-screen step is outstanding.
+        await vm.UseRecommendedCommand.ExecuteAsync(null);
+        Assert.False(completed);
+
+        // Enabling the watcher opens the gate; now the same action completes onboarding.
+        bootstrap.IsSecondScreenReturnEnabled = true;
+        bootstrap.RaisePermissionMaybeChanged();
+        Assert.True(vm.CanChooseFolder);
+
+        await vm.UseRecommendedCommand.ExecuteAsync(null);
+        Assert.True(completed);
     }
 
     [Fact]
@@ -278,8 +309,7 @@ public sealed class OnboardingViewModelTests
             IsSecondScreenReturnEnabled = false,
         };
         var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
-        // Only Choose + the step are live (no recommended folder), so one Down reaches the step.
-        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        // The step is the exclusive gate, so it holds focus immediately.
         Assert.True(vm.IsSecondScreenReturnFocused);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
@@ -288,7 +318,7 @@ public sealed class OnboardingViewModelTests
     }
 
     [Fact]
-    public void EnablingSecondScreenReturn_DropsTheStep_OnForegroundReturn()
+    public void EnablingSecondScreenReturn_OpensTheGate_OnForegroundReturn()
     {
         var bootstrap = new FakeBootstrap
         {
@@ -299,15 +329,15 @@ public sealed class OnboardingViewModelTests
             IsSecondScreenReturnEnabled = false,
         };
         var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
-        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
-        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
         Assert.True(vm.IsSecondScreenReturnFocused);
 
         bootstrap.IsSecondScreenReturnEnabled = true;
         bootstrap.RaisePermissionMaybeChanged();
 
         Assert.True(vm.IsSecondScreenReturnEnabled);
-        // The step is gone from the ring; focus fell back to the first live action.
+        Assert.False(vm.IsSecondScreenReturnStepActive);
+        // The gate is gone; the folder actions are live and focus fell to the first of them.
+        Assert.True(vm.CanChooseFolder);
         Assert.True(vm.IsRecommendedFocused);
         Assert.False(vm.IsSecondScreenReturnFocused);
     }

@@ -73,7 +73,6 @@ public sealed record AndroidLaunchProfile(
     string? Action = null,
     string? PayloadExtraName = null,
     bool BootOneShot = false,
-    bool RequiresOwnTreeGrant = true,
     bool ClearTaskOnLaunch = false,
     AndroidEmulatorMaintenance Maintenance = AndroidEmulatorMaintenance.Maintained)
 {

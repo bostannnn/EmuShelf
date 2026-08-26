@@ -2808,6 +2808,39 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_PinnedExternalButReturnWatcherOff_BlocksAndSendsUserToEnableIt()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.External);
+        var probe = new StubExternalDisplayProbe(hasExternalDisplay: true, returnReady: false);
+        var (vm, launcher) = await AddAlphaAsync(externalDisplays: probe, configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        // Never strand a game on the second screen when it could not return: the launch is blocked, the user
+        // is routed to enable the watcher, and nothing started.
+        Assert.Null(launcher.Game);
+        Assert.Equal(1, probe.ReturnRequests);
+        Assert.False(vm.IsBusy);
+        Assert.Equal(StatusSeverity.Error, vm.StatusSeverity);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_PickExternalWithReturnWatcherOff_BlocksAndDoesNotLaunch()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.Ask);
+        var probe = new StubExternalDisplayProbe(hasExternalDisplay: true, returnReady: false);
+        var (vm, launcher) = await AddAlphaAsync(externalDisplays: probe, configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        // "Play on the external screen" is the second option (index 1).
+        await ActivateOverlayOptionAsync(vm, 1);
+
+        Assert.Null(launcher.Game);
+        Assert.Equal(1, probe.ReturnRequests);
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public async Task LaunchScreenChooser_PlayOnceExternal_LaunchesExternalAndDoesNotPersist()
     {
         var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.Ask);
@@ -4371,9 +4404,14 @@ public class MainViewModelTests : IDisposable
         }
     }
 
-    private sealed class StubExternalDisplayProbe(bool hasExternalDisplay) : IExternalDisplayProbe
+    private sealed class StubExternalDisplayProbe(bool hasExternalDisplay, bool returnReady = true)
+        : IExternalDisplayProbe
     {
         public bool HasExternalDisplay { get; } = hasExternalDisplay;
+        public bool IsSecondScreenReturnReady { get; } = returnReady;
+        public int ReturnRequests { get; private set; }
+
+        public void RequestSecondScreenReturn() => ReturnRequests++;
     }
 
     // A minimal per-system config store that only carries the launch-screen preference, so the launch

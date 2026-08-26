@@ -162,9 +162,11 @@ public class MainActivity : AvaloniaMainActivity
     /// <summary>
     /// The head's couch input surface. Gamepad buttons and the D-pad arrive here as Android key events
     /// even though Avalonia reports them as <c>Key.None</c>, so this is where they are mapped to logical
-    /// couch actions and routed to the shared view model. Only key-down is dispatched (repeats included,
-    /// so held D-pad still scrolls); unmapped keys and key-up fall through to Avalonia and the system, so
-    /// text fields, the Back gesture, and volume keys behave normally.
+    /// couch actions and routed to the shared view model. Only key-down is dispatched, and only the first
+    /// event of a discrete press: auto-repeat is dropped for discrete actions (see
+    /// <see cref="AndroidGamepadInput.RepeatsWhileHeld"/>) and kept only for the directional ones so a held
+    /// D-pad still scrolls. Unmapped keys and key-up fall through to Avalonia and the system, so text
+    /// fields, the Back gesture, and volume keys behave normally.
     /// </summary>
     public override bool DispatchKeyEvent(KeyEvent e)
     {
@@ -213,8 +215,20 @@ public class MainActivity : AvaloniaMainActivity
         if (e.Action == KeyEventActions.Down &&
             AndroidGamepadInput.Map(e.KeyCode) is { } action)
         {
-            if (AndroidGamepadInput.Dispatch?.Invoke(action) == true)
+            // Held-button auto-repeat must not re-fire a discrete action: the shared controller edge-triggers
+            // these, so each key-repeat would land as a fresh press — holding B would back out of several
+            // overlays at once and holding A would repeat-type on the couch keyboard. Only the directional
+            // actions keep their repeats (a held D-pad still scrolls); every other repeat is swallowed here so
+            // it neither re-fires nor falls through to Avalonia/the system.
+            if (e.RepeatCount == 0 || AndroidGamepadInput.RepeatsWhileHeld(action))
+            {
+                if (AndroidGamepadInput.Dispatch?.Invoke(action) == true)
+                    return true;
+            }
+            else
+            {
                 return true;
+            }
         }
 
         return base.DispatchKeyEvent(e);

@@ -37,8 +37,10 @@ public sealed class AndroidOnScreenKeyboardService : IOnScreenKeyboardService
         if (activity.GetSystemService(Context.InputMethodService) is not InputMethodManager imm)
             return false;
 
-        // Implicit: focus moved to a text field under gamepad control rather than the user tapping it, so
-        // the show is a consequence of navigation, not an explicit keyboard summon.
-        return imm.ShowSoftInput(view, ShowFlags.Implicit);
+        // Forced, not Implicit: a game controller registers as a hardware keyboard (which is why the Activity
+        // declares ConfigChanges.Keyboard), and Android suppresses a SHOW_IMPLICIT request whenever a hardware
+        // keyboard is present — so on the Thor an Implicit show silently no-ops and the field is left
+        // un-typeable. SHOW_FORCED bypasses that heuristic; the show is always a deliberate couch summon here.
+        return imm.ShowSoftInput(view, ShowFlags.Forced);
     }
 }

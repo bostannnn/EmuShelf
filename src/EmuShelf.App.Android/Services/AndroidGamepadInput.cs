@@ -48,4 +48,14 @@ public static class AndroidGamepadInput
         Keycode.ButtonThumbr => GamepadAction.ResetRotation,
         _ => null,
     };
+
+    /// <summary>
+    /// Whether a held button should keep re-firing this action on key auto-repeat. Only the directional
+    /// actions repeat (a held D-pad that arrives as key events — rather than the hat axis the reader polls
+    /// — still needs to scroll); every discrete action is edge-triggered by the shared controller and must
+    /// fire exactly once per physical press, so a repeat is dropped rather than treated as a second press.
+    /// </summary>
+    public static bool RepeatsWhileHeld(GamepadAction action) => action is
+        GamepadAction.NavigateUp or GamepadAction.NavigateDown or
+        GamepadAction.NavigateLeft or GamepadAction.NavigateRight;
 }
