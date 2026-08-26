@@ -7158,7 +7158,43 @@ public partial class MainViewModel : ViewModelBase
             ChangeLibraryFolderFromSettingsAsync,
             ForgetLibraryFolderFromSettingsAsync,
             GetAll: GetAllLibraryFoldersForSettings),
-        DataDirectory: _dataDirectory);
+        DataDirectory: _dataDirectory,
+        // Android only: the data folder is a user-chosen shared-storage path, changeable from Settings.
+        // Offered only when the head wired the bootstrap (App.DataLocation) — i.e. on Android. Desktop
+        // keeps its data beside the executable, so the row never appears there.
+        ChangeDataFolder: OperatingSystem.IsAndroid() && App.DataLocation is not null
+            ? ChangeDataFolderFromSettingsAsync
+            : null);
+
+    // Android's Settings "change data folder" row. Runs the head's SAF folder pick (the same one first-run
+    // onboarding uses), which persists the new pointer; on success we restart the process so the composition
+    // root re-resolves it and boots into the new folder. Old data is left in place — the pick only re-points.
+    private async Task<DataLocationPickResult> ChangeDataFolderFromSettingsAsync()
+    {
+        if (App.DataLocation is not { } bootstrap)
+            return DataLocationPickResult.Failed("Changing the data folder isn't available here.");
+
+        var result = await bootstrap.PickFolderAsync();
+        if (result.Succeeded)
+        {
+            _logger.Information($"Data folder changed to '{result.BaseDirectory}'; restarting.");
+            if (App.RestartRequested is { } restart)
+            {
+                // Restarts via ProcessPhoenix (System.exit), so this call does not return on success.
+                restart();
+            }
+            else
+            {
+                // The pointer is already persisted, so without the relaunch hook the running process would
+                // keep using the old folder while the pointer names the new one. Surface a restart prompt
+                // instead of returning a silent Success the settings row would show nothing for.
+                _logger.Warning("Data folder changed but no restart hook is available; prompting the user to restart.");
+                return DataLocationPickResult.Failed("Data folder updated. Restart EmuShelf to start using it.");
+            }
+        }
+
+        return result;
+    }
 
     private async Task SetCloseEmulatorOnReturnAsync(bool value)
     {

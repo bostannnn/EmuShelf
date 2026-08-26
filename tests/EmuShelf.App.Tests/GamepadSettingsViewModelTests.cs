@@ -285,6 +285,47 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task GeneralSection_OffersChangeDataFolder_WhenTheHostWiresIt()
+    {
+        // Android has no file manager to "open" the folder in, so instead the General section offers a way
+        // to move the user-chosen data folder. Activating it runs the host pick and surfaces any rejection.
+        DataLocationPickResult result = DataLocationPickResult.Failed("EmuShelf can't write to that folder.");
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            DataDirectory: "/storage/emulated/0/EmuShelf",
+            ChangeDataFolder: () => Task.FromResult(result));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "general.change-data-folder");
+        Assert.True(row.IsAction);
+        // The current location is shown in place of a file-manager button, and the row is surface-specific
+        // (no Desktop counterpart), so it stays out of the cross-surface parity comparison.
+        Assert.Contains("/storage/emulated/0/EmuShelf", row.Description);
+        Assert.Equal(string.Empty, row.ParityId);
+
+        await row.SelectCommand.ExecuteAsync(null);
+        Assert.Equal("EmuShelf can't write to that folder.", viewModel.Settings.DataFolderStatusText);
+        // The refusal is also visible on the couch status pill, not only Desktop's inline label.
+        Assert.Equal("EmuShelf can't write to that folder.", viewModel.StatusText);
+    }
+
+    [AvaloniaFact]
+    public void GeneralSection_OmitsChangeDataFolder_WhenNotWired()
+    {
+        // Desktop reveals the folder in a file manager instead of moving it, so it wires no delegate.
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            DataDirectory: "/portable/EmuShelf");
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "general.change-data-folder");
+    }
+
+    [AvaloniaFact]
     public async Task AndroidEmulatorChoice_ListsStandaloneAndCoreEntriesAndPersistsThePair()
     {
         using var viewModel = CreateGamepadSettings(

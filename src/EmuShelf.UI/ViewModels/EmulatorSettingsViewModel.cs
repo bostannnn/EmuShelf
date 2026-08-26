@@ -341,6 +341,13 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// </summary>
     public bool CanRevealFiles => !OperatingSystem.IsAndroid();
 
+    /// <summary>
+    /// Whether the data folder can be moved from here. Android only: the host supplies a delegate that runs
+    /// the folder pick and restarts, so a controller user can relocate the portable data folder without a
+    /// desktop file manager. Desktop leaves this null — its data folder is fixed beside the executable.
+    /// </summary>
+    public bool CanChangeDataFolder => _maintenance?.ChangeDataFolder is not null;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasDataFolderStatus))]
     public partial string DataFolderStatusText { get; set; } = string.Empty;
@@ -766,6 +773,34 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         {
             _logger.Warning($"Could not open the data folder '{path}': {ex.Message}");
             DataFolderStatusText = "Couldn't open the data folder.";
+        }
+    }
+
+    /// <summary>
+    /// Moves EmuShelf's data folder (Android). Runs the host's folder pick, which persists the new pointer
+    /// and — on success — restarts the process so it re-resolves the folder; this method therefore returns
+    /// only when the pick is cancelled or rejected, in which case the reason is shown on the row. Existing
+    /// data is left in its old location (owner's choice); the user moves it themselves if they want it.
+    /// </summary>
+    [RelayCommand]
+    private async Task ChangeDataFolderAsync()
+    {
+        if (_maintenance?.ChangeDataFolder is not { } changeDataFolder)
+            return;
+
+        DataFolderStatusText = string.Empty;
+        try
+        {
+            var result = await changeDataFolder();
+            // On success the process restarts and never reaches here. A validated rejection explains itself;
+            // a plain cancellation leaves the row unchanged, mirroring first-run onboarding.
+            if (result.Error is { } error)
+                DataFolderStatusText = error;
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not change the data folder: {ex.Message}");
+            DataFolderStatusText = "Couldn't change the data folder.";
         }
     }
 

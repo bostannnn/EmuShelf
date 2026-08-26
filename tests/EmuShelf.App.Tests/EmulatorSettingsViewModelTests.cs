@@ -189,6 +189,39 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void ChangeDataFolder_IsOfferedOnlyWhenTheHostWiresIt()
+    {
+        var wired = new LibraryMaintenanceActions(
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult(string.Empty),
+            ChangeDataFolder: () => Task.FromResult(DataLocationPickResult.Cancelled()));
+
+        Assert.True(CreateViewModel(maintenance: wired).CanChangeDataFolder);
+        // Desktop keeps its data beside the executable, so it wires no delegate and the affordance is hidden.
+        Assert.False(CreateViewModel().CanChangeDataFolder);
+    }
+
+    [AvaloniaFact]
+    public async Task ChangeDataFolder_ShowsARejectionReason_ButLeavesACancellationSilent()
+    {
+        DataLocationPickResult result = DataLocationPickResult.Failed("That's an app's private folder.");
+        var maintenance = new LibraryMaintenanceActions(
+            RescanSystem: (_, _) => Task.FromResult(string.Empty),
+            RescanAll: _ => Task.FromResult(string.Empty),
+            ChangeDataFolder: () => Task.FromResult(result));
+        var viewModel = CreateViewModel(maintenance: maintenance);
+
+        // A validated rejection is surfaced on the row so the user learns why the folder was refused.
+        await viewModel.ChangeDataFolderCommand.ExecuteAsync(null);
+        Assert.Equal("That's an app's private folder.", viewModel.DataFolderStatusText);
+
+        // A plain cancellation (the user backed out of the picker) clears the message and says nothing more.
+        result = DataLocationPickResult.Cancelled();
+        await viewModel.ChangeDataFolderCommand.ExecuteAsync(null);
+        Assert.Equal(string.Empty, viewModel.DataFolderStatusText);
+    }
+
+    [AvaloniaFact]
     public void CloseEmulatorOnReturn_IsSeededFromMaintenance_AndExposedOnlyWhenWired()
     {
         var wired = new LibraryMaintenanceActions(
