@@ -1414,7 +1414,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return ToggleRow(
                 "emulators.close-on-return",
                 "Close emulator on return",
-                "When you come back to EmuShelf, close the game's emulator so it stops running in the background and draining the battery. Turn this off to keep it warm for a faster return.",
+                "When you come back to EmuShelf, force-stop the game's emulator so it stops running in the background and draining the battery. Needs Shizuku (a free companion app) running — you'll be asked to grant EmuShelf permission the first time. Turn this off to keep the emulator warm for a faster return.",
                 CloseEmulatorOnReturn,
                 value => CloseEmulatorOnReturn = value,
                 onLabel: "CLOSE",
