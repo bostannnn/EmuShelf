@@ -136,20 +136,24 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         var resolver = new DataLocationResolver(store, permission, DirectoryWritability.IsWritable);
         var resolution = resolver.Resolve();
 
+        // Always expose the bootstrap and the restart hook, even when the folder is already resolved: the
+        // Settings "change data folder" row re-runs the same SAF pick and restart on a device that has long
+        // finished onboarding. App only starts onboarding when ResolvedBaseDirectory is null, so handing it a
+        // resolved bootstrap boots straight to the library exactly as the plain BaseDirectoryOverride did.
+        var bootstrap = new AndroidDataLocationBootstrap(
+            store, permission, ResolveShellTopLevel, resolution, prebootLogger);
+        global::EmuShelf.App.App.DataLocation = bootstrap;
+
+        // The process restart used both to hand off from onboarding to the real shell (the single-view host
+        // won't swap a live-reassigned MainView, so the composed shell must come up fresh) and to reboot into
+        // the newly chosen folder after Settings re-points it.
+        global::EmuShelf.App.App.RestartRequested = () => AndroidAppRelaunch.Restart(ApplicationContext);
+
         if (resolution.IsResolved)
         {
             global::EmuShelf.App.App.BaseDirectoryOverride = resolution.BaseDirectory;
             return;
         }
-
-        var bootstrap = new AndroidDataLocationBootstrap(
-            store, permission, ResolveOnboardingTopLevel, resolution, prebootLogger);
-        global::EmuShelf.App.App.DataLocation = bootstrap;
-
-        // Hand off from onboarding to the real shell via a process restart: the single-view host won't swap
-        // a live-reassigned MainView, so the composed shell must come up fresh (it then resolves the pointer
-        // onboarding just wrote and boots to the library).
-        global::EmuShelf.App.App.RestartRequested = () => AndroidAppRelaunch.Restart(ApplicationContext);
 
         // While onboarding is up the shell's return signal isn't wired yet, so point the Activity's
         // foreground callback at the grant refresh; SingleViewShell re-points it once the real UI composes.
@@ -163,9 +167,10 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
             global::EmuShelf.App.App.OnboardingGamepadDispatch?.Invoke(action) ?? false;
     }
 
-    // The onboarding view is the single-view MainView until a folder is picked, so the folder picker's
-    // TopLevel is reached through it.
-    private static TopLevel? ResolveOnboardingTopLevel() =>
+    // The single-view MainView — the onboarding view before a folder is picked, the composed shell after —
+    // is what the folder picker's TopLevel is reached through, so both onboarding and the Settings
+    // change-folder pick resolve it the same way.
+    private static TopLevel? ResolveShellTopLevel() =>
         (global::Avalonia.Application.Current?.ApplicationLifetime as ISingleViewApplicationLifetime)?.MainView is { } view
             ? TopLevel.GetTopLevel(view)
             : null;

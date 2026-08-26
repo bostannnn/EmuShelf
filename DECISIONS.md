@@ -11147,3 +11147,30 @@ The couch status toast was moved from bottom-right to top-right so it no longer 
 `App.CloseOnReturnPrivilegePrepare` static hook the Android head sets, mirroring `App.GamepadReaderFactory`),
 rather than only on the first return, and toasts what the user still needs to do (install/start Shizuku, or
 grant permission). The lazy on-return request remains as the fallback.
+
+## 2026-08-26 — Android: the data folder is finally changeable from Settings (the row the 08-21 entry promised)
+
+The 2026-08-21 "user-chosen external data folder" entry said the folder is "changeable later in Settings", but
+no such control was ever built — the only way to pick a folder was first-run onboarding, so a user who wanted
+to move their library (e.g. from internal storage onto a microSD) had no path to it. The gap was structural:
+`App.DataLocation`/`App.RestartRequested` were wired **only** on the onboarding branch of
+`EmuShelfAndroidApplication.WireDataLocation`, which `return`ed early once a folder was resolved — so on every
+normal boot the running app held no bootstrap to re-pick or restart with. `WireDataLocation` now always
+constructs the `AndroidDataLocationBootstrap` and sets both hooks (the onboarding-only wiring — the grant
+refresh and the couch key bridge — stays behind the early return). Handing `App` a *resolved* bootstrap is
+inert: it only starts onboarding when `ResolvedBaseDirectory` is null, so boot is unchanged.
+
+The Settings row is General → **"Data folder"** on the couch surface, shown in place of Desktop's "Open data
+folder" (Android has no file manager to reveal a path in, gated by the existing `CanRevealFiles`). Activating
+it re-runs the **same SAF pick** as onboarding (`IDataLocationBootstrap.PickFolderAsync`, plumbed through a new
+Android-only `LibraryMaintenanceActions.ChangeDataFolder` delegate), which persists the new pointer; on success
+the process restarts via the shared ProcessPhoenix relaunch and the composition root re-resolves the new
+folder. **Old data is left in place** — the pick re-points only; the user moves their files themselves if they
+want them (owner's choice, as the 08-21 entry set out). A rejected or cancelled pick surfaces its reason on
+`DataFolderStatusText`, which the couch General status pill now includes so a refusal is visible on device, not
+only on Desktop's inline label. The row is surface-specific (no Desktop counterpart), so it is
+`excludeFromParity` and stays out of the cross-surface field-set comparison. Desktop wires no delegate — its
+data lives beside the executable — so the row never appears there. Covered by `EmulatorSettingsViewModelTests`
+(delegate gating, rejection vs. silent cancellation) and `GamepadSettingsViewModelTests` (the couch row's
+presence, path in its description, parity exclusion, and pill surfacing). Built on the Thor's firmware but the
+on-device pass (pick a microSD folder, confirm restart-into-it) is still pending a Thor session.

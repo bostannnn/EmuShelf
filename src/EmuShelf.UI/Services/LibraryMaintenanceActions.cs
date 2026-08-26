@@ -21,7 +21,13 @@ public sealed record LibraryMaintenanceActions(
     LibraryFolderManagementActions? Folders = null,
     // EmuShelf's data root (database, covers, settings, saves), so Settings can reveal it in the
     // desktop file manager. Where this lives is platform-specific; see IAppPaths.
-    string? DataDirectory = null);
+    string? DataDirectory = null,
+    // Android-only: re-point EmuShelf's data folder from Settings. Runs the same SAF folder pick as
+    // first-run onboarding, persists the new pointer, and — on success — restarts the process so the
+    // composition root re-resolves it (old data is left where it is). The result carries a rejection or
+    // cancellation reason for Settings to surface; on success the process restarts and it never returns.
+    // Null on desktop, where the data folder is fixed beside the executable / in Application Support.
+    Func<Task<DataLocationPickResult>>? ChangeDataFolder = null);
 
 /// <summary>Immediate database-only management of remembered recursive scan roots.</summary>
 public sealed record LibraryFolderManagementActions(

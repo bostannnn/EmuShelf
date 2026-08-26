@@ -463,8 +463,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.TexturePackSummary,
             _settings.TexturePackLastScanText),
         SettingsSection.About => UpdateStatusHint,
+        // General also hosts the Android "change data folder" row, whose rejection/cancellation reason is
+        // reported on DataFolderStatusText — surfaced here so a refused pick is visible on the couch pill,
+        // not only on Desktop's inline label.
         _ => FirstNonEmpty(
             _settings.StatusText,
+            _settings.DataFolderStatusText,
             _settings.MaintenanceStatusText),
     };
 
@@ -1392,6 +1396,28 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 "A OPEN",
                 _settings.OpenDataFolderCommand,
                 enabled: true);
+        }
+        // Android has no file manager to open the folder in, so instead of "Open data folder" it offers a
+        // way to move it: the folder is a user-chosen shared-storage path. Choosing a new one persists the
+        // pointer and restarts; the old data is left where it is. Surface-specific, so excluded from parity.
+        if (_settings.CanChangeDataFolder)
+        {
+            var location = _settings.HasDataDirectory
+                ? $" It's at {_settings.DataDirectory} now."
+                : string.Empty;
+            yield return ActionRow(
+                "general.change-data-folder",
+                "Data folder",
+                "Your library database, covers, settings, saves, and downloaded artwork live here — EmuShelf "
+                    + "never touches your game files." + location + " Choose a different folder to move it; "
+                    + "EmuShelf restarts, and your existing data stays where it is.",
+                "A CHANGE",
+                _settings.ChangeDataFolderCommand,
+                // Gate on the broad IsBusy, not just IsWorking: activating this restarts the process, and
+                // tearing down mid cloud-sync / RetroAchievements / texture work would race those in-flight
+                // writes under the data folder — the same reason Save/Cancel gate on IsBusy.
+                enabled: !_settings.IsBusy,
+                excludeFromParity: true);
         }
     }
 
