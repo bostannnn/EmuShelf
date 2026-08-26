@@ -61,14 +61,26 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     [ObservableProperty]
     public partial string StatusMessage { get; set; } = string.Empty;
 
-    /// <summary>The folder actions are offered only once any required grant is held and no pick is in flight.</summary>
-    public bool CanChooseFolder => (!RequiresPermission || IsPermissionGranted) && !IsBusy;
+    /// <summary>
+    /// The folder actions are offered only once every required gate is satisfied (any all-files grant, and
+    /// the second-screen-return step on a device that has a second screen) and no pick is in flight.
+    /// </summary>
+    public bool CanChooseFolder =>
+        (!RequiresPermission || IsPermissionGranted) && !IsSecondScreenReturnStepActive && !IsBusy;
 
     /// <summary>
     /// Whether the "grant all-files access" step is still outstanding. While it is, Grant is the only live
     /// action; once it clears, the folder actions are.
     /// </summary>
     public bool IsGrantStepActive => RequiresPermission && !IsPermissionGranted;
+
+    /// <summary>
+    /// Whether the second-screen-return step is a still-outstanding requirement. It is mandatory (not
+    /// optional) on a device that actually has a second screen: an external-screen launch cannot return
+    /// without the watcher, so onboarding does not complete until it is enabled. Devices with no second
+    /// screen never see it, and the launch path re-checks readiness for a screen attached after onboarding.
+    /// </summary>
+    public bool IsSecondScreenReturnStepActive => ShowSecondScreenReturn && !IsSecondScreenReturnEnabled;
 
     /// <summary>The controller focus ring is on the Grant button.</summary>
     public bool IsGrantFocused => Focused == OnboardingAction.Grant;
@@ -83,14 +95,17 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     public bool IsSecondScreenReturnFocused => Focused == OnboardingAction.EnableSecondScreenReturn;
 
     /// <summary>
-    /// Whether the optional second-screen-return step is offered on this device (a Thor with Screen-2).
-    /// Read once at construction — the companion display is stable for the life of the onboarding screen,
-    /// and the Android probe behind it (a display-manager query) is walked repeatedly by the focus ring.
+    /// Whether the second-screen-return step is shown on this device (a Thor with Screen-2). When shown it is
+    /// a required gate — see <see cref="IsSecondScreenReturnStepActive"/> — not an optional extra. Read once
+    /// at construction: the companion display is stable for the life of the onboarding screen, and the
+    /// Android probe behind it (a display-manager query) is walked repeatedly by the focus ring.
     /// </summary>
     public bool ShowSecondScreenReturn { get; }
 
     /// <summary>Whether the second-screen return watcher is enabled; drives the step's Enable button vs. checkmark.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChooseFolder))]
+    [NotifyPropertyChangedFor(nameof(IsSecondScreenReturnStepActive))]
     [NotifyPropertyChangedFor(nameof(IsSecondScreenReturnFocused))]
     public partial bool IsSecondScreenReturnEnabled { get; set; }
 
@@ -106,13 +121,18 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         IsPermissionGranted = bootstrap.IsStoragePermissionGranted;
         ShowSecondScreenReturn = bootstrap.ShowSecondScreenReturnStep;
         IsSecondScreenReturnEnabled = bootstrap.IsSecondScreenReturnEnabled;
-        StatusMessage = InitialMessageFor(reason);
+        // The gate message applies only once the grant (which comes first) is satisfied; while the grant is
+        // still outstanding its own instruction leads.
+        StatusMessage = !IsGrantStepActive && IsSecondScreenReturnStepActive
+            ? SecondScreenGateMessage
+            : InitialMessageFor(reason);
         bootstrap.StoragePermissionMaybeChanged += OnStoragePermissionMaybeChanged;
     }
 
-    // The actions that currently have a live button, in visual order — the set the focus ring walks. The
-    // optional second-screen-return step is appended last (once any grant is held and while it's still
-    // outstanding) so it never steals the folder actions' initial focus.
+    // The actions that currently have a live button, in visual order — the set the focus ring walks. Each
+    // required gate is exclusive while outstanding, in order: first the all-files grant, then the
+    // second-screen-return step (mandatory on a device with a second screen), and only once both are
+    // satisfied do the folder actions that complete onboarding appear.
     private IReadOnlyList<OnboardingAction> LiveActions
     {
         get
@@ -120,12 +140,13 @@ public sealed partial class OnboardingViewModel : ViewModelBase
             if (IsGrantStepActive)
                 return [OnboardingAction.Grant];
 
-            var actions = new List<OnboardingAction>(3);
+            if (IsSecondScreenReturnStepActive)
+                return [OnboardingAction.EnableSecondScreenReturn];
+
+            var actions = new List<OnboardingAction>(2);
             if (ShowRecommended)
                 actions.Add(OnboardingAction.UseRecommended);
             actions.Add(OnboardingAction.ChooseDifferent);
-            if (ShowSecondScreenReturn && !IsSecondScreenReturnEnabled)
-                actions.Add(OnboardingAction.EnableSecondScreenReturn);
             return actions;
         }
     }
@@ -235,9 +256,17 @@ public sealed partial class OnboardingViewModel : ViewModelBase
         IsPermissionGranted = _bootstrap.IsStoragePermissionGranted;
         IsSecondScreenReturnEnabled = _bootstrap.IsSecondScreenReturnEnabled;
         RaiseFocusChanged();
-        if (IsPermissionGranted && RequiresPermission)
+        if (IsSecondScreenReturnStepActive)
+            StatusMessage = SecondScreenGateMessage;
+        else if (IsPermissionGranted && RequiresPermission)
             StatusMessage = "All-files access granted. Now choose where your data lives.";
     }
+
+    // Shown while the mandatory second-screen-return step is the outstanding gate, so the disabled folder
+    // actions read as "one more required step", not as a dead end.
+    private const string SecondScreenGateMessage =
+        "Enable second-screen return to finish setup — it lets a game played on the second screen return to "
+        + "your library when it closes.";
 
     [RelayCommand]
     private void GrantPermission()

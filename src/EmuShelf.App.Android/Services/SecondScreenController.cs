@@ -161,6 +161,29 @@ internal sealed class SecondScreenController
 
     public bool HasExternalDisplay => _presentation?.Display is not null;
 
+    // True only while the accessibility watcher is actually bound and delivering window-change events — the
+    // single signal that lets a game launched onto Screen-2 be detected as closed so the library returns.
+    // The launch path gates external-screen launches on this: without the watcher, a game sent to Screen-2
+    // can never return (EmuShelf stays foregrounded on the built-in panel, so the top-resumed edge never
+    // fires), which would strand the companion in standby and never complete the play session.
+    public bool IsSecondScreenReturnReady => SecondScreenAccessibility.IsConnected;
+
+    // Sends the user to the system accessibility screen to enable the watcher, mirroring the onboarding
+    // step's action. The switch is flipped there and observed the next time EmuShelf regains the foreground.
+    public void RequestSecondScreenReturn()
+    {
+        try
+        {
+            using var intent = new Intent(global::Android.Provider.Settings.ActionAccessibilitySettings);
+            intent.AddFlags(ActivityFlags.NewTask);
+            Application.Context.StartActivity(intent);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not open the accessibility settings screen.", ex);
+        }
+    }
+
     // True while a game launched from the library owns Screen-2 and EmuShelf stays interactive on the
     // built-in panel. The head gates its top-resumed "returned from a game" handling on this: with the game
     // on the second screen, EmuShelf regaining the foreground (e.g. the user taps the built-in panel) does
@@ -351,7 +374,17 @@ internal sealed class SecondScreenController
                 return;
 
             if (_activity is not null && !ReferenceEquals(_activity, activity))
+            {
                 DetachDisplayManager();
+                // A different Activity is taking over while the old one is still around (the multi-window /
+                // "new instance resumes before the old is destroyed" ordering). The existing Presentation was
+                // constructed with the outgoing Activity as its outer context, so it must be torn down here:
+                // otherwise EnsurePresentation() below early-returns on the non-null field and keeps a
+                // Presentation bound to a dead window token, and the old Activity's OnDestroy no longer matches
+                // _activity so ActivityDestroyed never dismisses it — leaking it (and its bitmaps) and rendering
+                // the companion against a dead window.
+                DismissPresentation();
+            }
 
             _activity = activity;
             _displayManager = (DisplayManager?)activity.GetSystemService(Context.DisplayService);

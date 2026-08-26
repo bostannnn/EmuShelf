@@ -41,32 +41,6 @@ public class AndroidExternalStorageUriTests
     }
 
     [Fact]
-    public void TryResolveTreePath_UsesTheTreeId_IgnoringTheDocument()
-    {
-        // The folder to ask the user to grant is the URI's tree, not the game document beneath it — so a read
-        // of the document can be delegated. Always an ancestor-or-self of the document.
-        var uri = AndroidExternalStorageUri.BuildTreeDocumentUri(
-            "AE6A-1092", "roms/3ds", "roms/3ds/Some Game/Some Game.3ds");
-
-        Assert.Equal("/storage/AE6A-1092/roms/3ds", AndroidExternalStorageUri.TryResolveTreePath(uri));
-    }
-
-    [Fact]
-    public void TryResolveTreePath_ReturnsNull_WhenThereIsNoTreeSegment()
-    {
-        // A bare document URI (no /tree/) is not something we can request a covering grant for.
-        Assert.Null(AndroidExternalStorageUri.TryResolveTreePath(
-            "content://com.android.externalstorage.documents/document/AE6A-1092%3Aroms%2F3ds%2FGame.3ds"));
-    }
-
-    [Fact]
-    public void TryResolveTreePath_RejectsOtherProviders()
-    {
-        Assert.Null(AndroidExternalStorageUri.TryResolveTreePath(
-            "content://com.android.providers.media.documents/tree/image%3A1000"));
-    }
-
-    [Fact]
     public void TryResolveLocalPath_MapsPrimaryVolumeToEmulatedZero()
     {
         var resolved = AndroidExternalStorageUri.TryResolveLocalPath(

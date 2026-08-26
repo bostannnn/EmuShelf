@@ -19,12 +19,6 @@ public static class AndroidEmulatorChoiceCatalog
                 systemId => (IReadOnlyList<EmulatorChoice>)Build(systemId),
                 StringComparer.Ordinal);
 
-    public static IReadOnlyList<EmulatorChoice> ForSystem(string systemId) =>
-        BySystem.GetValueOrDefault(systemId) ?? [];
-
-    public static EmulatorChoice? Match(string systemId, string? emulatorId, string? corePath) =>
-        ForSystem(systemId).FirstOrDefault(choice => choice.Matches(emulatorId, corePath));
-
     private static List<EmulatorChoice> Build(string systemId)
     {
         var choices = new List<EmulatorChoice>();

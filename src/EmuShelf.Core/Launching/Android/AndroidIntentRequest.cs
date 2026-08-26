@@ -5,8 +5,14 @@ namespace EmuShelf.Core.Launching.Android;
 /// the desktop test suite (the plan's rule: intent construction is a pure function and lives in a
 /// <c>net10.0</c> assembly, not behind an emulator). The Android head translates this one-to-one into a
 /// framework <c>Android.Content.Intent</c> — set the component, the action, the data <see cref="DataUri"/>,
-/// each extra, each category, and <c>FLAG_GRANT_READ_URI_PERMISSION</c> when <see cref="GrantReadUriPermission"/>.
-/// The head also adds <c>FLAG_ACTIVITY_CLEAR_TASK</c> + <c>FLAG_ACTIVITY_CLEAR_TOP</c> when <see cref="ClearTask"/>.
+/// each extra and each category — and adds <c>FLAG_ACTIVITY_CLEAR_TASK</c> + <c>FLAG_ACTIVITY_CLEAR_TOP</c>
+/// when <see cref="ClearTask"/>.
+///
+/// It deliberately carries no read-grant flag. Every emulator EmuShelf targets reads the ROM through its own
+/// persisted <c>roms/&lt;system&gt;</c> SAF grant (RetroArch reads a plain path), so EmuShelf holds no grant
+/// to delegate — attaching <c>FLAG_GRANT_READ_URI_PERMISSION</c> to a URI it does not own is exactly the
+/// <c>SecurityException: Permission Denial</c> the port hit and removed. See <c>AndroidGameLauncher.Launch</c>
+/// and DECISIONS 2026-08-26.
 /// </summary>
 public sealed record AndroidIntentRequest(
     string PackageName,
@@ -16,20 +22,8 @@ public sealed record AndroidIntentRequest(
     IReadOnlyDictionary<string, string> StringExtras,
     IReadOnlyDictionary<string, bool> BoolExtras,
     IReadOnlyList<string> Categories,
-    bool GrantReadUriPermission,
-    string? RomContentUri = null,
     bool ClearTask = false)
 {
     /// <summary>The explicit <c>package/activity</c> component this intent targets.</summary>
     public string Component => $"{PackageName}/{ActivityName}";
-
-    /// <summary>
-    /// True when the ROM travels as a <c>content://</c> URI in a <em>string extra</em> rather than the
-    /// intent's data slot (Dolphin's <c>AutoStartFile</c>, DuckStation's <c>bootPath</c>, WatermelonDS's
-    /// <c>uri</c>). A read grant follows the intent's data URI and its <c>ClipData</c>, never an arbitrary
-    /// extra — so to delegate the grant for these the head must also attach the URI as <c>ClipData</c>.
-    /// </summary>
-    public bool RomUriRidesInExtra =>
-        RomContentUri is not null &&
-        !string.Equals(RomContentUri, DataUri, StringComparison.Ordinal);
 }

@@ -59,7 +59,7 @@ public class AndroidEmulatorLaunchProfilesTests
     [Fact]
     public void EmulatorChoiceCatalog_FlattensNdsStandaloneAndRetroArchCores()
     {
-        var choices = AndroidEmulatorChoiceCatalog.ForSystem("nds");
+        var choices = AndroidEmulatorChoiceCatalog.BySystem["nds"];
 
         Assert.Equal(
             ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
@@ -76,7 +76,7 @@ public class AndroidEmulatorLaunchProfilesTests
         var melonDs = choices[2];
         Assert.Same(
             melonDs,
-            AndroidEmulatorChoiceCatalog.Match("nds", "retroarch", melonDs.CorePath));
+            choices.First(choice => choice.Matches("retroarch", melonDs.CorePath)));
     }
 
     [Fact]

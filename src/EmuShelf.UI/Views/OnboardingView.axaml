@@ -84,15 +84,16 @@
                 <TextBlock Text="EmuShelf only writes inside the folder you choose. Your game files are never moved."
                            FontSize="12" LineHeight="17" TextWrapping="Wrap" Foreground="#8E8E93" />
 
-                <!-- Optional, second-screen devices only (the Thor): enable the accessibility watcher that
-                     returns EmuShelf to the library when a game launched onto the second screen is closed.
-                     Not required to finish onboarding — choosing a folder above completes it either way. -->
+                <!-- Second-screen devices only (the Thor): enable the accessibility watcher that returns
+                     EmuShelf to the library when a game launched onto the second screen is closed. Required to
+                     finish onboarding on such a device — the folder actions above stay disabled until it is
+                     enabled, because an external-screen launch cannot return without it. -->
                 <StackPanel Spacing="10" IsVisible="{Binding ShowSecondScreenReturn}">
                     <Border Padding="16,12" CornerRadius="10" Background="#2A2A30">
                         <StackPanel Spacing="10">
                             <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
                                 <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
-                                    <TextBlock Text="Second-screen return (optional)"
+                                    <TextBlock Text="Second-screen return (required)"
                                                FontSize="15" FontWeight="Medium" Foreground="#F2F2F4" />
                                     <TextBlock Text="Enabled"
                                                FontSize="13" Foreground="#7FD98A"

@@ -103,8 +103,7 @@ public static class AndroidEmulatorLaunchProfiles
         PackageName: "com.retroarch.aarch64",
         ActivityName: "com.retroarch.browser.retroactivity.RetroActivityFuture",
         PayloadSlot: AndroidRomPayloadSlot.RetroArchCore,
-        Action: AndroidIntentActions.View,
-        RequiresOwnTreeGrant: false);
+        Action: AndroidIntentActions.View);
 
     /// <summary>Every Android launch profile, in the order the matrix was measured.</summary>
     public static IReadOnlyList<AndroidLaunchProfile> All { get; } =

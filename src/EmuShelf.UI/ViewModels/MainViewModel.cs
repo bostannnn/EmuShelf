@@ -6146,6 +6146,22 @@ public partial class MainViewModel : ViewModelBase
             }
         }
 
+        // Never launch onto the external screen unless the return watcher is live: without it a game sent to
+        // Screen-2 can never return (EmuShelf stays foregrounded on the built-in panel, so nothing signals the
+        // close), leaving the companion stranded and the play session never completed. Block the launch and
+        // route the user to enable it rather than strand them — covers both the pinned-preference path above
+        // and an explicit "external" pick (screenOverride). A missing probe (desktop) is treated as ready.
+        if (targetScreen == GameLaunchScreen.External && _externalDisplays?.IsSecondScreenReturnReady == false)
+        {
+            SetStatus(
+                "Playing on the external screen needs “second-screen return” turned on so EmuShelf can bring "
+                + "your library back when the game closes. Opening Accessibility settings — enable EmuShelf "
+                + "there, then start the game again.",
+                StatusSeverity.Error);
+            _externalDisplays.RequestSecondScreenReturn();
+            return;
+        }
+
         // The name the user sees on the tile (the normalized scraped title when one exists), reused
         // for every status toast in this launch — including the save-sync ones, which only have the
         // Game model, so it is threaded in.
