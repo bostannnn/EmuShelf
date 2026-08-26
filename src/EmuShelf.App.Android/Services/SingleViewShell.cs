@@ -78,8 +78,10 @@ public sealed class SingleViewShell : IPlatformShell
         // of waiting for the first return. The shared setter (MainViewModel.SetCloseEmulatorOnReturnAsync)
         // invokes this and toasts whatever it returns. Static hook because that setter lives in the shared UI
         // and cannot reach the Android terminator directly — the same pattern as App.GamepadReaderFactory.
+        // Runs on a background thread (Task.Run) so its Shizuku binder calls never touch the UI thread; the
+        // await in the setter marshals the result back for the toast.
         global::EmuShelf.App.App.CloseOnReturnPrivilegePrepare =
-            () => System.Threading.Tasks.Task.FromResult(_emulatorTerminator.PreparePrivilege());
+            () => System.Threading.Tasks.Task.Run(() => _emulatorTerminator.PreparePrivilege());
 
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(
@@ -240,7 +242,7 @@ public sealed class SingleViewShell : IPlatformShell
                 // emulator's save files) has run, close the emulator so it stops draining the battery in the
                 // background. Opt-in and best-effort — see AndroidEmulatorProcessTerminator; a failure or a
                 // disabled toggle simply leaves it running.
-                CloseEmulatorIfRequested(viewModel, session.EmulatorPackage);
+                await CloseEmulatorIfRequestedAsync(viewModel, session.EmulatorPackage);
                 // Clear only on success, so an in-process failure — not just a process-death crash —
                 // leaves the session for the next return/startup to retry, matching the stated intent.
                 _pendingSessions.Clear();
@@ -260,8 +262,9 @@ public sealed class SingleViewShell : IPlatformShell
     // Closes the emulator recorded with the pending session, when the user has left the opt-in enabled, and
     // toasts the outcome (which emulator closed, or how to finish Shizuku setup). The setting is read fresh
     // from disk each time so a toggle takes effect on the next return; a null package (desktop-shaped record,
-    // or a pre-existing record written before the field existed) closes nothing.
-    private void CloseEmulatorIfRequested(MainViewModel viewModel, string? emulatorPackage)
+    // or a pre-existing record written before the field existed) closes nothing. Awaited so the "Closed X."
+    // toast reflects the force-stop's real result rather than merely that the command was dispatched.
+    private async Task CloseEmulatorIfRequestedAsync(MainViewModel viewModel, string? emulatorPackage)
     {
         if (string.IsNullOrEmpty(emulatorPackage))
             return;
@@ -270,7 +273,7 @@ public sealed class SingleViewShell : IPlatformShell
             return;
 
         var name = FriendlyEmulatorName(emulatorPackage);
-        switch (_emulatorTerminator.CloseEmulator(emulatorPackage))
+        switch (await _emulatorTerminator.CloseEmulatorAsync(emulatorPackage))
         {
             case EmulatorCloseOutcome.Closed:
                 viewModel.ShowTransientStatus($"Closed {name}.");
@@ -281,6 +284,9 @@ public sealed class SingleViewShell : IPlatformShell
                 break;
             case EmulatorCloseOutcome.ShizukuUnavailable:
                 viewModel.ShowTransientStatus($"Start Shizuku to close {name} when you return.");
+                break;
+            case EmulatorCloseOutcome.Failed:
+                viewModel.ShowTransientStatus($"Couldn't close {name}.", StatusSeverity.Error);
                 break;
             // NotAttempted: nothing to say.
         }

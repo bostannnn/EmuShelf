@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Android.App;
 using Android.Content;
 using EmuShelf.Core.Diagnostics;
@@ -19,6 +20,9 @@ public enum EmulatorCloseOutcome
 
     /// <summary>Shizuku is not installed/running, so only the (usually no-op) background kill was tried.</summary>
     ShizukuUnavailable,
+
+    /// <summary>Shizuku is authorized but the force-stop did not succeed — an unexpected, logged failure.</summary>
+    Failed,
 }
 
 /// <summary>
@@ -55,10 +59,11 @@ public sealed class AndroidEmulatorProcessTerminator
     /// message. No-ops (<see cref="EmulatorCloseOutcome.NotAttempted"/>) when the package is EmuShelf itself,
     /// is empty, or there is no context. Prefers a real Shizuku force-stop (and then drops the emulator's
     /// leftover Recents card); when Shizuku is present but not yet authorized it triggers Shizuku's one-time
-    /// permission dialog (this round closes nothing, the next return does); otherwise it degrades to the
-    /// deprecated background kill and reports Shizuku as unavailable.
+    /// permission dialog (this round closes nothing, the next return does); when it is authorized but the
+    /// stop unexpectedly fails it reports <see cref="EmulatorCloseOutcome.Failed"/>; otherwise it degrades to
+    /// the deprecated background kill and reports Shizuku as unavailable.
     /// </summary>
-    public EmulatorCloseOutcome CloseEmulator(string? packageName)
+    public async Task<EmulatorCloseOutcome> CloseEmulatorAsync(string? packageName)
     {
         if (string.IsNullOrEmpty(packageName))
             return EmulatorCloseOutcome.NotAttempted;
@@ -75,40 +80,42 @@ public sealed class AndroidEmulatorProcessTerminator
         if (string.Equals(packageName, ctx.PackageName, StringComparison.Ordinal))
             return EmulatorCloseOutcome.NotAttempted;
 
-        // Preferred path: a real force-stop via Shizuku. This is the only rootless mechanism that actually
-        // stops an emulator holding a foreground service.
+        // Preferred path: a real force-stop via Shizuku — the only rootless mechanism that actually stops an
+        // emulator holding a foreground service.
         if (_shizuku.IsRunning)
         {
-            if (_shizuku.HasPermission)
+            if (!_shizuku.HasPermission)
             {
-                if (_shizuku.ForceStop(packageName))
-                {
-                    _logger.Information($"Asked Shizuku to force-stop the emulator {packageName}.");
-                    // Also drop the emulator's leftover Recents card so it disappears from the app switcher,
-                    // not just the process list. Best-effort and independent of the stop's success.
-                    _shizuku.RemoveFromRecents(packageName);
-                    return EmulatorCloseOutcome.Closed;
-                }
-                // Shizuku is authorized but the call itself failed — fall through to the best-effort kill.
-            }
-            else
-            {
-                // Shizuku is running but has not authorized EmuShelf yet. Pop its one-time permission dialog;
-                // nothing is stopped this round, and the next return will force-stop. This doubles as the
-                // opt-in onboarding trigger, so no separate setup screen is needed for the common case.
+                // Running but not authorized yet: pop Shizuku's one-time permission dialog. Nothing is stopped
+                // this round; the next return force-stops. Doubles as the opt-in onboarding trigger, so no
+                // separate setup screen is needed for the common case.
                 _logger.Information(
                     "Shizuku is running but EmuShelf is not authorized yet; requesting permission now. " +
                     "Grant it in the Shizuku prompt and the emulator will be closed on the next return.");
                 _shizuku.RequestPermission();
                 return EmulatorCloseOutcome.PermissionRequested;
             }
+
+            // Awaited so the outcome reflects the command's real exit, not merely that it was dispatched.
+            if (await _shizuku.ForceStopAsync(packageName))
+            {
+                _logger.Information($"Asked Shizuku to force-stop the emulator {packageName}.");
+                // Also drop the emulator's leftover Recents card so it disappears from the app switcher, not
+                // just the process list. Best-effort and independent of the stop.
+                _shizuku.RemoveFromRecents(packageName);
+                return EmulatorCloseOutcome.Closed;
+            }
+
+            // Authorized but the force-stop did not exit cleanly — unexpected. Still try the background kill,
+            // but report Failed (not "Shizuku unavailable", which is untrue and would mislead the user).
+            _logger.Warning($"Shizuku is authorized but force-stopping {packageName} did not succeed.");
+            TryKillBackground(ctx, packageName);
+            return EmulatorCloseOutcome.Failed;
         }
-        else
-        {
-            _logger.Information(
-                $"Shizuku is not available, so {packageName} cannot be truly force-stopped. Install Shizuku, " +
-                "start it (once per boot), and grant EmuShelf permission to enable close-on-return.");
-        }
+
+        _logger.Information(
+            $"Shizuku is not available, so {packageName} cannot be truly force-stopped. Install Shizuku, " +
+            "start it (once per boot), and grant EmuShelf permission to enable close-on-return.");
 
         // Fallback: the deprecated killBackgroundProcesses. It cannot stop a foreground-service emulator, so
         // this is usually a no-op, but it costs nothing and reclaims whatever the OS still allows on devices
