@@ -40,6 +40,26 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shizuku: the only rootless way to *actually* force-stop a launched emulator on return (the
+         deprecated killBackgroundProcesses cannot touch a foreground-service emulator — see
+         AndroidEmulatorProcessTerminator / DECISIONS 2026-08-26). Pulled from Maven Central. Bind="false":
+         the Java classes are dexed into the APK (so the manifest's ShizukuProvider resolves and the binder
+         handshake works) but NO C# binding is generated — AndroidShizuku reaches rikka.shizuku.Shizuku
+         entirely through java.lang.reflect, which needs the classes present, not bound. All four modules are
+         required (provider → api → aidl + shared); AndroidMavenLibrary does not resolve transitive Maven
+         deps, and androidx.annotation is already supplied by Xamarin.AndroidX.Core above. -->
+    <AndroidMavenLibrary Include="dev.rikka.shizuku:aidl" Version="13.1.5" Bind="false" />
+    <AndroidMavenLibrary Include="dev.rikka.shizuku:shared" Version="13.1.5" Bind="false" />
+    <AndroidMavenLibrary Include="dev.rikka.shizuku:api" Version="13.1.5" Bind="false" />
+    <AndroidMavenLibrary Include="dev.rikka.shizuku:provider" Version="13.1.5" Bind="false" />
+    <!-- The Shizuku POMs declare a compile-time dependency on androidx.annotation (NonNull/Nullable/
+         RestrictTo — CLASS-retention annotations, not needed at runtime and never referenced by our
+         reflection-only usage). AndroidX.Core already ships it, so mark the Java-dependency verifier's
+         requirement satisfied instead of pinning a second AndroidX.Annotation version that could drift. -->
+    <AndroidIgnoredJavaDependency Include="androidx.annotation:annotation:1.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EmuShelf.UI\EmuShelf.UI.csproj" />
   </ItemGroup>
 </Project>

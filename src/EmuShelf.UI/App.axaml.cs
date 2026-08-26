@@ -72,6 +72,15 @@ public partial class App : Application
     public static Func<IUpdateApplier>? UpdateApplierFactoryOverride { get; set; }
 
     /// <summary>
+    /// Set by the Android head: prepares the privilege the "close emulator on return" feature needs, invoked
+    /// the moment the user turns that setting on so the Shizuku permission is requested up front rather than
+    /// only on the first return. Returns a short status message to toast, or null when nothing needs saying
+    /// (Shizuku already authorized, or not applicable). Desktop leaves this null — the emulator is a child
+    /// process that exits on its own, so the setting is absent there.
+    /// </summary>
+    public static Func<Task<string?>>? CloseOnReturnPrivilegePrepare { get; set; }
+
+    /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
     /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
     /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the

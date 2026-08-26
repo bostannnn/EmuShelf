@@ -314,7 +314,7 @@
                 Classes.progress="{Binding IsStatusProgress}"
                 Classes.error="{Binding IsStatusError}"
                 IsHitTestVisible="{Binding ShowGamepadStatusToast}"
-                HorizontalAlignment="Right" VerticalAlignment="Bottom" MaxWidth="560"
+                HorizontalAlignment="Right" VerticalAlignment="Top" MaxWidth="560"
                 Margin="36" Padding="16,12" CornerRadius="10"
                 Background="{DynamicResource EmuPopoverBrush}"
                 BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1">
