@@ -11079,3 +11079,54 @@ launcher's now-dead `FLAG_GRANT_READ_URI_PERMISSION` path (with no broker, `Chec
 pass, so `withGrant` was always false — behaviour-preserving deletion). The launch is now: build the intent
 with the SAF URI (or RetroArch's plain path), `NEW_TASK`, plus `CLEAR_TASK`+`CLEAR_TOP` for Azahar
 (2026-08-25). No prompt anywhere. Reading depends on each emulator's own folder grant, as it always did.
+
+## 2026-08-26 — Close-on-return is done via Shizuku, not killBackgroundProcesses (which never worked)
+
+The opt-in close-on-return (2026-08-25) was built on `ActivityManager.killBackgroundProcesses(package)`, and
+it did not work on the Thor. That API is deprecated (API 29+), only a *hint*, and — decisively — skips any
+process that owns a **foreground service**, which is exactly what every emulator holds while emulating
+(Dolphin, DuckStation, PPSSPP, RetroArch…). So the emulator kept running after return, defeating the whole
+feature. This is a structural Android limit, not a tuning issue: no ordinary third-party app can truly
+force-stop another app. Confirmed with two web searches and, on-device, by watching the emulator survive.
+
+The only rootless mechanism that works is **Shizuku**. Its helper runs at the adb-shell UID (2000), which
+holds `FORCE_STOP_PACKAGES`, so `am force-stop <package>` routed through Shizuku is the genuine Settings-style
+force stop. Verified end-to-end on the Thor (2026-08-26): `adb shell am force-stop` (identical privilege) kills
+a running Dolphin instantly, and EmuShelf's own path — provider binder handshake → permission grant → the
+force-stop — killed Dolphin on return, logging `Shizuku force-stop … exited with 0`.
+
+Integration into the C#/Avalonia head (the interesting part): the four Shizuku Maven modules
+(`dev.rikka.shizuku:aidl/shared/api/provider`, 13.1.5) are pulled via `AndroidMavenLibrary` with
+**`Bind="false"`** — the Java classes are dexed into the APK (so the manifest's `rikka.shizuku.ShizukuProvider`
+resolves and the binder handshake runs) but no C# binding is generated. `AndroidShizuku` reaches
+`rikka.shizuku.Shizuku` entirely through `java.lang.reflect` against Mono.Android's always-present reflection
+types, which sidesteps the binding generator completely and the Xamarin AIDL-stub-in-C# limitation. The one
+privileged call is `Shizuku.newProcess(String[],String[],String)` — package-private, so reached by reflection
+(`getDeclaredMethod` + `setAccessible`), same as every other Shizuku consumer. `newProcess` is deprecated in
+favour of a UserService, but a UserService requires shipping a Java module; for a single fire-and-forget
+`am force-stop` the reflection call is far less machinery and is kept, with a fallback path if it is ever
+removed. The `androidx.annotation` compile-only dependency the POMs declare is marked satisfied with
+`AndroidIgnoredJavaDependency` (AndroidX.Core already ships it) rather than pinning a second version.
+
+`AndroidEmulatorProcessTerminator` now prefers Shizuku: if the binder is live and EmuShelf is authorized it
+force-stops; if the binder is live but unauthorized it fires Shizuku's one-time permission dialog and closes
+nothing that round (the next return does the stop — this doubles as the onboarding trigger, so no separate
+setup screen is needed); if Shizuku is absent it logs guidance and falls back to the old (usually no-op)
+`killBackgroundProcesses`, which is why the `KILL_BACKGROUND_PROCESSES` permission is kept. Requires the user
+to install Shizuku and start it once per boot (wireless debugging) on a non-rooted device — the couch toggle
+copy says so. The `moe.shizuku.manager.permission.API_V23` permission and the `ShizukuProvider` are declared
+in the manifest; the provider authority is `com.emushelf.app.shizuku`.
+
+Three UX refinements landed with it (all verified on the Thor): (1) **Recents-card removal** — a force-stop
+kills the process but leaves the emulator's card in the app switcher (the system's own Force Stop does the
+same), which read as "not closed". After the stop, `AndroidShizuku.RemoveFromRecents` finds the emulator's
+task id(s) from `dumpsys activity recents` and drops each with `am stack remove <id>` — all shell, run through
+the same Shizuku privilege — so the emulator disappears from the switcher too. (2) **A close toast** naming
+the emulator ("Closed Dolphin.") is raised on return through the existing couch status surface
+(`MainViewModel.ShowTransientStatus`); the shell maps package→display name via `AndroidEmulatorLaunchProfiles`
+and picks the message from a new `EmulatorCloseOutcome` (Closed / PermissionRequested / ShizukuUnavailable).
+The couch status toast was moved from bottom-right to top-right so it no longer floats over the 3D hero.
+(3) **Proactive permission** — turning the toggle on now requests the Shizuku permission up front (via a new
+`App.CloseOnReturnPrivilegePrepare` static hook the Android head sets, mirroring `App.GamepadReaderFactory`),
+rather than only on the first return, and toasts what the user still needs to do (install/start Shizuku, or
+grant permission). The lazy on-return request remains as the fallback.

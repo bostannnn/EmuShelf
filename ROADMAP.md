@@ -2105,14 +2105,19 @@ breaks the whole-solution macOS build/test loop.
       "MainView is not fully supported on Android" warning (was 33×/day on the Thor). Verified on-device.
       NOT fixed by this: the `OpenGlException: Window 0 is invalid` render-loop errors — a separate
       surface-teardown race on emulator-launch backgrounding, still open (see DECISIONS 2026-08-22).
-    - [x] **S4 — close the emulator when returning to EmuShelf** (2026-08-25; on-device Thor verification
-          pending device return). A launched emulator is another app; nothing exited it on return, so it
-          lingered in the background draining the battery. On return EmuShelf now asks Android to close it via
-          `ActivityManager.killBackgroundProcesses` (new `AndroidEmulatorProcessTerminator`, manifest
-          `KILL_BACKGROUND_PROCESSES`), gated by the opt-in `AppSettings.CloseEmulatorOnReturn` (default on)
-          surfaced in the couch Settings → Emulators section. The launched package rides in
+    - [x] **S4 — close the emulator when returning to EmuShelf** (2026-08-25; reworked and **verified on the
+          Thor 2026-08-26**). A launched emulator is another app; nothing exited it on return, so it lingered
+          in the background draining the battery. The first cut used `ActivityManager.killBackgroundProcesses`,
+          which **does not work**: it is deprecated and skips any process holding a foreground service — which
+          every emulator does while emulating — so the emulator survived. Replaced with **Shizuku**: its helper
+          runs at the adb-shell UID (holds `FORCE_STOP_PACKAGES`), so `am force-stop <package>` through Shizuku
+          is a genuine force stop, rootless. `AndroidEmulatorProcessTerminator` now prefers Shizuku (fires
+          Shizuku's one-time permission dialog on first use, which doubles as onboarding) and falls back to the
+          old kill only when Shizuku is absent. Still gated by the opt-in `AppSettings.CloseEmulatorOnReturn`
+          (default on) in the couch Settings → Emulators section; the launched package rides in
           `PendingPlaySession.EmulatorPackage`; the close fires from `SingleViewShell.CompletePendingSession`
-          after play-time/save-sync work, for both built-in and second-screen returns. Best-effort by design
-          (OEM firmware / sticky foreground services can survive it; a true force-stop needs root). Off-device
-          coverage: store round-trip incl. the package + legacy-record back-compat, settings seed/save, and
-          the couch toggle's presence/persistence. See DECISIONS 2026-08-25.
+          for both built-in and second-screen returns. Shizuku is pulled as `AndroidMavenLibrary … Bind="false"`
+          and reached via `java.lang.reflect` (no C# binding); manifest gains `moe.shizuku.manager.permission.
+          API_V23` + `ShizukuProvider`. On-device: Dolphin force-stopped on return, log `Shizuku force-stop …
+          exited with 0`. Requires the user to install + start Shizuku (once per boot on non-rooted devices).
+          See DECISIONS 2026-08-25 and 2026-08-26.

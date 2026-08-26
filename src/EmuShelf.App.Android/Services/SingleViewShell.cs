@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
@@ -10,6 +11,7 @@ using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Infrastructure.Launching;
 using EmuShelf.Infrastructure.Settings;
 
@@ -71,6 +73,13 @@ public sealed class SingleViewShell : IPlatformShell
         _emulatorTerminator = new AndroidEmulatorProcessTerminator(
             () => global::Android.App.Application.Context,
             boot.Logger);
+
+        // When the user turns "Close emulator on return" on, request the Shizuku permission up front instead
+        // of waiting for the first return. The shared setter (MainViewModel.SetCloseEmulatorOnReturnAsync)
+        // invokes this and toasts whatever it returns. Static hook because that setter lives in the shared UI
+        // and cannot reach the Android terminator directly — the same pattern as App.GamepadReaderFactory.
+        global::EmuShelf.App.App.CloseOnReturnPrivilegePrepare =
+            () => System.Threading.Tasks.Task.FromResult(_emulatorTerminator.PreparePrivilege());
 
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(
@@ -231,7 +240,7 @@ public sealed class SingleViewShell : IPlatformShell
                 // emulator's save files) has run, close the emulator so it stops draining the battery in the
                 // background. Opt-in and best-effort — see AndroidEmulatorProcessTerminator; a failure or a
                 // disabled toggle simply leaves it running.
-                CloseEmulatorIfRequested(session.EmulatorPackage);
+                CloseEmulatorIfRequested(viewModel, session.EmulatorPackage);
                 // Clear only on success, so an in-process failure — not just a process-death crash —
                 // leaves the session for the next return/startup to retry, matching the stated intent.
                 _pendingSessions.Clear();
@@ -248,10 +257,11 @@ public sealed class SingleViewShell : IPlatformShell
         });
     }
 
-    // Closes the emulator recorded with the pending session, when the user has left the opt-in enabled. The
-    // setting is read fresh from disk each time so a toggle takes effect on the next return; a null package
-    // (desktop-shaped record, or a pre-existing record written before the field existed) closes nothing.
-    private void CloseEmulatorIfRequested(string? emulatorPackage)
+    // Closes the emulator recorded with the pending session, when the user has left the opt-in enabled, and
+    // toasts the outcome (which emulator closed, or how to finish Shizuku setup). The setting is read fresh
+    // from disk each time so a toggle takes effect on the next return; a null package (desktop-shaped record,
+    // or a pre-existing record written before the field existed) closes nothing.
+    private void CloseEmulatorIfRequested(MainViewModel viewModel, string? emulatorPackage)
     {
         if (string.IsNullOrEmpty(emulatorPackage))
             return;
@@ -259,6 +269,27 @@ public sealed class SingleViewShell : IPlatformShell
         if (!_settingsService.Load().CloseEmulatorOnReturn)
             return;
 
-        _emulatorTerminator.CloseEmulator(emulatorPackage);
+        var name = FriendlyEmulatorName(emulatorPackage);
+        switch (_emulatorTerminator.CloseEmulator(emulatorPackage))
+        {
+            case EmulatorCloseOutcome.Closed:
+                viewModel.ShowTransientStatus($"Closed {name}.");
+                break;
+            case EmulatorCloseOutcome.PermissionRequested:
+                viewModel.ShowTransientStatus(
+                    $"Grant EmuShelf permission in Shizuku to close {name} on return.");
+                break;
+            case EmulatorCloseOutcome.ShizukuUnavailable:
+                viewModel.ShowTransientStatus($"Start Shizuku to close {name} when you return.");
+                break;
+            // NotAttempted: nothing to say.
+        }
     }
+
+    // Maps an emulator package back to its friendly name (e.g. org.dolphinemu.dolphinemu -> "Dolphin") for
+    // the close toast, falling back to the raw package if it is not one of EmuShelf's known emulators.
+    private static string FriendlyEmulatorName(string package) =>
+        AndroidEmulatorLaunchProfiles.All
+            .FirstOrDefault(profile => string.Equals(profile.PackageName, package, StringComparison.Ordinal))
+            ?.DisplayName ?? package;
 }

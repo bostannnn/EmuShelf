@@ -2013,6 +2013,14 @@ public partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Raises the library toast from a platform shell — currently the Android close-on-return flow, which
+    /// says which emulator it closed (and how to finish Shizuku setup) as EmuShelf returns to the front.
+    /// Must be called on the UI thread; the shell already posts the return handler there.
+    /// </summary>
+    public void ShowTransientStatus(string text, StatusSeverity severity = StatusSeverity.Info) =>
+        SetStatus(text, severity);
+
+    /// <summary>
     /// How long the current message has left before it dismisses itself, or <see cref="TimeSpan.Zero"/>
     /// if it never will. Progress messages get no countdown at all: the operation producing them
     /// replaces the text with its own result (or an error) when it finishes, and a scan that goes
@@ -7136,12 +7144,27 @@ public partial class MainViewModel : ViewModelBase
             GetAll: GetAllLibraryFoldersForSettings),
         DataDirectory: _dataDirectory);
 
-    private Task SetCloseEmulatorOnReturnAsync(bool value)
+    private async Task SetCloseEmulatorOnReturnAsync(bool value)
     {
         // Persist through the shared settings service so the Android shell reads the latest value when it
         // returns to the foreground. No-op when no service was injected (design-time / tests).
         _settingsService?.Update(settings => settings with { CloseEmulatorOnReturn = value });
-        return Task.CompletedTask;
+
+        // When turning it on, prepare the privilege the feature needs up front (the Android head requests
+        // Shizuku permission and reports what the user must do) rather than waiting for the first return.
+        if (value && EmuShelf.App.App.CloseOnReturnPrivilegePrepare is { } prepare)
+        {
+            try
+            {
+                var message = await prepare();
+                if (!string.IsNullOrEmpty(message))
+                    SetStatus(message);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Preparing the close-on-return privilege failed.", ex);
+            }
+        }
     }
 
     private RetroAchievementsSettingsContext? CreateRetroAchievementsSettingsContext() =>
