@@ -2964,6 +2964,30 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_SchedulesOneAchievementRefreshForThatGame()
+    {
+        // The Android post-exit (deferred) path must refresh RetroAchievements the same way the desktop
+        // tracked-exit path does. The domain Game carries no RA id, so the refresh must resolve it from
+        // the cached link. Regression guard: this was missing, so achievements never updated after a game
+        // on Android — while saves synced — which is exactly the split the bug report described.
+        var refresh = new RecordingRetroAchievementsRefreshService();
+        var path = Path.Combine(_baseDirectory, "Alpha-deferred-ra.iso");
+        File.WriteAllText(path, "ps1");
+        _library.AddGames([new Game { SystemId = Ps1.Id, Path = path, Title = "Alpha", IsAvailable = true }]);
+        var gameId = Assert.Single(_library.GetGames()).Id;
+        var vm = CreateViewModel(
+            retroAchievementsRead: new StaticRetroAchievementsReadStore(gameId, 4321),
+            retroRefresh: refresh);
+        vm.SelectedSystem = Ps1;
+        await vm.ReloadGamesAsync();
+
+        await vm.CompleteDeferredPlaySessionAsync(gameId, TimeSpan.FromMinutes(2));
+        await refresh.Called.WaitAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(4321, refresh.GameId);
+    }
+
+    [AvaloniaFact]
     public async Task CompleteDeferredPlaySession_ReplacesTheSyncingProgressToastWhenTheBackgroundSyncFinishes()
     {
         // The Android post-exit (deferred) path raises the "Syncing saves…" progress toast, which never

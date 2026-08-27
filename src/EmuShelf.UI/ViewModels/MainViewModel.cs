@@ -6313,6 +6313,26 @@ public partial class MainViewModel : ViewModelBase
                 afterSync.Status == CloudSaveSyncStatus.Failed ? StatusSeverity.Error : StatusSeverity.Info);
         }
 
+        // Mirror the desktop post-exit path (see LaunchAsync), which pulls fresh unlocked-achievement
+        // progress once the tracked emulator exits. Android has no process to await, so the desktop's
+        // result.ProcessExited branch never runs here — this deferred completion is where the refresh
+        // belongs. The domain Game carries no RetroAchievements id, so resolve it from the cached link
+        // (off the UI thread — GetAllLinks reads SQLite), gated on HasAchievements exactly as the
+        // desktop grid's ApplyAchievementLink is. Fire-and-forget so it never delays the return.
+        if (_retroAchievementsRead is not null)
+        {
+            try
+            {
+                var link = await Task.Run(() => _retroAchievementsRead.GetAllLinks().GetValueOrDefault(gameId));
+                if (link is { HasAchievements: true, RetroAchievementsGameId: { } retroAchievementsGameId })
+                    _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning($"Could not start the RetroAchievements refresh after {game.Title}.", ex);
+            }
+        }
+
         try
         {
             await RefreshAfterPlayRecordedAsync();
