@@ -456,8 +456,6 @@ internal sealed class SecondScreenController
             RenderRestingSurface();
             ScheduleSpotlightUpdate();
             StartKeepAliveIfNeeded();
-            // If couch text entry was already open when the second screen attached, move the keyboard onto it.
-            SyncKeyboardToSecondScreen();
         }
         catch (Exception ex)
         {
@@ -488,28 +486,6 @@ internal sealed class SecondScreenController
     // Long-press on a dock slot opens its picker, where a filled slot can be re-pinned or cleared. Tap
     // still launches (ActivateDockSlot), so this is the "manage" gesture without a permanent affordance.
     private void EditDockSlot(int slot) => ShowDrawer(slot);
-
-    // Mirror the main head's couch keyboard onto Screen-2 whenever one is live and this device actually has
-    // the second display: the keys move to the panel the user can look down at, and the search field +
-    // results stay fully visible on the main screen. When there is no presentation (no second screen), the
-    // main head keeps its own strip — IsGamepadKeyboardHostedRemotely stays false so that strip shows.
-    private void SyncKeyboardToSecondScreen()
-    {
-        var keyboard = _viewModel?.GamepadKeyboard;
-        if (_presentation is { } presentation && keyboard is not null)
-        {
-            presentation.Model.Keyboard = keyboard;
-            if (_viewModel is not null)
-                _viewModel.IsGamepadKeyboardHostedRemotely = true;
-        }
-        else
-        {
-            if (_presentation is { } current)
-                current.Model.Keyboard = null;
-            if (_viewModel is not null)
-                _viewModel.IsGamepadKeyboardHostedRemotely = false;
-        }
-    }
 
     private void EnsureAppsLoadedAsync()
     {
@@ -1035,12 +1011,6 @@ internal sealed class SecondScreenController
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.GamepadKeyboard))
-        {
-            RunOnMain(SyncKeyboardToSecondScreen);
-            return;
-        }
-
         if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
             return;
 
@@ -1097,10 +1067,6 @@ internal sealed class SecondScreenController
             if (_viewModel is not null)
                 _viewModel.MainScreenCompanion = null;
         }
-        // The second screen is going away; if it was hosting the keyboard, hand it back to the main-screen
-        // strip so text entry does not vanish mid-type.
-        if (_viewModel is { GamepadKeyboard: not null } viewModel)
-            viewModel.IsGamepadKeyboardHostedRemotely = false;
 
         try
         {

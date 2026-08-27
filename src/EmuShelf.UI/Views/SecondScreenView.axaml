@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
-             xmlns:views="using:EmuShelf.App.Views"
              xmlns:ai="using:Avalonia.Input"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -40,7 +39,7 @@
          running game's logo faintly visible — dark and easy on the panel (the Thor's Screen-2 is
          burn-in-prone) rather than the full-brightness browse spotlight. Mounted always and driven by an
          .on class (bound to IsStandby) so it dissolves in when a game starts and out when an overlay
-         (achievements / drawer) or the keyboard opens over it. Non-hit-test so it never eats a tap on the
+         (achievements / drawer) opens over it. Non-hit-test so it never eats a tap on the
          dock bar below it. -->
     <Style Selector="Border.ss-standby">
       <Setter Property="Background" Value="#F2000000" />
@@ -425,8 +424,8 @@
     <!-- Dim standby wash for "a game is playing on the other screen" (see the style above). Spans BOTH rows
          so the whole surface — spotlight and the dock bar below it — goes dark together, with the running
          game's logo faintly visible. Non-hit-test, so the trophy/dock underneath stay tappable: tapping the
-         trophy opens achievements, which lifts the dim (IsStandby then false). Sits below the keyboard layer,
-         and IsStandby is false whenever an overlay or the keyboard is open, so those always read clean. -->
+         trophy opens achievements, which lifts the dim (IsStandby then false). IsStandby is false whenever
+         an overlay is open, so the wash always reads clean. -->
     <Border Grid.Row="0" Grid.RowSpan="2" Classes="ss-standby" Classes.on="{Binding IsStandby}">
       <!-- IsHitTestVisible=False on the wash Border alone doesn't stop its children being hit, so the whole
            subtree is marked non-hit-test — otherwise the centered logo could intercept a tap aimed at the
@@ -444,20 +443,5 @@
       </Panel>
     </Border>
 
-    <!-- App-owned keyboard, mirrored from the main head during couch search / rename. Its own top-most
-         layer (spans both rows) so it covers the spotlight, dock, and any open overlay while typing, and
-         reveals them unchanged when it closes. The keys are driven by the main-screen gamepad dispatch;
-         taps also work here. -->
-    <Border Grid.Row="0" Grid.RowSpan="2" IsVisible="{Binding IsKeyboardOpen}"
-            Background="{DynamicResource EmuWindowBackgroundBrush}">
-      <ContentControl HorizontalAlignment="Center" VerticalAlignment="Center"
-                      Content="{Binding Keyboard}">
-        <ContentControl.ContentTemplate>
-          <DataTemplate x:DataType="vm:GamepadKeyboardViewModel">
-            <views:GamepadKeyboardView />
-          </DataTemplate>
-        </ContentControl.ContentTemplate>
-      </ContentControl>
-    </Border>
   </Grid>
 </UserControl>
