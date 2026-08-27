@@ -14,97 +14,15 @@ using EmuShelf.Integrations.Systems;
 namespace EmuShelf.App.Tests;
 
 /// <summary>
-/// Renders the real gamepad grid and asserts the two things that made "the selector is broken":
-/// the navigation stride (GamepadColumnCount) equals the columns UniformGridLayout actually lays out
-/// at every width, and the focus ring stays glued to FocusedGame — including under the input-priority
-/// flood (fast d-pad / LB-RB) that used to strand a reveal posted at DispatcherPriority.Input.
+/// Renders the real gamepad grid and asserts the focus ring stays glued to FocusedGame — including
+/// under the input-priority flood (fast d-pad / LB-RB) that used to strand a reveal posted at
+/// DispatcherPriority.Input — and that the justified rows still virtualize.
 /// </summary>
 public class GamepadGridSelectorTests
 {
     private readonly ITestOutputHelper _output;
 
     public GamepadGridSelectorTests(ITestOutputHelper output) => _output = output;
-
-    [AvaloniaFact]
-    public async Task ArithmeticColumnCountMatchesRenderedLayout_AcrossWidths()
-    {
-        var mismatches = new List<string>();
-        // Sweep window widths; the gamepad scroller's fixed 52+52 margin makes viewport = window - 104.
-        for (var windowWidth = 820; windowWidth <= 1960; windowWidth += 16)
-        {
-            var (arithmetic, rendered, viewport, coverWidth, rowXs) = await MeasureColumns(windowWidth);
-            if (arithmetic != rendered)
-            {
-                mismatches.Add(
-                    $"window={windowWidth} viewport={viewport:F0} coverW={coverWidth:F0} " +
-                    $"arithmetic={arithmetic} rendered={rendered} X=[{rowXs}]");
-            }
-        }
-
-        foreach (var line in mismatches)
-            _output.WriteLine(line);
-        _output.WriteLine($"total mismatches: {mismatches.Count}");
-
-        Assert.Empty(mismatches);
-    }
-
-    private static async Task<(int Arithmetic, int Rendered, double Viewport, double CoverWidth, string RowXs)>
-        MeasureColumns(int windowWidth)
-    {
-        var systems = KnownSystems.All.Take(6).ToArray();
-        var viewModel = new MainViewModel();
-        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
-        viewModel.IsGamepadMode = true;
-
-        var games = Enumerable.Range(0, 33)
-            .Select(index =>
-            {
-                var system = systems[index % systems.Length];
-                return new GameViewModel(
-                    new Game
-                    {
-                        Id = index + 1,
-                        SystemId = system.Id,
-                        Path = $"/Games/{system.Id}/Game {index + 1}.bin",
-                        Title = $"Game {index + 1}",
-                        IsAvailable = true,
-                        DateAdded = DateTimeOffset.UtcNow,
-                    },
-                    system.Name,
-                    system.ShortName,
-                    system.AccentColor,
-                    coverAspectRatio: system.CoverAspectRatio);
-            })
-            .ToArray();
-        viewModel.Games.ReplaceAll(games);
-        viewModel.HasGames = true;
-        viewModel.IsLibraryEmpty = false;
-        viewModel.FocusedGame = games[0];
-
-        var window = new MainWindow { DataContext = viewModel, Width = windowWidth, Height = 800 };
-        window.Show();
-        try
-        {
-            await Pump();
-
-            // Only the on-screen rows realize under virtualization; group them into rows by Y and take
-            // the busiest row as the rendered column count (each full row holds GamepadColumnCount tiles).
-            var tiles = RealizedTiles(window);
-            var byRow = tiles.GroupBy(t => Math.Round(t.TopLeft.Y)).OrderBy(g => g.Key).ToArray();
-            var topRow = byRow.FirstOrDefault();
-            var rendered = byRow.Length == 0 ? 0 : byRow.Max(g => g.Count());
-            var rowXs = topRow is null
-                ? ""
-                : string.Join(", ", topRow.OrderBy(t => t.TopLeft.X).Select(t => t.TopLeft.X.ToString("F0")));
-
-            return (viewModel.GamepadColumnCount, rendered, viewModel.GamepadViewportWidth,
-                viewModel.GridCoverWidth, rowXs);
-        }
-        finally
-        {
-            window.Close();
-        }
-    }
 
     // Realized gamepad tiles (only visible rows exist under virtualization), each with its game and its
     // top-left in window coordinates.
@@ -210,7 +128,6 @@ public class GamepadGridSelectorTests
         try
         {
             await Pump();
-            var columns = viewModel.GamepadColumnCount;
 
             var problems = new List<string>();
 
@@ -247,7 +164,7 @@ public class GamepadGridSelectorTests
 
             foreach (var problem in problems)
                 _output.WriteLine(problem);
-            _output.WriteLine($"columns={columns}, problems={problems.Count}");
+            _output.WriteLine($"problems={problems.Count}");
             Assert.Empty(problems);
         }
         finally

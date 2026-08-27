@@ -11175,6 +11175,41 @@ data lives beside the executable — so the row never appears there. Covered by 
 presence, path in its description, parity exclusion, and pill surfacing). Built on the Thor's firmware but the
 on-device pass (pick a microSD folder, confirm restart-into-it) is still pending a Thor session.
 
+## 2026-08-27 — Cover grids: per-platform standardized frames in justified, full-width rows
+
+The cover grids (desktop and gamepad/couch) frame every cover to its **platform's canonical aspect
+ratio** — all arcade covers 4:3, all disc systems the case shape — and **crop** off-ratio artwork to
+fill that frame (`UniformToFill`). So a platform is *standardized*: every arcade cover is the same
+size and packs a consistent number per row. These per-platform frames are then laid into **justified
+rows** that fill the viewport width edge-to-edge (no side gutter — the couch requirement on the Thor
+and Steam Deck), with **no gaps**.
+
+This is the endpoint of a long live-tuning loop with the user, who tried and rejected each true-shape
+variant in turn: showing each scan's own ratio made a platform's covers inconsistent (arcade came out
+at different widths, 3-vs-4 per row); filling rows by scaling made sparse wide-cover rows balloon;
+fixing the height and spreading slack as gaps put big empty bands between covers on a wide screen. The
+user's final call: standardize per platform and crop if needed. So this largely *restores* the
+"one canonical frame per platform" idea (2026-07-17 / 2026-08-02) — the per-image-ratio detection is
+gone (`GameViewModel.CoverAspectRatio`, the platform value, is used directly) — but keeps this
+session's new layout and navigation.
+
+Layout: `JustifiedCoverLayout.Pack` (pure, unit-tested) fills a row and commits it the moment the
+width-filling height reaches the target, then scales that row to fill the width. Committing when
+"full enough" keeps every row dense and at ~target height, so nothing balloons and full rows of a
+single platform all hold the same count. The last, partial row is left-packed at target height. The
+packer stamps each cover's rendered `CoverWidth`/`CoverHeight` and `GridRowIndex`/`GridCenterX`.
+
+Couch D-pad navigation is **geometry-based** off that (`GridRowIndex`/`GridCenterX`): left/right within
+a row, up/down to the nearest-centre cover in the adjacent row — not the old `index % GamepadColumnCount`.
+Because the packer drives both the rendered rows and the nav geometry, the "arithmetic column count vs.
+rendered layout" bug class (2026-07-31, 2026-08-02) cannot recur. The desktop grid moved from a flat
+`UniformGridLayout` repeater to a row-virtualized repeater over `CoverRows` (its rubber-band marquee
+walks realized `game-tile` controls); the couch grid keeps its row-virtualized `ListBox` over
+`GamepadRows`. `GamepadColumnCount`, `GridCoverWidth`, `ShelfCoverHeight`, `GamepadCoverHeight`,
+`GamepadCoverHeightFor`, and the mixed-frame constant are gone. Cover size is driven by one knob per
+mode — the target row height (`DesktopTargetRowHeight` 250 / `GamepadTargetRowHeight` 300). Covered by
+`JustifiedCoverLayoutTests`, geometry-nav tests in `MainViewModelTests`, and the rendered-grid tests
+(`GamepadGridSelectorTests`, `DesktopGridMarquee_*`); on-device Thor / Steam Deck pass still pending.
 ## 2026-08-27 — The app-owned couch keyboard is removed; couch text entry uses the native IME
 
 Supersedes the 2026-08-23 "App-owned couch keyboard replaces the system IME" entry above. PR #218

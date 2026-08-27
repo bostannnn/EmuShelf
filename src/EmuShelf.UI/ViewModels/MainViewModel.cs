@@ -298,8 +298,9 @@ public partial class MainViewModel : ViewModelBase
     // Row projection of Games for the gamepad grid. The grid is rendered as a virtualized ListBox with
     // one row per line, so only the ~5 visible rows realize (mature couch-UI pattern) — vastly cheaper
     // than laying out every tile, and it avoids the phantom-cell defect of a virtualized UniformGrid.
-    // Each row holds exactly GamepadColumnCount games, so the rendered column count is guaranteed to
-    // equal the value navigation uses. Navigation still runs on the flat Games list + index%columns.
+    // Each row is one justified row the packer produced (variable membership, covers framed to their
+    // platform ratio filling the width). Navigation runs on each cover's GridRowIndex/GridCenterX
+    // geometry, so what the packer laid out and what the d-pad moves through are one and the same.
     public BulkObservableCollection<IReadOnlyList<GameViewModel>> GamepadRows { get; } = [];
 
     // Row projection of the focused game's visible achievements for the gamepad achievements grid.
@@ -1198,43 +1199,79 @@ public partial class MainViewModel : ViewModelBase
 
     public bool IsCompanionOnMainScreen => MainScreenCompanion is not null;
 
-    private int _gamepadColumnCount = 1;
-    // Observable so the gamepad grid's UniformGrid binds its Columns to it: the rendered column count
-    // is then guaranteed to equal the value navigation uses, so index%columns can never disagree with
-    // the layout.
-    public int GamepadColumnCount
+    // Every cover is framed to its PLATFORM's canonical aspect ratio (all arcade covers 4:3, all disc
+    // systems the case shape, …), so a platform's covers are standardized to one size and pack into a
+    // consistent number per row. Off-ratio artwork is cropped to fill that frame (UniformToFill in the
+    // tile templates) rather than each scan setting its own shape. See DECISIONS 2026-08-27.
+    private static double CoverAspectRatioFor(GameViewModel game) => game.CoverAspectRatio;
+
+    // Bumped every time the grid is re-packed (load, filter, resize, mode switch). The gamepad view
+    // watches it to re-centre the focused row after a relayout moves it, the role the old GridCoverWidth
+    // signal played before covers had per-row heights.
+    public int GamepadGridLayoutRevision { get; private set; }
+
+    // Justified rows for the desktop grid, mirroring GamepadRows for the couch grid. Each row is the
+    // slice of Games the packer placed on one line; the row's covers already carry their scaled
+    // width/height, so the row's horizontal strip fills the viewport edge-to-edge with no side gutter.
+    public BulkObservableCollection<IReadOnlyList<GameViewModel>> CoverRows { get; } = [];
+
+    // Pack the visible games into justified rows framed to each platform's canonical ratio, scale each
+    // row to fill the active viewport width, and stamp every tile with its rendered size and navigation
+    // geometry. The active mode's row list (CoverRows on desktop, GamepadRows on the couch) is rebuilt.
+    private void RepackActiveGrid()
     {
-        get => _gamepadColumnCount;
-        private set
+        var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
+        var ratios = new double[Games.Count];
+        for (var i = 0; i < Games.Count; i++)
+            ratios[i] = CoverAspectRatioFor(Games[i]);
+
+        var placements = Layout.JustifiedCoverLayout.Pack(
+            ratios, available, CoverColumnSpacing, ActiveTargetRowHeight);
+
+        for (var i = 0; i < Games.Count; i++)
         {
-            if (SetProperty(ref _gamepadColumnCount, value))
-                BuildGamepadRows(); // re-group into rows of the new width (e.g. on resize)
+            var placement = placements[i];
+            var game = Games[i];
+            game.ApplyCoverLayout(placement.Width, placement.Height);
+            game.GridRowIndex = placement.RowIndex;
+            game.GridCenterX = placement.CenterX;
         }
+
+        RebuildGridRows();
+        GamepadGridLayoutRevision++;
+        OnPropertyChanged(nameof(GamepadGridLayoutRevision));
     }
 
-    // Slice the flat Games list into rows of GamepadColumnCount for the virtualized row list. Called
-    // whenever Games or the column count changes; cheap (it allocates small arrays, not view models).
-    private void BuildGamepadRows()
+    // Group the packed games into their rows (Games are in packing order, so a row is a run of equal
+    // GridRowIndex) for whichever virtualized row list is on screen.
+    private void RebuildGridRows()
     {
-        if (!IsGamepadMode)
+        var rows = new List<IReadOnlyList<GameViewModel>>();
+        List<GameViewModel>? current = null;
+        var currentRow = -1;
+        foreach (var game in Games)
+        {
+            if (current is null || game.GridRowIndex != currentRow)
+            {
+                current = [];
+                rows.Add(current);
+                currentRow = game.GridRowIndex;
+            }
+            current.Add(game);
+        }
+
+        if (IsGamepadMode)
+        {
+            if (CoverRows.Count > 0)
+                CoverRows.Clear();
+            GamepadRows.ReplaceAll(rows);
+        }
+        else
         {
             if (GamepadRows.Count > 0)
                 GamepadRows.Clear();
-            return;
+            CoverRows.ReplaceAll(rows);
         }
-
-        var columns = Math.Max(1, GamepadColumnCount);
-        var rows = new List<IReadOnlyList<GameViewModel>>((Games.Count + columns - 1) / columns);
-        for (var start = 0; start < Games.Count; start += columns)
-        {
-            var take = Math.Min(columns, Games.Count - start);
-            var row = new GameViewModel[take];
-            for (var offset = 0; offset < take; offset++)
-                row[offset] = Games[start + offset];
-            rows.Add(row);
-        }
-
-        GamepadRows.ReplaceAll(rows);
     }
     private int _gamepadAchievementColumnCount = 1;
     // Derived purely by width arithmetic (UpdateGamepadAchievementColumnCount) using the same tile
@@ -1272,6 +1309,12 @@ public partial class MainViewModel : ViewModelBase
             AchievementTileWidth,
             AchievementTileSpacing);
     }
+
+    // How many fixed-width tiles fit in the available width. Still used by the achievements grid, which
+    // is a genuine uniform grid; the cover grids now pack justified rows instead.
+    private static int ColumnsThatFit(double available, double itemWidth, double spacing) => Math.Max(
+        1,
+        (int)((available + spacing) / (itemWidth + spacing)));
 
     // Slice the focused game's visible achievements into rows of GamepadAchievementColumnCount for the
     // virtualized row list. Called when the visible set or the column count changes; cheap (it slices
@@ -1319,11 +1362,17 @@ public partial class MainViewModel : ViewModelBase
         ScheduleLibraryViewStateSave();
     }
 
-    // Grid cover sizing: covers grow from a 188px floor up to a cap so a whole number of columns
-    // fills the library width (no lopsided right gutter) as the window or sidebar resizes.
-    private const double MinCoverWidth = 188;
+    // Grid cover sizing: covers are framed to each platform's canonical ratio and packed into justified
+    // rows (see RepackActiveGrid), scaled around a target height so each row fills the width. MaxCoverWidth
+    // caps the cover decode so a wide (landscape) cover is still decoded crisp.
     private const double MaxCoverWidth = 232;
-    private const double CoverColumnSpacing = 28;    // matches UniformGridLayout MinColumnSpacing
+    private const double CoverColumnSpacing = 28;    // gap between covers in a justified row
+
+    // The ideal row height each mode's justified rows scale around. The couch grid runs a little taller
+    // for a sofa viewing distance; both scale up/down per row to fill the width exactly.
+    private const double DesktopTargetRowHeight = 250;
+    private const double GamepadTargetRowHeight = 300;
+    private double ActiveTargetRowHeight => IsGamepadMode ? GamepadTargetRowHeight : DesktopTargetRowHeight;
 
     // Rows either side of the focused row whose covers are warmed ahead of the scroll (see
     // PrefetchCoversAroundFocus). A held d-pad steps ~one row per 110ms, so a few rows of lead lets the
@@ -1365,11 +1414,6 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>Current width of the desktop library grid area.</summary>
     [ObservableProperty]
     public partial double LibraryViewportWidth { get; set; }
-
-    /// <summary>Cover width computed for the active mode's viewport. The grid layout uses it as
-    /// the uniform cell width (MinItemWidth) so a whole number of columns fills the row.</summary>
-    [ObservableProperty]
-    public partial double GridCoverWidth { get; set; }
 
     /// <summary>The window's render scaling (device pixels per logical pixel), pushed in by the view.
     /// Covers are decoded to their displayed pixel size, which needs this to stay crisp on a HiDPI
@@ -1690,7 +1734,7 @@ public partial class MainViewModel : ViewModelBase
         Games.CollectionChanged += (_, _) =>
         {
             _perfGamesCount = Games.Count;
-            BuildGamepadRows();
+            RepackActiveGrid();
         };
         _perfGamesCount = Games.Count;
 
@@ -3593,15 +3637,19 @@ public partial class MainViewModel : ViewModelBase
         FocusedGame = Games[Math.Clamp(index + delta, 0, Games.Count - 1)];
     }
 
-    // The d-pad/stick move only inside the cover grid; platforms are switched by LB/RB. Each
-    // direction clamps at the grid edge rather than escaping into the rail or wrapping rows.
+    // The d-pad/stick move only inside the cover grid; platforms are switched by LB/RB. Justified rows
+    // have a variable number of covers of differing widths, so navigation is geometric, not the old
+    // index%columns arithmetic: left/right step to the neighbour in the same row, up/down land on the
+    // cover in the adjacent row whose centre is nearest the current one. Each direction clamps at the
+    // grid edge rather than escaping into the rail or wrapping rows. The geometry (GridRowIndex,
+    // GridCenterX) is stamped by the same packer the view renders, so nav and layout can never disagree.
     [RelayCommand]
     private void MoveGamepadFocusLeft()
     {
         if (FocusedGame is not { } focused)
             return;
         var index = Games.IndexOf(focused);
-        if (index > 0 && index % GamepadColumnCount != 0)
+        if (index > 0 && Games[index - 1].GridRowIndex == focused.GridRowIndex)
             FocusedGame = Games[index - 1];
     }
 
@@ -3611,33 +3659,49 @@ public partial class MainViewModel : ViewModelBase
         if (FocusedGame is not { } focused)
             return;
         var index = Games.IndexOf(focused);
-        if (index >= 0 && index + 1 < Games.Count && index % GamepadColumnCount < GamepadColumnCount - 1)
+        if (index >= 0 && index + 1 < Games.Count && Games[index + 1].GridRowIndex == focused.GridRowIndex)
             FocusedGame = Games[index + 1];
     }
 
     [RelayCommand]
     private void MoveGamepadFocusUp()
     {
-        if (!IsGamepadMode || Games.Count == 0)
+        if (!IsGamepadMode || FocusedGame is not { } focused)
             return;
-
-        var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
-        if (index < GamepadColumnCount)
-            return; // Top row: stay put. Platforms are reached with LB/RB, not by moving up.
-
-        FocusedGame = Games[index - GamepadColumnCount];
+        if (NearestInRow(focused.GridRowIndex - 1, focused.GridCenterX) is { } target)
+            FocusedGame = target; // Top row stays put: platforms are reached with LB/RB, not by moving up.
     }
 
     [RelayCommand]
     private void MoveGamepadFocusDown()
     {
-        if (!IsGamepadMode || Games.Count == 0)
+        if (!IsGamepadMode || FocusedGame is not { } focused)
             return;
+        if (NearestInRow(focused.GridRowIndex + 1, focused.GridCenterX) is { } target)
+            FocusedGame = target;
+    }
 
-        var index = FocusedGame is null ? 0 : Math.Max(0, Games.IndexOf(FocusedGame));
-        var target = index + GamepadColumnCount;
-        if (target < Games.Count)
-            FocusedGame = Games[target];
+    // The cover in the given row whose horizontal centre is closest to centreX, or null if that row is
+    // off the grid. Rows fill the same width span, so centres are directly comparable across rows.
+    private GameViewModel? NearestInRow(int rowIndex, double centerX)
+    {
+        if (rowIndex < 0)
+            return null;
+
+        GameViewModel? best = null;
+        var bestDistance = double.MaxValue;
+        foreach (var game in Games)
+        {
+            if (game.GridRowIndex != rowIndex)
+                continue;
+            var distance = Math.Abs(game.GridCenterX - centerX);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = game;
+            }
+        }
+        return best;
     }
 
     private string FocusScopeKey() => CurrentLibraryScope switch
@@ -3750,14 +3814,12 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var columns = Math.Max(1, GamepadColumnCount);
-        var rowIndex = index / columns;
-        var startRow = Math.Max(0, rowIndex - GamepadCoverPrefetchRows);
-        var start = startRow * columns;
-        var end = Math.Min(Games.Count - 1, (rowIndex + GamepadCoverPrefetchRows + 1) * columns - 1);
-        for (var i = start; i <= end; i++)
+        var minRow = focused.GridRowIndex - GamepadCoverPrefetchRows;
+        var maxRow = focused.GridRowIndex + GamepadCoverPrefetchRows;
+        foreach (var game in Games)
         {
-            var game = Games[i];
+            if (game.GridRowIndex < minRow || game.GridRowIndex > maxRow)
+                continue;
             if (game.LoadCoverCommand.CanExecute(game))
                 game.LoadCoverCommand.Execute(game);
         }
@@ -4054,11 +4116,10 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnIsGamepadModeChanged(bool value)
     {
-        // Entering Gamepad mode before its grid has ever been measured would leave GamepadColumnCount
-        // at its default of 1, so row-wise Up/Down would step a single tile (behaving like Left/Right)
-        // and the reveal could strand the selector off-screen. Seed the gamepad viewport from the
-        // desktop's so a real column count exists on entry; the gamepad grid's own SizeChanged still
-        // corrects it once it lays out.
+        // Entering Gamepad mode before its grid has ever been measured would pack every cover into one
+        // degenerate row (zero viewport width), so row-wise Up/Down would have nowhere to go and the
+        // reveal could strand the selector. Seed the gamepad viewport from the desktop's so the first
+        // pack has a real width; the gamepad grid's own SizeChanged still corrects it once it lays out.
         if (value && GamepadViewportWidth <= 0 && LibraryViewportWidth > 0)
             GamepadViewportWidth = LibraryViewportWidth;
 
@@ -4087,7 +4148,7 @@ public partial class MainViewModel : ViewModelBase
         {
             IsGamepadControllerInputActive = true;
             IsGridView = true;
-            BuildGamepadRows(); // populate the row list for the grid we're about to show
+            RepackActiveGrid(); // pack the justified rows for the grid we're about to show
             RestoreFocusedGame();
             if (AmbientThemeFromArtwork)
             {
@@ -4258,95 +4319,9 @@ public partial class MainViewModel : ViewModelBase
         ScrapeSelectedGamesCommand.NotifyCanExecuteChanged();
     }
 
-    // Recompute the cover width for the current viewport so a whole number of columns fills the
-    // row (no lopsided right gutter), then push it and the shared shelf height to every tile. The
-    // shelf height is the tallest cover in the view so a mixed collection stays baseline-aligned.
-    private void UpdateCoverLayout(bool applyVisibleShelf = true)
-    {
-        var coverWidth = MinCoverWidth;
-        var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
-        if (available >= MinCoverWidth)
-        {
-            var columns = ColumnsThatFit(available, MinCoverWidth);
-            coverWidth = Math.Floor((available - (columns - 1) * CoverColumnSpacing) / columns);
-            coverWidth = Math.Clamp(coverWidth, MinCoverWidth, MaxCoverWidth);
-        }
-
-        // Drives the layout's cell width; the view sets UniformGridLayout.MinItemWidth from it.
-        GridCoverWidth = coverWidth;
-
-        // D-pad up/down steps a whole row, so this must be the number of columns the layout
-        // actually renders. It is derived from the same width and inset the cells are sized from:
-        // when the two disagreed by one, Up/Down landed on the wrong tile and the reveal scrolled
-        // to it, which read as the grid jumping and games vanishing.
-        if (IsGamepadMode && GamepadViewportWidth > 0)
-        {
-            GamepadColumnCount = ColumnsThatFit(
-                Math.Max(0, GamepadViewportWidth - GamepadGridHorizontalPadding),
-                coverWidth);
-        }
-
-        if (_systemGames.Count == 0)
-            return;
-
-        var shelfCoverHeight = _systemGames.Max(
-            game => Math.Round(coverWidth / game.CoverAspectRatio));
-        var gamepadCoverHeight = GamepadCoverHeightFor(_systemGames, coverWidth);
-        foreach (var game in _systemGames)
-            game.ApplyCoverLayout(coverWidth, shelfCoverHeight, gamepadCoverHeight);
-
-        if (applyVisibleShelf)
-            ApplyVisibleCoverShelf(coverWidth);
-    }
-
-    /// <summary>
-    /// How many cells of <paramref name="itemWidth"/> fit in <paramref name="available"/>, matching
-    /// UniformGridLayout's own arithmetic so the view model and the layout never disagree.
-    /// </summary>
-    private static int ColumnsThatFit(double available, double itemWidth) =>
-        ColumnsThatFit(available, itemWidth, CoverColumnSpacing);
-
-    private static int ColumnsThatFit(double available, double itemWidth, double spacing) => Math.Max(
-        1,
-        (int)((available + spacing) / (itemWidth + spacing)));
-
-    private void ApplyVisibleCoverShelf(double coverWidth)
-    {
-        if (Games.Count == 0)
-            return;
-
-        var shelfCoverHeight = Games.Max(
-            game => Math.Round(coverWidth / game.CoverAspectRatio));
-        var gamepadCoverHeight = GamepadCoverHeightFor(Games, coverWidth);
-        foreach (var game in Games)
-            game.ApplyCoverLayout(coverWidth, shelfCoverHeight, gamepadCoverHeight);
-    }
-
-    // The gamepad grid unifies tile heights ONLY when a view mixes platforms. A single-platform view
-    // (any System scope, or a collection that happens to hold one system) keeps that platform's true
-    // cover shape, so its covers fill the frame with no letterbox bars — only a genuinely mixed view,
-    // which would otherwise be a ragged skyline of covers at different heights, is flattened onto one
-    // frame (covers cropped to fill). Returns the gamepad frame height every tile in this view uses.
-    internal static double GamepadCoverHeightFor(IReadOnlyList<GameViewModel> games, double coverWidth)
-    {
-        if (games.Count == 0)
-            return 0;
-
-        var firstSystem = games[0].SystemId;
-        var mixed = false;
-        for (var i = 1; i < games.Count; i++)
-        {
-            if (!string.Equals(games[i].SystemId, firstSystem, StringComparison.Ordinal))
-            {
-                mixed = true;
-                break;
-            }
-        }
-
-        return mixed
-            ? Math.Round(coverWidth / GameViewModel.GamepadMixedCoverAspectRatio)
-            : Math.Round(coverWidth / games[0].CoverAspectRatio);
-    }
+    // Re-pack the visible grid for the current viewport: covers are framed to each platform's ratio and
+    // rows fill the width edge-to-edge (see RepackActiveGrid). Called on resize and mode switch.
+    private void UpdateCoverLayout() => RepackActiveGrid();
 
     // Entry point for reloads driven by a selection change (LB/RB platform cycling, or a scope switch).
     // Returns a task that completes once the games for the new scope are on screen, so the few callers
@@ -4429,7 +4404,8 @@ public partial class MainViewModel : ViewModelBase
             ++_loadGeneration;
             _systemGames.Clear();
             _systemGames.AddRange(cachedGames);
-            UpdateCoverLayout(applyVisibleShelf: false);
+            // ApplyFilter replaces Games, whose CollectionChanged re-packs the grid — no separate pack
+            // of the outgoing list is needed here.
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
@@ -4574,9 +4550,8 @@ public partial class MainViewModel : ViewModelBase
             _systemGames.Clear();
             _systemGames.AddRange(games);
             _scopeCache[scopeKey] = games;
-            // Games still contains the previous scope here. ApplyFilter replaces it immediately
-            // afterward and performs the authoritative visible-shelf pass.
-            UpdateCoverLayout(applyVisibleShelf: false);
+            // ApplyFilter replaces Games (still the previous scope here); its CollectionChanged runs the
+            // authoritative pack for the new scope, so no pre-pack of the outgoing list is needed.
             ApplyFilter();
             _displayedScopeKey = scopeKey;
             IsLibraryLoading = false;
@@ -4961,12 +4936,13 @@ public partial class MainViewModel : ViewModelBase
             if (thumbnailPath is null)
                 return;
 
-            // Decode to the tile's displayed pixel size rather than the full thumbnail: the grid never
-            // renders a cover wider than MaxCoverWidth, so decoding to that (× render scale, capped at the
-            // source width so it is never upscaled) yields a crisp tile with a smaller bitmap — a lighter
-            // GPU upload and less memory, which matters most when a run of covers lands in one scroll.
+            // Decode to the tile's displayed pixel size rather than the full thumbnail: decoding to the
+            // packed cover width (× render scale, capped at the source thumbnail width so it is never
+            // upscaled) yields a crisp tile with a smaller bitmap — a lighter GPU upload and less memory,
+            // which matters most when a run of covers lands in one scroll. A wide (landscape) cover packs
+            // wider than a portrait one, so this follows CoverWidth rather than a single fixed cap.
             var decodeWidth = Math.Clamp(
-                (int)Math.Ceiling(MaxCoverWidth * CoverRenderScale),
+                (int)Math.Ceiling(Math.Max(MaxCoverWidth, game.CoverWidth) * CoverRenderScale),
                 1,
                 CoverThumbnailNativeWidth);
             var image = await Task.Run(() =>
@@ -5087,9 +5063,10 @@ public partial class MainViewModel : ViewModelBase
                 g.DisplayTitle.Contains(query, StringComparison.OrdinalIgnoreCase) ||
                 g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
 
+        // ReplaceAll raises CollectionChanged, which re-packs the justified grid (RepackActiveGrid) for
+        // the new visible set, so covers and rows are sized here without a separate shelf pass.
         Games.ReplaceAll(SortGames(filtered));
         ApplyShelfHeroSupport(Games);
-        ApplyVisibleCoverShelf(GridCoverWidth > 0 ? GridCoverWidth : MinCoverWidth);
 
         HasGames = Games.Count > 0;
         IsLibraryEmpty = _systemGames.Count == 0;

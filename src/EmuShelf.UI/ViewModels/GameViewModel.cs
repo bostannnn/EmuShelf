@@ -28,17 +28,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// <summary>Fixed cover width; height comes from the platform's canonical ratio.</summary>
     private const double CoverFrameWidth = 188;
 
-    /// <summary>Default frame ratio when a caller omits one.</summary>
+    /// <summary>Default platform frame ratio when a caller omits one (the disc-system shape).</summary>
     private const double DefaultCoverAspectRatio = 0.708;
-
-    /// <summary>Cover ratio the gamepad grid falls back to ONLY when a view mixes platforms (All
-    /// Games and the like). A single-platform view keeps that platform's true cover shape, so its
-    /// covers fill the frame with no letterbox bars; only a mixed view — which would otherwise be a
-    /// ragged skyline of covers at five different heights — is unified into this one frame, its
-    /// covers cropped to fill. 0.708 is the disc-system ratio the library is mostly made of. The
-    /// library decides per view whether a tile gets its true height or this one (see
-    /// <c>MainViewModel.GamepadCoverHeightFor</c>). See DECISIONS 2026-08-04.</summary>
-    internal const double GamepadMixedCoverAspectRatio = 0.708;
 
     /// <summary>Fixed list-row thumbnail height; the width follows the platform ratio so the
     /// list thumbnail keeps each platform's true cover shape (square for PS1, portrait for
@@ -325,43 +316,31 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IImage? PlatformArtwork { get; }
     private double _coverWidth;
     private double _coverHeight;
-    private double _shelfCoverHeight;
-    private double _gamepadCoverHeight;
 
-    /// <summary>Width of this tile's cover. The library recomputes it from the viewport width
-    /// (see <see cref="ApplyCoverLayout"/>) so a whole number of columns fills the row.</summary>
+    /// <summary>Rendered width of this tile's cover, at the platform's canonical ratio. The library's
+    /// justified packer (see <see cref="ApplyCoverLayout"/>) scales the row this cover sits in so the
+    /// row fills the viewport width edge-to-edge.</summary>
     public double CoverWidth { get => _coverWidth; private set => SetProperty(ref _coverWidth, value); }
 
-    /// <summary>Cover height for the current width, preserving the platform's aspect ratio.</summary>
+    /// <summary>Rendered height of this tile's cover — one shared height for every cover in the same
+    /// justified row, so a row's covers line up top and bottom.</summary>
     public double CoverHeight { get => _coverHeight; private set => SetProperty(ref _coverHeight, value); }
+
+    /// <summary>Which justified row this cover was packed into, and the horizontal centre of the
+    /// cover within the row. The controller grid navigates by this geometry (left/right within a
+    /// row, up/down to the nearest-centre cover in the adjacent row) instead of the old fixed
+    /// column-count arithmetic, which cannot describe variable-length justified rows.</summary>
+    public int GridRowIndex { get; set; }
+    public double GridCenterX { get; set; }
 
     public double ListCoverWidth { get; private set; }
     public double ListCoverHeight { get; }
 
-    /// <summary>Displayed cover aspect ratio (width:height). This is the platform's canonical
-    /// frame for the whole session: every cover of a system is drawn into one frame and filled
-    /// (UniformToFill), so a system's tiles are uniform and one off-ratio scan can never balloon
-    /// the shared shelf. See DECISIONS 2026-07-17 and 2026-08-02.</summary>
+    /// <summary>The platform's canonical cover ratio (width:height). The grid frames every cover of a
+    /// system to this one shape (arcade 4:3, disc systems the case shape) and crops off-ratio art to
+    /// fill it, so a platform is standardized to one size. The list-view thumbnail uses it too. See
+    /// DECISIONS 2026-08-27.</summary>
     public double CoverAspectRatio { get; }
-
-    /// <summary>Height of the grid cover shelf this tile sits in: the tallest cover in the
-    /// current view, so a mixed collection bottom-aligns covers to one baseline while a single
-    /// short-cover platform (square PS1 art) still packs tightly.</summary>
-    public double ShelfCoverHeight
-    {
-        get => _shelfCoverHeight;
-        private set => SetProperty(ref _shelfCoverHeight, value);
-    }
-
-    /// <summary>Height of this tile's gamepad cover frame. In a single-platform view it equals
-    /// <see cref="CoverHeight"/> (the platform's true shape, no bars); in a mixed view the library
-    /// passes one uniform height for every tile so the grid is even. See
-    /// <see cref="GamepadMixedCoverAspectRatio"/>.</summary>
-    public double GamepadCoverHeight
-    {
-        get => _gamepadCoverHeight;
-        private set => SetProperty(ref _gamepadCoverHeight, value);
-    }
 
     /// <summary>Legacy flat-fallback cover size. The GPU scene uses
     /// <see cref="ShelfMediaProfile"/>'s physical dimensions instead.</summary>
@@ -416,16 +395,13 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public bool ShelfUses3DHero =>
         IsFocused && ShelfHeroSupported && ShelfMediaShell is not null;
 
-    /// <summary>Sets the cover width (recomputed from the current viewport) and the shared desktop
-    /// shelf height; the desktop cover height follows the platform aspect ratio. The gamepad frame
-    /// height is decided per view by the library — null means "use this platform's true height",
-    /// which a single-platform view always does; a mixed view passes one uniform height.</summary>
-    public void ApplyCoverLayout(double coverWidth, double shelfCoverHeight, double? gamepadCoverHeight = null)
+    /// <summary>Applies the rendered cover size the library's justified packer computed for this
+    /// tile: width follows the platform's canonical ratio, height is shared by every cover in the
+    /// same row. Both grids (desktop and gamepad) read <see cref="CoverWidth"/>/<see cref="CoverHeight"/>.</summary>
+    public void ApplyCoverLayout(double coverWidth, double coverHeight)
     {
         CoverWidth = coverWidth;
-        CoverHeight = Math.Round(coverWidth / CoverAspectRatio);
-        ShelfCoverHeight = shelfCoverHeight;
-        GamepadCoverHeight = gamepadCoverHeight ?? CoverHeight;
+        CoverHeight = coverHeight;
     }
     public IAsyncRelayCommand<GameViewModel?> LaunchCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> SaveTitleCommand { get; }
