@@ -11210,3 +11210,21 @@ walks realized `game-tile` controls); the couch grid keeps its row-virtualized `
 mode — the target row height (`DesktopTargetRowHeight` 250 / `GamepadTargetRowHeight` 300). Covered by
 `JustifiedCoverLayoutTests`, geometry-nav tests in `MainViewModelTests`, and the rendered-grid tests
 (`GamepadGridSelectorTests`, `DesktopGridMarquee_*`); on-device Thor / Steam Deck pass still pending.
+## 2026-08-27 — The app-owned couch keyboard is removed; couch text entry uses the native IME
+
+Supersedes the 2026-08-23 "App-owned couch keyboard replaces the system IME" entry above. PR #218
+(`254a0b8`) made the couch Search/Rename fields normal editable `TextBox`es on every platform: a screen tap
+positions the caret and raises Android's IME natively, and a gamepad-driven open forces the system keyboard up
+via a per-open revision signal (`MainViewModel.GamepadTextEntryRevision`, bumped in `OpenGamepadOverlay`'s
+Search/Rename case → `GamepadShellView.RaiseGamepadTextEntryKeyboard` → `RequestOnScreenKeyboard`, the same
+pattern the couch Settings text entry uses). That left the app-drawn keyboard as dead code, so it is now
+deleted: `GamepadKeyboardViewModel`/`GamepadKeyViewModel`, `GamepadKeyboardView`, the
+`MainViewModel.GamepadKeyboard`/`ShowGamepadKeyboardOnMainScreen`/`IsGamepadKeyboardHostedRemotely` wiring,
+`SecondScreenController.SyncKeyboardToSecondScreen`, `SecondScreenViewModel.Keyboard`, the GamepadShellView and
+SecondScreenView keyboard hosts, and the `GamepadKeyboardViewModelTests` + `CouchKeyboard_LiftsTheDim` tests.
+Why the reversal: the app keyboard only ever appended to the end of the string, so a screen tap could not
+position the caret and text could not be edited mid-string — the native IME does both. The 2026-08-23 research
+on why a third-party app cannot relocate the system IME onto the Thor's second screen still holds, and is kept
+in the project note in case a Screen-2 keyboard is ever revived. `OpeningATextOverlay_BumpsTheTextEntryRevision`
+now covers the gamepad-open → IME-raise signal. Verified: `dotnet build` clean, full App suite green in Release,
+and the out-of-solution Android head Roslyn-compiles clean.

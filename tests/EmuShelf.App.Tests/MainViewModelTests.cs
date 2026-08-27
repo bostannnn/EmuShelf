@@ -1753,6 +1753,26 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void OpeningATextOverlay_BumpsTheTextEntryRevision_OncePerOpen()
+    {
+        // The couch Search/Rename fields use the native OS keyboard: a gamepad-driven open forces the system
+        // IME up off this per-open signal (directional focus alone won't raise it). Search and Rename share
+        // the one OpenGamepadOverlay case that bumps it, so guarding Search guards the mechanism for both.
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        var initial = vm.GamepadTextEntryRevision;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Search));
+        Assert.Equal(GamepadOverlayKind.Search, vm.GamepadOverlay);
+        Assert.Equal(initial + 1, vm.GamepadTextEntryRevision);
+
+        // Re-opening must bump again so the view raises the IME on the second open too, not just the first.
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Search));
+        Assert.Equal(initial + 2, vm.GamepadTextEntryRevision);
+    }
+
+    [AvaloniaFact]
     public void DispatchGamepadAction_MenuOwnsDesktopHandoffAndCancelNeverLeavesTheShelf()
     {
         var mode = new RecordingInterfaceModeService(InterfaceMode.Gamepad);

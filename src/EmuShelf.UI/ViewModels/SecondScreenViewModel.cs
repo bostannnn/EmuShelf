@@ -73,26 +73,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     /// <summary>
     /// Whether the dim standby wash is showing right now: a game is running and nothing sits above it. An
-    /// open overlay (achievements / the app drawer) or the couch keyboard takes precedence, so opening
-    /// achievements over a running game lifts the dim and closing it restores it — the requested behaviour.
+    /// open overlay (achievements / the app drawer) takes precedence, so opening achievements over a running
+    /// game lifts the dim and closing it restores it — the requested behaviour.
     /// </summary>
-    public bool IsStandby => IsGameRunning && Overlay == SecondScreenOverlayKind.None && !IsKeyboardOpen;
-
-    // --- App-owned keyboard, mirrored here from the main head during couch text entry ---
-
-    /// <summary>
-    /// The couch keyboard while it is being entered on the main screen — the Android controller pushes the
-    /// main head's live <c>GamepadKeyboardViewModel</c> here so the Thor's second screen hosts the keys,
-    /// leaving the search field and results fully visible on the main panel. Null the rest of the time.
-    /// Rendered above every other surface (it is its own top-most layer), so whatever sits underneath —
-    /// spotlight, dock, achievements — is revealed unchanged when it closes.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsKeyboardOpen))]
-    [NotifyPropertyChangedFor(nameof(IsStandby))]
-    public partial GamepadKeyboardViewModel? Keyboard { get; set; }
-
-    public bool IsKeyboardOpen => Keyboard is not null;
+    public bool IsStandby => IsGameRunning && Overlay == SecondScreenOverlayKind.None;
 
     // --- Resting spotlight (fan art + logo) ---
 

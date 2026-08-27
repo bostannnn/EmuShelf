@@ -49,6 +49,7 @@ public partial class GamepadShellView : UserControl
     private GamepadCoverSearchViewModel? _gamepadCoverSearch;
     private GamepadHotkeysViewModel? _gamepadHotkeys;
     private int _requestedSettingsTextEntryRevision = -1;
+    private int _requestedGamepadTextEntryRevision = -1;
     // False until the sliding rail pill has been snapped onto the active tab once; the first placement
     // must not animate in from the left edge.
     private bool _railIndicatorReady;
@@ -600,6 +601,20 @@ public partial class GamepadShellView : UserControl
         return _gamepadScroller;
     }
 
+    // Forces the system on-screen keyboard up once per Search/Rename open. The reveal runs on every couch
+    // property change while the overlay is up, so guard on the view model's per-open revision to raise the
+    // IME exactly once — a gamepad open needs the explicit summon (directional focus won't raise it), while
+    // a screen tap has already raised it and a re-summon would be a no-op. Posted at Loaded so the box has
+    // taken focus first, matching the couch Settings text-entry path.
+    private void RaiseGamepadTextEntryKeyboard(MainViewModel viewModel, string title)
+    {
+        if (_requestedGamepadTextEntryRevision == viewModel.GamepadTextEntryRevision)
+            return;
+
+        _requestedGamepadTextEntryRevision = viewModel.GamepadTextEntryRevision;
+        Dispatcher.UIThread.Post(() => viewModel.RequestOnScreenKeyboard(title), DispatcherPriority.Loaded);
+    }
+
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
     private void RevealGamepadOverlayFocus() => RevealGamepadOverlayFocus(0);
 
@@ -706,18 +721,17 @@ public partial class GamepadShellView : UserControl
             if (viewModel.IsGamepadControllerInputActive && rowButton is not null)
                 FocusManager?.Focus(rowButton, NavigationMethod.Directional);
         }
-        // Focusing the text box is what raises the system keyboard. On Android the app-owned keyboard drives
-        // the field instead (the OS keyboard covers the whole screen and can't be moved to the second
-        // display), so leave the box unfocused there; on desktop, focus it for the hardware / OS keyboard.
+        // Focusing the text box is what raises the OS keyboard on a screen tap; a gamepad-driven open also
+        // forces the system IME up (RaiseGamepadTextEntryKeyboard), since directional focus alone won't.
         else if (viewModel.IsGamepadSearchOpen)
         {
-            if (!viewModel.UsesGamepadKeyboard)
-                GamepadSearchBox.Focus();
+            GamepadSearchBox.Focus();
+            RaiseGamepadTextEntryKeyboard(viewModel, "Search your library");
         }
         else if (viewModel.IsGamepadRenameOpen)
         {
-            if (!viewModel.UsesGamepadKeyboard)
-                GamepadRenameBox.Focus();
+            GamepadRenameBox.Focus();
+            RaiseGamepadTextEntryKeyboard(viewModel, "Enter a new title");
         }
         else if (viewModel.FocusedGamepadAchievement is { } achievement)
         {

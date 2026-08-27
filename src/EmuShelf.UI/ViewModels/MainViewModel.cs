@@ -1082,32 +1082,16 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadHotkeysViewModel? GamepadHotkeys { get; set; }
 
-    /// <summary>
-    /// The app-owned couch keyboard, live only while a Search/Rename overlay is entering text on a platform
-    /// that uses it (Android). The system IME (Gboard) cannot be moved off the main screen by a third-party
-    /// app and covers the field on a handheld, so text is typed through this grid instead. Null on desktop,
-    /// where the hardware / OS keyboard is used unchanged.
-    /// </summary>
+    /// <summary>Bumped each time a Search/Rename overlay opens so the view can raise the system keyboard once
+    /// per open. A screen tap on the field raises the IME natively; a gamepad-directional focus does not, so
+    /// the view forces it up on this signal (the same pattern the couch Settings text entry uses).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowGamepadKeyboardOnMainScreen))]
-    public partial GamepadKeyboardViewModel? GamepadKeyboard { get; set; }
+    public partial int GamepadTextEntryRevision { get; set; }
 
-    /// <summary>
-    /// Set by the Android second-screen controller while it is mirroring <see cref="GamepadKeyboard"/> onto
-    /// the Thor's second screen, so the main-screen strip yields to it. Stays false everywhere else (no
-    /// second screen present), leaving the strip as the fallback host.
-    /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowGamepadKeyboardOnMainScreen))]
-    public partial bool IsGamepadKeyboardHostedRemotely { get; set; }
-
-    /// <summary>Whether couch text entry raises the app-owned keyboard rather than the OS keyboard. Android
-    /// only: the OS keyboard there covers the whole screen and can't be relocated to the second display.</summary>
-    public bool UsesGamepadKeyboard => OperatingSystem.IsAndroid();
-
-    /// <summary>The main-screen keyboard strip shows only when the keyboard is live and not being hosted on
-    /// the second screen — i.e. the fallback when there is no second display to mirror it onto.</summary>
-    public bool ShowGamepadKeyboardOnMainScreen => GamepadKeyboard is not null && !IsGamepadKeyboardHostedRemotely;
+    /// <summary>Raises the platform (system) on-screen keyboard for the couch Search/Rename field. Touch input
+    /// raises Android's IME natively; this is the gamepad path, where directional focus alone would not.</summary>
+    public void RequestOnScreenKeyboard(string title) =>
+        _onScreenKeyboard.TryShow(new OnScreenKeyboardRequest(title));
 
     public bool HasGamepadOverlay => GamepadOverlay != GamepadOverlayKind.None;
     public bool GamepadOverlayOwnsTextInput => GamepadOverlay is GamepadOverlayKind.Search or GamepadOverlayKind.Rename ||
@@ -2383,40 +2367,6 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void OpenGamepadSearch() => OpenGamepadOverlay(GamepadOverlayKind.Search);
 
-    // The app-owned keyboard writes straight into SearchText; the library filter already updates live off
-    // that (debounced), so Done just closes back to the filtered library — the query is kept.
-    private GamepadKeyboardViewModel CreateSearchKeyboard() =>
-        new(
-            title: "Search your library",
-            placeholder: "Enter a game title",
-            getText: () => SearchText,
-            setText: value => SearchText = value,
-            doneLabel: "Done",
-            onSubmit: () => BackFromGamepadOverlayCommand.Execute(null));
-
-    // Rename edits the focused game's draft title (the same field the rename box binds to); Done saves it,
-    // exactly as Enter / the Save command does.
-    private GamepadKeyboardViewModel CreateRenameKeyboard() =>
-        new(
-            title: "Enter a new title",
-            placeholder: "Enter a new title",
-            getText: () => FocusedGame?.DraftTitle ?? string.Empty,
-            setText: value =>
-            {
-                if (FocusedGame is { } game)
-                    game.DraftTitle = value;
-            },
-            doneLabel: "Save",
-            onSubmit: () => SaveGamepadTitleCommand.Execute(null));
-
-    private void ClearGamepadKeyboard()
-    {
-        GamepadKeyboard = null;
-        // The second-screen host flag is cleared by the Android controller when it observes the keyboard
-        // going away, but reset it here too so a stale "hosted remotely" can never hide the strip.
-        IsGamepadKeyboardHostedRemotely = false;
-    }
-
     [RelayCommand]
     private void OpenGamepadMenu()
     {
@@ -2598,7 +2548,6 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
-        ClearGamepadKeyboard();
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
@@ -3105,13 +3054,8 @@ public partial class MainViewModel : ViewModelBase
                 return true;
         }
 
-        // Android couch: the app-owned keyboard owns directional + Confirm — the D-pad moves the key ring
-        // and A presses the focused key (a letter, Backspace, or Done, which submits). Consumes the action.
-        if (GamepadKeyboard is { } keyboard && keyboard.Dispatch(action))
-            return true;
-
-        // Desktop couch keeps the hardware / OS keyboard: typed characters flow into the focused TextBox,
-        // so only Confirm-on-rename is meaningful here (Save); everything else is left unhandled.
+        // Couch text entry uses the OS keyboard: typed characters flow into the focused TextBox, so only
+        // Confirm-on-rename is meaningful here (Save); everything else is left unhandled.
         if (action == GamepadAction.Confirm && IsGamepadRenameOpen)
         {
             SaveGamepadTitleCommand.Execute(null);
@@ -3286,7 +3230,6 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
-        ClearGamepadKeyboard();
         FocusedGamepadAchievement = null;
         // A pending import folder is only meaningful while the ImportSystem chooser is up. Transitioning
         // to any other overlay (e.g. Menu from the chooser) abandons the import, so drop it here — the
@@ -3304,12 +3247,11 @@ public partial class MainViewModel : ViewModelBase
                 AddGameActions();
                 break;
             case GamepadOverlayKind.Search:
-                if (UsesGamepadKeyboard)
-                    GamepadKeyboard = CreateSearchKeyboard();
-                break;
             case GamepadOverlayKind.Rename:
-                if (UsesGamepadKeyboard)
-                    GamepadKeyboard = CreateRenameKeyboard();
+                // The field is a normal editable TextBox on every platform: touch positions the caret and
+                // raises the OS keyboard, a hardware keyboard types straight in. Signal the view so a
+                // gamepad-driven open also forces the system IME up (directional focus alone won't).
+                GamepadTextEntryRevision++;
                 break;
             case GamepadOverlayKind.DiscSelection:
                 AddDiscSelectionOptions();
