@@ -2082,11 +2082,10 @@
 
                         <StackPanel IsVisible="{Binding IsGamepadSearchOpen}" Spacing="14">
                             <TextBlock Text="Search your library" FontSize="17" />
-                            <!-- On Android the field is read-only so it never raises the system keyboard (which
-                                 covers the whole screen and can't be moved to the second display); the app-owned
-                                 keyboard below drives it. On desktop it stays editable for the hardware keyboard. -->
+                            <!-- A normal editable field on every platform: on Android a screen tap positions the
+                                 caret and raises the system keyboard; a gamepad-driven open forces the IME up from
+                                 the view (see GamepadTextEntryRevision). Desktop types straight in. -->
                             <TextBox x:Name="GamepadSearchBox" Text="{Binding SearchText, Mode=TwoWay}" FontSize="24"
-                                     IsReadOnly="{Binding UsesGamepadKeyboard}"
                                      PlaceholderText="Enter a game title" KeyDown="OnGamepadTextInputKeyDown" />
                             <TextBlock Text="{Binding LibraryCountText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             <ContentControl HorizontalAlignment="Center"
@@ -2104,7 +2103,6 @@
                             <TextBlock Text="{Binding FocusedGame.Title}" FontSize="16" TextWrapping="Wrap"
                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             <TextBox x:Name="GamepadRenameBox" Text="{Binding FocusedGame.DraftTitle, Mode=TwoWay}" FontSize="24"
-                                     IsReadOnly="{Binding UsesGamepadKeyboard}"
                                      PlaceholderText="Enter a new title" KeyDown="OnGamepadTextInputKeyDown" />
                             <ContentControl HorizontalAlignment="Center"
                                             IsVisible="{Binding ShowGamepadKeyboardOnMainScreen}"
