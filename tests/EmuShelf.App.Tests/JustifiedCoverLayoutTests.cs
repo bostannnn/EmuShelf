@@ -67,6 +67,20 @@ public class JustifiedCoverLayoutTests
     }
 
     [Fact]
+    public void Pack_ShortLastRowMatchesTheRowAboveIt()
+    {
+        // A partial final row must not render taller than the full rows above it: many same-ratio covers
+        // wrap so the last row holds fewer, and it must share the previous row's height.
+        var placements = JustifiedCoverLayout.Pack(Enumerable.Repeat(0.708, 13).ToList(), 1000, Spacing, Target);
+
+        var lastRow = placements.Max(placement => placement.RowIndex);
+        Assert.True(lastRow >= 1, "expected the covers to wrap so there is a row above the last");
+        var lastRowHeight = placements.First(placement => placement.RowIndex == lastRow).Height;
+        var priorRowHeight = placements.First(placement => placement.RowIndex == lastRow - 1).Height;
+        Assert.Equal(priorRowHeight, lastRowHeight);
+    }
+
+    [Fact]
     public void Pack_LastRowIsLeftPacked_NotUpscaled()
     {
         // Two covers easily fit one row on a wide viewport, so the only (last) row keeps the target
