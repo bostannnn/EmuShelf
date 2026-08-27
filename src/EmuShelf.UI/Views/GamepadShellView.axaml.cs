@@ -230,11 +230,10 @@ public partial class GamepadShellView : UserControl
             return;
         }
 
-        // A mode switch re-sizes the covers for the newly visible viewport without either grid
-        // necessarily raising SizeChanged, so the cell width has to follow the value itself. A resize
-        // also re-groups the rows into a new column count, moving the focused game to a different row —
-        // re-reveal it so the selection can't be left scrolled off-screen after the relayout.
-        if (e.PropertyName is nameof(MainViewModel.GridCoverWidth) &&
+        // A re-pack (mode switch, resize, filter) rebuilds the justified rows and can move the focused
+        // game to a different row, so re-reveal it — otherwise the selection can be left scrolled
+        // off-screen — and refresh the HiDPI cover decode scale for the newly visible viewport.
+        if (e.PropertyName is nameof(MainViewModel.GamepadGridLayoutRevision) &&
             _gamepadViewModel is { } sizingViewModel)
         {
             ApplyGamepadCoverRenderScale(sizingViewModel);
@@ -372,8 +371,9 @@ public partial class GamepadShellView : UserControl
         if (index < 0)
             return;
 
-        var columns = Math.Max(1, viewModel.GamepadColumnCount);
-        var rowIndex = index / columns;
+        // The packer stamped each cover with the justified row it landed in, so nav and the rendered
+        // rows share one geometry (no arithmetic column count to drift out of sync).
+        var rowIndex = focused.GridRowIndex;
         if (rowIndex >= GamepadRowList.ItemCount)
             return;
 

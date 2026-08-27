@@ -1665,11 +1665,10 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task GamepadCovers_UsePlatformAspectRatioOnASharedShelf()
+    public async Task GamepadCovers_AreFramedToTheirPlatformRatio()
     {
-        // Mixed-platform view: each tile keeps its own platform's cover height, while every tile
-        // shares one shelf height so rows stay aligned.
-        // PS1 art is square (1.0) and GameCube is portrait (0.708), so the two tiles must differ.
+        // Every cover is drawn in its platform's canonical frame: a tile's rendered width:height equals
+        // its platform ratio (square PS1 1.0, portrait GameCube 0.708), so a platform is standardized.
         var ps1Path = Path.Combine(_baseDirectory, "AspectPs1.cue");
         File.WriteAllText(ps1Path, "FILE \"AspectPs1.bin\" BINARY");
         var cubePath = Path.Combine(_baseDirectory, "AspectCube.iso");
@@ -1688,20 +1687,16 @@ public class MainViewModelTests : IDisposable
         var cube = vm.Games.Single(game => game.Title == "Aspect GC");
 
         Assert.NotEqual(ps1.CoverAspectRatio, cube.CoverAspectRatio);
-        Assert.NotEqual(ps1.CoverHeight, cube.CoverHeight);
-        Assert.Equal(Math.Round(ps1.CoverWidth / ps1.CoverAspectRatio), ps1.CoverHeight);
-        Assert.Equal(Math.Round(cube.CoverWidth / cube.CoverAspectRatio), cube.CoverHeight);
-        // One shared shelf, tall enough for the tallest cover, keeps the grid rows aligned.
-        Assert.Equal(ps1.ShelfCoverHeight, cube.ShelfCoverHeight);
-        Assert.Equal(Math.Max(ps1.CoverHeight, cube.CoverHeight), ps1.ShelfCoverHeight);
+        Assert.Equal(ps1.CoverAspectRatio, ps1.CoverWidth / ps1.CoverHeight, precision: 1);
+        Assert.Equal(cube.CoverAspectRatio, cube.CoverWidth / cube.CoverHeight, precision: 1);
     }
 
     [AvaloniaFact]
-    public async Task GamepadCovers_KeepCanonicalFrameWhenOffRatioArtworkLoads()
+    public async Task GamepadCovers_KeepThePlatformFrameWhenOffRatioArtworkLoads()
     {
-        // Regression for the "covers only take half their space" report: a cover fills its
-        // platform's canonical frame (UniformToFill) instead of adopting its own bitmap ratio, so a
-        // single tall/off-ratio scan can never balloon the shared shelf and shrink every other cover.
+        // The frame is the platform's shape, not the scan's: loading an off-ratio (landscape) bitmap
+        // into a GameCube tile leaves that tile at the portrait GameCube frame (the art is cropped to
+        // fill), and every GameCube cover stays the same size — the standardization the user asked for.
         var firstPath = Path.Combine(_baseDirectory, "ShelfCubeA.iso");
         File.WriteAllText(firstPath, "x");
         var secondPath = Path.Combine(_baseDirectory, "ShelfCubeB.iso");
@@ -1718,79 +1713,16 @@ public class MainViewModelTests : IDisposable
 
         var first = vm.Games.Single(game => game.Title == "Shelf GC A");
         var second = vm.Games.Single(game => game.Title == "Shelf GC B");
-        var ratioBefore = first.CoverAspectRatio;
-        var shelfBefore = first.ShelfCoverHeight;
-        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
+        var firstWidthBefore = first.CoverWidth;
+        var firstHeightBefore = first.CoverHeight;
 
-        // A very tall, narrow bitmap: under the reverted per-cover-ratio behavior this stretched the
-        // shared shelf to ~7x the cover width and rendered every other tile at a fraction of it.
-        first.CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
+        first.CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(600, 300));
 
-        Assert.Equal(ratioBefore, first.CoverAspectRatio, precision: 5);
-        Assert.Equal(shelfBefore, first.ShelfCoverHeight);
-        Assert.Equal(shelfBefore, second.ShelfCoverHeight);
-        Assert.Equal(first.CoverHeight, first.ShelfCoverHeight);
-    }
-
-    [AvaloniaFact]
-    public async Task GamepadColumnCount_SurvivesAnAsyncCoverLoad()
-    {
-        // Regression for "the selector can't move right / gets stuck": a cover finishing loading used
-        // to re-run the whole cover layout (via per-cover ratio adoption) and could reset the column
-        // count mid-navigation, which clamped Right partway across a row. The count is now derived
-        // purely by width arithmetic (matching UniformGridLayout), so it must be stable across an
-        // async cover load — the incoming bitmap changes one tile's art, never the grid's stride.
-        var firstPath = Path.Combine(_baseDirectory, "ColsCubeA.iso");
-        File.WriteAllText(firstPath, "x");
-        var secondPath = Path.Combine(_baseDirectory, "ColsCubeB.iso");
-        File.WriteAllText(secondPath, "y");
-        _library.AddGames(
-        [
-            new Game { SystemId = GameCube.Id, Path = firstPath, Title = "Cols GC A", DateAdded = DateTimeOffset.UtcNow },
-            new Game { SystemId = GameCube.Id, Path = secondPath, Title = "Cols GC B", DateAdded = DateTimeOffset.UtcNow },
-        ]);
-        var vm = CreateViewModel();
-        vm.IsGamepadMode = true;
-        await vm.ShowAllGamesCommand.ExecuteAsync(null);
-        vm.GamepadViewportWidth = 1280;
-
-        var columnsBefore = vm.GamepadColumnCount;
-        Assert.True(columnsBefore > 1); // the arithmetic produced a real multi-column layout
-
-        vm.Games[0].CoverImage = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(120, 900));
-
-        Assert.Equal(columnsBefore, vm.GamepadColumnCount);
-    }
-
-    [AvaloniaFact]
-    public async Task GamepadCovers_FilteredShelfUsesOnlyVisibleCoverRatios()
-    {
-        var ps1Path = Path.Combine(_baseDirectory, "FilteredAspectPs1.cue");
-        File.WriteAllText(ps1Path, "FILE \"FilteredAspectPs1.bin\" BINARY");
-        var cubePath = Path.Combine(_baseDirectory, "FilteredAspectCube.iso");
-        File.WriteAllText(cubePath, "x");
-        _library.AddGames(
-        [
-            new Game { SystemId = Ps1.Id, Path = ps1Path, Title = "Visible square cover", DateAdded = DateTimeOffset.UtcNow },
-            new Game { SystemId = GameCube.Id, Path = cubePath, Title = "Hidden portrait cover", DateAdded = DateTimeOffset.UtcNow },
-        ]);
-        var vm = CreateViewModel();
-        vm.IsGamepadMode = true;
-        await vm.ShowAllGamesCommand.ExecuteAsync(null);
-        vm.GamepadViewportWidth = 1280;
-        var fullShelfHeight = vm.Games.Max(game => game.ShelfCoverHeight);
-
-        vm.SearchText = "Visible square";
-        vm.ApplyFilter();
-
-        var visible = Assert.Single(vm.Games);
-        Assert.Equal(visible.CoverHeight, visible.ShelfCoverHeight);
-        Assert.True(visible.ShelfCoverHeight < fullShelfHeight);
-
-        vm.SearchText = string.Empty;
-        vm.ApplyFilter();
-        Assert.Equal(fullShelfHeight, vm.Games[0].ShelfCoverHeight);
-        Assert.Equal(fullShelfHeight, vm.Games[1].ShelfCoverHeight);
+        Assert.True(first.CoverHeight > first.CoverWidth); // still the portrait GameCube frame
+        Assert.Equal(firstWidthBefore, first.CoverWidth);
+        Assert.Equal(firstHeightBefore, first.CoverHeight);
+        Assert.Equal(second.CoverWidth, first.CoverWidth);   // both GameCube covers identical size
+        Assert.Equal(second.CoverHeight, first.CoverHeight);
     }
 
     [AvaloniaFact]
@@ -2069,11 +2001,11 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void GamepadGridNavigationStopsAtVisualRowEdgesAndMissingFinalRowCells()
+    public void GamepadGridNavigation_StaysInRowAndStepsByNearestCentreAcrossRows()
     {
         var vm = CreateViewModel();
         vm.IsGamepadMode = true;
-        vm.Games.ReplaceAll(Enumerable.Range(0, 6).Select(index => new GameViewModel(
+        vm.Games.ReplaceAll(Enumerable.Range(0, 8).Select(index => new GameViewModel(
             new Game
             {
                 Id = index + 1,
@@ -2085,30 +2017,46 @@ public class MainViewModelTests : IDisposable
             Ps1.Name,
             Ps1.ShortName,
             Ps1.AccentColor,
-            coverAspectRatio: Ps1.CoverAspectRatio)));
+            coverAspectRatio: 0.708)));
         vm.GamepadViewportWidth = 1000;
-        Assert.Equal(4, vm.GamepadColumnCount);
 
-        vm.FocusedGame = vm.Games[3];
+        // The justified packer stamped each cover with its row; derive the layout from that rather than
+        // a fixed column count (rows now hold a variable number of covers).
+        var rows = vm.Games
+            .GroupBy(game => game.GridRowIndex)
+            .OrderBy(group => group.Key)
+            .Select(group => group.OrderBy(game => game.GridCenterX).ToList())
+            .ToList();
+        Assert.True(rows.Count >= 2);
+        var firstRow = rows[0];
+        Assert.True(firstRow.Count >= 2);
+
+        // Right from the last cover in a row clamps (no wrap to the next row).
+        vm.FocusedGame = firstRow[^1];
         vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Same(vm.Games[3], vm.FocusedGame);
+        Assert.Same(firstRow[^1], vm.FocusedGame);
 
-        vm.FocusedGame = vm.Games[4];
+        // Left from the first cover in a row clamps.
+        vm.FocusedGame = firstRow[0];
         vm.MoveGamepadFocusLeftCommand.Execute(null);
-        Assert.Same(vm.Games[4], vm.FocusedGame);
+        Assert.Same(firstRow[0], vm.FocusedGame);
 
-        vm.FocusedGame = vm.Games[1];
-        vm.MoveGamepadFocusDownCommand.Execute(null);
-        Assert.Same(vm.Games[5], vm.FocusedGame);
-
-        vm.FocusedGame = vm.Games[2];
-        vm.MoveGamepadFocusDownCommand.Execute(null);
-        Assert.Same(vm.Games[2], vm.FocusedGame);
+        // Right/Left within a row step one cover.
+        vm.FocusedGame = firstRow[0];
+        vm.MoveGamepadFocusRightCommand.Execute(null);
+        Assert.Same(firstRow[1], vm.FocusedGame);
 
         // Up on the top row clamps and never escapes into the platform rail.
-        vm.FocusedGame = vm.Games[1];
+        vm.FocusedGame = firstRow[0];
         vm.MoveGamepadFocusUpCommand.Execute(null);
-        Assert.Same(vm.Games[1], vm.FocusedGame);
+        Assert.Same(firstRow[0], vm.FocusedGame);
+
+        // Down lands on the second row, on the cover whose centre is nearest the current one.
+        vm.FocusedGame = firstRow[0];
+        vm.MoveGamepadFocusDownCommand.Execute(null);
+        Assert.Equal(1, vm.FocusedGame!.GridRowIndex);
+        var expected = rows[1].OrderBy(game => Math.Abs(game.GridCenterX - firstRow[0].GridCenterX)).First();
+        Assert.Same(expected, vm.FocusedGame);
     }
 
     [AvaloniaFact]
@@ -2131,7 +2079,6 @@ public class MainViewModelTests : IDisposable
             coverAspectRatio: Ps1.CoverAspectRatio)));
         vm.HasGames = true;
         vm.GamepadViewportWidth = 1000;
-        Assert.Equal(4, vm.GamepadColumnCount);
 
         // The cover grid is the default couch layout.
         Assert.False(vm.IsGamepadSpotlightView);
@@ -2457,52 +2404,6 @@ public class MainViewModelTests : IDisposable
         // title in the logo's place rather than leaving an empty slot with no name.
         Assert.True(game.AreSpotlightDetailsLoaded);
         Assert.True(game.ShowSpotlightTitleFallback);
-    }
-
-    /// <summary>
-    /// Regression: Right/Left/Down step by GamepadColumnCount. The count is derived arithmetically
-    /// from the gamepad viewport (matching UniformGridLayout), and navigation must honor it — Right
-    /// steps one tile within a row, Down steps a whole row, and Left clamps at the row's first column
-    /// rather than wrapping into the previous row ("can't move left" was a corrupted count reading as
-    /// a divisor of the index, so index%columns was always 0).
-    /// </summary>
-    [AvaloniaFact]
-    public void ArithmeticColumnCountDrivesGridNavigation()
-    {
-        var vm = CreateViewModel();
-        vm.IsGamepadMode = true;
-        vm.Games.ReplaceAll(Enumerable.Range(0, 8).Select(index => new GameViewModel(
-            new Game
-            {
-                Id = index + 1,
-                SystemId = Ps1.Id,
-                Path = $"/Games/Game {index + 1}.cue",
-                Title = $"Game {index + 1}",
-                DateAdded = DateTimeOffset.UtcNow,
-            },
-            Ps1.Name,
-            Ps1.ShortName,
-            Ps1.AccentColor,
-            coverAspectRatio: Ps1.CoverAspectRatio)));
-
-        // A viewport that fits exactly four columns under UniformGridLayout's arithmetic; setting it
-        // recomputes GamepadColumnCount the same way the layout will pack the tiles.
-        vm.GamepadViewportWidth = 1100;
-        Assert.Equal(4, vm.GamepadColumnCount);
-
-        // Right steps within the row; Down steps a whole row (index + columns).
-        vm.FocusedGame = vm.Games[1];
-        vm.MoveGamepadFocusRightCommand.Execute(null);
-        Assert.Same(vm.Games[2], vm.FocusedGame);
-        vm.MoveGamepadFocusDownCommand.Execute(null);
-        Assert.Same(vm.Games[6], vm.FocusedGame);
-
-        // Left steps back within the row, and clamps at the row's first column (no wrap upward).
-        vm.FocusedGame = vm.Games[5];
-        vm.MoveGamepadFocusLeftCommand.Execute(null);
-        Assert.Same(vm.Games[4], vm.FocusedGame);
-        vm.MoveGamepadFocusLeftCommand.Execute(null);
-        Assert.Same(vm.Games[4], vm.FocusedGame);
     }
 
     [AvaloniaFact]

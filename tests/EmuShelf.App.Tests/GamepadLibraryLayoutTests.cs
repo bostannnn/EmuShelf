@@ -79,74 +79,20 @@ public class GamepadLibraryLayoutTests : IDisposable
     }
 
     /// <summary>
-    /// Regression: both modes derived the cover width from one viewport and one inset constant, so
-    /// whichever view raised SizeChanged last defined the size for the view that was on screen.
+    /// Regression: entering Gamepad mode before its grid was ever measured left the packer with a
+    /// zero viewport, so every cover collapsed into one degenerate row and the selector could land
+    /// off-screen. Entry now seeds the gamepad viewport from the desktop's so the first pack has a
+    /// real width immediately.
     /// </summary>
     [AvaloniaFact]
-    public void EachModeSizesCoversFromItsOwnViewport()
-    {
-        var viewModel = CreateViewModel();
-        viewModel.LibraryViewportWidth = 1600;
-        viewModel.GamepadViewportWidth = 1176;
-
-        var desktopWidth = viewModel.GridCoverWidth;   // desktop mode is active
-        viewModel.IsGamepadMode = true;
-        var gamepadWidth = viewModel.GridCoverWidth;   // now sized from the gamepad viewport
-
-        // Independence is what the regression is about, not that the two numbers happen to differ:
-        // changing one mode's viewport moves only that mode's cover width. Narrowing the gamepad
-        // viewport must change the gamepad cover width...
-        viewModel.GamepadViewportWidth = 900;
-        Assert.NotEqual(gamepadWidth, viewModel.GridCoverWidth);
-
-        // ...and switching back restores the desktop sizing, untouched by any gamepad-side change.
-        viewModel.IsGamepadMode = false;
-        Assert.Equal(desktopWidth, viewModel.GridCoverWidth);
-    }
-
-    /// <summary>
-    /// Regression: D-pad up/down steps a whole row, so the stride has to equal the number of
-    /// columns the layout renders from the same width and cover size. A disagreement of one sent
-    /// focus to the wrong tile and scrolled the grid to it.
-    /// </summary>
-    [AvaloniaTheory]
-    [InlineData(1176)]  // Steam Deck, fullscreen
-    [InlineData(1280)]
-    [InlineData(1920)]
-    [InlineData(800)]
-    public void TheFocusStrideMatchesTheRenderedColumnCount(double viewportWidth)
-    {
-        var viewModel = CreateViewModel();
-        viewModel.IsGamepadMode = true;
-        viewModel.GamepadViewportWidth = viewportWidth;
-
-        // UniformGridLayout fits floor((available + spacing) / (itemWidth + spacing)) columns. The
-        // gamepad grid reserves a side gutter on each edge (so the focus glow never clips), so the
-        // available width is the viewport minus both gutters — the same region the cover width fills.
-        const double spacing = 28;
-        var available = viewportWidth - 2 * MainViewModel.GamepadGridSideGutterPixels;
-        var expected = Math.Max(
-            1,
-            (int)((available + spacing) / (viewModel.GridCoverWidth + spacing)));
-
-        Assert.Equal(expected, viewModel.GamepadColumnCount);
-    }
-
-    /// <summary>
-    /// Regression: entering Gamepad mode before its grid was ever measured left GamepadColumnCount
-    /// at its default of 1, so row-wise Up/Down stepped a single tile and the selector could land
-    /// off-screen. Entry now seeds the gamepad viewport from the desktop's so a real column count
-    /// exists immediately.
-    /// </summary>
-    [AvaloniaFact]
-    public void EnteringGamepadModeSeedsAColumnCountFromTheDesktopViewport()
+    public void EnteringGamepadModeSeedsTheViewportFromTheDesktopOne()
     {
         var viewModel = CreateViewModel();
         viewModel.LibraryViewportWidth = 1600; // desktop measured; the gamepad grid never was.
 
         viewModel.IsGamepadMode = true;
 
-        Assert.True(viewModel.GamepadColumnCount > 1);
+        Assert.Equal(1600, viewModel.GamepadViewportWidth);
     }
 
     /// <summary>

@@ -308,17 +308,24 @@
             <ScrollViewer x:Name="LibraryGridScroller" IsVisible="{Binding IsGridView}"
                           Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
                           SizeChanged="OnLibrarySizeChanged">
-                <ItemsRepeater x:Name="LibraryRepeater" ItemsSource="{Binding Games}"
+                <ItemsRepeater x:Name="LibraryRepeater" ItemsSource="{Binding CoverRows}"
                                Margin="32,28,28,34">
                     <ItemsRepeater.Layout>
-                        <!-- Covers are sized responsively (GameViewModel.CoverWidth, recomputed
-                             from the viewport width) so a whole number of columns fills the row with
-                             no lopsided right gutter, and the last partial row still aligns left.
-                             No MinItemHeight: every tile in a view shares one cover-shelf height. -->
-                        <UniformGridLayout MinItemWidth="188"
-                                           MinColumnSpacing="28" MinRowSpacing="20" />
+                        <!-- One justified ROW per line: the packer (MainViewModel.RepackActiveGrid)
+                             framed each cover to its platform's ratio and scaled the row so it fills
+                             the width edge-to-edge (no side gutter). StackLayout virtualizes the rows
+                             so a large library realizes only the on-screen rows, not every tile. -->
+                        <StackLayout Orientation="Vertical" Spacing="20" />
                     </ItemsRepeater.Layout>
                     <ItemsRepeater.ItemTemplate>
+                        <DataTemplate>
+                            <ItemsControl ItemsSource="{Binding}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="28" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:GameViewModel">
                             <StackPanel Width="{Binding CoverWidth}" Margin="0,4,0,0"
                                         Spacing="8" Classes="game-tile"
@@ -367,12 +374,10 @@
                                     </ContextMenu>
                                 </StackPanel.ContextMenu>
 
-                                <!-- One canonical frame per platform sizes the cover and the placeholder
-                                     alike; real artwork fills it (UniformToFill) so a system's tiles are
-                                     uniform and bottom-align on the shared mixed-library shelf. -->
-                                <Grid Width="{Binding CoverWidth}" Height="{Binding ShelfCoverHeight}">
-                                <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
-                                       VerticalAlignment="Bottom">
+                                <!-- The cover's packed size (the platform's canonical frame; every cover
+                                     in this row shares one height). Off-ratio artwork is cropped to fill
+                                     it (UniformToFill). -->
+                                <Panel Width="{Binding CoverWidth}" Height="{Binding CoverHeight}">
                                     <!-- Shadow caster, empty on purpose: see Border.cover-card-shadow. -->
                                     <Border Classes="cover-card-shadow" IsHitTestVisible="False"
                                             Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
@@ -472,7 +477,6 @@
                                         </Border>
                                     </StackPanel>
                                 </Panel>
-                                </Grid>
 
                                 <TextBlock Text="{Binding DisplayTitle}" TextWrapping="NoWrap"
                                            TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuTextSubheadingSize}"
@@ -517,6 +521,9 @@
                                     </Panel>
                                 </Popup>
                             </StackPanel>
+                        </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </DataTemplate>
                     </ItemsRepeater.ItemTemplate>
                 </ItemsRepeater>

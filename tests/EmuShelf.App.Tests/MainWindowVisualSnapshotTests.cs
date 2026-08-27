@@ -1311,11 +1311,8 @@ public class MainWindowVisualSnapshotTests
             selectedDisc: new GameDisc(2, disc2),
             displayTitle: "Final Fantasy X",
             discSelectionKey: "playstation2\u001FFINAL FANTASY X");
-        var sharedShelfHeight = gamepadGames.Max(game => game.CoverHeight);
-        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor(gamepadGames, gamepadGames[0].CoverWidth);
-        foreach (var game in gamepadGames)
-            game.ApplyCoverLayout(game.CoverWidth, sharedShelfHeight, gamepadCoverHeight);
         viewModel.Games.ReplaceAll(gamepadGames);
+        viewModel.GamepadViewportWidth = 1176; // packs the justified rows (window 1280 − 52+52 margins)
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
         viewModel.LibraryCountText = "4 games";
@@ -1343,7 +1340,14 @@ public class MainWindowVisualSnapshotTests
                 .Select(control => control.TranslatePoint(default, window)?.Y)
                 .ToArray();
             Assert.DoesNotContain(titleBaselines, value => value is null);
-            Assert.InRange(titleBaselines.Max()!.Value - titleBaselines.Min()!.Value, 0, 1);
+            // Titles line up per justified row (covers in a row share one height); across rows the
+            // heights differ, so group by row before asserting each row's titles share a baseline.
+            foreach (var rowBaselines in titleBaselines
+                .Select(value => value!.Value)
+                .GroupBy(y => Math.Round(y / 5)))
+            {
+                Assert.InRange(rowBaselines.Max() - rowBaselines.Min(), 0, 1);
+            }
             var focusedDock = window.FindNamed<Border>("GamepadFocusedDock");
             var achievementWidget = window.FindNamed<Border>("GamepadAchievementWidget");
             var achievementTrack = window.FindNamed<Border>("GamepadAchievementTrack");
@@ -1700,16 +1704,12 @@ public class MainWindowVisualSnapshotTests
                     coverAspectRatio: system.CoverAspectRatio);
             })
             .ToArray();
-        const double coverWidth = 202;
-        var shelfHeight = games.Max(game => Math.Round(coverWidth / game.CoverAspectRatio));
-        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor(games, coverWidth);
-        foreach (var game in games)
-            game.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
         games[6].ApplyAchievementsDisplay(new RetroAchievementsDisplay(
             ShowMark: true,
             ColumnText: "12/50",
             Tooltip: "12 of 50 unlocked."));
         viewModel.Games.ReplaceAll(games);
+        viewModel.GamepadViewportWidth = 1816; // packs the justified rows (window 1920 − 52+52 margins)
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
         viewModel.LibraryCountText = "18 games";
@@ -2122,7 +2122,7 @@ public class MainWindowVisualSnapshotTests
             }
 
             Assert.True(
-                viewModel.Games.IndexOf(viewModel.FocusedGame!) > viewModel.GamepadColumnCount,
+                viewModel.FocusedGame!.GridRowIndex > 0,
                 "focus should have moved past the first row");
             Assert.True(
                 scroller.Offset.Y > initialOffset,
@@ -2283,15 +2283,8 @@ public class MainWindowVisualSnapshotTests
             shortSystem.ShortName,
             shortSystem.AccentColor,
             coverAspectRatio: shortSystem.CoverAspectRatio);
-        const double coverWidth = 188;
-        var shelfHeight = Math.Max(
-            Math.Round(coverWidth / tallSystem.CoverAspectRatio),
-            Math.Round(coverWidth / shortSystem.CoverAspectRatio));
-        // A mixed view, so both tiles get one uniform gamepad frame height.
-        var gamepadCoverHeight = MainViewModel.GamepadCoverHeightFor([tallGame, shortGame], coverWidth);
-        tallGame.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
-        shortGame.ApplyCoverLayout(coverWidth, shelfHeight, gamepadCoverHeight);
         viewModel.Games.ReplaceAll([tallGame, shortGame]);
+        viewModel.GamepadViewportWidth = 1176;
         viewModel.HasGames = true;
         viewModel.IsLibraryEmpty = false;
 
@@ -2305,6 +2298,7 @@ public class MainWindowVisualSnapshotTests
             // mixed All Games shelf afterward so the headless render sees the visible cards.
             await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
             viewModel.Games.ReplaceAll([tallGame, shortGame]);
+            viewModel.GamepadViewportWidth = 1176;
             viewModel.HasGames = true;
             viewModel.IsLibraryEmpty = false;
             viewModel.LibraryCountText = "2 games";
@@ -2345,13 +2339,12 @@ public class MainWindowVisualSnapshotTests
             Assert.False(shortButton.IsPointerOver);
             Assert.True(viewModel.IsGamepadControllerInputActive);
             Assert.Equal(0, hoverRing.Opacity);
-            // The short NDS cover fills the same uniform frame as the tall PS2 cover instead of
-            // bottom-aligning inside a taller mixed shelf cell: both frames are GamepadCoverHeight.
-            // (The per-platform desktop frame really did differ — CoverHeight is shorter — so this
-            // proves the gamepad grid ignores it.)
-            Assert.NotEqual(shortGame.CoverHeight, shortGame.GamepadCoverHeight);
-            Assert.Equal(shortGame.GamepadCoverHeight, coverFrame.Bounds.Height, 1);
+            // Both covers sit in one justified row, so they share the row's height (frames line up top
+            // and bottom) while each keeps its own true-ratio WIDTH — the NDS cover is not cropped to
+            // the PS2 shape, it is simply drawn wider.
+            Assert.Equal(shortGame.CoverHeight, coverFrame.Bounds.Height, 1);
             Assert.Equal(tallCoverFrame.Bounds.Height, coverFrame.Bounds.Height, 1);
+            Assert.NotEqual(tallCoverFrame.Bounds.Width, coverFrame.Bounds.Width);
             Assert.Equal(coverFrame.Bounds.Height, hoverRing.Bounds.Height, 1);
             Assert.Equal(0, Assert.IsAssignableFrom<ISolidColorBrush>(shortButton.Background).Color.A);
             await SaveGamepadOverlaySnapshotAsync(

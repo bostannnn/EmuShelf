@@ -356,19 +356,34 @@ public partial class MainWindow : Window
 
         var realized = new List<GameViewModel>();
         var inBox = new List<GameViewModel>();
-        for (var index = 0; index < viewModel.Games.Count; index++)
+        if (viewModel.IsGridView)
         {
-            var container = viewModel.IsGridView
-                ? LibraryRepeater.TryGetElement(index)
-                : LibraryList.ContainerFromIndex(index);
-            if (container is null ||
-                container.TranslatePoint(default, LibraryContentPanel) is not { } topLeft)
-                continue;
+            // The grid is now a row-virtualized repeater whose realized elements are rows, not tiles, so
+            // walk to each realized cover tile (the game-tile StackPanel) instead of indexing containers.
+            foreach (var tile in LibraryRepeater.GetVisualDescendants().OfType<Control>())
+            {
+                if (tile.DataContext is not GameViewModel game || !tile.Classes.Contains("game-tile") ||
+                    tile.TranslatePoint(default, LibraryContentPanel) is not { } topLeft)
+                    continue;
 
-            var game = viewModel.Games[index];
-            realized.Add(game);
-            if (box.Intersects(new Rect(topLeft, container.Bounds.Size)))
-                inBox.Add(game);
+                realized.Add(game);
+                if (box.Intersects(new Rect(topLeft, tile.Bounds.Size)))
+                    inBox.Add(game);
+            }
+        }
+        else
+        {
+            for (var index = 0; index < viewModel.Games.Count; index++)
+            {
+                if (LibraryList.ContainerFromIndex(index) is not { } container ||
+                    container.TranslatePoint(default, LibraryContentPanel) is not { } topLeft)
+                    continue;
+
+                var game = viewModel.Games[index];
+                realized.Add(game);
+                if (box.Intersects(new Rect(topLeft, container.Bounds.Size)))
+                    inBox.Add(game);
+            }
         }
 
         viewModel.UpdateMarqueeSelection(realized, inBox);
@@ -520,16 +535,16 @@ public partial class MainWindow : Window
         }
     }
 
-    // View wiring only: report the grid area's width so the view model can size covers to fill a
-    // whole number of columns (and re-fill when the sidebar collapses or the window resizes), then
-    // widen the grid cells (MinItemWidth) to match — the layout otherwise pins cells to 188.
+    // View wiring only: report the grid area's width so the view model can re-pack the justified rows
+    // to fill it (and re-fill when the sidebar collapses or the window resizes), and keep the HiDPI
+    // cover decode scale current.
     private void OnLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
     {
         if (DataContext is not MainViewModel viewModel)
             return;
 
         viewModel.LibraryViewportWidth = e.NewSize.Width;
-        ApplyCellWidth(viewModel);
+        viewModel.CoverRenderScale = RenderScaling;
     }
 
     // The desktop grid reports its width through OnLibrarySizeChanged, but that scroller is collapsed
@@ -580,27 +595,6 @@ public partial class MainWindow : Window
         _resizingColumn = null;
         e.Pointer.Capture(null);
         e.Handled = true;
-    }
-
-    // Both grids take their cell width from the one cover width the view model computed for the
-    // mode that is on screen. Applying it to both — rather than only to whichever grid raised
-    // SizeChanged — means the visible grid's cells can never be left sized for the other mode,
-    // which is what produced overlapping tiles and a column pushed off the edge after a switch.
-    private void ApplyCellWidth(MainViewModel viewModel)
-    {
-        // Covers decode to their displayed pixel size, which needs the window's device-pixel ratio to
-        // stay crisp on a HiDPI display. This runs on every layout/resize — before the covers realize on
-        // first show — so the decode width is right by the time a cover loads.
-        viewModel.CoverRenderScale = RenderScaling;
-
-        if (viewModel.GridCoverWidth <= 0)
-            return;
-
-        // Only the desktop grid is a virtualizing ItemsRepeater whose cell width must be pushed to the
-        // layout. The gamepad grid is a UniformGrid; its tiles take their width from the CoverWidth
-        // binding and their column count from GamepadColumnCount, so there is nothing to set here.
-        if (LibraryRepeater.Layout is UniformGridLayout desktopLayout)
-            desktopLayout.MinItemWidth = viewModel.GridCoverWidth;
     }
 
     // View wiring only, shared with the gamepad shell — see GameCoverInteractions.

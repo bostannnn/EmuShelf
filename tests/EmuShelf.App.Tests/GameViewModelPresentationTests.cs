@@ -260,64 +260,20 @@ public sealed class GameViewModelPresentationTests
     }
 
     [Fact]
-    public void GamepadCoverHeight_DefaultsToTheTrueFrame_ButHonorsAnExplicitUniformHeight()
+    public void ApplyCoverLayout_SetsThePackedWidthAndHeightDirectly()
     {
-        var square = new GameViewModel(
+        var cover = new GameViewModel(
             CreateModel(1, "/games/square.cue"),
             "PlayStation", "PS1", "#8A8FA3",
             platformArtwork: new DrawingImage(),
             coverAspectRatio: 1.0);
-        var portrait = new GameViewModel(
-            CreateModel(2, "/games/portrait.chd"),
-            "PlayStation 2", "PS2", "#4657D7",
-            platformArtwork: new DrawingImage(),
-            coverAspectRatio: 0.708);
 
-        // No gamepad height passed (a single-platform view): each tile keeps its own platform frame,
-        // so covers fill the frame with no letterbox bars.
-        square.ApplyCoverLayout(200, shelfCoverHeight: 300);
-        portrait.ApplyCoverLayout(200, shelfCoverHeight: 300);
-        Assert.Equal(square.CoverHeight, square.GamepadCoverHeight);
-        Assert.NotEqual(square.GamepadCoverHeight, portrait.GamepadCoverHeight);
+        // The justified packer decides both dimensions (true aspect ratio, row-shared height); the
+        // view model just adopts them, with no per-platform frame or shared shelf in between.
+        cover.ApplyCoverLayout(210, 296);
 
-        // A mixed view passes one uniform height to every tile so the grid is even.
-        square.ApplyCoverLayout(200, shelfCoverHeight: 300, gamepadCoverHeight: 275);
-        portrait.ApplyCoverLayout(200, shelfCoverHeight: 300, gamepadCoverHeight: 275);
-        Assert.Equal(275, square.GamepadCoverHeight);
-        Assert.Equal(square.GamepadCoverHeight, portrait.GamepadCoverHeight);
-    }
-
-    [Fact]
-    public void GamepadCoverHeightFor_UsesTheTrueHeightForOnePlatform_AndAUniformHeightForAMix()
-    {
-        static GameViewModel Tile(long id, string systemId, double ratio) => new(
-            new Game
-            {
-                Id = id,
-                SystemId = systemId,
-                Path = $"/games/{systemId}-{id}.bin",
-                Title = $"Game {id}",
-                IsAvailable = true,
-                DateAdded = DateTimeOffset.UtcNow,
-            },
-            systemId, systemId, "#4657D7",
-            platformArtwork: new DrawingImage(),
-            coverAspectRatio: ratio);
-
-        const double width = 200;
-        var squareA = Tile(1, "playstation", 1.0);
-        var squareB = Tile(2, "playstation", 1.0);
-        var portrait = Tile(3, "playstation2", 0.708);
-
-        // One platform → that platform's true height (square: 200/1.0), so covers fill with no bars.
-        Assert.Equal(
-            Math.Round(width / 1.0),
-            MainViewModel.GamepadCoverHeightFor(new[] { squareA, squareB }, width));
-
-        // Mixed → the uniform mixed frame, regardless of the members' own ratios.
-        Assert.Equal(
-            Math.Round(width / GameViewModel.GamepadMixedCoverAspectRatio),
-            MainViewModel.GamepadCoverHeightFor(new[] { squareA, portrait }, width));
+        Assert.Equal(210, cover.CoverWidth);
+        Assert.Equal(296, cover.CoverHeight);
     }
 
     [Fact]

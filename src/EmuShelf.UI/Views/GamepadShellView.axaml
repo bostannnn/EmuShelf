@@ -176,14 +176,11 @@
                                 CommandParameter="{Binding}"
                                 DoubleTapped="OnGameDoubleTapped">
                             <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
-                                <!-- The tile frame is GamepadCoverHeight. In a single-platform view
-                                     that is the platform's true cover height, so covers fill it
-                                     (UniformToFill below) with no bars — exactly the desktop shape.
-                                     A mixed view (All Games and the like) instead passes one uniform
-                                     height to every tile, so the grid is even with no ragged skyline
-                                     and the off-ratio minority crops to fill. The desktop grid's
-                                     per-platform frames on a shared shelf are untouched. -->
-                                  <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding GamepadCoverHeight}"
+                                <!-- The cover frame is this tile's packed size: the packer framed it to
+                                     the platform's canonical ratio and scaled the row to fill the width.
+                                     UniformToFill below crops off-ratio art to fill it; every cover in a
+                                     row shares one height, so the row's covers line up top and bottom. -->
+                                  <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                                          Classes="gamepad-cover-stack" ClipToBounds="False">
                                     <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
                                          larger on every side with a concentric corner radius (12 + 6), so
