@@ -13,9 +13,10 @@ public readonly record struct CoverPlacement(int RowIndex, double Width, double 
 /// row is always flush on both sides. Because a row is committed as soon as it is "full enough", every
 /// row is dense (a wide-cover platform like arcade simply holds fewer covers per row) and its height
 /// stays at ~target, so covers read as a consistent size and none balloon. The last, incomplete row is
-/// left-packed at the target height (only shrunk if a lone over-wide cover would overflow). Pure and
-/// deterministic, so the view and controller navigation share one geometry. (The view crops off-ratio
-/// art into the frame with UniformToFill; that is a rendering concern, not the packer's.)
+/// left-packed at the SAME height as the row above it (so a short final row never renders taller than
+/// the rest); when it is the only row it falls back to the target. Pure and deterministic, so the view
+/// and controller navigation share one geometry. (The view crops off-ratio art into the frame with
+/// UniformToFill; that is a rendering concern, not the packer's.)
 /// </summary>
 public static class JustifiedCoverLayout
 {
@@ -52,7 +53,8 @@ public static class JustifiedCoverLayout
 
         var rowIndex = 0;
         var start = 0;
-        var ratioSum = 0d; // sum of clamped aspect ratios (widths at height = 1) in the current row
+        var ratioSum = 0d;      // sum of clamped aspect ratios (widths at height = 1) in the current row
+        var lastRowHeight = 0d; // height of the last committed full row, so the leftover row can match it
 
         for (var i = 0; i < aspectRatios.Count; i++)
         {
@@ -67,19 +69,24 @@ public static class JustifiedCoverLayout
             if (filledHeight <= targetRowHeight)
             {
                 FinalizeRow(aspectRatios, placements, start, i + 1, rowIndex, filledHeight, spacing);
+                lastRowHeight = Math.Round(filledHeight);
                 rowIndex++;
                 start = i + 1;
                 ratioSum = 0;
             }
         }
 
-        // Leftover covers form a final, left-packed row at the target height — never scaled up. A lone
-        // over-wide cover that would overflow the width is shrunk to fit instead.
+        // Leftover covers form a final, left-packed row. It matches the height of the row above it (a
+        // partial last row must not render TALLER than the full rows — that reads as odd oversized
+        // covers); when it is the only row, it falls back to the target, shrunk to fit if a lone
+        // over-wide cover would overflow.
         if (start < aspectRatios.Count)
         {
             var count = aspectRatios.Count - start;
             var gaps = spacing * (count - 1);
-            var rowHeight = Math.Min(targetRowHeight, (availableWidth - gaps) / ratioSum);
+            var rowHeight = lastRowHeight > 0
+                ? lastRowHeight
+                : Math.Min(targetRowHeight, (availableWidth - gaps) / ratioSum);
             FinalizeRow(aspectRatios, placements, start, aspectRatios.Count, rowIndex, rowHeight, spacing);
         }
 
