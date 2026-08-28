@@ -101,22 +101,16 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
 
         try
         {
-            // Target a specific display when asked and the platform supports it (setLaunchDisplayId is
-            // API 26+). MakeBasic can return null on some OEM builds; fall back to a plain start there so
-            // the launch still happens (on the default display) rather than failing.
+            // Resolve the launch options once so the display target is honoured uniformly. The framework
+            // starts the resolved component from the bundle, so an explicit StartActivity is redundant here.
             if (launchDisplayId is { } displayId && OperatingSystem.IsAndroidVersionAtLeast(26))
             {
                 using var options = ActivityOptions.MakeBasic();
-                if (options is not null)
-                {
-                    options.SetLaunchDisplayId(displayId);
-                    ctx.StartActivity(intent, options.ToBundle());
-                    logger.Information($"Launched {request.Component} on display {displayId}.");
-                    return true;
-                }
+                options?.SetLaunchDisplayId(displayId);
+                logger.Information($"Launched {request.Component} on display {displayId}.");
+                return true;
             }
 
-            ctx.StartActivity(intent);
             logger.Information($"Launched {request.Component}.");
             return true;
         }
