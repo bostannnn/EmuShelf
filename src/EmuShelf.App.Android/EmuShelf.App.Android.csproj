@@ -27,6 +27,16 @@
          bindings rather than failing the build (the plan's "Compiled bindings are the trimming trap").
          Debug keeps linking off so fast deployment works without the XA0119 warning. -->
     <AndroidLinkMode Condition="'$(Configuration)' == 'Release'">SdkOnly</AndroidLinkMode>
+    <!-- Ahead-of-time compile the managed code to native for Release. On the AYN Thor (and weak handheld
+         GPUs/CPUs generally) the JIT'd/interpreted couch runs per-row tile realization slowly enough to
+         stall the grid scroll AND to hang the "All Games" pack past Android's ANR threshold. Measured on
+         the Thor: AOT roughly halves the scroll stalls, flattens the frame-time tail (p90 50ms -> 17ms),
+         and removes the All-Games ANR — it is the single biggest couch-performance lever (see
+         DECISIONS 2026-08-30). Cost: Release builds need the Android NDK (26.3.11579264, the Microsoft.
+         Android.Sdk 36.1.69 default) on the build machine, are much slower, and the APK is larger
+         (~123MB vs ~93MB). Non-profiled so the whole app is compiled, not just a startup profile. -->
+    <RunAOTCompilation Condition="'$(Configuration)' == 'Release'">true</RunAOTCompilation>
+    <AndroidEnableProfiledAot Condition="'$(Configuration)' == 'Release'">false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
   <ItemGroup>

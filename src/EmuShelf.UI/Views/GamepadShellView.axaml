@@ -209,21 +209,37 @@
                                             AttachedToVisualTree="OnGameCoverAttached"
                                             DataContextChanged="OnGameCoverDataContextChanged">
                                         <Panel>
-                                            <Grid Classes="cover-placeholder"
-                                                  Classes.covered="{Binding HasCoverImage}" RowDefinitions="5,*"
-                                                  Background="{DynamicResource EmuCoverWellBrush}">
-                                                <Border Grid.Row="0" Background="{Binding AccentColor}" />
-                                                <StackPanel Grid.Row="1" HorizontalAlignment="Center"
-                                                            VerticalAlignment="Center" Spacing="12">
-                                                    <Border Width="88" Height="88" CornerRadius="44"
-                                                            Background="{DynamicResource EmuPlaceholderMedallionBrush}">
-                                                        <Image Width="62" Height="62" Source="{Binding PlatformArtwork}"
-                                                               RenderOptions.BitmapInterpolationMode="None" />
-                                                    </Border>
-                                                    <TextBlock Text="ARTWORK MISSING" FontSize="8" FontWeight="Bold"
-                                                               LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                </StackPanel>
-                                            </Grid>
+                                            <!-- The "artwork missing" placeholder is built by a ContentControl
+                                                 whose content is non-null ONLY while the tile is uncovered
+                                                 (UncoveredPlaceholder). A covered tile therefore never
+                                                 instantiates this Grid + medallion + second Image. Covers are
+                                                 prefetched ahead of the scroll, so realized tiles are almost
+                                                 always already covered — this is the largest cut to per-row
+                                                 control-realization cost, the thing that stalls the scroll on
+                                                 device. It only ever appears (no crossfade needed) because it
+                                                 is removed, not dimmed, the moment a cover arrives. -->
+                                            <ContentControl Content="{Binding UncoveredPlaceholder}"
+                                                            HorizontalContentAlignment="Stretch"
+                                                            VerticalContentAlignment="Stretch">
+                                                <ContentControl.ContentTemplate>
+                                                    <DataTemplate x:DataType="vm:GameViewModel">
+                                                        <Grid RowDefinitions="5,*"
+                                                              Background="{DynamicResource EmuCoverWellBrush}">
+                                                            <Border Grid.Row="0" Background="{Binding AccentColor}" />
+                                                            <StackPanel Grid.Row="1" HorizontalAlignment="Center"
+                                                                        VerticalAlignment="Center" Spacing="12">
+                                                                <Border Width="88" Height="88" CornerRadius="44"
+                                                                        Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                                                                    <Image Width="62" Height="62" Source="{Binding PlatformArtwork}"
+                                                                           RenderOptions.BitmapInterpolationMode="None" />
+                                                                </Border>
+                                                                <TextBlock Text="ARTWORK MISSING" FontSize="8" FontWeight="Bold"
+                                                                           LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </DataTemplate>
+                                                </ContentControl.ContentTemplate>
+                                            </ContentControl>
                                             <!-- UniformToFill so covers fill the frame with no letterbox bars.
                                                  In a single-platform view the frame is that platform's true
                                                  shape, so this is an exact fill; only a mixed view's uniform
