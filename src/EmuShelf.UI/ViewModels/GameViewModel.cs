@@ -508,6 +508,16 @@ public partial class GameViewModel : ObservableObject, IDisposable
 
     public bool HasCoverImage => CoverImage is not null;
 
+    /// <summary>
+    /// Non-null (this) only while the tile has no cover. The couch grid binds a <c>ContentControl</c>'s
+    /// content to this so the "artwork missing" placeholder subtree — a Grid, a medallion, and a SECOND
+    /// per-tile <c>Image</c> (the platform artwork) — is instantiated ONLY for uncovered tiles. Covers are
+    /// prefetched ahead of the scroll (see MainViewModel.PrefetchCoversAroundFocus), so realized tiles are
+    /// almost always already covered; deferring the placeholder off that common case is the largest single
+    /// cut to per-row control-realization cost, which is what stalls the couch scroll on device.
+    /// </summary>
+    public GameViewModel? UncoveredPlaceholder => HasCoverImage ? null : this;
+
     /// <summary>The large fan-art image shown behind the gamepad spotlight hero. Only the focused
     /// game keeps a decoded bitmap; it is released when focus moves so memory stays bounded.</summary>
     [ObservableProperty]
@@ -845,6 +855,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
     partial void OnCoverImageChanged(Bitmap? value)
     {
         OnPropertyChanged(nameof(HasCoverImage));
+        OnPropertyChanged(nameof(UncoveredPlaceholder));
         OnPropertyChanged(nameof(ShelfUses3DHero));
     }
 

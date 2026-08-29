@@ -71,6 +71,10 @@ public partial class GamepadShellView : UserControl
     private bool _gamepadScrollAnimating;
     private int _gamepadScrollGeneration;
     private double _gamepadScrollTarget;
+    // Current scroll velocity (px/s) carried by the SmoothDamp glide. Persisting it across retargets is
+    // what turns a held d-pad into one continuous momentum scroll; it is reset only when a glide is
+    // cancelled (a snap / mode switch), so a fresh glide starts from rest.
+    private double _gamepadScrollVelocity;
     // Timestamp of the previous glide frame, so the ease can scale by the real time between vsync
     // callbacks (frame-rate independent). Null on the first frame of a glide and whenever it settles.
     private TimeSpan? _gamepadScrollLastFrameTime;
@@ -273,14 +277,21 @@ public partial class GamepadShellView : UserControl
         Dispatcher.UIThread.Post(RevealGamepadOverlayFocus, DispatcherPriority.Input);
     }
 
-    // Rate the glide closes the remaining distance, per SECOND. Frame-rate independent: the per-frame
-    // fraction is derived from the real delta between vsync callbacks, so the feel is identical at 60 or
-    // 120 Hz. ~19/s reproduces the old hand-tuned 0.28-per-frame feel at 60 Hz — a held d-pad (~one row
-    // every 110ms) reads as one continuous scroll, and it settles within a few frames once released.
-    private const double GamepadScrollDecayPerSecond = 19.0;
+    // Approximate time (seconds) for the glide to close on a fixed target. The scroll now carries a
+    // velocity (a critically-damped spring / SmoothDamp) rather than easing a fixed fraction of the
+    // remaining distance per frame: velocity persists across retargets, so a held d-pad builds and
+    // sustains momentum into one continuous flowing scroll instead of a series of ease-to-a-row-then-
+    // settle hops, and a release decelerates smoothly to rest. Frame-rate independent (scaled by the
+    // real inter-vsync delta), and the model never overshoots the target. 0.07s reads as snappy but
+    // fluid at 60 Hz; smaller is tighter, larger is floatier.
+    private const double GamepadScrollSmoothTime = 0.07;
     // Within this many pixels of centre the glide lands exactly and stops reposting, so an idle grid
     // burns no CPU.
     private const double GamepadScrollSettleThreshold = 0.5;
+    // Below this speed (px/s) the glide counts as "at rest": it may settle, and a retarget onto the
+    // current position lands immediately instead of nudging. Paired with the distance threshold so a fast
+    // momentum pass through the target decelerates onto it rather than stopping dead the instant it crosses.
+    private const double GamepadScrollRestVelocity = 8.0;
     // A d-pad step moves focus at most one row (up/down) or none (left/right). Anything further is a
     // discrete jump — a scope restore of a deep row, a pointer tap on a distant tile — and snaps rather
     // than easing across many screens (which would realize and flash a cover on every intermediate row).
@@ -476,7 +487,10 @@ public partial class GamepadShellView : UserControl
         _gamepadScroller = scroller;
         _gamepadScrollTarget = target;
 
-        if (Math.Abs(scroller.Offset.Y - target) < GamepadScrollSettleThreshold)
+        // Land immediately only when already at the target AND at rest; mid-flow (carrying velocity) the
+        // running loop must keep integrating so momentum is preserved through the retarget.
+        if (Math.Abs(scroller.Offset.Y - target) < GamepadScrollSettleThreshold &&
+            Math.Abs(_gamepadScrollVelocity) < GamepadScrollRestVelocity)
         {
             scroller.Offset = scroller.Offset.WithY(target);
             CancelGamepadScroll();
@@ -488,6 +502,13 @@ public partial class GamepadShellView : UserControl
 
         _gamepadScrollAnimating = true;
         _gamepadScrollLastFrameTime = null;
+        // Seed the velocity toward the target so a FRESH glide starts responsively. A critically-damped
+        // spring from a dead stop ramps its velocity over the first frames — which reads as a laggy start
+        // and, under a very fine render clock, barely progresses per frame. Seeding roughly one
+        // smoothTime's worth of closing speed makes the first frame move immediately, like the old ease,
+        // and the spring then decelerates onto the target. Only a fresh glide is seeded: a held d-pad's
+        // retarget returned above with its carried velocity intact, which is what gives the momentum.
+        _gamepadScrollVelocity = (target - scroller.Offset.Y) / GamepadScrollSmoothTime;
         // Build the per-frame callback ONCE for this glide: it captures this generation, so a stale
         // in-flight frame from a superseded glide still no-ops (generation guard), while every subsequent
         // frame of a held d-pad's glide reuses the same delegate instead of allocating a new closure.
@@ -504,6 +525,7 @@ public partial class GamepadShellView : UserControl
         _gamepadScrollGeneration++;
         _gamepadScrollLastFrameTime = null;
         _gamepadScrollFrameCallback = null;
+        _gamepadScrollVelocity = 0;
     }
 
     // Drive the glide from the compositor's own per-frame callback rather than a self-reposted Dispatcher
@@ -549,37 +571,44 @@ public partial class GamepadShellView : UserControl
 
         var current = scroller.Offset.Y;
         var delta = _gamepadScrollTarget - current;
-        if (Math.Abs(delta) < GamepadScrollSettleThreshold)
+        // Settle only once we are BOTH within a pixel of the target AND essentially at rest. Checking the
+        // distance alone would stop a fast momentum pass dead the instant it crossed the target instead of
+        // letting the spring decelerate smoothly onto it.
+        if (Math.Abs(delta) < GamepadScrollSettleThreshold && Math.Abs(_gamepadScrollVelocity) < GamepadScrollRestVelocity)
         {
             scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
             CancelGamepadScroll();
             return;
         }
 
-        // The first frame has no prior timestamp: record the clock and wait one frame so the ease has a
-        // real delta to scale by. Every later frame closes GamepadScrollDecayPerSecond of the remaining
-        // distance per second, so the glide feels identical regardless of the refresh rate.
+        // The first frame has no prior timestamp: record the clock and wait one frame so the spring has a
+        // real delta to integrate against.
         if (_gamepadScrollLastFrameTime is { } last)
         {
-            // Clamp dt so a stall (backgrounded, GC pause) can't teleport the offset in one giant jump.
-            // A non-advancing frame clock (some headless harnesses) reports dt <= 0; treat it as one 60 Hz
-            // frame so the glide still progresses instead of stalling on the sub-pixel floor.
-            // Cap at ~2 frames (33 ms) rather than 50 ms so that catching up after a stall (e.g. the heavy
-            // row-realization frame) is a gentle step, not a single large lurch that reads as its own jump.
+            // Clamp dt so a stall (backgrounded, GC pause, a heavy row-realization frame) cannot fling the
+            // offset in one giant integration step. A non-advancing frame clock (some headless harnesses)
+            // reports dt <= 0; treat it as one 60 Hz frame so the glide still progresses. Cap at ~2 frames
+            // (33 ms) so catching up after a stall is a gentle step, not a lurch that reads as its own jump.
             var dt = (now - last).TotalSeconds;
             dt = dt <= 0 ? 1.0 / 60.0 : Math.Min(dt, 1.0 / 30.0);
-            var step = delta * (1 - Math.Exp(-GamepadScrollDecayPerSecond * dt));
-            // Never crawl sub-pixel (a long tail can't stall) and never overshoot the target.
-            if (Math.Abs(step) < 1)
-                step = Math.Sign(delta);
-            var next = current + step;
-            if ((delta > 0 && next > _gamepadScrollTarget) || (delta < 0 && next < _gamepadScrollTarget))
-                next = _gamepadScrollTarget;
+
+            // Critically-damped spring toward the target that carries velocity across frames — and across
+            // retargets, since _gamepadScrollVelocity is never reset while the loop runs — so a held d-pad
+            // reads as one continuous momentum scroll rather than a stack of per-row ease-and-settle hops.
+            var velocity = _gamepadScrollVelocity;
+            var next = SmoothDamp(current, _gamepadScrollTarget, ref velocity, GamepadScrollSmoothTime, dt);
+            _gamepadScrollVelocity = velocity;
 
             scroller.Offset = scroller.Offset.WithY(Math.Max(0, next));
-            // No usable movement means the offset is clamped at a list end (the target row can't be
-            // centred). Stop rather than re-request forever against the clamp.
-            if (Math.Abs(scroller.Offset.Y - current) < 0.5)
+            // No usable movement while still far from the target means the offset is pinned at a list end
+            // (the target row cannot be centred). Stop rather than re-request forever against the clamp.
+            // Safe now that a fresh glide seeds its velocity: the spring moves well over half a pixel per
+            // frame until it is genuinely clamped or within the settle band above, so this no longer trips
+            // on the sub-pixel ramp a from-rest spring would have had. Extent-independent (compares to the
+            // realized offset, not the requested one), so a virtualized extent estimate that lags the real
+            // content cannot false-trigger it mid-scroll.
+            if (Math.Abs(scroller.Offset.Y - current) < 0.5 &&
+                Math.Abs(delta) > GamepadScrollSettleThreshold)
             {
                 CancelGamepadScroll();
                 return;
@@ -588,6 +617,28 @@ public partial class GamepadShellView : UserControl
 
         _gamepadScrollLastFrameTime = now;
         RequestGamepadScrollFrame();
+    }
+
+    // Critically-damped spring toward a target that carries velocity across frames (Game Programming Gems
+    // 4 SmoothDamp). Persisting the velocity is what gives the couch scroll momentum: a held d-pad sustains
+    // a continuous flowing scroll and a release decelerates smoothly to rest. Never overshoots the target.
+    private static double SmoothDamp(double current, double target, ref double velocity, double smoothTime, double dt)
+    {
+        smoothTime = Math.Max(0.0001, smoothTime);
+        var omega = 2.0 / smoothTime;
+        var x = omega * dt;
+        var exp = 1.0 / (1.0 + x + 0.48 * x * x + 0.235 * x * x * x);
+        var change = current - target;
+        var temp = (velocity + omega * change) * dt;
+        velocity = (velocity - omega * temp) * exp;
+        var result = target + (change + temp) * exp;
+        // Clamp any overshoot back onto the target and kill the velocity that caused it.
+        if ((target - current > 0.0) == (result > target))
+        {
+            result = target;
+            velocity = 0.0;
+        }
+        return result;
     }
 
     // Cache the grid's ScrollViewer; it is stable once the ListBox realizes, but re-resolve if the

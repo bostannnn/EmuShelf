@@ -11228,3 +11228,21 @@ on why a third-party app cannot relocate the system IME onto the Thor's second s
 in the project note in case a Screen-2 keyboard is ever revived. `OpeningATextOverlay_BumpsTheTextEntryRevision`
 now covers the gamepad-open → IME-raise signal. Verified: `dotnet build` clean, full App suite green in Release,
 and the out-of-solution Android head Roslyn-compiles clean.
+
+## 2026-08-30 — AOT compilation for the Android Release build
+
+`RunAOTCompilation=true` (non-profiled) is enabled for Release in `EmuShelf.App.Android.csproj`. On the AYN
+Thor the couch felt "cheap/choppy"; on-device measurement (SurfaceFlinger BLAST-layer frame timing, driven
+over ADB) traced the grid-scroll choppiness to per-row tile control-realization running interpreted/JIT'd —
+a diagnostic that stripped a tile to cover-image-only dropped scroll stalls 10→1. The same un-AOT'd slowness
+made the "All Games" (968-game) justified pack exceed Android's 5s ANR threshold (the game *load* was already
+off-thread via `Task.Run`; the residual UI-thread `RepackActiveGrid` was the hang). AOT roughly halves the
+scroll stalls, flattens the frame-time tail (p90 50ms→17ms), and removes the All-Games ANR — the single
+biggest couch-performance lever, ahead of any per-tile or virtualization change. Cost: Release builds now
+require the Android NDK (26.3.11579264, the Microsoft.Android.Sdk 36.1.69 default) on the build machine
+(incl. CI), are substantially slower, and the APK grows (~93MB→~123MB). Kept non-profiled (whole-app) rather
+than profiled-AOT to avoid maintaining a startup profile. Also shipped alongside: couch grid tile placeholder
+deferral (a `ContentControl` gated on `GameViewModel.UncoveredPlaceholder` so covered tiles skip the
+artwork-missing subtree) and a momentum grid scroll (SmoothDamp velocity-carry replacing exp-decay-to-target
+in `GamepadShellView`). A residual ~5 stalls of 83–100ms per long scroll remain (per-row realization AOT
+cannot fully erase); realizing rows ahead of the scroll is the follow-up.
