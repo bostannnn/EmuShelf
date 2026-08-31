@@ -165,19 +165,20 @@ public class CouchMenuLayoutTests
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
+            // Selection is a solid accent fill now — the check badge is gone, so a view-mode card is
+            // any -card button whose label is one of the three couch layouts.
+            var expectedLabels = new[] { "Grid", "List", "Shelf" };
             var cards = window.GetVisualDescendants()
                 .OfType<Button>()
                 .Where(button => button.Classes.Contains("gamepad-viewmode-card"))
-                .Where(button => button.GetVisualDescendants().OfType<Border>()
-                    .Any(border => border.Classes.Contains("gamepad-viewmode-check")))
+                .Where(button => button.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(text => expectedLabels.Contains(text.Text)))
                 .ToList();
             Assert.Equal(3, cards.Count);
 
-            // Every card reserves the badge's space, selected or not, so the labels all get the same
-            // width and none of them reflows when the selection moves.
+            // The labels all get the same width and none of them reflows when the selection moves.
             // Within a pixel: the row splits into three star columns, so a panel width that does not
-            // divide by three leaves one card a rounding pixel wider. What matters is that selecting a
-            // card does not cost it twenty-two.
+            // divide by three leaves one card a rounding pixel wider.
             var labelWidths = cards
                 .Select(card => card.GetVisualDescendants().OfType<TextBlock>().First().Bounds.Width)
                 .ToList();
@@ -190,17 +191,9 @@ public class CouchMenuLayoutTests
             foreach (var card in cards)
             {
                 var label = card.GetVisualDescendants().OfType<TextBlock>().First();
-                var badge = card.GetVisualDescendants().OfType<Border>()
-                    .First(border => border.Classes.Contains("gamepad-viewmode-check"));
 
-                var labelLeft = label.TranslatePoint(default, card)!.Value.X;
-                var badgeLeft = badge.TranslatePoint(default, card)!.Value.X;
-                Assert.True(
-                    labelLeft + label.Bounds.Width <= badgeLeft + 1,
-                    $"'{label.Text}' runs under its check badge: label ends at "
-                    + $"{labelLeft + label.Bounds.Width}, badge starts at {badgeLeft}.");
-
-                // And the label is wide enough to actually show the word rather than trimming it.
+                // The label is wide enough to actually show the word rather than trimming it —
+                // "Shelf" must never render as "Sh…" again.
                 Assert.True(
                     label.Bounds.Width >= label.DesiredSize.Width - 1,
                     $"'{label.Text}' is being trimmed: {label.Bounds.Width} < {label.DesiredSize.Width}.");
@@ -285,6 +278,78 @@ public class CouchMenuLayoutTests
             window.Close();
         }
     }
+
+    /// <summary>
+    /// The ring reaching a pinned destructive row (Remove / Quit) must reach its BUTTON too.
+    /// </summary>
+    /// <remarks>
+    /// Those rows render in their own ItemsControl outside the option scroller, so a reveal that only
+    /// walked the primary list never moved native focus onto them. Focus stayed on the last primary
+    /// row, which keeps matching <c>Button.gamepad-modal-option:focus</c> — a solid accent fill — so
+    /// two rows read as selected at once, and a hardware Space activated the stale one.
+    /// </remarks>
+    [AvaloniaFact]
+    public async Task CouchStartMenu_RingOnAPinnedDestructiveRow_ReachesThatRowsButton()
+    {
+        var viewModel = new MainViewModel { IsGamepadMode = true };
+        await viewModel.ReloadGamesAsync();
+        viewModel.IsGamepadControllerInputActive = true;
+        viewModel.OpenGamepadMenuCommand.Execute(null);
+
+        var window = new MainWindow { DataContext = viewModel, Width = 1920, Height = 1080 };
+        window.Show();
+        try
+        {
+            // Walk past the end of the option list; the selection clamps on the last entry, which the
+            // system menu always makes destructive ("Quit EmuShelf").
+            for (var step = 0; step < viewModel.GamepadOverlayOptions.Count + 4; step++)
+            {
+                viewModel.MoveGamepadOverlayDownCommand.Execute(null);
+                await PumpOverlayRevealAsync();
+            }
+
+            var selected = viewModel.GamepadOverlayOptions[viewModel.GamepadOverlaySelectionIndex];
+            Assert.True(selected.IsDestructive, $"Test needs the ring on a destructive row, got '{selected.Label}'.");
+
+            var primary = window.FindNamed<ItemsControl>("GamepadOverlayOptions");
+            var destructive = window.FindNamed<ItemsControl>("GamepadOverlayDestructiveOptions");
+            Assert.NotNull(primary);
+            Assert.NotNull(destructive);
+
+            // The ring is rendered on the pinned row, and on nothing in the scroller.
+            Assert.Null(FocusedOptionButton(primary));
+            var ringedButton = FocusedOptionButton(destructive);
+            Assert.NotNull(ringedButton);
+            Assert.Same(selected, ringedButton.DataContext);
+
+            // And native focus followed it there. This is the half that actually regressed: left on
+            // the last primary row, that row keeps painting itself accent-filled via :focus beside the
+            // ringed one, and a hardware Space fires its command instead of the selected one.
+            var focused = window.FocusManager?.GetFocusedElement();
+            Assert.Same(ringedButton, focused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    // RevealGamepadOverlayFocus is posted at DispatcherPriority.Input, which is LOWER than Loaded, so
+    // a Loaded-only flush returns before the reveal has run and no focus is ever taken.
+    private static async Task PumpOverlayRevealAsync()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Loaded);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Input);
+            await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        }
+    }
+
+    private static Button? FocusedOptionButton(ItemsControl list) =>
+        list.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
 
     private static List<Point> RowCardOrigins(Border row) =>
         row.GetVisualDescendants()

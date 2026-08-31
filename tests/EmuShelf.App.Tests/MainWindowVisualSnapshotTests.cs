@@ -1375,7 +1375,9 @@ public class MainWindowVisualSnapshotTests
             Assert.NotNull(hardcoreFill);
             Assert.Equal(0d, Assert.IsType<ScaleTransform>(hardcoreFill.RenderTransform).ScaleX, 8);
             Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
-            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            // The dock is a content-sized overlay on the grid now, not a fixed 104px layout row: widgets
+            // plus the tall transparent fade its top padding reserves over the covers scrolling under it.
+            Assert.InRange(focusedDock.Bounds.Height, 110, 132);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
             var widgetOrigin = achievementWidget.TranslatePoint(default, window);
@@ -1406,9 +1408,11 @@ public class MainWindowVisualSnapshotTests
                 "Shin Megami Tensei: Persona 3 FES — The Journey and The Answer";
             viewModel.OpenFocusedGameActionsCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-actions-1280x800.png");
-            AssertGamepadOverlayHeightBelow(window, 600);
+            // The actions side sheet anchors to the overlay host's full height (window minus the
+            // host's 36px margins) — a centred, content-sized card floated at arbitrary offsets.
+            AssertGamepadOverlayFillsHost(window);
             AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
-            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove").IsDestructive);
+            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove from library").IsDestructive);
             viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 440);
@@ -1738,7 +1742,9 @@ public class MainWindowVisualSnapshotTests
             Assert.NotNull(focusedDock);
             Assert.NotNull(rowList);
             Assert.Equal(ScrollBarVisibility.Hidden, rowList.VerticalScrollBarVisibility);
-            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            // The dock is a content-sized overlay on the grid now, not a fixed 104px layout row: widgets
+            // plus the tall transparent fade its top padding reserves over the covers scrolling under it.
+            Assert.InRange(focusedDock.Bounds.Height, 110, 132);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
 
@@ -2369,11 +2375,11 @@ public class MainWindowVisualSnapshotTests
 
             viewModel.FocusedGame = shortGame;
             await PumpAsync();
-            // Focusing this tile makes its own ring opaque. The selector is an accent pad 6px larger
-            // than the cover on every side (Border.gamepad-focus-tile-ring, Margin -6), so its bounds
-            // exceed the cover frame by 12px in each dimension; the opaque cover masks the pad's centre,
-            // leaving an even 6px accent frame.
-            const double focusFrameInset = 6;
+            // Focusing this tile makes its focus box opaque. There is no ring: the box is an
+            // invisible shadow caster (Border.gamepad-focus-tile-ring, Background Transparent,
+            // Margin -7), so its bounds exceed the cover frame by 7px on every side and the depth
+            // reads as a drop shadow projected from under the cover.
+            const double focusFrameInset = 7;
             Assert.Equal(1, focusRing.Opacity);
             Assert.Equal(coverFrame.Bounds.Height + (focusFrameInset * 2), focusRing.Bounds.Height, 1);
             Assert.Equal(coverFrame.Bounds.Width + (focusFrameInset * 2), focusRing.Bounds.Width, 1);
@@ -2411,6 +2417,14 @@ public class MainWindowVisualSnapshotTests
         }
     }
 
+    private static void AssertGamepadOverlayFillsHost(Window window)
+    {
+        var overlay = window.GetVisualDescendants()
+            .OfType<Border>()
+            .Single(control => control.Classes.Contains("gamepad-overlay"));
+        Assert.InRange(overlay.Bounds.Height, window.Bounds.Height - 74, window.Bounds.Height - 70);
+    }
+
     private static void AssertGamepadOverlayHeightBelow(Window window, double previousFixedHeight)
     {
         var overlay = window.GetVisualDescendants()
@@ -2424,9 +2438,11 @@ public class MainWindowVisualSnapshotTests
         var overlay = window.GetVisualDescendants()
             .OfType<Border>()
             .Single(control => control.Classes.Contains("gamepad-overlay"));
-        var titleBlock = window.GetVisualDescendants()
+        // Search within the overlay: the actions title is now the bare game title, which the
+        // focused-game dock behind the overlay also displays.
+        var titleBlock = overlay.GetVisualDescendants()
             .OfType<TextBlock>()
-            .Single(control => control.IsVisible && control.Text == title);
+            .Single(control => control.IsEffectivelyVisible && control.Text == title);
         var origin = titleBlock.TranslatePoint(default, overlay);
         Assert.NotNull(origin);
         Assert.True(origin.Value.X >= 0);

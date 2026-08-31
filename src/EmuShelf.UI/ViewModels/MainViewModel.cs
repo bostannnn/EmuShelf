@@ -1133,6 +1133,23 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
         GamepadOverlayKind.ImportSystem or GamepadOverlayKind.LaunchScreen;
     /// <summary>
+    /// The option list split for layout: destructive entries (Remove, Quit) render OUTSIDE the
+    /// option scroller, pinned above the hint legend behind a hairline, so they are always visible
+    /// (never below a scroll fold) and always a deliberate reach away from the safe rows.
+    /// Navigation still walks the single <see cref="GamepadOverlayOptions"/> order.
+    /// </summary>
+    public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayPrimaryOptions =>
+        GamepadOverlayOptions.Where(option => !option.IsDestructive).ToList();
+
+    /// <inheritdoc cref="GamepadOverlayPrimaryOptions"/>
+    public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayDestructiveOptions =>
+        GamepadOverlayOptions.Where(option => option.IsDestructive).ToList();
+
+    public bool ShowsGamepadDestructiveZone =>
+        ShowsGamepadOverlayOptions && !IsGamepadConfirmationOverlay &&
+        GamepadOverlayOptions.Any(option => option.IsDestructive);
+
+    /// <summary>
     /// A floor, in DIP, for the option-list scroll region — <b>Android only</b>. The overlay Border is
     /// vertically centred and sizes to its content; on the Thor the option ScrollViewer contributes no
     /// height to that measure, so an option-list overlay <em>without</em> the system-menu picker header to
@@ -1164,9 +1181,16 @@ public partial class MainViewModel : ViewModelBase
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
          GamepadOverlayKind.BatchScraper or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
+    /// <summary>The quiet platform line under the actions sheet's title — the header names the game,
+    /// this names where it lives. Null for every other overlay (no eyebrow row).</summary>
+    public string? GamepadOverlayEyebrow =>
+        GamepadOverlay == GamepadOverlayKind.Actions ? FocusedGame?.SystemName : null;
+
+    public bool HasGamepadOverlayEyebrow => GamepadOverlayEyebrow is not null;
+
     public string GamepadOverlayTitle => GamepadOverlay switch
     {
-        GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : $"{FocusedGame.DisplayTitle} actions",
+        GamepadOverlayKind.Actions => FocusedGame is null ? "Game actions" : FocusedGame.DisplayTitle,
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
@@ -3301,18 +3325,18 @@ public partial class MainViewModel : ViewModelBase
                 break;
             case GamepadOverlayKind.SystemMenu:
                 // The couch layout picker is the view-mode row at the top of the menu, not an option here.
-                AddOption("Search", OpenGamepadSearchCommand);
+                AddOption("Search", OpenGamepadSearchCommand, icon: GamepadOptionIcons.Search);
                 // Where Desktop mode is unreachable (Android), importing is controller-native from the
                 // menu; on desktop couch, "Switch to Desktop" below is the import route, so it is not
                 // duplicated here.
                 if (!SupportsDesktopMode)
-                    AddOption("Add games", AddFolderFromGamepadCommand);
+                    AddOption("Add games", AddFolderFromGamepadCommand, icon: GamepadOptionIcons.Add);
                 if (CanScrapeAllInView)
-                    AddOption("Scrape all in view", ScrapeAllInViewCommand);
-                AddOption("Settings", RequestSettingsFromGamepadCommand);
+                    AddOption("Scrape all in view", ScrapeAllInViewCommand, icon: GamepadOptionIcons.Scrape);
+                AddOption("Settings", RequestSettingsFromGamepadCommand, icon: GamepadOptionIcons.Settings);
                 if (SupportsDesktopMode)
-                    AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand);
-                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true);
+                    AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand, icon: GamepadOptionIcons.Desktop);
+                AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true, icon: GamepadOptionIcons.Quit);
                 break;
             case GamepadOverlayKind.Settings:
                 break;
@@ -3338,15 +3362,15 @@ public partial class MainViewModel : ViewModelBase
 
     private void AddGameActions()
     {
-        AddOption("Launch", LaunchFromGamepadOverlayCommand);
+        AddOption("Launch", LaunchFromGamepadOverlayCommand, icon: GamepadOptionIcons.Launch);
         if (FocusedGame?.IsMultiDisc == true)
-            AddOption("Select disc", OpenFocusedDiscSelectionCommand);
+            AddOption("Select disc", OpenFocusedDiscSelectionCommand, icon: GamepadOptionIcons.Cover);
         if (FocusedGame?.CanOpenAchievementDetails == true)
-            AddOption("Achievements", OpenFocusedAchievementsCommand);
-        AddOption("Edit title", EditFocusedTitleCommand);
-        AddOption("Set cover", SetFocusedCoverCommand);
-        AddOption("Scrape with ScreenScraper", ScrapeFocusedGameCommand);
-        AddOption("Remove", RemoveFocusedGameCommand, true);
+            AddOption("Achievements", OpenFocusedAchievementsCommand, icon: GamepadOptionIcons.Achievements);
+        AddOption("Edit title", EditFocusedTitleCommand, icon: GamepadOptionIcons.Edit);
+        AddOption("Set cover", SetFocusedCoverCommand, icon: GamepadOptionIcons.Cover);
+        AddOption("Scrape with ScreenScraper", ScrapeFocusedGameCommand, icon: GamepadOptionIcons.Scrape);
+        AddOption("Remove from library", RemoveFocusedGameCommand, true, icon: GamepadOptionIcons.Remove);
     }
 
     private void AddDiscSelectionOptions()
@@ -3423,8 +3447,10 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    private void AddOption(string label, ICommand command, bool isDestructive = false, bool isCancel = false) =>
-        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive, isCancel));
+    private void AddOption(
+        string label, ICommand command, bool isDestructive = false, bool isCancel = false,
+        Avalonia.Media.Geometry? icon = null) =>
+        GamepadOverlayOptions.Add(new GamepadOverlayOptionViewModel(label, command, isDestructive, isCancel, icon));
 
     private void MoveGamepadOverlaySelection(int delta)
     {
@@ -3585,11 +3611,16 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadConfirmationOverlay));
         OnPropertyChanged(nameof(ShowsGamepadConfirmationActions));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
+        OnPropertyChanged(nameof(GamepadOverlayPrimaryOptions));
+        OnPropertyChanged(nameof(GamepadOverlayDestructiveOptions));
+        OnPropertyChanged(nameof(ShowsGamepadDestructiveZone));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
         OnPropertyChanged(nameof(GamepadOverlayOptionsMinHeight));
         OnPropertyChanged(nameof(ShowsGamepadOverlayChromeTitle));
         OnPropertyChanged(nameof(GamepadOverlayTitle));
+        OnPropertyChanged(nameof(GamepadOverlayEyebrow));
+        OnPropertyChanged(nameof(HasGamepadOverlayEyebrow));
     }
 
     [RelayCommand]

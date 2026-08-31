@@ -11358,3 +11358,103 @@ folder may be shared with another emulator.
 Save states stay per channel (`melonds/nds/`, `melonds-nightly/nds/`): a `.ml0` is bound to the build
 that wrote it. Hotkeys and texture packs are not wired for melonDS — it simply does not appear in
 those sections.
+## 2026-08-31 — Couch grid visual pass: light and depth instead of new palettes
+
+The couch grid's flatness ("any admin dashboard, not a console") was addressed by an A/B-mocked
+pass Andrew approved: keep the layout, the achievement widget, and the green PLAY button exactly as
+they are, change only atmosphere and focus. What shipped: (1) a grid-mode backdrop over the flat
+EmuLibraryBrush root — a vertical light ramp plus a radial wash tinted by the FOCUSED game's
+per-system accent (swapped in code-behind on FocusedGame changes, cross-faded by a BrushTransition;
+never per-frame); (2) the platform rail is a translucent dark ramp that fades into that backdrop
+instead of a second flat slab, with unselected console icons at 55% opacity; (3) the focused tile's
+6px solid accent pad is now a 3px text-primary-toned stroke floated 4px off the art, with an
+accent glow + drop shadow (`EmuGamepadFocusGlow`) and a 1.045→1.06 scale lift; (4) unfocused
+covers/titles recede (88% cover opacity, secondary-brush titles) and covers get a faint light rim
+plus a diagonal sheen; (5) the dock mirrors the rail's fade and its system label became a
+letterspaced uppercase eyebrow (`TextConverters.Uppercase` — Avalonia has no text-transform).
+
+Non-obvious choices: all new backdrop/rail/dock paints are THEME-AGNOSTIC black/white alphas
+layered over the themed root, so 29 palettes get the pass for free — only the glow needed a new
+per-palette token (`EmuGamepadFocusGlow`, derived from each palette's EmuFocusGlow accent). The
+glow lives on the focus ring, so exactly ONE shadowed element exists per grid — it deliberately
+stays inside the reduced-effects budget that dropped the ~40 per-tile cover shadows on Android;
+the per-tile sheen, being a per-tile overdraw layer, IS dropped under reduced-effects the same way.
+The ambient wash uses the per-system accent (not a cover-derived dominant color) — cheap, already
+modeled (GameViewModel.ShelfAccent), and it shifts mood per platform; cover-derived color stays a
+possible upgrade. The backdrop container is a Grid, not a Panel, because a visual test identifies
+the spotlight backdrop as "the only bare Panel child of GamepadRoot".
+
+## 2026-08-31 — Couch dock becomes an overlay; edge insets protect the focus ring; masked backdrop layers removed
+
+Three fixes from the first on-device round of the visual pass. (1) The focused dock is no longer a
+104px layout row: it floats over the grid's lower edge behind a transparent-to-dark fade, so covers
+scroll beneath it and the grid gains the row's height. The reveal centres rows and clamps at list
+ends, so `GamepadGridPanel.EdgeInsetBottom` (156) holds the clamped last row above the overlay;
+`EdgeInsetTop` (24) gives the first row's focus ring + glow headroom INSIDE the scrollable extent
+(the ring overflows ~20px once the 1.06 focus scale applies, and the viewport was hard-clipping it) —
+the host ScrollViewer's top margin drops by the same 24 so resting layout is unchanged. (2) The
+ambient backdrop's two full-screen `OpacityMask` layers are gone — each forced a full-screen
+offscreen compose per scrolled frame on the Thor. The platform pool is now a DIRECT radial gradient
+(accent→transparent) built in code on focus change, the counter-pool was dropped, and the focus
+glow's blurs shrank (56→26 / 42→22). Colour changes on the pool snap; the solid tint layer's
+BrushTransition carries the perceived cross-fade. (3) The "fans ramping" report was mostly
+self-inflicted: the visual-pass installs were DEBUG builds, replacing the Release+AOT build the
+device had (AOT halves scroll cost — DECISIONS 2026-08-30). Design iterations that get installed on
+the Thor should be built `-c Release` unless the debug tooling is specifically needed.
+
+## 2026-08-31 — Couch menus: one selection language; shelf joins the gradient stage
+
+The couch panels' selection state was a barely-visible wash+ring; after a mocked A/B round the
+menus adopted ONE language: selection/focus is a SOLID accent fill with inverted text — the
+view-mode cards, sort cards, and every overlay option row share it. The view-mode cards' reserved
+check badges are gone (the fill is the state), which is also what finally fits "Shelf" unabridged
+(with the system-menu panel widened 460→500). Overlay option rows gained an optional Geometry icon
+(GamepadOptionIcons — the system menu and game-actions sheet set them; list-like overlays stay
+text-only), destructive options (Remove / Quit) render behind a hairline as a separate zone, and
+the game-actions header became the game's title with a letterspaced platform eyebrow instead of
+"<title> actions" wrapped across three lines. The sort direction label is now chip-dressed so it
+reads as the pressable it is.
+
+Shelf mode's flat GL backdrop joined the grid's gradient stage with one shader line: the resolved
+backdrop (library colour + accent wash) is scaled by a vertical ramp in crt.frag.glsl —
+`mix(0.62, 1.35, uv.y)`, remembering GL's uv.y runs bottom-up (the first attempt shipped upside
+down). Because it scales the RESOLVED colour, it recolours with theme and platform for free, and
+zero-backdrop tube presentations stay zero. The spotlight list's rows kissed the card's top/bottom
+mid-scroll; the fix is Margin (viewport inset), not Padding (scroll-extent inset), so the gap is
+permanent rather than only at the list's ends.
+
+## 2026-09-01 — Couch panel polish: anchored sheet, pinned destructive zone, seamless shelf ramp
+
+Follow-ups from the first on-device round of the menu work. (1) The game-actions side sheet anchors
+to the overlay host's full height (the Settings/Hotkeys pattern) instead of floating as a centred
+content-sized card. (2) Destructive options (Remove / Quit) moved OUT of the option scroller into a
+pinned zone above the hint legend, published as GamepadOverlayPrimaryOptions /
+GamepadOverlayDestructiveOptions projections — navigation still walks the single
+GamepadOverlayOptions order. This also means Quit can never hide below the Thor's menu scroll fold,
+and with tightened option/picker metrics the start menu no longer scrolls there at all. (3) The
+sort-direction chip sits AFTER the always-reserved "A Reverse" hint so it stays flush right instead
+of drifting toward the centre. (4) The shelf's shader ramp tops out at exactly 1.0 — the scene's
+first pixel row equals the rail band's flat fill, so no seam — and the GL host's 16px side insets
+are gone (they printed the flat root colour as stripes around the gradient).
+
+## 2026-09-01 — Couch review fixes: reveal walks both option lists, edge insets are extent-only
+
+Two defects from the panel-polish round above, both from the same shape of mistake — a projection
+that changed a structure's meaning without updating the code that consumed it.
+
+(1) Splitting the option list into primary/destructive left RevealGamepadOverlayFocus searching only
+the scroller's ItemsControl, so a ring on the pinned Remove/Quit row never took NATIVE focus. Focus
+stayed on the last primary row, which keeps matching `Button.gamepad-modal-option:focus` — now a
+solid accent fill — so two rows painted as selected at once, and a hardware Space fired the stale
+one. The reveal now walks both lists (the pinned one is named GamepadOverlayDestructiveOptions).
+Worth noting for anyone writing couch focus tests: the reveal is posted at DispatcherPriority.Input,
+which is LOWER than Loaded, so a Loaded-only pump returns before it has run and no focus is taken —
+the test pumps Input explicitly.
+
+(2) GamepadGridPanel's edge insets are EXTENT-only and live in `_extentHeight`, never in `_rowTops`.
+Folding EdgeInsetBottom into `_rowTops[^1]` made TryGetRowBounds report the last row 156px taller
+than it is, and the reveal centres on `rowTop + rowHeight / 2` — so that one row settled ~78px above
+the line every other row rests on, and a library small enough to fit the viewport scrolled anyway
+and clipped the tops of its only row's covers. Measured on a 1280x460 couch viewport, where the last
+row's target falls below the ScrollViewer's max offset and so is NOT clamped; a tall desktop
+viewport clamps it and hides the bug, which is why the desktop snapshots never caught it.
