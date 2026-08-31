@@ -554,6 +554,13 @@ public partial class GamepadShellView : UserControl
                 Math.Abs(delta) > GamepadScrollSettleThreshold)
             {
                 CancelGamepadScroll();
+                // Coming to rest against the clamp is a settle like any other, so the platform gets the
+                // same housekeeping moment the branch above hands it. Holding the d-pad to the END of the
+                // library exits HERE, not there (the last rows cannot be centred, so the target stays
+                // unreachable) — and that is the longest, most allocation-heavy scroll there is. Skipping
+                // the hint left its nursery full for the next glide to collect mid-flight, which is the
+                // ~100 ms freeze the hook exists to prevent. See DECISIONS 2026-08-31.
+                PlatformIdleHints.NotifyScrollGlideSettled();
                 return;
             }
         }
