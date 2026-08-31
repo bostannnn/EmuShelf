@@ -5,11 +5,12 @@
              x:DataType="vm:GameViewModel"
              x:CompileBindings="True"
              ClipToBounds="False">
-    <!-- This tree is deliberately hosted by RecyclingGamepadRow instead of a nested ItemsControl: the
-         controls are constructed ONCE per pooled slot and only their bindings re-evaluate as rows
-         recycle during a scroll. The mouse hover-ring suppression while a controller is active is
-         styled from the hosting ListBox's .controller-input class (one binding on the list), not a
-         per-tile class binding — see EmuShelfStyles. -->
+    <!-- This tree is hosted by GamepadGridPanel's tile pool: the controls are constructed ONCE and
+         stay permanently attached; only their bindings re-evaluate as the panel re-binds tiles while
+         rows scroll through the viewport. The mouse hover-ring suppression while a controller is
+         active is styled from the .controller-input class on the grid's ScrollViewer (GamepadRowList)
+         via a descendant selector (one binding on the surface), not a per-tile class binding — see
+         EmuShelfStyles. -->
     <Button Classes="gamepad-game"
             Classes.focused="{Binding IsFocused}"
             Classes.unavailable="{Binding !IsAvailable}"
@@ -19,7 +20,10 @@
             Background="Transparent" BorderThickness="2"
             HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
             Click="OnClicked" DoubleTapped="OnDoubleTapped">
-        <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
+        <!-- The 58 here is the label strip under the cover. GamepadGridPanel computes every row's
+             band height and tile rect from GamepadGridTile.LabelStripHeight; the ctor re-applies that
+             constant to this RowDefinition so the two can never drift. -->
+        <Grid x:Name="TileRoot" Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
             <!-- The cover frame is this tile's packed size: the packer framed it to
                  the platform's canonical ratio and scaled the row to fill the width.
                  UniformToFill below crops off-ratio art to fill it; every cover in a
@@ -46,9 +50,9 @@
                 <Border Classes="gamepad-cover-shadow" IsHitTestVisible="False"
                         CornerRadius="12"
                         Background="{DynamicResource EmuCoverWellBrush}" />
-                <!-- Rows virtualize, so a tile attaches only when its row scrolls into view — loading
-                     the cover on attach fetches just the on-screen covers, and pooled tiles reload
-                     via DataContext as their row recycles. -->
+                <!-- Tiles stay attached; a pooled tile shows a different game purely by DataContext
+                     re-bind, so the cover (re)load rides DataContextChanged. AttachedToVisualTree
+                     covers the one-time first attach of a freshly built tile. -->
                 <Border Classes="gamepad-cover-frame" CornerRadius="12"
                         Background="{DynamicResource EmuCoverWellBrush}"
                         ClipToBounds="True"

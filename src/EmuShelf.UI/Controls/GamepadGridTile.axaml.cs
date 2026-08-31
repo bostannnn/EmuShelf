@@ -10,7 +10,19 @@ namespace EmuShelf.App.Controls;
 
 public partial class GamepadGridTile : UserControl
 {
-    public GamepadGridTile() => InitializeComponent();
+    /// <summary>
+    /// Height of the title strip under the cover. The single source for the tile's fixed vertical
+    /// chrome: <see cref="GamepadGridPanel"/> computes every row band and tile rect from it, and the
+    /// constructor applies it to the XAML root grid's second row so the rendered strip can never
+    /// drift from the panel's arithmetic.
+    /// </summary>
+    internal const double LabelStripHeight = 58;
+
+    public GamepadGridTile()
+    {
+        InitializeComponent();
+        TileRoot.RowDefinitions[1] = new RowDefinition(LabelStripHeight, GridUnitType.Pixel);
+    }
 
     // View wiring only: controller focus still belongs to MainViewModel, while the pooled tile owns
     // the pointer click that selects its current DataContext.

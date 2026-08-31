@@ -55,9 +55,6 @@ public partial class GamepadShellView : UserControl
     // must not animate in from the left edge.
     private bool _railIndicatorReady;
 
-    // Cached ScrollViewer of the gamepad grid, used to centre the focused row on one fixed viewport line.
-    private ScrollViewer? _gamepadScroller;
-
     // Smooth follow-scroll for the gamepad grid. A d-pad move EASES the offset so a held direction
     // glides continuously under the stationary centred selector; a scope switch / resize / far jump
     // still lands immediately. The target offset is measured ONCE per move from the realized row
@@ -391,8 +388,8 @@ public partial class GamepadShellView : UserControl
         if (!GamepadGridSurface.TryGetRowBounds(rowIndex, out var rowTop, out var rowHeight))
             return;
 
-        var scroller = ResolveGamepadScroller();
-        if (scroller is null || scroller.Viewport.Height <= 0)
+        var scroller = GamepadRowList;
+        if (scroller.Viewport.Height <= 0)
         {
             // Layout is not ready (first reveal after a mode/scope switch, before the grid is measured).
             // Retry briefly, carrying the animate flag, so the initial selection still lands centred.
@@ -427,7 +424,6 @@ public partial class GamepadShellView : UserControl
     // stack of per-row snaps. The generation token lets CancelGamepadScroll invalidate a queued step.
     private void StartOrRetargetGamepadScroll(ScrollViewer scroller, double target)
     {
-        _gamepadScroller = scroller;
         _gamepadScrollTarget = target;
 
         // Land immediately only when already at the target AND at rest; mid-flow (carrying velocity) the
@@ -471,23 +467,6 @@ public partial class GamepadShellView : UserControl
         _gamepadScrollVelocity = 0;
     }
 
-    // A minor GC during an active glide freezes the scroll for ~100 ms on the Thor (all threads busy,
-    // slow to reach safepoints), while the same collection at rest costs ~1 ms — so when a glide
-    // SETTLES, collect proactively. Together with the Android head's enlarged nursery
-    // (environment.txt) this keeps the glide itself collection-free: the nursery is emptied between
-    // holds instead of overflowing mid-hold. Throttled, and posted at Background priority so the
-    // settle frame itself renders first.
-    private long _lastSettleCollect;
-
-    private void ScheduleSettleCollect()
-    {
-        var now = Environment.TickCount64;
-        if (now - _lastSettleCollect < 2000)
-            return;
-        _lastSettleCollect = now;
-        Dispatcher.UIThread.Post(static () => GC.Collect(0), DispatcherPriority.Background);
-    }
-
     // Drive the glide from the compositor's own per-frame callback rather than a self-reposted Dispatcher
     // job. TopLevel.RequestAnimationFrame fires once immediately before each rendered frame, so the offset
     // advances in lock-step with vsync — the continuous-offset model a Flutter/canvas grid uses. A
@@ -504,8 +483,8 @@ public partial class GamepadShellView : UserControl
         {
             // No hosting compositor to tick us (detached mid-glide): land on the target at once so focus is
             // never left off-centre, then stop.
-            if (_gamepadScroller is { } scroller && scroller.IsAttachedToVisualTree())
-                scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
+            if (GamepadRowList.IsAttachedToVisualTree())
+                GamepadRowList.Offset = GamepadRowList.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
             CancelGamepadScroll();
             return;
         }
@@ -523,7 +502,8 @@ public partial class GamepadShellView : UserControl
         if (generation != _gamepadScrollGeneration || !_gamepadScrollAnimating)
             return;
 
-        if (_gamepadScroller is not { } scroller || !scroller.IsAttachedToVisualTree())
+        var scroller = GamepadRowList;
+        if (!scroller.IsAttachedToVisualTree())
         {
             CancelGamepadScroll();
             return;
@@ -538,7 +518,9 @@ public partial class GamepadShellView : UserControl
         {
             scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
             CancelGamepadScroll();
-            ScheduleSettleCollect();
+            // Platform housekeeping moment: the Android head runs its settle-time GC here (see
+            // PlatformIdleHints.ScrollGlideSettled); other heads leave the hook empty.
+            PlatformIdleHints.NotifyScrollGlideSettled();
             return;
         }
 
@@ -601,9 +583,6 @@ public partial class GamepadShellView : UserControl
         }
         return result;
     }
-
-    // The grid's scroller is now the named ScrollViewer itself (no ListBox template to dig through).
-    private ScrollViewer? ResolveGamepadScroller() => _gamepadScroller = GamepadRowList;
 
 
     // Forces the system on-screen keyboard up once per Search/Rename open. The reveal runs on every couch

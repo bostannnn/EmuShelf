@@ -35,31 +35,30 @@ namespace EmuShelf.App.Controls;
 /// </remarks>
 public sealed class GamepadGridPanel : Panel
 {
-    private const double SideGutter = 40;
-    private const double TileSpacing = 28;
+    // Geometry the packer owns is READ from its owner, never copied: the packer budgets every
+    // justified cover width against the gutter and inter-cover spacing, so an independent copy here
+    // would silently desync arrange-time layout from pack-time widths the moment either is tuned.
+    private const double SideGutter = MainViewModel.GamepadGridSideGutter;
+    private const double TileSpacing = MainViewModel.CoverColumnSpacing;
+    private const double TileLabelHeight = GamepadGridTile.LabelStripHeight;
+    // The vertical row margins are owned here (the old row template that carried them is gone).
     private const double RowTopMargin = 10;
     private const double RowBottomMargin = 18;
-    private const double TileLabelHeight = 58;
 
     /// <summary>Rows realized beyond the viewport on each side, so a glide re-binds tiles just before they show.</summary>
     private const int OverscanRows = 1;
 
     /// <summary>
-    /// Parked tiles kept alive (attached, invisible) for reuse. Enough for every realized row's
-    /// tiles to come back at once on a repack; beyond that a tile is REMOVED from the tree and left
-    /// for the GC. The cap is load-bearing: an unbounded pool once retained a startup-degenerate
-    /// 968-tile pack (see MaxTilesPerRow) as permanently-attached children, and that ~40k-control
-    /// live set made every minor GC on the Thor a ~700 ms stop-the-world freeze mid-scroll.
+    /// Parked tiles kept alive (attached, invisible) for reuse. The pool may hold more transiently
+    /// while a repack hands tiles from the released window to the re-realized one; ParkUnusedTiles
+    /// trims back to this cap AFTER realization, so a same-sized window is always served from the
+    /// pool and only a genuine surplus is removed from the tree and left for the GC. The cap is
+    /// load-bearing: an unbounded pool once retained a startup-degenerate 968-tile pack (now also
+    /// prevented at the source — RepackActiveGrid publishes no rows before the first real width) as
+    /// permanently-attached children, and that ~40k-control live set made every minor GC on the
+    /// Thor a ~700 ms stop-the-world freeze mid-scroll.
     /// </summary>
     private const int MaxPooledTiles = 48;
-
-    /// <summary>
-    /// Hard bound on tiles realized for one row. Before the grid's first width measurement the
-    /// packer can emit the ENTIRE library as one degenerate row; realizing it verbatim built a tile
-    /// per game (~1000 controls' worth per few games) for a layout that is thrown away at the first
-    /// real repack. No legitimate justified row approaches this many tiles.
-    /// </summary>
-    private const int MaxTilesPerRow = 32;
 
     public static readonly StyledProperty<IReadOnlyList<IReadOnlyList<GameViewModel>>?> RowsProperty =
         AvaloniaProperty.Register<GamepadGridPanel, IReadOnlyList<IReadOnlyList<GameViewModel>>?>(nameof(Rows));
@@ -84,8 +83,6 @@ public sealed class GamepadGridPanel : Panel
         set => SetValue(RowsProperty, value);
     }
 
-    public int RowCount => Rows?.Count ?? 0;
-
     /// <summary>
     /// The outer band of a row (margins included) in content coordinates — exact for every row,
     /// realized or not, so the reveal maths never depends on realization.
@@ -108,7 +105,10 @@ public sealed class GamepadGridPanel : Panel
         _scroller = this.FindAncestorOfType<ScrollViewer>();
         if (_scroller is not null)
             _scroller.PropertyChanged += OnScrollerPropertyChanged;
-        UpdateRealization();
+        HookRows(Rows);
+        // A Reset raised while detached was deliberately missed (see OnDetachedFromVisualTree), so
+        // geometry may be stale: rebuild rather than merely re-realize.
+        RebuildGeometry();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
@@ -117,6 +117,27 @@ public sealed class GamepadGridPanel : Panel
         if (_scroller is not null)
             _scroller.PropertyChanged -= OnScrollerPropertyChanged;
         _scroller = null;
+        // GamepadRows outlives any one panel (it is view-model state), so a detached panel MUST let
+        // go of its CollectionChanged subscription or the collection keeps the dead panel — and its
+        // ~48 permanently-attached tile trees — alive across Android activity recreations, quietly
+        // rebuilding the large-live-set GC cost this panel exists to avoid.
+        HookRows(null);
+    }
+
+    // The collection currently subscribed for CollectionChanged; non-null only while attached.
+    private INotifyCollectionChanged? _hookedRows;
+
+    private void HookRows(IReadOnlyList<IReadOnlyList<GameViewModel>>? rows)
+    {
+        var incc = this.IsAttachedToVisualTree() ? rows as INotifyCollectionChanged : null;
+        if (ReferenceEquals(_hookedRows, incc))
+            return;
+
+        if (_hookedRows is not null)
+            _hookedRows.CollectionChanged -= OnRowsCollectionChanged;
+        _hookedRows = incc;
+        if (_hookedRows is not null)
+            _hookedRows.CollectionChanged += OnRowsCollectionChanged;
     }
 
     private void OnScrollerPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
@@ -127,10 +148,7 @@ public sealed class GamepadGridPanel : Panel
 
     private void OnRowsChanged(AvaloniaPropertyChangedEventArgs e)
     {
-        if (e.OldValue is INotifyCollectionChanged oldIncc)
-            oldIncc.CollectionChanged -= OnRowsCollectionChanged;
-        if (e.NewValue is INotifyCollectionChanged newIncc)
-            newIncc.CollectionChanged += OnRowsCollectionChanged;
+        HookRows(e.NewValue as IReadOnlyList<IReadOnlyList<GameViewModel>>);
         RebuildGeometry();
     }
 
@@ -174,6 +192,7 @@ public sealed class GamepadGridPanel : Panel
             foreach (var tiles in _realizedRows.Values)
                 ReleaseTiles(tiles);
             _realizedRows.Clear();
+            ParkUnusedTiles();
             return;
         }
 
@@ -208,12 +227,16 @@ public sealed class GamepadGridPanel : Panel
                 continue;
 
             var row = rows[rowIndex];
-            var tileCount = Math.Min(row.Count, MaxTilesPerRow);
-            var tiles = new List<GamepadGridTile>(tileCount);
-            for (var column = 0; column < tileCount; column++)
+            var tiles = new List<GamepadGridTile>(row.Count);
+            for (var column = 0; column < row.Count; column++)
             {
                 var tile = _freeTiles.Count > 0 ? _freeTiles.Pop() : NewTile();
-                tile.DataContext = row[column];
+                // A pooled tile still carries its previous game (ReleaseTiles leaves DataContext in
+                // place so a row-to-row transfer costs ONE binding pass, not a clear-then-set), so
+                // only write when the game actually differs — on a same-shape repack (live resize)
+                // most tiles get their own game back and skip the write entirely.
+                if (!ReferenceEquals(tile.DataContext, row[column]))
+                    tile.DataContext = row[column];
                 tile.IsVisible = true;
                 tiles.Add(tile);
             }
@@ -223,6 +246,7 @@ public sealed class GamepadGridPanel : Panel
 
         if (changed)
         {
+            ParkUnusedTiles();
             InvalidateMeasure();
             InvalidateArrange();
         }
@@ -235,25 +259,33 @@ public sealed class GamepadGridPanel : Panel
         return tile;
     }
 
+    // Return a row's tiles to the pool. Deliberately does NOT clear DataContext or IsVisible yet:
+    // a released tile is usually handed straight to a row entering in the same update, and clearing
+    // first would double the binding work on the scroll hot path. ParkUnusedTiles, called once the
+    // update settles, hides and unbinds whatever genuinely stayed in the pool.
     private void ReleaseTiles(List<GamepadGridTile> tiles)
     {
         foreach (var tile in tiles)
+            _freeTiles.Push(tile);
+    }
+
+    // Finish a realization pass: trim the pool back to its cap (the surplus leaves the tree and
+    // becomes garbage — keeping every excess tile attached-but-invisible is what turned minor GCs
+    // into ~700 ms freezes), then hide the parked remainder and drop their game references so an
+    // off-screen tile never retains a cover. Hidden, parked tiles are skipped by measure/arrange
+    // and rendering; they stay attached, because re-attaching is the ~20 ms-per-tile styling cost
+    // this panel exists to avoid.
+    private void ParkUnusedTiles()
+    {
+        while (_freeTiles.Count > MaxPooledTiles)
+            Children.Remove(_freeTiles.Pop());
+
+        foreach (var tile in _freeTiles)
         {
-            // Hidden, parked tiles are skipped by measure/arrange and rendering; they stay attached
-            // (detaching is the ~20 ms-per-tile styling cost this panel exists to avoid). DataContext
-            // is dropped so a parked tile does not hold its game.
-            tile.DataContext = null;
-            if (_freeTiles.Count < MaxPooledTiles)
-            {
+            if (tile.DataContext is not null)
+                tile.DataContext = null;
+            if (tile.IsVisible)
                 tile.IsVisible = false;
-                _freeTiles.Push(tile);
-            }
-            else
-            {
-                // Pool is full: this tile leaves the tree and becomes garbage. Keeping every excess
-                // tile attached-but-invisible is what turned minor GCs into ~700 ms freezes.
-                Children.Remove(tile);
-            }
         }
     }
 

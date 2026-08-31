@@ -1221,6 +1221,21 @@ public partial class MainViewModel : ViewModelBase
     private void RepackActiveGrid()
     {
         var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
+
+        // Before the first real width measurement the packer's availableWidth<=0 branch would place
+        // EVERY game on one degenerate row, and publishing that row once realized a tile per game in
+        // the couch grid (968 tiles built for a layout thrown away at the first SizeChanged — see
+        // DECISIONS 2026-08-31). Publish NO rows instead: the first SizeChanged always delivers a
+        // real width and repacks, and an empty row list renders the same as the loading state.
+        if (available <= 0 && Games.Count > 0)
+        {
+            if (GamepadRows.Count > 0)
+                GamepadRows.Clear();
+            if (CoverRows.Count > 0)
+                CoverRows.Clear();
+            return;
+        }
+
         var ratios = new double[Games.Count];
         for (var i = 0; i < Games.Count; i++)
             ratios[i] = CoverAspectRatioFor(Games[i]);
@@ -1366,7 +1381,9 @@ public partial class MainViewModel : ViewModelBase
     // rows (see RepackActiveGrid), scaled around a target height so each row fills the width. MaxCoverWidth
     // caps the cover decode so a wide (landscape) cover is still decoded crisp.
     private const double MaxCoverWidth = 232;
-    private const double CoverColumnSpacing = 28;    // gap between covers in a justified row
+    // Internal (not private): GamepadGridPanel must arrange tiles with the SAME gap the packer
+    // budgeted each justified width against, so it reads this constant rather than owning a copy.
+    internal const double CoverColumnSpacing = 28;   // gap between covers in a justified row
 
     // The ideal row height each mode's justified rows scale around. The couch grid runs a little taller
     // for a sofa viewing distance; both scale up/down per row to fill the width exactly.
@@ -3808,7 +3825,7 @@ public partial class MainViewModel : ViewModelBase
             for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
             {
                 var shelfGame = Games[shelfIndex];
-                if (NeedsCoverPrefetch(shelfGame) && shelfGame.LoadCoverCommand.CanExecute(shelfGame))
+                if (shelfGame.NeedsCoverLoad && shelfGame.LoadCoverCommand.CanExecute(shelfGame))
                     shelfGame.LoadCoverCommand.Execute(shelfGame);
             }
             return;
@@ -3828,17 +3845,11 @@ public partial class MainViewModel : ViewModelBase
             for (var column = 0; column < row.Count; column++)
             {
                 var game = row[column];
-                if (NeedsCoverPrefetch(game) && game.LoadCoverCommand.CanExecute(game))
+                if (game.NeedsCoverLoad && game.LoadCoverCommand.CanExecute(game))
                     game.LoadCoverCommand.Execute(game);
             }
         }
     }
-
-    // Mirror of LoadGameCoverAsync's cheap no-op guards, checked BEFORE invoking the command so a
-    // warm prefetch window costs no allocations at all (the async command allocates per call even
-    // when its own guards immediately return).
-    private static bool NeedsCoverPrefetch(GameViewModel game) =>
-        game.CoverPath is not null && !game.HasCoverImage && !game.IsCoverLoading;
 
     private void ScheduleAmbientThemeUpdate(GameViewModel? game)
     {
@@ -4929,7 +4940,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task LoadGameCoverAsync(GameViewModel? game)
     {
-        if (game is null || game.CoverPath is null || game.HasCoverImage || game.IsCoverLoading)
+        if (game is null || !game.NeedsCoverLoad)
             return;
 
         if (_isFrontendSuspended)
@@ -4939,7 +4950,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         var generation = _loadGeneration;
-        var coverPath = game.CoverPath;
+        var coverPath = game.CoverPath!; // non-null: NeedsCoverLoad (checked above) requires it
         var coverRevision = game.CoverRevision;
         game.IsCoverLoading = true;
         // Bound how many covers decode at once. Acquired after the cheap guards above so queued tiles

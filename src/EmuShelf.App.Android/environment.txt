@@ -1,6 +1,6 @@
 # Larger SGen nursery so a held couch-grid scroll does not organically fill it mid-glide:
 # a minor collection during active scrolling was measured at ~100ms on the AYN Thor (vs ~1ms
-# idle), and the default 4MB nursery filled roughly once per second of scrolling. The couch
-# also proactively collects when a scroll glide settles (GamepadShellView), so with this the
-# glide itself stays collection-free. See DECISIONS 2026-08-31.
+# idle), and the default 4MB nursery filled roughly once per second of scrolling. This head
+# also installs a settle-time collection (PlatformIdleHints.ScrollGlideSettled, wired in
+# EmuShelfAndroidApplication), so with this the glide itself stays collection-free. See DECISIONS 2026-08-31.
 MONO_GC_PARAMS=nursery-size=32m

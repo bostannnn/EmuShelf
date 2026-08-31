@@ -11291,3 +11291,20 @@ all 900+ `Games`) and to skip already-covered games BEFORE invoking the async co
 allocates per call even when its own guards no-op) — that churn was the main nursery filler. Final
 Thor measurement: a 60-row held d-pad scroll renders 100% of frames at 16.7ms — zero stalls, zero
 mid-scroll GCs, both directions.
+
+Code-review follow-up, same day: the degenerate whole-library-in-one-row pack is now prevented at
+the SOURCE — `RepackActiveGrid` publishes no rows while the available width is <= 0 (the first
+SizeChanged always repacks) — so the panel's `MaxTilesPerRow` clamp is deleted (it silently
+truncated any legitimately wide row, leaving games navigable but invisible). Other review fixes:
+the panel unhooks its GamepadRows CollectionChanged subscription on detach (a detached panel was
+kept alive, with its tile trees, by the view-model-lifetime collection across Android activity
+recreations); pool trimming moved AFTER realization (`ParkUnusedTiles`) so a repack window larger
+than the 48-tile cap no longer destroys-and-rebuilds the overflow; released tiles keep their
+DataContext until parking, so a row-to-row transfer costs one binding pass instead of clear+set
+(and an unchanged game skips the write entirely); the panel now reads its geometry from the owners
+instead of private copies (`MainViewModel.GamepadGridSideGutter`/`CoverColumnSpacing`,
+`GamepadGridTile.LabelStripHeight`, which the tile ctor also applies to its XAML row definition);
+the cover-load guard lives once on `GameViewModel.NeedsCoverLoad`, shared by `LoadGameCoverAsync`
+and the prefetch pre-check; and the settle-time GC moved out of the shared view into
+`PlatformIdleHints.ScrollGlideSettled` — a PerfTrace-style static hook only the Android head
+installs, so desktop CoreCLR no longer pays a Mono-specific collection.
