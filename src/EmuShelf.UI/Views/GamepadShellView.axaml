@@ -56,7 +56,7 @@
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
           Classes.tube="{Binding IsShelfTubeActive}"
           Classes.reduced-effects="{Binding IsReducedEffectsPlatform}"
-          IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
+          IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,0"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
         <!-- Grid-mode ambient backdrop, painted over the flat EmuLibraryBrush root: a vertical light
              ramp (lit top, settling darker toward the dock) plus a soft radial wash in the focused
@@ -85,31 +85,11 @@
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>
-            <!-- Counter-pool: a quiet theme-accent pond in the lower right, opposing the platform
-                 wash so the stage is lit from two corners instead of one flat sheet. Static. -->
-            <Border Background="{DynamicResource EmuAccentBrush}" Opacity="0.12">
-                <Border.OpacityMask>
-                    <RadialGradientBrush Center="85%,95%" GradientOrigin="85%,95%"
-                                         RadiusX="52%" RadiusY="60%">
-                        <GradientStop Offset="0" Color="#FFFFFFFF" />
-                        <GradientStop Offset="1" Color="#00FFFFFF" />
-                    </RadialGradientBrush>
-                </Border.OpacityMask>
-            </Border>
-            <Border x:Name="GamepadAmbientGlow" Opacity="0.45">
-                <Border.OpacityMask>
-                    <RadialGradientBrush Center="22%,28%" GradientOrigin="22%,28%"
-                                         RadiusX="72%" RadiusY="88%">
-                        <GradientStop Offset="0" Color="#FFFFFFFF" />
-                        <GradientStop Offset="1" Color="#00FFFFFF" />
-                    </RadialGradientBrush>
-                </Border.OpacityMask>
-                <Border.Transitions>
-                    <Transitions>
-                        <BrushTransition Property="Background" Duration="0:0:0.45" />
-                    </Transitions>
-                </Border.Transitions>
-            </Border>
+            <!-- The corner pool. Painted as a DIRECT radial gradient (accent fading to transparent,
+                 built in UpdateAmbientGlow) — an OpacityMask here forced a full-screen offscreen
+                 compose on every frame of a scroll, which is real GPU money on the Thor. Colour
+                 changes snap; the tint layer's cross-fade above carries the perceived transition. -->
+            <Border x:Name="GamepadAmbientGlow" />
         </Grid>
         <Border Grid.Row="0" Padding="42,18,42,12" Classes="gamepad-toolbar"
                 Classes.shelf-view="{Binding IsGamepadShelfView}">
@@ -182,7 +162,9 @@
              navigation and the focus ring are driven by the flat Games list.
              .controller-input here (not per tile) drives the hover-ring suppression style for every
              pooled tile through a descendant selector — one binding instead of one per tile. -->
-        <ScrollViewer x:Name="GamepadRowList" Grid.Row="1" Margin="52,26,52,26"
+        <!-- Vertical margin is 26 MINUS GamepadGridPanel.EdgeInset (24): the panel now carries that
+             headroom inside its scrollable extent so edge-row focus rings aren't viewport-clipped. -->
+        <ScrollViewer x:Name="GamepadRowList" Grid.Row="1" Margin="52,2,52,2"
                       Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
                       Classes.controller-input="{Binding IsGamepadControllerInputActive}"
                       Background="Transparent" Padding="0"
@@ -278,15 +260,17 @@
                 </StackPanel>
             </Border>
         </Border>
-        <!-- The dock fades up from a dark base instead of sitting as a hard-edged slab behind a
-             hairline: the same "melts into the stage" treatment as the rail, mirrored. -->
-        <Border x:Name="GamepadFocusedDock" Grid.Row="2"
-                Padding="36,12" IsVisible="{Binding IsGamepadGridLayout}">
+        <!-- The dock is an OVERLAY on the grid's lower edge, not a layout row: covers scroll
+             beneath it through a transparent-to-dark fade, and the grid gains the ~104px the old
+             slab row occupied. GamepadGridPanel.EdgeInsetBottom keeps the clamped last row (and the
+             centred focused row) clear of it. -->
+        <Border x:Name="GamepadFocusedDock" Grid.Row="1" VerticalAlignment="Bottom"
+                Padding="36,48,36,12" IsVisible="{Binding IsGamepadGridLayout}">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                    <GradientStop Offset="0" Color="#14000000" />
-                    <GradientStop Offset="0.6" Color="#8C000000" />
-                    <GradientStop Offset="1" Color="#B3000000" />
+                    <GradientStop Offset="0" Color="#00000000" />
+                    <GradientStop Offset="0.32" Color="#99000000" />
+                    <GradientStop Offset="1" Color="#E6000000" />
                 </LinearGradientBrush>
             </Border.Background>
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"

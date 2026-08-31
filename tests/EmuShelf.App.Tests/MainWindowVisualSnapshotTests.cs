@@ -1375,7 +1375,9 @@ public class MainWindowVisualSnapshotTests
             Assert.NotNull(hardcoreFill);
             Assert.Equal(0d, Assert.IsType<ScaleTransform>(hardcoreFill.RenderTransform).ScaleX, 8);
             Assert.Equal("Final Fantasy X (Disc 2).chd", subtitle.Text);
-            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            // The dock is a content-sized overlay on the grid now, not a fixed 104px layout row: widgets
+            // plus the tall transparent fade its top padding reserves over the covers scrolling under it.
+            Assert.InRange(focusedDock.Bounds.Height, 110, 132);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
             var widgetOrigin = achievementWidget.TranslatePoint(default, window);
@@ -1738,7 +1740,9 @@ public class MainWindowVisualSnapshotTests
             Assert.NotNull(focusedDock);
             Assert.NotNull(rowList);
             Assert.Equal(ScrollBarVisibility.Hidden, rowList.VerticalScrollBarVisibility);
-            Assert.InRange(focusedDock.Bounds.Height, 102, 106);
+            // The dock is a content-sized overlay on the grid now, not a fixed 104px layout row: widgets
+            // plus the tall transparent fade its top padding reserves over the covers scrolling under it.
+            Assert.InRange(focusedDock.Bounds.Height, 110, 132);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
 

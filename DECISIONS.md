@@ -11344,3 +11344,21 @@ The ambient wash uses the per-system accent (not a cover-derived dominant color)
 modeled (GameViewModel.ShelfAccent), and it shifts mood per platform; cover-derived color stays a
 possible upgrade. The backdrop container is a Grid, not a Panel, because a visual test identifies
 the spotlight backdrop as "the only bare Panel child of GamepadRoot".
+
+## 2026-08-31 — Couch dock becomes an overlay; edge insets protect the focus ring; masked backdrop layers removed
+
+Three fixes from the first on-device round of the visual pass. (1) The focused dock is no longer a
+104px layout row: it floats over the grid's lower edge behind a transparent-to-dark fade, so covers
+scroll beneath it and the grid gains the row's height. The reveal centres rows and clamps at list
+ends, so `GamepadGridPanel.EdgeInsetBottom` (156) holds the clamped last row above the overlay;
+`EdgeInsetTop` (24) gives the first row's focus ring + glow headroom INSIDE the scrollable extent
+(the ring overflows ~20px once the 1.06 focus scale applies, and the viewport was hard-clipping it) —
+the host ScrollViewer's top margin drops by the same 24 so resting layout is unchanged. (2) The
+ambient backdrop's two full-screen `OpacityMask` layers are gone — each forced a full-screen
+offscreen compose per scrolled frame on the Thor. The platform pool is now a DIRECT radial gradient
+(accent→transparent) built in code on focus change, the counter-pool was dropped, and the focus
+glow's blurs shrank (56→26 / 42→22). Colour changes on the pool snap; the solid tint layer's
+BrushTransition carries the perceived cross-fade. (3) The "fans ramping" report was mostly
+self-inflicted: the visual-pass installs were DEBUG builds, replacing the Release+AOT build the
+device had (AOT halves scroll cost — DECISIONS 2026-08-30). Design iterations that get installed on
+the Thor should be built `-c Release` unless the debug tooling is specifically needed.

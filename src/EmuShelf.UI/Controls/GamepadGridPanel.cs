@@ -45,6 +45,16 @@ public sealed class GamepadGridPanel : Panel
     private const double RowTopMargin = 10;
     private const double RowBottomMargin = 18;
 
+    // Blank content above the first row and below the last, INSIDE the scrollable extent, so the
+    // focused tile's ring + glow (which overflow the tile by ~20px once the 1.06 focus scale is
+    // applied) are not hard-clipped by the scroll viewport on the edge rows. The host ScrollViewer's
+    // top margin is reduced by the same amount, so the resting pixel layout is unchanged. The bottom
+    // inset additionally budgets for the overlay dock that floats over the grid's lower edge: the
+    // reveal clamps the LAST row against the extent's end, and this inset is what holds that row
+    // above the dock instead of underneath it.
+    private const double EdgeInsetTop = 24;
+    private const double EdgeInsetBottom = 156;
+
     /// <summary>Rows realized beyond the viewport on each side, so a glide re-binds tiles just before they show.</summary>
     private const int OverscanRows = 1;
 
@@ -164,7 +174,7 @@ public sealed class GamepadGridPanel : Panel
         if (_rowTops.Length != count + 1)
             _rowTops = new double[count + 1];
 
-        double y = 0;
+        double y = count > 0 ? EdgeInsetTop : 0;
         for (var index = 0; index < count; index++)
         {
             _rowTops[index] = y;
@@ -172,7 +182,7 @@ public sealed class GamepadGridPanel : Panel
             var coverHeight = row.Count > 0 ? row[0].CoverHeight : 0;
             y += RowTopMargin + coverHeight + TileLabelHeight + RowBottomMargin;
         }
-        _rowTops[count] = y;
+        _rowTops[count] = count > 0 ? y + EdgeInsetBottom : 0;
 
         // Old assignments are meaningless against new geometry: release everything, then realize
         // the current window fresh.

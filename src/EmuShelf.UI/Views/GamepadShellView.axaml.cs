@@ -111,13 +111,27 @@ public partial class GamepadShellView : UserControl
             return;
 
         var accent = VividAmbient(game.ShelfAccent);
-        if (GamepadAmbientGlow.Background is ImmutableSolidColorBrush current && current.Color == accent)
+        if (_ambientColor == accent)
             return;
+        _ambientColor = accent;
 
-        var brush = new ImmutableSolidColorBrush(accent);
-        GamepadAmbientGlow.Background = brush;
-        GamepadAmbientTint.Background = brush;
+        // Direct radial (peak ~45% accent in the upper-left, falling to nothing) instead of a
+        // masked solid — see the XAML note: the OpacityMask compose was a per-frame full-screen
+        // cost. Rebuilt only here, on a focus change.
+        var pool = new RadialGradientBrush
+        {
+            Center = new RelativePoint(0.22, 0.28, RelativeUnit.Relative),
+            GradientOrigin = new RelativePoint(0.22, 0.28, RelativeUnit.Relative),
+            RadiusX = new RelativeScalar(0.72, RelativeUnit.Relative),
+            RadiusY = new RelativeScalar(0.88, RelativeUnit.Relative),
+        };
+        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x73, accent.R, accent.G, accent.B), 0));
+        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, accent.R, accent.G, accent.B), 1));
+        GamepadAmbientGlow.Background = pool;
+        GamepadAmbientTint.Background = new ImmutableSolidColorBrush(accent);
     }
+
+    private Color? _ambientColor;
 
     /// <summary>
     /// The per-system accents are muted mid-tones picked for chips and placeholders (PS1 is literally
