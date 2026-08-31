@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Avalonia;
 using Avalonia.Media;
+using EmuShelf.App.Controls;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
@@ -534,6 +535,82 @@ public class GamepadGridSelectorTests
                 .FirstOrDefault(b => b.Classes.Contains("gamepad-focus-tile-ring"));
             if (otherRing is { Opacity: > 0.01 })
                 problems.Add($"after {action} focus={index}: non-focused tile ({(game.Title)}) still shows its ring (opacity={otherRing.Opacity})");
+        }
+    }
+
+    // The edge insets GamepadGridPanel adds for the focus shadow (top) and the overlay dock (bottom)
+    // are EXTENT-only. Folding the bottom one into the last row's band made TryGetRowBounds report that
+    // row 156px taller than it is, which skewed the reveal's centring (rowTop + rowHeight / 2) for that
+    // row alone: the last row settled ~78px above the line every other row rests on, and a library
+    // small enough to fit the viewport scrolled anyway and clipped the tops of its only row's covers.
+    [AvaloniaTheory]
+    [InlineData(40)]
+    [InlineData(3)]
+    public async Task GamepadGrid_EdgeInsets_StayOutOfEveryRowsBand(int gameCount)
+    {
+        var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
+        var viewModel = new MainViewModel();
+        await viewModel.ShowAllGamesCommand.ExecuteAsync(null);
+        viewModel.IsGamepadMode = true;
+        var games = Enumerable.Range(1, gameCount).Select(index => new GameViewModel(
+            new Game
+            {
+                Id = index,
+                SystemId = system.Id,
+                Path = $"/Games/playstation2/Game {index}.chd",
+                Title = $"Game {index}",
+                IsAvailable = true,
+                DateAdded = DateTimeOffset.UtcNow,
+            },
+            system.Name, system.ShortName, system.AccentColor,
+            coverAspectRatio: system.CoverAspectRatio)).ToArray();
+        viewModel.Games.ReplaceAll(games);
+        viewModel.HasGames = true;
+        viewModel.IsLibraryEmpty = false;
+        viewModel.FocusedGame = games[0];
+
+        // Short viewport on purpose: this is the couch panel geometry (the Thor) where the last row's
+        // centring target falls below the ScrollViewer's max offset and is therefore NOT clamped, so a
+        // skewed band height shows up instead of being hidden by the clamp.
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 460 };
+        window.Show();
+        try
+        {
+            await Pump();
+            var panel = window.FindNamed<GamepadGridPanel>("GamepadGridSurface");
+            var scroller = window.FindNamed<ScrollViewer>("GamepadRowList");
+            Assert.NotNull(panel);
+            Assert.NotNull(scroller);
+            var rowCount = viewModel.GamepadRows.Count;
+
+            // Uniform library: every row's band is the same height, last one included.
+            Assert.True(panel.TryGetRowBounds(rowCount - 1, out var lastTop, out var lastHeight));
+            Assert.True(panel.TryGetRowBounds(0, out _, out var firstHeight));
+            Assert.Equal(firstHeight, lastHeight, 1);
+
+            // The extent still carries both insets, so the last row can scroll clear of the dock.
+            Assert.True(
+                scroller.Extent.Height > lastTop + lastHeight,
+                "the scrollable extent no longer reserves the dock inset past the last row");
+
+            if (rowCount == 1)
+            {
+                // One row that fits: nothing to scroll, and in particular the covers must not be
+                // pushed up under the rail by an inset the row does not own.
+                Assert.Equal(0, scroller.Offset.Y, 1);
+                return;
+            }
+
+            viewModel.FocusedGame = games[^1];
+            await Pump();
+
+            // The last row lands on the same viewport line every other row does.
+            var centreOnScreen = lastTop + (lastHeight / 2) - scroller.Offset.Y;
+            Assert.Equal(scroller.Viewport.Height / 2, centreOnScreen, 1);
+        }
+        finally
+        {
+            window.Close();
         }
     }
 

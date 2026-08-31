@@ -1145,7 +1145,11 @@
                              and always a deliberate reach past the safe rows. -->
                         <StackPanel Grid.Row="2" IsVisible="{Binding ShowsGamepadDestructiveZone}">
                             <Border Height="1" Margin="6,0,24,8" Background="{DynamicResource EmuBorderBrush}" />
-                            <ItemsControl ItemsSource="{Binding GamepadOverlayDestructiveOptions}" Margin="0,0,18,0">
+                            <!-- Named so RevealGamepadOverlayFocus can move keyboard focus onto these rows
+                                 too: the reveal walks BOTH option lists, and a row that never took focus
+                                 would leave the last focused primary row lit by :focus alongside it. -->
+                            <ItemsControl x:Name="GamepadOverlayDestructiveOptions"
+                                          ItemsSource="{Binding GamepadOverlayDestructiveOptions}" Margin="0,0,18,0">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
                                         <Button Classes="gamepad-modal-option destructive"

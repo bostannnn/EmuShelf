@@ -11397,3 +11397,25 @@ sort-direction chip sits AFTER the always-reserved "A Reverse" hint so it stays 
 of drifting toward the centre. (4) The shelf's shader ramp tops out at exactly 1.0 — the scene's
 first pixel row equals the rail band's flat fill, so no seam — and the GL host's 16px side insets
 are gone (they printed the flat root colour as stripes around the gradient).
+
+## 2026-09-01 — Couch review fixes: reveal walks both option lists, edge insets are extent-only
+
+Two defects from the panel-polish round above, both from the same shape of mistake — a projection
+that changed a structure's meaning without updating the code that consumed it.
+
+(1) Splitting the option list into primary/destructive left RevealGamepadOverlayFocus searching only
+the scroller's ItemsControl, so a ring on the pinned Remove/Quit row never took NATIVE focus. Focus
+stayed on the last primary row, which keeps matching `Button.gamepad-modal-option:focus` — now a
+solid accent fill — so two rows painted as selected at once, and a hardware Space fired the stale
+one. The reveal now walks both lists (the pinned one is named GamepadOverlayDestructiveOptions).
+Worth noting for anyone writing couch focus tests: the reveal is posted at DispatcherPriority.Input,
+which is LOWER than Loaded, so a Loaded-only pump returns before it has run and no focus is taken —
+the test pumps Input explicitly.
+
+(2) GamepadGridPanel's edge insets are EXTENT-only and live in `_extentHeight`, never in `_rowTops`.
+Folding EdgeInsetBottom into `_rowTops[^1]` made TryGetRowBounds report the last row 156px taller
+than it is, and the reveal centres on `rowTop + rowHeight / 2` — so that one row settled ~78px above
+the line every other row rests on, and a library small enough to fit the viewport scrolled anyway
+and clipped the tops of its only row's covers. Measured on a 1280x460 couch viewport, where the last
+row's target falls below the ScrollViewer's max offset and so is NOT clamped; a tall desktop
+viewport clamps it and hides the bug, which is why the desktop snapshots never caught it.

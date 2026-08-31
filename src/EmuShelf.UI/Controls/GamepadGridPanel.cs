@@ -46,12 +46,15 @@ public sealed class GamepadGridPanel : Panel
     private const double RowBottomMargin = 18;
 
     // Blank content above the first row and below the last, INSIDE the scrollable extent, so the
-    // focused tile's ring + glow (which overflow the tile by ~20px once the 1.06 focus scale is
-    // applied) are not hard-clipped by the scroll viewport on the edge rows. The host ScrollViewer's
-    // top margin is reduced by the same amount, so the resting pixel layout is unchanged. The bottom
-    // inset additionally budgets for the overlay dock that floats over the grid's lower edge: the
-    // reveal clamps the LAST row against the extent's end, and this inset is what holds that row
-    // above the dock instead of underneath it.
+    // focused tile's shadow and light pool (which overflow the tile by ~20px once the 1.09 focus
+    // scale is applied) are not hard-clipped by the scroll viewport on the edge rows. The host
+    // ScrollViewer's top margin is reduced by EdgeInsetTop, so the resting pixel layout is unchanged.
+    // The bottom inset additionally budgets for the overlay dock that floats over the grid's lower
+    // edge: it is what lets the last row scroll clear of the dock rather than resting under it.
+    //
+    // Both are extent-only (see _extentHeight). They are deliberately NOT part of any row's band:
+    // the reveal centres a row on rowTop + rowHeight / 2, so an inset folded into the last row's
+    // height would push that one row off the line every other row rests on.
     private const double EdgeInsetTop = 24;
     private const double EdgeInsetBottom = 156;
 
@@ -74,8 +77,14 @@ public sealed class GamepadGridPanel : Panel
         AvaloniaProperty.Register<GamepadGridPanel, IReadOnlyList<IReadOnlyList<GameViewModel>>?>(nameof(Rows));
 
     // Row tops in content coordinates; _rowTops[i] is where row i's outer (margin-inclusive) band
-    // starts, _rowTops[^1] is the total extent. Rebuilt on any Rows change.
+    // starts and _rowTops[^1] is where the LAST row's band ends. Rebuilt on any Rows change.
     private double[] _rowTops = [0];
+
+    // The scrollable extent: the last row's band end plus EdgeInsetBottom. Kept separate from
+    // _rowTops so the inset never leaks into a row's reported height — folding it into _rowTops[^1]
+    // made TryGetRowBounds overstate the LAST row by EdgeInsetBottom, which skewed the reveal's
+    // centring (rowTop + rowHeight / 2) by half the inset for that row alone.
+    private double _extentHeight;
 
     private readonly Dictionary<int, List<GamepadGridTile>> _realizedRows = new();
     private readonly Stack<GamepadGridTile> _freeTiles = new();
@@ -182,7 +191,8 @@ public sealed class GamepadGridPanel : Panel
             var coverHeight = row.Count > 0 ? row[0].CoverHeight : 0;
             y += RowTopMargin + coverHeight + TileLabelHeight + RowBottomMargin;
         }
-        _rowTops[count] = count > 0 ? y + EdgeInsetBottom : 0;
+        _rowTops[count] = y;
+        _extentHeight = count > 0 ? y + EdgeInsetBottom : 0;
 
         // Old assignments are meaningless against new geometry: release everything, then realize
         // the current window fresh.
@@ -332,7 +342,7 @@ public sealed class GamepadGridPanel : Panel
         }
 
         var width = double.IsInfinity(availableSize.Width) ? 0 : availableSize.Width;
-        return new Size(width, _rowTops[^1]);
+        return new Size(width, _extentHeight);
     }
 
     protected override Size ArrangeOverride(Size finalSize)
@@ -353,6 +363,6 @@ public sealed class GamepadGridPanel : Panel
             }
         }
 
-        return new Size(finalSize.Width, _rowTops[^1]);
+        return new Size(finalSize.Width, _extentHeight);
     }
 }

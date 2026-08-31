@@ -37,5 +37,4 @@
     <SolidColorBrush x:Key="EmuWarningBrush" Color="#FF8A4C" />
     <SolidColorBrush x:Key="EmuDangerBrush" Color="#FF4060" />
     <BoxShadows x:Key="EmuFocusGlow">0 0 14 0 #C0FF3CC8</BoxShadows>
-    <BoxShadows x:Key="EmuGamepadFocusGlow">0 8 22 0 #80000000, 0 0 26 0 #B3FF3CC8</BoxShadows>
 </ResourceDictionary>

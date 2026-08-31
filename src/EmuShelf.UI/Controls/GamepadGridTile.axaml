@@ -41,10 +41,9 @@
                 <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
                         Margin="-7" CornerRadius="19"
                         Background="Transparent" />
-                <!-- Opaque well between the focus pad and the cover, sized to the cover
-                     (the pad is 6px larger). It is never dimmed, so when an unavailable
-                     cover drops to 58% opacity its centre reveals this dark well rather
-                     than the accent pad behind it — the pad stays a clean 6px edge frame. -->
+                <!-- Opaque well behind the cover, sized to the cover. It is never dimmed, so when an
+                     unavailable cover drops to 58% opacity its centre reveals this dark well rather
+                     than the lit stage behind the tile. -->
                 <Border IsHitTestVisible="False" CornerRadius="12"
                         Background="{DynamicResource EmuCoverWellBrush}" />
                 <Border Classes="gamepad-cover-shadow" IsHitTestVisible="False"

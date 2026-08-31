@@ -819,9 +819,13 @@ public partial class GamepadShellView : UserControl
         }
         else if (viewModel.HasGamepadOverlay && viewModel.IsGamepadControllerInputActive)
         {
-            var focusedOption = GamepadOverlayOptions.GetVisualDescendants()
-                .OfType<Button>()
-                .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
+            // BOTH option lists, not just the scroller's: destructive rows (Remove / Quit) are pinned
+            // in their own ItemsControl outside it. Missing them here does not merely skip a
+            // BringIntoView — native focus would stay on the last primary row, which keeps matching
+            // Button.gamepad-modal-option:focus (a solid accent fill), so two rows read as selected at
+            // once and a hardware Space activates the stale one.
+            var focusedOption = FindFocusedOverlayOption(GamepadOverlayOptions)
+                ?? FindFocusedOverlayOption(GamepadOverlayDestructiveOptions);
             if (focusedOption is not null)
             {
                 focusedOption.BringIntoView();
@@ -829,6 +833,11 @@ public partial class GamepadShellView : UserControl
             }
         }
     }
+
+    private static Button? FindFocusedOverlayOption(ItemsControl list) =>
+        list.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
 
     // The section rail scrolls when it holds more sections than fit the column, so keep the current
     // section's button in view. The selected button carries the "selected" style class (bound to the

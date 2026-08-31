@@ -1133,15 +1133,6 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
         GamepadOverlayKind.ImportSystem or GamepadOverlayKind.LaunchScreen;
     /// <summary>
-    /// A floor, in DIP, for the option-list scroll region — <b>Android only</b>. The overlay Border is
-    /// vertically centred and sizes to its content; on the Thor the option ScrollViewer contributes no
-    /// height to that measure, so an option-list overlay <em>without</em> the system-menu picker header to
-    /// prop it open (the import/actions/disc choosers) collapses its list to zero and shows nothing to pick
-    /// — reproduced only on device, never in desktop headless (the plan's Milestone S chooser bug). This
-    /// forces a real viewport so the list is visible and scrollable. Zero on the desktop targets, where the
-    /// list already measures far taller and the pinned pixel-height snapshots must not move.
-    /// </summary>
-    /// <summary>
     /// The option list split for layout: destructive entries (Remove, Quit) render OUTSIDE the
     /// option scroller, pinned above the hint legend behind a hairline, so they are always visible
     /// (never below a scroll fold) and always a deliberate reach away from the safe rows.
@@ -1150,6 +1141,7 @@ public partial class MainViewModel : ViewModelBase
     public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayPrimaryOptions =>
         GamepadOverlayOptions.Where(option => !option.IsDestructive).ToList();
 
+    /// <inheritdoc cref="GamepadOverlayPrimaryOptions"/>
     public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayDestructiveOptions =>
         GamepadOverlayOptions.Where(option => option.IsDestructive).ToList();
 
@@ -1157,6 +1149,15 @@ public partial class MainViewModel : ViewModelBase
         ShowsGamepadOverlayOptions && !IsGamepadConfirmationOverlay &&
         GamepadOverlayOptions.Any(option => option.IsDestructive);
 
+    /// <summary>
+    /// A floor, in DIP, for the option-list scroll region — <b>Android only</b>. The overlay Border is
+    /// vertically centred and sizes to its content; on the Thor the option ScrollViewer contributes no
+    /// height to that measure, so an option-list overlay <em>without</em> the system-menu picker header to
+    /// prop it open (the import/actions/disc choosers) collapses its list to zero and shows nothing to pick
+    /// — reproduced only on device, never in desktop headless (the plan's Milestone S chooser bug). This
+    /// forces a real viewport so the list is visible and scrollable. Zero on the desktop targets, where the
+    /// list already measures far taller and the pinned pixel-height snapshots must not move.
+    /// </summary>
     public double GamepadOverlayOptionsMinHeight =>
         OperatingSystem.IsAndroid() && ShowsGamepadOverlayOptions ? 240 : 0;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
