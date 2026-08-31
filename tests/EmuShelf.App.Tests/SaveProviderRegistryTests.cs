@@ -4,6 +4,7 @@ using EmuShelf.Core.Launching;
 using EmuShelf.Core.Storage;
 using EmuShelf.Core.Storage.Android;
 using EmuShelf.Integrations.Emulators.DuckStation;
+using EmuShelf.Integrations.Emulators.MelonDs;
 using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Integrations.Emulators.RetroArch;
 
@@ -59,6 +60,59 @@ public class SaveProviderRegistryTests
 
         // With no active emulator the default profile (DuckStation) is used.
         Assert.Equal("duckstation", SaveProviderRegistry.Resolve("playstation", null)!.EmulatorId);
+    }
+
+    [Fact]
+    public void NintendoDs_HasOneRowServedByRetroArchOrEitherMelonDsChannel()
+    {
+        // One DS row, three (system, emulator) profiles behind it. RetroArch stays the default so an
+        // install that never picked an emulator is unaffected; both melonDS channels are selectable
+        // and each builds its own provider carrying its own id (their save states never mix).
+        Assert.Single(SaveProviderRegistry.All, descriptor => descriptor.SystemId == "nds");
+        Assert.Equal(
+            ["retroarch", "melonds", "melonds-nightly"],
+            SaveProviderRegistry.Profiles
+                .Where(descriptor => descriptor.SystemId == "nds")
+                .Select(descriptor => descriptor.EmulatorId));
+        Assert.Equal("retroarch", SaveProviderRegistry.Resolve("nds", null)!.EmulatorId);
+
+        foreach (var emulatorId in new[] { "melonds", "melonds-nightly" })
+        {
+            var profile = SaveProviderRegistry.Resolve("nds", emulatorId);
+            Assert.NotNull(profile);
+            Assert.Equal(emulatorId, profile!.EmulatorId);
+            Assert.True(profile.SupportsSaveStates);
+            var provider = profile.CreateProvider(new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: "/emu/melonDS",
+                IsFlatpak: false,
+                Paths: new StubPaths(),
+                ActiveEmulatorId: emulatorId));
+            var melonDs = Assert.IsType<MelonDsSaveLocationProvider>(provider);
+            Assert.Equal(emulatorId, melonDs.EmulatorId);
+            // Battery saves key by system (shared with RetroArch); save states stay per-channel.
+            Assert.Equal("nds/", melonDs.UnitIdPrefix);
+            Assert.Equal($"{emulatorId}/nds/", melonDs.StateNamespacePrefix);
+        }
+    }
+
+    [Fact]
+    public void NintendoDsRow_ReadsTheSameWhicheverEmulatorIsActive()
+    {
+        // The row's static text comes from the first profile for the system, so with three emulators
+        // behind one row it must not name any of them (the live detection line is per-emulator).
+        var profiles = SaveProviderRegistry.Profiles
+            .Where(descriptor => descriptor.SystemId == "nds")
+            .ToArray();
+
+        Assert.Single(profiles.Select(descriptor => descriptor.SaveShapeDescription).Distinct());
+        Assert.Single(profiles.Select(descriptor => descriptor.OverridePlaceholder).Distinct());
+        Assert.All(profiles, descriptor =>
+        {
+            Assert.DoesNotContain("RetroArch", descriptor.SaveShapeDescription);
+            Assert.DoesNotContain("RetroArch", descriptor.OverridePlaceholder);
+            Assert.DoesNotContain("melonDS", descriptor.SaveShapeDescription);
+        });
     }
 
     [Fact]

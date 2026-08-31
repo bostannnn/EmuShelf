@@ -44,7 +44,7 @@ the *file itself is already emulator-agnostic*, which is what makes cross-emulat
 container format differs. Do not convert.**
 
 The cloud key is `<systemId>/<localId>` (e.g. `playstation/per-game/<serial>`, `playstation2/<card>.ps2`,
-`nds/<game>.srm`) — **the system owns the namespace, not the emulator** (superseding decision recorded in
+`nds/battery/<game>`) — **the system owns the namespace, not the emulator** (superseding decision recorded in
 DECISIONS 2026-08-21). Each provider derives its battery key from `SystemId` (`UnitIdPrefix = SystemId +
 "/"`), so any emulator serving that system emits the same key and a save round-trips 1:1. Two payoffs:
 
@@ -64,7 +64,7 @@ checklist** enforces the matching on-disk format. No converter is written.
 | System | Desktop | Android | Cloud key | Config the checklist must enforce |
 |---|---|---|---|---|
 | PS2 | PCSX2 | ARMSX2 | `playstation2/` | Single-file `.ps2` memory card, matching filename (the `.ps2` card is "the universal currency" across PCSX2/AetherSX2/NetherSX2/ARMSX2). PCSX2 *folder* cards do **not** sync — the user must use a file card on both. |
-| DS | RetroArch (melonDS core) | WatermelonDS | `nds/` | WatermelonDS's *"use `.srm` not `.sav`"* toggle on, so the on-disk filename matches what the RetroArch provider syncs. Point the DS Save folder at WatermelonDS's directory; the RetroArch provider resolves an exact-folder override with no libretro core. |
+| DS | RetroArch (melonDS core) or standalone melonDS | WatermelonDS | `nds/battery/<game>` | Nothing, since 2026-09-01: a DS battery save is the raw cartridge dump either way, so `.sav` and `.srm` share one key per game and each machine resolves it to the file its own emulator writes (the most recently written one when both are present). WatermelonDS's *"use `.srm` not `.sav`"* toggle no longer matters. Still point the DS Save folder at WatermelonDS's directory; the RetroArch provider resolves an exact-folder override with no libretro core. |
 | PS1 | DuckStation | Beetle PSX (RetroArch) | `playstation/per-game/file-title/<name>_1.mcd` | DuckStation set to **Separate Card Per Game (File Title), slot 1** (its DB-title and serial schemes do *not* bridge); matching ROM file names on both. Same raw 128 KB card — the RetroArch PS1 provider emits DuckStation's file-title card key and lands a restore on Beetle's `<rom>.srm`. Not a converter; only the key/name is aligned. |
 
 The desktop and Android providers for these systems are already the same class (ARMSX2 reuses
@@ -190,7 +190,8 @@ Measured directly on the Thor (`adb -s 2fd555f4`) so the wiring is not guessed:
   `saves/` tree RetroArch uses (`saves/PlayStation`, `saves/Game Boy Advance`, …). So the DS `.srm`
   already coincides with the RetroArch save layout on-device: the Android DS provider is the RetroArch
   save provider pointed at that shared root, so it emits the same `nds/` system key. Both `.sav` and
-  `.srm` are present, confirming the toggle requirement — sync must claim the `.srm`.
+  `.srm` are present for some games; since 2026-09-01 they are one unit keyed `nds/battery/<game>`,
+  resolved to whichever of the two the emulator wrote last, so the toggle is no longer a requirement.
 - **These are folder-configurable emulators**, not `Android/data`-locked: ARMSX2's user dir, the DS/RA
   `saves/` tree, PPSSPP, and Azahar all live on the SD under normal paths the app reads with all-files.
   So they route through the existing `DirectoryOverride` seam (a picked/known folder), not a

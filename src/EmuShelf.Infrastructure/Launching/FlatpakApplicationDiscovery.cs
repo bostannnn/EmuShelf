@@ -13,6 +13,9 @@ public sealed class FlatpakApplicationDiscovery
             ["dolphin"] = "org.DolphinEmu.dolphin-emu",
             ["rpcs3"] = "net.rpcs3.RPCS3",
             ["ppsspp"] = "org.ppsspp.PPSSPP",
+            // Flathub publishes melonDS release builds only; the nightly channel is installed by hand,
+            // so it maps to no Flatpak and its picker offers a direct executable alone.
+            ["melonds"] = "net.kuribo64.melonDS",
         };
 
     public static readonly IReadOnlyList<string> SupportedApplicationIds =
@@ -22,6 +25,7 @@ public sealed class FlatpakApplicationDiscovery
         "org.DolphinEmu.dolphin-emu",
         "net.rpcs3.RPCS3",
         "org.ppsspp.PPSSPP",
+        "net.kuribo64.melonDS",
     ];
 
     /// <summary>One installed Flatpak ref: its application id and the branch it is installed on.</summary>

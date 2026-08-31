@@ -119,6 +119,15 @@ public sealed record CloudSaveSyncSettings
     /// </summary>
     public bool BatteryNamespaceMigrated { get; init; }
 
+    /// <summary>
+    /// Whether this machine has already run the one-time re-key of cloud Nintendo DS battery saves
+    /// from the file-name key (<c>nds/Game.srm</c>) to the cross-emulator one (<c>nds/battery/Game</c>)
+    /// that standalone melonDS and RetroArch now share (see DECISIONS 2026-09-01). Independent of
+    /// <see cref="BatteryNamespaceMigrated"/> — that one moved emulator-scoped keys to system-scoped
+    /// ones and is already true on machines that need this second pass.
+    /// </summary>
+    public bool NintendoDsBatteryKeyMigrated { get; init; }
+
     /// <summary>The explicit save-location override for one system, or null when none is set.</summary>
     public string? GetOverride(string systemId) => OverrideOf(GetLocationByKey(systemId));
 
@@ -295,6 +304,7 @@ public sealed record CloudSaveSyncSettings
             RemoteName != other.RemoteName ||
             CloudFolder != other.CloudFolder ||
             BatteryNamespaceMigrated != other.BatteryNamespaceMigrated ||
+            NintendoDsBatteryKeyMigrated != other.NintendoDsBatteryKeyMigrated ||
             Pcsx2ConfigDirectory != other.Pcsx2ConfigDirectory ||
             PpssppMemoryStickDirectory != other.PpssppMemoryStickDirectory)
         {
@@ -312,7 +322,7 @@ public sealed record CloudSaveSyncSettings
         TransportKind,
         RemoteName,
         CloudFolder,
-        BatteryNamespaceMigrated,
+        HashCode.Combine(BatteryNamespaceMigrated, NintendoDsBatteryKeyMigrated),
         Pcsx2ConfigDirectory,
         PpssppMemoryStickDirectory,
         SafeSaveLocations.Count(entry => entry.Value is not null));

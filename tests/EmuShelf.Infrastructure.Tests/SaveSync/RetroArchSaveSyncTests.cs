@@ -64,9 +64,12 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(
             ["gba/Metroid Fusion (USA).srm"],
             (await gba.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        // Nintendo DS keys by game name alone, so this save is the same cloud entry standalone
+        // melonDS would write as "Contra 4 (USA).sav".
         Assert.Equal(
-            ["nds/Contra 4 (USA).srm"],
+            ["nds/battery/Contra 4 (USA)"],
             (await nds.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.Null(nds.ResolveUnit("nds/battery/Metroid Fusion (USA)"));
 
         // The same rule guards a remote-only unit: a save for a game this machine's library does
         // not have is never written into the shared folder under this system's name.
@@ -113,8 +116,12 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.Equal(sorted, info.SaveDirectory);
         Assert.True(info.SortedByCore);
         Assert.Equal(
-            ["nds/Pokemon - Black Version (USA).sav"],
+            ["nds/battery/Pokemon - Black Version (USA)"],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        // The canonical key lands back on the file this core already wrote, whatever its extension.
+        Assert.Equal(
+            Path.Combine(sorted, "Pokemon - Black Version (USA).sav"),
+            provider.ResolveUnit("nds/battery/Pokemon - Black Version (USA)")!.Path);
     }
 
     [Fact]
@@ -143,11 +150,13 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         Assert.True(info.IsExclusive);
         Assert.Equal(
             [
-                "nds/The World Ends With You (USA).srm",
-                "nds/Trauma Center - Under the Knife (USA).srm",
+                "nds/battery/The World Ends With You (USA)",
+                "nds/battery/Trauma Center - Under the Knife (USA)",
             ],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
-        Assert.NotNull(provider.ResolveUnit("nds/Trauma Center - Under the Knife (USA).srm"));
+        Assert.Equal(
+            Path.Combine(folder, "Trauma Center - Under the Knife (USA).srm"),
+            provider.ResolveUnit("nds/battery/Trauma Center - Under the Knife (USA)")!.Path);
     }
 
     [Fact]
@@ -411,9 +420,14 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
         var provider = CreateProvider(
             "nds", "desmume_libretro.dll", installation, gameFileNames: ["Contra 4 (USA)"]);
 
+        // The raw dump (.srm) keys by game name alone, shared with standalone melonDS; a DeSmuME .dsv
+        // is not a raw dump, so it keeps the plain file-name key and never lands in melonDS's lap.
         Assert.Equal(
-            ["nds/Contra 4 (USA).dsv", "nds/Contra 4 (USA).srm"],
+            ["nds/Contra 4 (USA).dsv", "nds/battery/Contra 4 (USA)"],
             (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.Equal(
+            Path.Combine(saves, "Contra 4 (USA).dsv"),
+            provider.ResolveUnit("nds/Contra 4 (USA).dsv")!.Path);
     }
 
     [Fact]
@@ -440,23 +454,53 @@ public sealed class RetroArchSaveSyncTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public async Task TheSameGameSavedUnderTwoExtensionsIsReportedRatherThanPickedBetween()
+    public async Task TheSameDsGameSavedUnderTwoExtensionsIsOneUnitOnTheCoresOwnFile()
     {
-        // Real case: one machine's melonDS DS writes .sav, another's writes .srm, so syncing brings
-        // both into the same folder. Both are kept — neither is EmuShelf's to discard — but the
-        // emulator loads only one, so the ambiguity has to be visible.
+        // Real case: one machine's melonDS DS writes .sav, another's writes .srm, so syncing used to
+        // bring both into the same folder as two unrelated cloud entries. Both extensions hold the
+        // same raw cartridge dump, so DS now keys by game name alone: one unit per game, resolved
+        // onto the file this core itself writes (.srm), with the stray copy left untouched on disk.
         var installation = Path.Combine(BaseDirectory, "RetroArch-ambiguous");
         WriteConfig(installation, savefileDirectory: ":\\saves", extra: ["sort_savefiles_enable = \"true\""]);
         var sorted = Path.Combine(installation, "saves", "melonDS DS");
         Directory.CreateDirectory(sorted);
-        await File.WriteAllTextAsync(Path.Combine(sorted, "Contra 4 (USA).sav"), "windows save");
-        await File.WriteAllTextAsync(Path.Combine(sorted, "Contra 4 (USA).srm"), "deck save");
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Contra 4 (USA).sav"), "stale melonDS copy");
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Contra 4 (USA).srm"), "the live one");
         await File.WriteAllTextAsync(Path.Combine(sorted, "Tetris DS (USA).srm"), "only one");
+        // The core writes the .srm, so that is the file this machine is playing.
+        var stale = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(Path.Combine(sorted, "Contra 4 (USA).sav"), stale);
+        File.SetLastWriteTimeUtc(Path.Combine(sorted, "Contra 4 (USA).srm"), stale.AddDays(1));
 
         var provider = CreateProvider("nds", "melondsds_libretro.dll", installation);
 
+        Assert.Equal(
+            ["nds/battery/Contra 4 (USA)", "nds/battery/Tetris DS (USA)"],
+            (await provider.GetSaveUnitsAsync()).Select(unit => unit.UnitId));
+        Assert.Equal(
+            Path.Combine(sorted, "Contra 4 (USA).srm"),
+            provider.ResolveUnit("nds/battery/Contra 4 (USA)")!.Path);
+        Assert.Empty(await provider.GetAmbiguousSaveNamesAsync());
+    }
+
+    [Fact]
+    public async Task TheSameGameSavedUnderTwoExtensionsIsReportedRatherThanPickedBetween()
+    {
+        // Outside Nintendo DS the extension is still part of the key: cores choose it freely and two
+        // extensions can be two different formats. Both are kept — neither is EmuShelf's to discard —
+        // but the emulator loads only one, so the ambiguity has to be visible.
+        var installation = Path.Combine(BaseDirectory, "RetroArch-ambiguous-snes");
+        WriteConfig(installation, savefileDirectory: ":\\saves", extra: ["sort_savefiles_enable = \"true\""]);
+        var sorted = Path.Combine(installation, "saves", "Snes9x");
+        Directory.CreateDirectory(sorted);
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Chrono Trigger (USA).sav"), "windows save");
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Chrono Trigger (USA).srm"), "deck save");
+        await File.WriteAllTextAsync(Path.Combine(sorted, "Super Metroid (USA).srm"), "only one");
+
+        var provider = CreateProvider("snes", "snes9x_libretro.dll", installation);
+
         Assert.Equal(3, (await provider.GetSaveUnitsAsync()).Count);
-        Assert.Equal(["Contra 4 (USA)"], await provider.GetAmbiguousSaveNamesAsync());
+        Assert.Equal(["Chrono Trigger (USA)"], await provider.GetAmbiguousSaveNamesAsync());
     }
 
     [Fact]
