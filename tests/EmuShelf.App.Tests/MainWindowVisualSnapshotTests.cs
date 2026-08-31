@@ -1410,7 +1410,7 @@ public class MainWindowVisualSnapshotTests
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-actions-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 600);
             AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
-            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove").IsDestructive);
+            Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove from library").IsDestructive);
             viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-disc-selection-1280x800.png");
             AssertGamepadOverlayHeightBelow(window, 440);
@@ -2427,9 +2427,11 @@ public class MainWindowVisualSnapshotTests
         var overlay = window.GetVisualDescendants()
             .OfType<Border>()
             .Single(control => control.Classes.Contains("gamepad-overlay"));
-        var titleBlock = window.GetVisualDescendants()
+        // Search within the overlay: the actions title is now the bare game title, which the
+        // focused-game dock behind the overlay also displays.
+        var titleBlock = overlay.GetVisualDescendants()
             .OfType<TextBlock>()
-            .Single(control => control.IsVisible && control.Text == title);
+            .Single(control => control.IsEffectivelyVisible && control.Text == title);
         var origin = titleBlock.TranslatePoint(default, overlay);
         Assert.NotNull(origin);
         Assert.True(origin.Value.X >= 0);

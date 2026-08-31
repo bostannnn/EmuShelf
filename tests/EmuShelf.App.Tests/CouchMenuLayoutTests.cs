@@ -165,19 +165,20 @@ public class CouchMenuLayoutTests
         {
             await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
 
+            // Selection is a solid accent fill now — the check badge is gone, so a view-mode card is
+            // any -card button whose label is one of the three couch layouts.
+            var expectedLabels = new[] { "Grid", "List", "Shelf" };
             var cards = window.GetVisualDescendants()
                 .OfType<Button>()
                 .Where(button => button.Classes.Contains("gamepad-viewmode-card"))
-                .Where(button => button.GetVisualDescendants().OfType<Border>()
-                    .Any(border => border.Classes.Contains("gamepad-viewmode-check")))
+                .Where(button => button.GetVisualDescendants().OfType<TextBlock>()
+                    .Any(text => expectedLabels.Contains(text.Text)))
                 .ToList();
             Assert.Equal(3, cards.Count);
 
-            // Every card reserves the badge's space, selected or not, so the labels all get the same
-            // width and none of them reflows when the selection moves.
+            // The labels all get the same width and none of them reflows when the selection moves.
             // Within a pixel: the row splits into three star columns, so a panel width that does not
-            // divide by three leaves one card a rounding pixel wider. What matters is that selecting a
-            // card does not cost it twenty-two.
+            // divide by three leaves one card a rounding pixel wider.
             var labelWidths = cards
                 .Select(card => card.GetVisualDescendants().OfType<TextBlock>().First().Bounds.Width)
                 .ToList();
@@ -190,17 +191,9 @@ public class CouchMenuLayoutTests
             foreach (var card in cards)
             {
                 var label = card.GetVisualDescendants().OfType<TextBlock>().First();
-                var badge = card.GetVisualDescendants().OfType<Border>()
-                    .First(border => border.Classes.Contains("gamepad-viewmode-check"));
 
-                var labelLeft = label.TranslatePoint(default, card)!.Value.X;
-                var badgeLeft = badge.TranslatePoint(default, card)!.Value.X;
-                Assert.True(
-                    labelLeft + label.Bounds.Width <= badgeLeft + 1,
-                    $"'{label.Text}' runs under its check badge: label ends at "
-                    + $"{labelLeft + label.Bounds.Width}, badge starts at {badgeLeft}.");
-
-                // And the label is wide enough to actually show the word rather than trimming it.
+                // The label is wide enough to actually show the word rather than trimming it —
+                // "Shelf" must never render as "Sh…" again.
                 Assert.True(
                     label.Bounds.Width >= label.DesiredSize.Width - 1,
                     $"'{label.Text}' is being trimmed: {label.Bounds.Width} < {label.DesiredSize.Width}.");

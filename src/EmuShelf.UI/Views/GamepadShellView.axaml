@@ -430,10 +430,14 @@
                                 BoxShadow="0 16 36 0 #85000000" />
                     <!-- The focused game's platform already shows in the top rail, so the list needs no
                          header of its own. -->
+                    <!-- The vertical Margin (not Padding) holds a permanent gap between the card's
+                         edge and the rows: padding lives inside the scroll extent, so mid-scroll rows
+                         still kissed the card's top and bottom. -->
                     <ListBox x:Name="GamepadSpotlightList"
                              ItemsSource="{Binding Games}"
                              SelectedItem="{Binding FocusedGame, Mode=TwoWay}"
-                             Background="Transparent" BorderThickness="0" Padding="8,22"
+                             Margin="0,18"
+                             Background="Transparent" BorderThickness="0" Padding="8,10"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                              ScrollViewer.VerticalScrollBarVisibility="Auto">
                             <ListBox.Styles>
@@ -946,9 +950,15 @@
                                 </Grid>
                             </Border>
                         </Grid>
-                        <TextBlock IsVisible="{Binding ShowsGamepadOverlayChromeTitle}" Text="{Binding GamepadOverlayTitle}"
-                                   FontSize="24" FontWeight="Bold" TextWrapping="Wrap"
-                                   MaxLines="2" TextTrimming="CharacterEllipsis" />
+                        <StackPanel IsVisible="{Binding ShowsGamepadOverlayChromeTitle}" Spacing="6">
+                            <TextBlock Text="{Binding GamepadOverlayTitle}"
+                                       FontSize="24" FontWeight="Bold" TextWrapping="Wrap"
+                                       MaxLines="2" TextTrimming="CharacterEllipsis" />
+                            <TextBlock IsVisible="{Binding HasGamepadOverlayEyebrow}"
+                                       Text="{Binding GamepadOverlayEyebrow, Converter={x:Static vm:TextConverters.Uppercase}}"
+                                       FontSize="12" FontWeight="Bold" LetterSpacing="3"
+                                       Foreground="{DynamicResource EmuAccentBrush}" />
+                        </StackPanel>
                     </Grid>
 
                     <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="18">
@@ -972,8 +982,8 @@
                         <StackPanel x:Name="GamepadSystemMenuPicker" IsVisible="{Binding IsGamepadSystemMenuOpen}"
                                     Spacing="12" Margin="0,0,0,4">
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="View mode" FontSize="13" FontWeight="SemiBold"
-                                           LetterSpacing="0.6"
+                                <TextBlock Text="VIEW MODE" FontSize="12" FontWeight="Bold"
+                                           LetterSpacing="2.4"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <TextBlock Grid.Column="1" Text="{Binding LibraryCountText}"
                                            FontSize="13" VerticalAlignment="Center"
@@ -991,11 +1001,6 @@
                                             <TextBlock Grid.Column="1" Text="Grid" VerticalAlignment="Center"
                                                        FontSize="15" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
-                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
-                                            </Border>
                                         </Grid>
                                     </Button>
                                     <Button Grid.Column="1" Classes="gamepad-viewmode-card"
@@ -1007,11 +1012,6 @@
                                             <TextBlock Grid.Column="1" Text="List" VerticalAlignment="Center"
                                                        FontSize="15" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
-                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
-                                            </Border>
                                         </Grid>
                                     </Button>
                                     <Button Grid.Column="2" Classes="gamepad-viewmode-card"
@@ -1024,29 +1024,30 @@
                                             <TextBlock Grid.Column="1" Text="Shelf" VerticalAlignment="Center"
                                                        FontSize="15" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis" />
-                                            <Border Grid.Column="2" Classes="gamepad-viewmode-check">
-                                                <TextBlock Text="✓" FontSize="13" FontWeight="Bold"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                           Foreground="{DynamicResource EmuWindowBackgroundBrush}" />
-                                            </Border>
                                         </Grid>
                                     </Button>
                                 </Grid>
                             </Border>
                             <Grid ColumnDefinitions="*,Auto">
-                                <TextBlock Text="Sort by" FontSize="13" FontWeight="SemiBold"
-                                           LetterSpacing="0.6"
+                                <TextBlock Text="SORT BY" FontSize="12" FontWeight="Bold"
+                                           LetterSpacing="2.4"
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <!-- Current direction (always shown) plus the A=Reverse affordance, which
                                      appears only while the sort row owns focus (A reverses only there). -->
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7"
                                             VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding GamepadSortDirectionArrow}" FontSize="14"
-                                               FontWeight="Bold" VerticalAlignment="Center"
-                                               Foreground="{DynamicResource EmuAccentBrush}" />
-                                    <TextBlock Text="{Binding GamepadSortDirectionSummary}" FontSize="13"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <Border Background="{DynamicResource EmuSegmentBrush}"
+                                            BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
+                                            CornerRadius="8" Padding="10,4">
+                                        <StackPanel Orientation="Horizontal" Spacing="7">
+                                            <TextBlock Text="{Binding GamepadSortDirectionArrow}" FontSize="14"
+                                                       FontWeight="Bold" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuAccentBrush}" />
+                                            <TextBlock Text="{Binding GamepadSortDirectionSummary}" FontSize="13"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Border>
                                     <!-- Always laid out, and only faded in. The A pill is taller than
                                          the text beside it, so making it appear on focus grew this
                                          header by nine pixels and pushed the sort row and the entire
@@ -1113,10 +1114,22 @@
                                           ItemsSource="{Binding GamepadOverlayOptions}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
-                                        <Button Classes="gamepad-modal-option"
-                                                Classes.destructive="{Binding IsDestructive}"
-                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                                Classes.focused="{Binding IsFocused}" Content="{Binding Label}" Command="{Binding Command}" />
+                                        <StackPanel>
+                                            <!-- Destructive rows sit behind a hairline, so Remove/Quit read
+                                                 as a separate zone rather than the next item down. -->
+                                            <Border Height="1" Margin="6,10,6,4" IsVisible="{Binding IsDestructive}"
+                                                    Background="{DynamicResource EmuBorderBrush}" />
+                                            <Button Classes="gamepad-modal-option"
+                                                    Classes.destructive="{Binding IsDestructive}"
+                                                    Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
+                                                    Classes.focused="{Binding IsFocused}" Command="{Binding Command}">
+                                                <StackPanel Orientation="Horizontal" Spacing="15">
+                                                    <PathIcon Width="20" Height="20" Data="{Binding Icon}"
+                                                              IsVisible="{Binding HasIcon}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                                </StackPanel>
+                                            </Button>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

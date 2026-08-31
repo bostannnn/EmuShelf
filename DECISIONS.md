@@ -11362,3 +11362,24 @@ BrushTransition carries the perceived cross-fade. (3) The "fans ramping" report 
 self-inflicted: the visual-pass installs were DEBUG builds, replacing the Release+AOT build the
 device had (AOT halves scroll cost — DECISIONS 2026-08-30). Design iterations that get installed on
 the Thor should be built `-c Release` unless the debug tooling is specifically needed.
+
+## 2026-08-31 — Couch menus: one selection language; shelf joins the gradient stage
+
+The couch panels' selection state was a barely-visible wash+ring; after a mocked A/B round the
+menus adopted ONE language: selection/focus is a SOLID accent fill with inverted text — the
+view-mode cards, sort cards, and every overlay option row share it. The view-mode cards' reserved
+check badges are gone (the fill is the state), which is also what finally fits "Shelf" unabridged
+(with the system-menu panel widened 460→500). Overlay option rows gained an optional Geometry icon
+(GamepadOptionIcons — the system menu and game-actions sheet set them; list-like overlays stay
+text-only), destructive options (Remove / Quit) render behind a hairline as a separate zone, and
+the game-actions header became the game's title with a letterspaced platform eyebrow instead of
+"<title> actions" wrapped across three lines. The sort direction label is now chip-dressed so it
+reads as the pressable it is.
+
+Shelf mode's flat GL backdrop joined the grid's gradient stage with one shader line: the resolved
+backdrop (library colour + accent wash) is scaled by a vertical ramp in crt.frag.glsl —
+`mix(0.62, 1.35, uv.y)`, remembering GL's uv.y runs bottom-up (the first attempt shipped upside
+down). Because it scales the RESOLVED colour, it recolours with theme and platform for free, and
+zero-backdrop tube presentations stay zero. The spotlight list's rows kissed the card's top/bottom
+mid-scroll; the fix is Margin (viewport inset), not Padding (scroll-extent inset), so the gap is
+permanent rather than only at the list's ends.

@@ -440,16 +440,19 @@
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
+        <!-- Focus is a SOLID accent fill with inverted text — the one selection language the couch
+             menus and the view-mode/sort cards now share, instead of the barely-visible wash+ring. -->
         <Style Selector="Button.gamepad-modal-option.focused, Button.gamepad-modal-option:focus">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.controller-input:pointerover">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.focused.controller-input:pointerover">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.destructive">
@@ -457,7 +460,9 @@
             <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.destructive.focused, Button.gamepad-modal-option.destructive:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuDangerBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuDangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <Style Selector="Border.gamepad-key">
             <Setter Property="MinWidth" Value="28" />
@@ -548,7 +553,9 @@
         <Style Selector="Border.gamepad-overlay.system-menu">
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="Margin" Value="0,0,30,0" />
-            <Setter Property="Width" Value="460" />
+            <!-- 500, not 460: with the check badges gone the third view-mode card still needs the
+                 room for "Shelf" at the Thor's density instead of truncating to "Sh…". -->
+            <Setter Property="Width" Value="500" />
         </Style>
         <!-- Confirmations are compact modals, not the 620px picker sheet: a tighter card centres its
              title/body/buttons as one group. -->
@@ -774,8 +781,9 @@
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.gamepad-viewmode-card.selected">
-            <Setter Property="Background" Value="{DynamicResource EmuAccentMutedBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <!-- The check badge is always laid out and only fades in, so the label has the same width
              whether or not its card is the selected one.

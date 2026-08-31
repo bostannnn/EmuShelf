@@ -183,6 +183,12 @@ void main()
     // midtones far more than the phosphor physically would.
     vec3 backdrop = max(uBackdrop, vec3(0.0));
 
+    // The couch stage ramp: lit at the top, settling darker toward the bottom, matching the grid
+    // layout's gradient backdrop. Scaling the RESOLVED backdrop (library colour + accent wash)
+    // keeps it recolouring with the theme and focused platform exactly as the flat fill did; a
+    // zero backdrop (tube presentations that composite over their own paint) stays zero.
+    backdrop *= mix(0.62, 1.35, uv.y);   // GL uv.y runs bottom-up: 0.62 at the floor, lit at the top
+
     // The untouched image is only needed to lerp against, so at full intensity it is two texture
     // fetches per pixel that are multiplied by zero. This pass runs at native resolution over the
     // whole window, and full intensity is the shipped default, so skipping it is the single cheapest
