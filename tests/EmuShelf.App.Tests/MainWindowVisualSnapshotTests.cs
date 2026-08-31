@@ -2369,11 +2369,10 @@ public class MainWindowVisualSnapshotTests
 
             viewModel.FocusedGame = shortGame;
             await PumpAsync();
-            // Focusing this tile makes its own ring opaque. The selector is an accent pad 6px larger
-            // than the cover on every side (Border.gamepad-focus-tile-ring, Margin -6), so its bounds
-            // exceed the cover frame by 12px in each dimension; the opaque cover masks the pad's centre,
-            // leaving an even 6px accent frame.
-            const double focusFrameInset = 6;
+            // Focusing this tile makes its own ring opaque. The selector is a thin stroked ring 7px
+            // larger than the cover on every side (Border.gamepad-focus-tile-ring, Margin -7): a 3px
+            // bright stroke floated off the art with a 4px transparent gap.
+            const double focusFrameInset = 7;
             Assert.Equal(1, focusRing.Opacity);
             Assert.Equal(coverFrame.Bounds.Height + (focusFrameInset * 2), focusRing.Bounds.Height, 1);
             Assert.Equal(coverFrame.Bounds.Width + (focusFrameInset * 2), focusRing.Bounds.Width, 1);

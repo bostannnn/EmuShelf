@@ -273,6 +273,10 @@
         </Style>
         <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-tile-ring">
             <Setter Property="Opacity" Value="1" />
+            <!-- Depth + accent halo for the focused tile, cast by the ring so it exists only while
+                 focused. One shadowed element per grid (not per tile), so it stays clear of the
+                 reduced-effects budget that dropped the per-tile cover shadows on Android. -->
+            <Setter Property="BoxShadow" Value="{DynamicResource EmuGamepadFocusGlow}" />
         </Style>
         <!-- Spotlight hero actions (Play / Achievements) reuse the grid's accent focus pad. -->
         <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
@@ -369,6 +373,17 @@
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
         </Style>
+        <!-- Unselected console badges recede so the active tab is the rail's one bright point;
+             selection/focus restores full strength. Opacity (not a recolour) keeps each console's
+             own badge art. -->
+        <Style Selector="Button.gamepad-platform Image, Button.gamepad-platform PathIcon">
+            <Setter Property="Opacity" Value="0.55" />
+        </Style>
+        <Style Selector="Button.gamepad-platform.selected Image, Button.gamepad-platform.selected PathIcon,
+                         Button.gamepad-platform.focused Image, Button.gamepad-platform.focused PathIcon,
+                         Button.gamepad-platform:pointerover Image, Button.gamepad-platform:pointerover PathIcon">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Button.gamepad-platform:pointerover">
             <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
@@ -389,6 +404,8 @@
              instantly, because animating it is a per-frame layout pass on the UI thread that stutters. -->
         <Style Selector="Border.gamepad-platform-indicator">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentMutedBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="VerticalAlignment" Value="Top" />
@@ -1041,9 +1058,28 @@
         <Style Selector="Button.gamepad-game.unavailable TextBlock.gamepad-tile-title">
             <Setter Property="Opacity" Value="0.58" />
         </Style>
+        <!-- A faint light edge instead of the theme border: on artwork it reads as a catch-light on
+             the tile's rim, giving the cover a slight physical lip against the dark backdrop. -->
         <Style Selector="Border.gamepad-cover-frame">
-            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <!-- Unfocused covers step back a notch so the focused tile owns the light. Rides the existing
+             0.2s cover-image opacity transition, so focus moves fade rather than pop. -->
+        <Style Selector="Button.gamepad-game:not(.focused) Image.cover-image.loaded">
+            <Setter Property="Opacity" Value="0.88" />
+        </Style>
+        <!-- Titles follow the same hierarchy: dimmed at rest, full strength under the focus ring. -->
+        <Style Selector="TextBlock.gamepad-tile-title">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused TextBlock.gamepad-tile-title">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <!-- The sheen is one extra translucent layer over every realized tile, so the reduced-effects
+             (Android) grid drops it the same way it drops the per-tile cover shadows. -->
+        <Style Selector="Grid.gamepad-root.reduced-effects Border.gamepad-cover-sheen">
+            <Setter Property="IsVisible" Value="False" />
         </Style>
         <!-- The tile's drop shadow, on a Border of its own with nothing inside it.
              It used to sit on the cover frame, which holds the artwork — and a BoxShadow on a Border
@@ -1084,7 +1120,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.gamepad-game.focused Panel.gamepad-cover-stack">
-            <Setter Property="RenderTransform" Value="scale(1.045)" />
+            <Setter Property="RenderTransform" Value="scale(1.06)" />
         </Style>
         <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark
              and Border.texture-mark), which are sized for a pointer at desk distance. -->

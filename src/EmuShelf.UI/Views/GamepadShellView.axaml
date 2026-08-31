@@ -24,11 +24,27 @@
             <Setter Property="Width" Value="{Binding #GamepadOverlayHost.Bounds.Width}" />
             <Setter Property="Height" Value="{Binding #GamepadOverlayHost.Bounds.Height}" />
         </Style>
+        <!-- Grid/list rail: instead of a second flat slab over the library (with a visible colour step
+             where the two meet), the rail is a translucent dark ramp that fades into the backdrop, held
+             off the content by a subtle hairline. Both are theme-agnostic alphas over the themed root. -->
+        <Style Selector="Border.gamepad-toolbar">
+            <Setter Property="BorderBrush" Value="#12FFFFFF" />
+            <Setter Property="BorderThickness" Value="0,0,0,1" />
+            <Setter Property="Background">
+                <Setter.Value>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Offset="0" Color="#66000000" />
+                        <GradientStop Offset="1" Color="#14000000" />
+                    </LinearGradientBrush>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <!-- In shelf view the platform rail sits directly over the 3D shelf's own backdrop; paint it the
              same backdrop brush so there is no colour step (the "line") where the paler toolbar meets the
-             brighter shelf. In grid/list the toolbar keeps its own brush to separate from the content. -->
+             brighter shelf. In grid/list the toolbar keeps its own ramp to separate from the content. -->
         <Style Selector="Border.gamepad-toolbar.shelf-view">
             <Setter Property="Background" Value="{DynamicResource EmuLibraryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
     </UserControl.Styles>
 
@@ -42,9 +58,40 @@
           Classes.reduced-effects="{Binding IsReducedEffectsPlatform}"
           IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,104"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
+        <!-- Grid-mode ambient backdrop, painted over the flat EmuLibraryBrush root: a vertical light
+             ramp (lit top, settling darker toward the dock) plus a soft radial wash in the focused
+             game's per-system accent, so the stage responds to what is selected instead of being one
+             flat sheet. The wash brush is swapped by UpdateAmbientGlow (code-behind) as focus moves and
+             cross-fades via its BrushTransition. Both layers are static gradients — no per-frame work —
+             and only exist in grid layout: shelf and spotlight paint their own backdrops. -->
+        <Grid Grid.Row="0" Grid.RowSpan="3" IsHitTestVisible="False"
+              IsVisible="{Binding IsGamepadGridLayout}">
+            <Border>
+                <Border.Background>
+                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                        <GradientStop Offset="0" Color="#12FFFFFF" />
+                        <GradientStop Offset="0.45" Color="#00000000" />
+                        <GradientStop Offset="1" Color="#38000000" />
+                    </LinearGradientBrush>
+                </Border.Background>
+            </Border>
+            <Border x:Name="GamepadAmbientGlow" Opacity="0.15">
+                <Border.OpacityMask>
+                    <RadialGradientBrush Center="22%,28%" GradientOrigin="22%,28%"
+                                         RadiusX="58%" RadiusY="72%">
+                        <GradientStop Offset="0" Color="#FFFFFFFF" />
+                        <GradientStop Offset="1" Color="#00FFFFFF" />
+                    </RadialGradientBrush>
+                </Border.OpacityMask>
+                <Border.Transitions>
+                    <Transitions>
+                        <BrushTransition Property="Background" Duration="0:0:0.45" />
+                    </Transitions>
+                </Border.Transitions>
+            </Border>
+        </Grid>
         <Border Grid.Row="0" Padding="42,18,42,12" Classes="gamepad-toolbar"
-                Classes.shelf-view="{Binding IsGamepadShelfView}"
-                Background="{DynamicResource EmuToolbarBrush}" BorderThickness="0">
+                Classes.shelf-view="{Binding IsGamepadShelfView}">
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
                 <Border Classes="gamepad-key" VerticalAlignment="Center">
                     <TextBlock Text="LB" />
@@ -210,14 +257,25 @@
                 </StackPanel>
             </Border>
         </Border>
-        <Border x:Name="GamepadFocusedDock" Grid.Row="2" Background="{DynamicResource EmuToolbarBrush}"
-                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="0,1,0,0"
+        <!-- The dock fades up from a dark base instead of sitting as a hard-edged slab behind a
+             hairline: the same "melts into the stage" treatment as the rail, mirrored. -->
+        <Border x:Name="GamepadFocusedDock" Grid.Row="2"
                 Padding="36,12" IsVisible="{Binding IsGamepadGridLayout}">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Offset="0" Color="#0A000000" />
+                    <GradientStop Offset="0.6" Color="#59000000" />
+                    <GradientStop Offset="1" Color="#73000000" />
+                </LinearGradientBrush>
+            </Border.Background>
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"
                   ColumnDefinitions="*,Auto,Auto" ColumnSpacing="14">
                 <StackPanel MinWidth="0" Margin="0,0,12,0" VerticalAlignment="Center" Spacing="2">
-                    <TextBlock Text="{Binding FocusedGame.SystemName}" FontSize="{DynamicResource EmuGpCaptionSize}"
-                               FontWeight="Bold" LetterSpacing="1.2" Foreground="{DynamicResource EmuAccentBrush}" />
+                    <!-- Letterspaced caps: the system reads as a quiet eyebrow label over the title
+                         instead of an accent-coloured link. -->
+                    <TextBlock Text="{Binding FocusedGame.SystemName, Converter={x:Static vm:TextConverters.Uppercase}}"
+                               FontSize="{DynamicResource EmuGpCaptionSize}"
+                               FontWeight="Bold" LetterSpacing="3.4" Foreground="{DynamicResource EmuAccentBrush}" />
                     <TextBlock Text="{Binding FocusedGame.Title}" FontSize="{DynamicResource EmuGpTitleSize}" FontWeight="Bold"
                                MaxLines="1" TextTrimming="CharacterEllipsis" />
                     <TextBlock x:Name="GamepadFocusedSubtitle" Text="{Binding FocusedGame.GamepadSubtitle}"

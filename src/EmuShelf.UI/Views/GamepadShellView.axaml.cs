@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -93,6 +94,26 @@ public partial class GamepadShellView : UserControl
         _gamepadViewModel = DataContext as MainViewModel;
         if (_gamepadViewModel is not null)
             _gamepadViewModel.PropertyChanged += OnGamepadViewModelPropertyChanged;
+
+        UpdateAmbientGlow();
+    }
+
+    /// <summary>
+    /// Retints the grid backdrop's radial wash to the focused game's per-system accent, so the stage
+    /// shifts mood as focus moves between platforms. Swapping the whole SolidColorBrush (rather than
+    /// mutating Color) lets the Border's BrushTransition cross-fade the change; runs only on focus
+    /// changes, never per frame. Keeps the last tint when focus empties so the backdrop never blinks.
+    /// </summary>
+    private void UpdateAmbientGlow()
+    {
+        if (_gamepadViewModel?.FocusedGame is not { } game)
+            return;
+
+        var accent = game.ShelfAccent;
+        if (GamepadAmbientGlow.Background is ImmutableSolidColorBrush current && current.Color == accent)
+            return;
+
+        GamepadAmbientGlow.Background = new ImmutableSolidColorBrush(accent);
     }
 
     // Mirror of OnDataContextChanged's teardown, run when the view is permanently detached (activity
@@ -200,6 +221,7 @@ public partial class GamepadShellView : UserControl
             // is not on screen (RevealFocusedGame acts on the hidden grid, CentreShelf on the hidden strip).
             RevealFocusedGame(animate: true);
             CentreShelf();
+            UpdateAmbientGlow();
             return;
         }
 

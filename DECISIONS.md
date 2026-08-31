@@ -11318,3 +11318,29 @@ passed-over platform is superseded by the existing generation check), and the li
 is 0.10s (it runs twice per switch, so its duration is paid double). Measured after: uncached switch
 ~320ms with the rebuild landing ~60-80ms after the press; cached revisits unchanged (~217ms rail
 animation, content swaps immediately); a 5-press RB burst still coalesces and lands correctly.
+
+## 2026-08-31 — Couch grid visual pass: light and depth instead of new palettes
+
+The couch grid's flatness ("any admin dashboard, not a console") was addressed by an A/B-mocked
+pass Andrew approved: keep the layout, the achievement widget, and the green PLAY button exactly as
+they are, change only atmosphere and focus. What shipped: (1) a grid-mode backdrop over the flat
+EmuLibraryBrush root — a vertical light ramp plus a radial wash tinted by the FOCUSED game's
+per-system accent (swapped in code-behind on FocusedGame changes, cross-faded by a BrushTransition;
+never per-frame); (2) the platform rail is a translucent dark ramp that fades into that backdrop
+instead of a second flat slab, with unselected console icons at 55% opacity; (3) the focused tile's
+6px solid accent pad is now a 3px text-primary-toned stroke floated 4px off the art, with an
+accent glow + drop shadow (`EmuGamepadFocusGlow`) and a 1.045→1.06 scale lift; (4) unfocused
+covers/titles recede (88% cover opacity, secondary-brush titles) and covers get a faint light rim
+plus a diagonal sheen; (5) the dock mirrors the rail's fade and its system label became a
+letterspaced uppercase eyebrow (`TextConverters.Uppercase` — Avalonia has no text-transform).
+
+Non-obvious choices: all new backdrop/rail/dock paints are THEME-AGNOSTIC black/white alphas
+layered over the themed root, so 29 palettes get the pass for free — only the glow needed a new
+per-palette token (`EmuGamepadFocusGlow`, derived from each palette's EmuFocusGlow accent). The
+glow lives on the focus ring, so exactly ONE shadowed element exists per grid — it deliberately
+stays inside the reduced-effects budget that dropped the ~40 per-tile cover shadows on Android;
+the per-tile sheen, being a per-tile overdraw layer, IS dropped under reduced-effects the same way.
+The ambient wash uses the per-system accent (not a cover-derived dominant color) — cheap, already
+modeled (GameViewModel.ShelfAccent), and it shifts mood per platform; cover-derived color stays a
+possible upgrade. The backdrop container is a Grid, not a Panel, because a visual test identifies
+the spotlight backdrop as "the only bare Panel child of GamepadRoot".

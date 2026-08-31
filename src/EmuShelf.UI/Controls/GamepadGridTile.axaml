@@ -30,17 +30,18 @@
                  row shares one height, so the row's covers line up top and bottom. -->
             <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                    Classes="gamepad-cover-stack" ClipToBounds="False">
-                <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
-                     larger on every side with a concentric corner radius (12 + 6), so
-                     the opaque cover masks its centre and the accent reads as an even
-                     6px frame. Its inner edge is the cover's own rounded corner, so
-                     corners can never mismatch and no artwork is ever hidden — unlike a
-                     stroked border on top, whose inner corner radius (radius − thickness)
-                     cannot follow the cover. Must stay first/bottom-most. Shown by
+                <!-- Controller focus frame: a thin bright ring floated 4px off the cover (3px stroke,
+                     transparent centre and gap, so the backdrop shows between ring and art). The old
+                     solid accent pad read as a heavy sticker frame against the artwork; a hairline in
+                     the text-primary tone reads as light, and the focused-state glow (BoxShadow, styled
+                     on .focused) supplies the depth the pad used to. The transparent gap also retires
+                     the pad's corner-concentricity trick — nothing opaque needs masking any more.
+                     Must stay first/bottom-most so its glow projects from UNDER the cover. Shown by
                      opacity on .focused (styles); no transition, tracks the d-pad. -->
                 <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
-                        Margin="-6" CornerRadius="18"
-                        Background="{DynamicResource EmuAccentBrush}" />
+                        Margin="-7" CornerRadius="19"
+                        BorderBrush="{DynamicResource EmuTextPrimaryBrush}" BorderThickness="3"
+                        Background="Transparent" />
                 <!-- Opaque well between the focus pad and the cover, sized to the cover
                      (the pad is 6px larger). It is never dimmed, so when an unavailable
                      cover drops to 58% opacity its centre reveals this dark well rather
@@ -104,6 +105,17 @@
                                        LetterSpacing="0.8" Foreground="White" />
                         </Border>
                     </Panel>
+                </Border>
+                <!-- A faint diagonal catch-light across the cover's top-left, so tiles read as glossy
+                     inserts instead of flat stickers. One static gradient layer per tile — dropped
+                     wholesale under .reduced-effects (styles) to protect the Android scroll budget. -->
+                <Border Classes="gamepad-cover-sheen" IsHitTestVisible="False" CornerRadius="12">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="65%,100%">
+                            <GradientStop Offset="0" Color="#17FFFFFF" />
+                            <GradientStop Offset="0.28" Color="#00FFFFFF" />
+                        </LinearGradientBrush>
+                    </Border.Background>
                 </Border>
                 <!-- Same marks the desktop grid shows, sized for a couch viewing
                      distance. Both are Borders here: a focusable button inside a
