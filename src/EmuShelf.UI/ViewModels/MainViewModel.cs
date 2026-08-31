@@ -4370,16 +4370,34 @@ public partial class MainViewModel : ViewModelBase
         }
 
         // Not built yet: clear the outgoing tiles now so one platform's library can't sit under
-        // another platform's title, then debounce the heavy build so cycling through several unvisited
-        // platforms only builds the one the user settles on.
+        // another platform's title.
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
+
+        // Leading edge + trailing coalesce. The FIRST press of a burst builds immediately — a
+        // trailing-only debounce made every first visit to a platform pay the full interval before
+        // the build even started, which is most of why LB/RB cycling read as slow on the Thor
+        // (measured ~480ms per uncached switch, ~180ms of it pure debounce wait). Rapid follow-up
+        // presses still coalesce through the timer, so cycling past several unvisited platforms
+        // builds only the one the user settles on; a build started for a passed-over platform is
+        // superseded by ReloadGamesAsync's generation check exactly like any competing reload.
+        var now = Environment.TickCount64;
+        var isBurst = _platformReloadDebounce.IsEnabled ||
+                      now - _lastUncachedPlatformSwitch < PlatformReloadDebounceMs;
+        _lastUncachedPlatformSwitch = now;
+        if (!isBurst)
+            return ReloadGamesAsync(useCache: true);
+
         _platformReloadCompletion ??=
             new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _platformReloadDebounce.Stop();
         _platformReloadDebounce.Start();
         return _platformReloadCompletion.Task;
     }
+
+    // TickCount64 of the last uncached platform switch, so RequestLibraryReload can tell a first
+    // press (build immediately) from a cycling burst (debounce).
+    private long _lastUncachedPlatformSwitch = -1_000_000; // "long before boot" without overflow risk
 
     // Default (useCache: false) is the safe, data-changing reload used by every mutation and refresh
     // path: it drops the whole scope cache so the rebuild reflects the DB. Only the navigation hot path

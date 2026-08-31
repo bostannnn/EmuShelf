@@ -11308,3 +11308,13 @@ the cover-load guard lives once on `GameViewModel.NeedsCoverLoad`, shared by `Lo
 and the prefetch pre-check; and the settle-time GC moved out of the shared view into
 `PlatformIdleHints.ScrollGlideSettled` — a PerfTrace-style static hook only the Android head
 installs, so desktop CoreCLR no longer pays a Mono-specific collection.
+
+Same branch, LB/RB platform-switch latency: a first visit to a platform measured ~484ms of switch
+activity on the Thor — the 180ms platform-reload debounce fired even for a SINGLE press (trailing-
+edge only), serialized with a 0.18s fade-out of an already-emptied grid and a 0.18s fade-in.
+`RequestLibraryReload` now builds the FIRST press of a burst immediately (leading edge) and
+debounces only rapid follow-ups (tracked via `_lastUncachedPlatformSwitch`; a build started for a
+passed-over platform is superseded by the existing generation check), and the library-surface fade
+is 0.10s (it runs twice per switch, so its duration is paid double). Measured after: uncached switch
+~320ms with the rebuild landing ~60-80ms after the press; cached revisits unchanged (~217ms rail
+animation, content swaps immediately); a 5-press RB burst still coalesces and lands correctly.
