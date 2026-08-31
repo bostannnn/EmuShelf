@@ -273,10 +273,17 @@
         </Style>
         <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-tile-ring">
             <Setter Property="Opacity" Value="1" />
-            <!-- Depth + accent halo for the focused tile, cast by the ring so it exists only while
-                 focused. One shadowed element per grid (not per tile), so it stays clear of the
-                 reduced-effects budget that dropped the per-tile cover shadows on Android. -->
-            <Setter Property="BoxShadow" Value="{DynamicResource EmuGamepadFocusGlow}" />
+            <!-- Depth for the focused tile, cast by the invisible focus box so it exists only while
+                 focused. Deliberately NEUTRAL (no accent halo): the coloured glow fought the cover
+                 art. One shadowed element per grid, so it stays clear of the reduced-effects budget
+                 that dropped the per-tile cover shadows on Android. -->
+            <Setter Property="BoxShadow" Value="0 18 40 0 #B3000000" />
+        </Style>
+        <Style Selector="Border.gamepad-focus-pool">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-pool">
+            <Setter Property="Opacity" Value="0.6" />
         </Style>
         <!-- Spotlight hero actions (Play / Achievements) reuse the grid's accent focus pad. -->
         <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
@@ -1120,7 +1127,7 @@
             </Setter>
         </Style>
         <Style Selector="Button.gamepad-game.focused Panel.gamepad-cover-stack">
-            <Setter Property="RenderTransform" Value="scale(1.06)" />
+            <Setter Property="RenderTransform" Value="scale(1.09)" />
         </Style>
         <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark
              and Border.texture-mark), which are sized for a pointer at desk distance. -->
