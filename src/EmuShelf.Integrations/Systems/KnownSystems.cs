@@ -20,6 +20,8 @@ public static class KnownSystems
     // Emulator routing is orthogonal to this grouping. Notably PSP, Mega Drive, NDS and GBA share
     // one portable RetroArch installation, while each one's integration-owned reader controls when
     // a file is eligible for import; other systems' routing is noted per entry where it matters.
+    // NDS can also run on standalone melonDS (release or nightly) instead — its battery saves are the
+    // same raw cartridge dump either way, so they sync as one cloud entry per game.
     public static IReadOnlyList<GameSystem> All { get; } =
     [
         // ── Nintendo ──

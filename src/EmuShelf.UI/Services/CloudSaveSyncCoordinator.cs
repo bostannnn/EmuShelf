@@ -606,7 +606,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             // one-time, idempotent re-key here so those saves are present under their new system key and
             // get exported; the leftover old keys are then quietly ignored by the export's own guard.
             if (transport is not null)
-                await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
+                await EnsureCloudKeyMigrationsAsync(transport, cancellationToken);
 
             var result = await new SaveExportService().ExportAsync(
                 targets, transport, sink, progress, cancellationToken);
@@ -724,7 +724,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
         {
             var elapsed = Stopwatch.StartNew();
             var transport = await CreateTransportAsync(cancellationToken);
-            await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
+            await EnsureCloudKeyMigrationsAsync(transport, cancellationToken);
             var service = new SaveSyncService(
                 target.LocalEndpoint,
                 transport,
@@ -818,7 +818,7 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
 
             var elapsed = Stopwatch.StartNew();
             var transport = await CreateTransportAsync(cancellationToken);
-            await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
+            await EnsureCloudKeyMigrationsAsync(transport, cancellationToken);
             if (verifyRemote)
             {
                 await transport.ListAsync(cancellationToken);
@@ -885,6 +885,58 @@ public sealed class CloudSaveSyncCoordinator : IGameSaveSyncService
             RecordOutcome([systemId], error: null, report: outcome.Report);
         else if (outcome.Status == CloudSaveSyncStatus.Failed)
             RecordOutcome([systemId], outcome.Message);
+    }
+
+    // The one-time cloud re-keys, run before any pass touches the index. Each is guarded by its own
+    // persisted flag and is copy-only, so a machine that has already done one skips it for free.
+    private async Task EnsureCloudKeyMigrationsAsync(
+        ICloudSyncTransport transport,
+        CancellationToken cancellationToken)
+    {
+        await EnsureBatteryNamespaceMigratedAsync(transport, cancellationToken);
+        await EnsureNintendoDsBatteryKeyMigratedAsync(transport, cancellationToken);
+    }
+
+    // Nintendo DS battery saves used to key by file name, which filed the same save written by
+    // standalone melonDS (.sav) and by a RetroArch DS core (.srm) as two unrelated cloud entries.
+    // They now share one key per game; this copies the existing entries onto it. See
+    // NintendoDsBatterySaveKey and DECISIONS 2026-09-01.
+    private async Task EnsureNintendoDsBatteryKeyMigratedAsync(
+        ICloudSyncTransport transport,
+        CancellationToken cancellationToken)
+    {
+        if (_settings.CloudSaveSync.NintendoDsBatteryKeyMigrated)
+            return;
+
+        try
+        {
+            var copied = await new NintendoDsBatteryKeyMigration(transport).RunAsync(cancellationToken);
+            if (copied > 0)
+            {
+                _logger.Information(
+                    $"Migrated {copied} cloud Nintendo DS battery save(s) to the shared per-game key; " +
+                    "the old file-name copies were left in the cloud untouched.");
+            }
+
+            var manifestStore = new JsonSaveSyncManifestStore(_paths);
+            var manifest = await manifestStore.LoadAsync(cancellationToken);
+            var rekeyed = NintendoDsBatteryKeyMigration.RekeyManifestBaselines(manifest);
+            if (!ReferenceEquals(rekeyed, manifest))
+                await manifestStore.SaveAsync(rekeyed, cancellationToken);
+
+            Persist(_settings.CloudSaveSync with { NintendoDsBatteryKeyMigrated = true });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex) when (
+            ex is IOException or HttpRequestException or InvalidDataException or InvalidOperationException)
+        {
+            _logger.Warning(
+                "The Nintendo DS save re-key did not complete; it will retry on the next sync. The " +
+                $"existing saves remain in the cloud untouched: {ex.Message}");
+        }
     }
 
     // Runs the one-time copy-only re-key of cloud battery saves from the old emulator-scoped namespace

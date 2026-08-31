@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using EmuShelf.Integrations.Emulators.Azahar;
 using EmuShelf.Integrations.Emulators.DuckStation;
 using EmuShelf.Integrations.Emulators.Dolphin;
+using EmuShelf.Integrations.Emulators.MelonDs;
 using EmuShelf.Integrations.Emulators.Pcsx2;
 using EmuShelf.Integrations.Emulators.Ppsspp;
 using EmuShelf.Integrations.Emulators.RetroArch;
@@ -302,7 +303,23 @@ public static class SaveProviderRegistry
         // directory for its own configured core.
         .. RetroArchPlatform("megadrive", "Mega Drive / Genesis"),
         .. RetroArchPlatform("snes", "Super Nintendo"),
-        .. RetroArchPlatform("nds", "Nintendo DS"),
+        // Nintendo DS has three profiles: RetroArch (the default, first) plus both standalone melonDS
+        // channels. Their battery saves share one cloud key per game (NintendoDsBatterySaveKey), so
+        // the row's text is emulator-neutral and a save started under one is picked up by the others.
+        .. RetroArchPlatform(
+            "nds",
+            "Nintendo DS",
+            saveShapeDescription: NintendoDsSaveShape,
+            overridePlaceholder: NintendoDsOverridePlaceholder),
+        .. MelonDsDefinition.All.Select(definition => new SaveProviderDescriptor(
+            SystemId: "nds",
+            EmulatorId: definition.Id,
+            DisplayName: "Nintendo DS",
+            SaveShapeDescription: NintendoDsSaveShape,
+            OverridePlaceholder: NintendoDsOverridePlaceholder,
+            CreateProvider: context => CreateMelonDsProvider(definition.Id, context),
+            DetectAsync: static (provider, cancellationToken) => DetectMelonDsAsync(provider, cancellationToken),
+            SupportsSaveStates: true)),
         .. RetroArchPlatform("gba", "Game Boy Advance"),
         .. RetroArchPlatform("gbc", "Game Boy Color"),
         .. RetroArchPlatform("nes", "Nintendo Entertainment System"),
@@ -367,14 +384,24 @@ public static class SaveProviderRegistry
             : string.Join(" • ", info.SaveLocations.Take(3)) +
               (info.SaveLocations.Count > 3 ? $" • +{info.SaveLocations.Count - 3} more" : string.Empty);
 
-    private static IEnumerable<SaveProviderDescriptor> RetroArchPlatform(string systemId, string displayName)
+    // Emulator-neutral display text for the Nintendo DS row, which three emulators can serve.
+    private const string NintendoDsSaveShape =
+        "Nintendo DS battery saves · one file per game, named after the game file";
+    private const string NintendoDsOverridePlaceholder =
+        "Use the configured emulator's save folder, or choose one";
+
+    private static IEnumerable<SaveProviderDescriptor> RetroArchPlatform(
+        string systemId,
+        string displayName,
+        string saveShapeDescription = "RetroArch battery saves · one file per game, named after the game file",
+        string overridePlaceholder = "Use configured RetroArch, or choose its saves folder")
     {
         yield return new SaveProviderDescriptor(
             SystemId: systemId,
             EmulatorId: "retroarch",
             DisplayName: displayName,
-            SaveShapeDescription: "RetroArch battery saves · one file per game, named after the game file",
-            OverridePlaceholder: "Use configured RetroArch, or choose its saves folder",
+            SaveShapeDescription: saveShapeDescription,
+            OverridePlaceholder: overridePlaceholder,
             CreateProvider: context => CreateRetroArchProvider(systemId, context),
             DetectAsync: static (provider, cancellationToken) => DetectRetroArchAsync(provider, cancellationToken),
             SupportsSaveStates: true);
@@ -416,6 +443,61 @@ public static class SaveProviderRegistry
                   "slot and the game file has the same name; otherwise that save stays in the cloud."
                 : "Cards are synced per slot and card type. A machine whose DuckStation uses a different card " +
                   "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
+    }
+
+    private static ISaveLocationProvider? CreateMelonDsProvider(string emulatorId, SaveProviderContext context)
+    {
+        // melonDS has no Android build EmuShelf launches, so the desktop resolver is the whole story.
+        if (OperatingSystem.IsAndroid())
+            return null;
+
+        // A Flatpak melonDS has a documented fixed config location, so it can participate with neither
+        // an override nor a resolvable installation directory.
+        if (string.IsNullOrWhiteSpace(context.DirectoryOverride) &&
+            string.IsNullOrWhiteSpace(context.EmulatorDirectory) &&
+            !context.IsFlatpak)
+        {
+            return null;
+        }
+
+        return new MelonDsSaveLocationProvider(
+            emulatorId,
+            context.EmulatorDirectory ?? context.Paths.BaseDirectory,
+            saveDirectoryOverride: context.DirectoryOverride,
+            isFlatpak: context.IsFlatpak,
+            gameFileNames: context.GameFileNames);
+    }
+
+    private static async Task<SaveProviderDetection> DetectMelonDsAsync(
+        ISaveLocationProvider provider,
+        CancellationToken cancellationToken)
+    {
+        var melonDs = (MelonDsSaveLocationProvider)provider;
+        var info = await melonDs.GetSaveInfoAsync(cancellationToken);
+        if (info.SaveDirectory is null)
+        {
+            // melonDS's default is to write each save beside its ROM, which EmuShelf does not sync —
+            // it would mean writing into the user's game folders. Say so, and say exactly what to
+            // change, rather than reporting a folder that looks syncable but is not. The display
+            // string completes the row's "Syncing {0}" sentence.
+            return new SaveProviderDetection(
+                await melonDs.GetSaveDataDirectoryAsync(cancellationToken),
+                "melonDS has no save folder configured, so it writes each save next to its game file — " +
+                "EmuShelf does not sync saves from your game folders. In melonDS, set Config → Path " +
+                "settings → \"Save file path\" to a folder of its own (move the existing .sav files " +
+                "into it; melonDS does not move them for you), or choose that folder above.",
+                DisplayLocation: "nothing yet — melonDS has no save folder configured");
+        }
+
+        var source = info.IsOverridden
+            ? "This folder was set here."
+            : $"Read from melonDS's own save-file path ({info.ConfigFilePath ?? "configuration"}).";
+        return new SaveProviderDetection(
+            info.SaveDirectory,
+            $"{source} Saves are matched by file name, so the same game needs the same file name on " +
+            "both machines. A DS battery save is the raw cartridge dump, so the same save works in " +
+            "melonDS (.sav) and in a RetroArch DS core (.srm) — EmuShelf keeps one cloud copy per " +
+            "game and writes it under the name the emulator on each machine reads.");
     }
 
     private static ISaveLocationProvider? CreateRetroArchProvider(string systemId, SaveProviderContext context)
@@ -574,6 +656,12 @@ public static class SaveProviderRegistry
             PpssppSaveLocationProvider ppsspp => State(
                 token => Path.Combine(Await(ppsspp.GetMemoryStickDirectoryAsync(token)), "PSP", "PPSSPP_STATE"),
                 path => HasExtension(path, ".ppst")),
+            // melonDS keeps its save states in the folder its SavestatePath names, as <game>.ml0…ml9.
+            // With no folder configured they sit beside the ROM, which is not synced (see
+            // DetectMelonDsAsync), and the source resolves to null.
+            MelonDsSaveLocationProvider melonDs => State(
+                token => Await(melonDs.GetSaveInfoAsync(token)).SavestateDirectory,
+                IsMelonDsState),
             DolphinSaveLocationProvider dolphin when dolphin.SystemId == "gamecube" => State(
                 token => Path.Combine(Await(dolphin.GetUserDirectoryAsync(token)), "StateSaves"),
                 path => HasExtension(path, ".sav", ".s01", ".s02", ".s03", ".s04", ".s05", ".s06", ".s07", ".s08", ".s09", ".s10")),
@@ -639,6 +727,18 @@ public static class SaveProviderRegistry
     private static bool HasExtension(string path, params string[] extensions) =>
         extensions.Any(extension => path.EndsWith(extension, StringComparison.OrdinalIgnoreCase));
 
+    // melonDS names a save state "<game>.ml<slot>", slots 0-9 (getSavestateName). Matched on the shape
+    // rather than a list of ten extensions so a future slot count needs no change here. Requiring the
+    // digit also keeps the rewind buffer (timewarp.mln) out: it is scratch, it is large, and it
+    // changes every second of play.
+    private static bool IsMelonDsState(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Length == 4 &&
+            extension.StartsWith(".ml", StringComparison.OrdinalIgnoreCase) &&
+            char.IsAsciiDigit(extension[3]);
+    }
+
     private static string EmulatorId(ISaveLocationProvider provider) => provider switch
     {
         DuckStationSaveLocationProvider => "duckstation",
@@ -647,6 +747,8 @@ public static class SaveProviderRegistry
         DolphinSaveLocationProvider => "dolphin",
         Rpcs3SaveLocationProvider => "rpcs3",
         RetroArchSaveLocationProvider => "retroarch",
+        // The release and nightly channels are different builds, so their save states never mix.
+        MelonDsSaveLocationProvider melonDs => melonDs.EmulatorId,
         _ => provider.SystemId,
     };
 

@@ -186,6 +186,16 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     // catch-all extensions like .bin, which would risk a restore overwriting a non-card file.
     private static readonly string[] PlayStationCardExtensions = [".srm", ".mcr", ".mcd"];
 
+    // Nintendo DS battery saves cross emulator the same way: a DS core writes the raw cartridge dump
+    // as <game>.srm where standalone melonDS writes the identical bytes as <game>.sav, so both key by
+    // game name alone (nds/battery/<game>) and one game is one cloud entry. See
+    // NintendoDsBatterySaveKey and DECISIONS 2026-09-01. A DeSmuME .dsv is not a raw dump and keeps
+    // the plain file-name key.
+    private const string NintendoDsSystemId = NintendoDsBatterySaveKey.SystemId;
+    // The extension a fresh restore lands on so a RetroArch DS core picks it up; an existing save is
+    // read under whatever name it already has (see the probe).
+    private const string NintendoDsBatteryExtension = ".srm";
+
     // RetroArch's own artifacts in a save folder: save states (Game.state, .state1, .state.auto),
     // input replays, screenshots, and configuration. Everything else named after a game is that
     // game's data, whichever core wrote it.
@@ -293,15 +303,47 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
                 .ToList(),
             cancellationToken);
 
-    public SaveUnitLocation? ResolveUnit(string unitId)
+    /// <summary>
+    /// The battery namespace, as the interface defines it (everything under <c>&lt;system&gt;/</c> that
+    /// is not the states/cheats/patches sub-namespace), with one Nintendo DS exception: the legacy
+    /// file-name keys its raw battery saves used before they became cross-emulator are <em>not</em>
+    /// owned. Those entries are superseded by the canonical <c>battery/&lt;game&gt;</c> key (copied
+    /// over by <see cref="NintendoDsBatteryKeyMigration"/>) and resolve to the same local file, so
+    /// owning both would have one file uploading and downloading against itself.
+    /// </summary>
+    public bool OwnsUnit(string unitId)
     {
         if (string.IsNullOrWhiteSpace(unitId) || !unitId.StartsWith(UnitIdPrefix, StringComparison.Ordinal))
+            return false;
+        var localId = unitId[UnitIdPrefix.Length..];
+        var separator = localId.IndexOf('/');
+        if (separator < 0)
+        {
+            return !(IsNintendoDs && NintendoDsBatterySaveKey.IsRawBatteryFile(localId)) &&
+                localId is not ("cheats" or "patches" or "states");
+        }
+
+        return localId[..separator] is not ("cheats" or "patches" or "states");
+    }
+
+    public SaveUnitLocation? ResolveUnit(string unitId)
+    {
+        if (string.IsNullOrWhiteSpace(unitId) || !OwnsUnit(unitId))
             return null;
 
         var localId = unitId[UnitIdPrefix.Length..];
         var info = Resolve(CancellationToken.None);
         string fileName;
-        if (IsPlayStation)
+        if (IsNintendoDs && localId.StartsWith(NintendoDsBatterySaveKey.LocalIdPrefix, StringComparison.Ordinal))
+        {
+            // Land the shared DS battery key on whichever file this machine's core actually writes, and
+            // for a fresh restore create the .srm a libretro DS core reads.
+            if (NintendoDsBatterySaveKey.BaseNameFrom(localId) is not { } baseName)
+                return null;
+            fileName = NintendoDsBatterySaveKey.ResolveFileName(
+                info.SaveDirectory, baseName, NintendoDsBatteryExtension);
+        }
+        else if (IsPlayStation)
         {
             // Land the shared PS1 card key on this core's own card file: read the existing card
             // whatever its extension, and for a fresh restore create the core's default <base>.srm.
@@ -325,6 +367,25 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
     }
 
     private bool IsPlayStation => string.Equals(_systemId, PlayStationSystemId, StringComparison.Ordinal);
+
+    private bool IsNintendoDs => string.Equals(_systemId, NintendoDsSystemId, StringComparison.Ordinal);
+
+    // A save already on disk for this game keeps its own name; only a fresh restore falls back to the
+    // caller's default extension. Returns the file name, or null when none of them exists.
+    private static string? FindExistingFile(
+        string saveDirectory,
+        string baseName,
+        IReadOnlyList<string> extensions)
+    {
+        foreach (var extension in extensions)
+        {
+            var candidate = baseName + extension;
+            if (File.Exists(Path.Combine(saveDirectory, candidate)))
+                return candidate;
+        }
+
+        return null;
+    }
 
     // The shared cross-emulator card key portion for a local PS1 save file (<base>.<ext>): mirrors the
     // key DuckStation emits for a file-title per-game card, so the two emulators meet at one cloud entry.
@@ -353,17 +414,8 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
 
     // A card already on disk for this game keeps its own name (the core may write .srm or .mcr); only a
     // fresh restore falls back to the default extension. Returns the file name, or null when none exists.
-    private static string? FindExistingPlayStationCard(string saveDirectory, string baseName)
-    {
-        foreach (var extension in PlayStationCardExtensions)
-        {
-            var candidate = baseName + extension;
-            if (File.Exists(Path.Combine(saveDirectory, candidate)))
-                return candidate;
-        }
-
-        return null;
-    }
+    private static string? FindExistingPlayStationCard(string saveDirectory, string baseName) =>
+        FindExistingFile(saveDirectory, baseName, PlayStationCardExtensions);
 
     private IReadOnlyList<SaveUnit> GetSaveUnits(CancellationToken cancellationToken)
     {
@@ -388,13 +440,20 @@ public sealed class RetroArchSaveLocationProvider : ISaveLocationProvider
             if (IsPlayStation && !IsPlayStationCardFile(fileName))
                 continue;
 
-            var localId = IsPlayStation ? PlayStationCardLocalId(fileName) : fileName;
+            // A DS raw battery dump keys by game name alone so it meets standalone melonDS's copy of
+            // the same save; a .dsv (not a raw dump) keeps the plain file-name key.
+            var localId = IsPlayStation
+                ? PlayStationCardLocalId(fileName)
+                : IsNintendoDs
+                    ? NintendoDsBatterySaveKey.LocalIdFor(fileName) ?? fileName
+                    : fileName;
             var unitId = UnitIdPrefix + localId;
 
             // Never emit a unit id twice: the whole sync builds a dictionary keyed by it and throws
-            // (Argument_AddingDuplicateWithKey) on a duplicate. PlayStation's file-title key drops the
-            // extension, so two same-named cards (a stray .mcr beside a .srm) would otherwise collide;
-            // the first in the deterministic order wins and the rest are left for the emulator.
+            // (Argument_AddingDuplicateWithKey) on a duplicate. The PlayStation and Nintendo DS keys
+            // both drop the extension, so two same-named files (a stray .mcr beside a .srm, a .sav
+            // beside a .srm) would otherwise collide; the first in the deterministic order wins and
+            // the rest are left for the emulator.
             if (!emitted.Add(unitId))
                 continue;
 

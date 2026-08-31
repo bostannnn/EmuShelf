@@ -11319,6 +11319,45 @@ is 0.10s (it runs twice per switch, so its duration is paid double). Measured af
 ~320ms with the rebuild landing ~60-80ms after the press; cached revisits unchanged (~217ms rail
 animation, content swaps immediately); a 5-press RB burst still coalesces and lands correctly.
 
+## 2026-09-01 — Standalone melonDS is two emulators, and DS battery saves key by game name
+
+Nintendo DS could only launch through RetroArch. Standalone **melonDS** now serves it too, registered
+as **two** emulators — `melonds` (release) and `melonds-nightly` — because the channels are far enough
+apart in practice that both get installed, and each needs its own executable, launch arguments, and
+save-folder override. Both are listed *after* RetroArch in `KnownEmulators.All`: the first emulator
+supporting a system is what an install that never picked one falls back to, so DS behaves exactly as
+before until the picker is used.
+
+**Saves: one cloud entry per game, not per file name.** A DS battery save is a raw dump of the
+cartridge's save chip — standalone melonDS writes it as `<game>.sav`, a libretro DS core writes the
+identical bytes as `<game>.srm` (the frontend, not the core, chooses that extension). Keying by file
+name, as every other RetroArch system does, filed those as two unrelated cloud entries: play on the
+Thor under RetroArch, then on the desktop under melonDS, and neither machine ever sees the other's
+progress. DS battery saves therefore key by game name alone — `nds/battery/<game>` — and each provider
+resolves that key to whatever extension its own emulator reads. Which local file a key means is
+decided by *last write*, not by a fixed extension preference: one folder really can hold both
+spellings (a stale `.srm` beside the `.sav` melonDS keeps writing, or the reverse), and preferring an
+extension would sync the copy nobody is playing and then overwrite it on the next download. A game
+with no local file yet lands on `.srm` for RetroArch, `.sav` for melonDS. This is the PlayStation memory-card precedent
+(`playstation/per-game/file-title/…`, shared by DuckStation and Beetle PSX) applied to DS.
+`NintendoDsBatteryKeyMigration` copies existing `nds/<game>.srm|.sav` entries onto the shared key on
+the first sync after upgrade — copy-only and idempotent, like the 2026-08-21 namespace re-key, with
+the newest of two extensions winning. Both providers stop *owning* the legacy file-name keys, so one
+local file can never sync against itself under two ids. A DeSmuME `.dsv` is **not** a raw dump and
+keeps its file-name key: no format is ever converted (see docs/emulator-profiles-refactor.md).
+
+**Only a dedicated save folder syncs.** melonDS's default is to write each save beside its ROM.
+EmuShelf does not sync that: it would mean writing into the user's game folders, where a save is
+indistinguishable from anything else sitting next to a ROM. The provider reads melonDS's own
+`SaveFilePath` (from `melonDS.toml`'s `[Instance0]` table, or the legacy flat `melonDS.ini`), falls
+back to the per-`(system, emulator)` EmuShelf override, and otherwise reports the folder as
+unconfigured with the exact setting to change. Within that folder only files named after a DS game in
+the library are claimed — melonDS puts a Slot-2 GBA cartridge's `.sav` in the same place, and the
+folder may be shared with another emulator.
+
+Save states stay per channel (`melonds/nds/`, `melonds-nightly/nds/`): a `.ml0` is bound to the build
+that wrote it. Hotkeys and texture packs are not wired for melonDS — it simply does not appear in
+those sections.
 ## 2026-08-31 — Couch grid visual pass: light and depth instead of new palettes
 
 The couch grid's flatness ("any admin dashboard, not a console") was addressed by an A/B-mocked

@@ -31,6 +31,18 @@ are inventoried. The pieces:
   emulator id. This is deliberate — it keeps the Saves section one-row-per-console and every existing
   test/coordinator path stable.
 
+**Nintendo DS (2026-09-01) is the second worked example, and the one to copy now.** DS gained
+standalone **melonDS**, registered as two emulators (`melonds` release, `melonds-nightly`), on top of
+RetroArch. Adding them was exactly the shape this document predicts: one `EmulatorDefinition` per
+channel in `KnownEmulators` (after RetroArch, so the no-profile launch fallback is unchanged), one
+`ISaveLocationProvider`, and one `SaveProviderRegistry.Profiles` entry each — no edits to the
+coordinator, the settings record, the view models, or the views. Two things it adds to the PS1
+example: (1) the row's static display text had to become emulator-neutral for a *three*-emulator
+system (`RetroArchPlatform` now takes the text as parameters); (2) cross-emulator battery saves needed
+a canonical key that is not any one emulator's file name — `nds/battery/<game>`, with a copy-only
+cloud re-key for the entries that predate it (`NintendoDsBatteryKeyMigration`). See DECISIONS
+2026-09-01.
+
 ## Known limitations / deferred (pick these up next)
 
 1. **PS1 save branching is an `if (IsRetroArch(...))` inside the descriptor.** It does not generalise
@@ -125,12 +137,22 @@ different app?**
   PCSX2 vs Android AetherSX2 / NetherSX2 (PCSX2-lineage `.ps2` cards, format-compatible, different
   emulator id). PS3 is moot (no real Android RPCS3).
 
+**Update (2026-08-21 / 2026-09-01): battery saves are system-scoped, and the different-app case has a
+bridge where the payload is genuinely identical.** Battery keys lead with the *system*, not the
+emulator, so two emulators for one console meet at one cloud entry by construction. Where they also
+disagree on the *file name* of an identical payload, the shared key is declared explicitly rather than
+guessed: PlayStation cards key by DuckStation's file-title name, and Nintendo DS battery saves key by
+game name alone (`nds/battery/<game>`, melonDS `.sav` ↔ libretro `.srm`). The bullets above are still
+the rule for anything whose bytes differ.
+
 Two hard limits, independent of the above:
 
 - **Save states never cross platforms.** A state is bound to one emulator build and CPU (x86 desktop vs
   ARM Android); it will not load across devices, often not across versions. Only in-game / memory-card
   saves are portable. Sync states within a platform only.
-- **EmuShelf never converts formats.** Where two apps' formats disagree there is no bridge, by design.
+- **EmuShelf never converts formats.** Where two apps' formats disagree there is no bridge, by design —
+  a shared key is only ever declared for payloads that are already byte-identical (a DeSmuME `.dsv`,
+  which carries a footer, is deliberately left out of the DS key for exactly this reason).
 
 What this demands of the refactor:
 

@@ -61,6 +61,43 @@ public class EmulatorSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task NintendoDsRow_OffersBothMelonDsChannelsAndPinsTheChosenOne()
+    {
+        var viewModel = CreateViewModel();
+        var nds = viewModel.Rows.Single(row => row.SystemId == "nds");
+
+        // RetroArch first (unchanged default for an install that never picked), then each melonDS
+        // channel as its own emulator with its own executable.
+        Assert.Equal(
+            ["RetroArch (set executable to choose a core)", "melonDS", "melonDS (nightly)"],
+            nds.AvailableChoices.Select(choice => choice.DisplayName));
+        Assert.Equal("retroarch", nds.SelectedChoice?.EmulatorId);
+
+        nds.SelectedChoice = nds.AvailableChoices.Single(choice => choice.EmulatorId == "melonds");
+        Assert.Equal("melonDS", nds.EmulatorName);
+        Assert.False(nds.RequiresCorePath);
+        nds.ExecutablePath = "/Applications/melonDS.app";
+
+        nds.SelectedChoice = nds.AvailableChoices.Single(choice => choice.EmulatorId == "melonds-nightly");
+        nds.ExecutablePath = "/portable/melonDS-nightly/melonDS";
+        await viewModel.SaveCommand.ExecuteAsync(null);
+
+        // Both channels persist as their own profile, and the picked one is active.
+        var profiles = _configurations.AllSaved.Where(configuration => configuration.SystemId == "nds").ToList();
+        Assert.Contains(profiles, configuration =>
+            configuration.EmulatorId == "melonds" &&
+            configuration.ExecutablePath == "/Applications/melonDS.app");
+        Assert.Contains(profiles, configuration =>
+            configuration.EmulatorId == "melonds-nightly" &&
+            configuration.ExecutablePath == "/portable/melonDS-nightly/melonDS");
+        Assert.Equal("melonds-nightly", _configurations.ActiveEmulators["nds"]);
+        // The launch template is melonDS's own — the ROM path as one argument, no core.
+        Assert.Equal(
+            "\"{GamePath}\"",
+            profiles.Single(configuration => configuration.EmulatorId == "melonds-nightly").LaunchArguments);
+    }
+
+    [AvaloniaFact]
     public void FixedAndroidChoices_MigrateLegacyRetroArchWithoutCoreToMaintainedDefault()
     {
         var configured = KnownSystems.All.ToDictionary(

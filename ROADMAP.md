@@ -411,6 +411,12 @@ both names while the library keeps regions and revisions as separate game entrie
 - [ ] On real Windows, launch an accepted `.nds` ROM through a configured RetroArch core; verify
       paths with spaces, minimize/restore, and that neither ROM nor RetroArch configuration,
       overrides, playlists, or achievement settings are modified.
+- [x] Add standalone melonDS (release and nightly channels) as selectable DS emulators alongside
+      RetroArch, with battery saves keyed per game so one cloud entry serves melonDS's `.sav` and a
+      libretro core's `.srm` (DECISIONS 2026-09-01).
+- [ ] On a real machine with melonDS installed, launch a `.nds` ROM through each channel, then sync
+      a save round-trip melonDS ↔ RetroArch and confirm the migrated cloud key carries the existing
+      DS saves over.
 
 ## M18 — Game Boy Advance library (planned)
 

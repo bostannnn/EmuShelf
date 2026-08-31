@@ -266,6 +266,29 @@ public sealed class CloudSaveSyncSettingsTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void NintendoDsBatteryKeyMigrated_IsItsOwnGuard_AndRoundTrips()
+    {
+        // A machine that already ran the 2026-08-21 namespace re-key still has to run the DS per-game
+        // re-key, so the two guards are independent — and this one must survive a settings round-trip
+        // or the migration would repeat on every launch.
+        var before = new CloudSaveSyncSettings { Enabled = true, BatteryNamespaceMigrated = true };
+        Assert.NotEqual(before, before with { NintendoDsBatteryKeyMigrated = true });
+
+        AppPaths.EnsureDirectoriesExist();
+        var service = new JsonSettingsService(AppPaths, NullAppLogger.Instance);
+        Assert.False(service.Load().CloudSaveSync.NintendoDsBatteryKeyMigrated);
+
+        service.Save(new AppSettings
+        {
+            CloudSaveSync = new CloudSaveSyncSettings { Enabled = true, NintendoDsBatteryKeyMigrated = true },
+        });
+
+        var loaded = service.Load().CloudSaveSync;
+        Assert.True(loaded.NintendoDsBatteryKeyMigrated);
+        Assert.False(loaded.BatteryNamespaceMigrated);
+    }
+
+    [Fact]
     public void PerEmulatorOverride_IsIsolatedFromOtherEmulatorsOnTheSameSystem()
     {
         var configuration = new CloudSaveSyncSettings()
