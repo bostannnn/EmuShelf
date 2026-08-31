@@ -100,7 +100,11 @@
             <Setter Property="Opacity" Value="1" />
             <Setter Property="Transitions">
                 <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.18" Easing="CubicEaseOut" />
+                    <!-- 0.10s, not the 0.18s the couch shipped with: on an LB/RB platform switch the
+                         fade runs TWICE (out around the empty grid, in over the ready one), so its
+                         duration is paid double on top of the build itself — 0.18s each way read as
+                         "platform switching is slow" on the Thor. 0.10s still softens the swap. -->
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.10" Easing="CubicEaseOut" />
                 </Transitions>
             </Setter>
         </Style>
@@ -255,7 +259,10 @@
         <Style Selector="Button.gamepad-game:pointerover Border.gamepad-hover-ring">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <Style Selector="Button.gamepad-game.controller-input:pointerover Border.gamepad-hover-ring">
+        <!-- While a controller drives the couch the mouse hover ring stays hidden. The class lives on
+             the grid's ScrollViewer (GamepadRowList) and reaches the pooled tiles through this
+             descendant selector — one class binding on the surface, instead of one per pooled tile. -->
+        <Style Selector="ScrollViewer.controller-input Button.gamepad-game:pointerover Border.gamepad-hover-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
         <!-- Per-tile controller focus ring: hidden by default, shown on the focused tile. Opacity

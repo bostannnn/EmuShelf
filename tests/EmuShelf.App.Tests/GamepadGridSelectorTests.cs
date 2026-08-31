@@ -33,9 +33,9 @@ public class GamepadGridSelectorTests
             .Where(t => !double.IsNaN(t.Item3.X))
             .ToList();
 
-    // Proves the grid virtualizes: for a 300-game library only the on-screen rows are ever materialized,
-    // and scrolling to the bottom recycles rows rather than accumulating them — so cost is flat wherever
-    // you are in the list, top or bottom.
+    // Proves the grid virtualizes and tile visual trees recycle: for a 300-game library only a bounded
+    // viewport buffer is materialized, and scrolling to the bottom rebinds existing tiles rather than
+    // rebuilding their deep cover trees — so cost is flat wherever you are in the list.
     [AvaloniaFact]
     public async Task GamepadGrid_VirtualizesRows_CostIsFlatFromTopToBottom()
     {
@@ -71,6 +71,28 @@ public class GamepadGridSelectorTests
             _output.WriteLine($"realized at top: {atTop.Count} of 300");
             Assert.True(atTop.Count < 120, $"expected only on-screen rows realized, but {atTop.Count} tiles exist");
             Assert.Contains(atTop, t => ReferenceEquals(t.Game, games[0]));
+
+            // Walk focus down row by row — the d-pad-hold path whose per-row realization cost is the
+            // thing this grid optimizes. Each realized Button is remembered with the game it showed:
+            // a row scrolling in must REBIND a pooled tile (same Button, new game), not build a new
+            // tile tree. (A single large jump legitimately double-buffers fresh containers, so only
+            // this gradual walk asserts instance reuse.)
+            var seen = new Dictionary<Button, GameViewModel>();
+            foreach (var t in atTop)
+                seen[t.Tile] = t.Game;
+            var rebound = false;
+            for (var row = 1; row < viewModel.GamepadRows.Count && row <= 12; row++)
+            {
+                viewModel.FocusedGame = viewModel.GamepadRows[row][0];
+                await Pump();
+                foreach (var t in RealizedTiles(window))
+                {
+                    if (seen.TryGetValue(t.Tile, out var was) && !ReferenceEquals(was, t.Game))
+                        rebound = true;
+                    seen[t.Tile] = t.Game;
+                }
+            }
+            Assert.True(rebound, "no tile Button was ever rebound to a different game during a 12-row walk — rows are rebuilding tile trees instead of recycling them");
 
             // Jump focus to the last game — the grid scrolls to the bottom.
             viewModel.FocusedGame = games[^1];
@@ -159,6 +181,10 @@ public class GamepadGridSelectorTests
                 AvaloniaHeadlessPlatform.ForceRenderTimerTick();
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Render);
             }
+            // Let the momentum glide finish before asserting: the burst intentionally outruns the
+            // reveal, and the ring/realization contract holds at the SETTLED offset (the glide's
+            // convergence needs more headless render ticks than one fixed Pump provides).
+            await SettleScroll(window);
             await Pump();
             CheckRing(viewModel, window, GamepadAction.NavigateDown, -1, problems);
 
@@ -447,9 +473,8 @@ public class GamepadGridSelectorTests
     }
 
     private static ScrollViewer GamepadScroller(Window window) =>
-        window.GetVisualDescendants().OfType<ListBox>()
-            .First(list => list.Name == "GamepadRowList")
-            .GetVisualDescendants().OfType<ScrollViewer>().First();
+        window.GetVisualDescendants().OfType<ScrollViewer>()
+            .First(scroller => scroller.Name == "GamepadRowList");
 
     // Pump until the eased scroll offset stops moving, so an assertion reads the settled position rather
     // than a mid-ease frame. The ease advances one step per Render flush, so this converges quickly.

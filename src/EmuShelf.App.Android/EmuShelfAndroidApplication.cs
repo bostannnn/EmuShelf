@@ -80,6 +80,24 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         global::EmuShelf.App.Diagnostics.PerfTrace.Sink =
             message => global::Android.Util.Log.Info("EmuShelfPerf", message);
 
+        // Settle-time GC for the couch grid glide. On MonoVM a minor collection during an ACTIVE
+        // glide freezes the scroll ~100ms (busy threads are slow to reach safepoints) while the same
+        // collection at rest costs ~1ms, so collect when the glide lands: throttled, and posted at
+        // Background priority so the settle frame itself renders first. Pairs with the enlarged
+        // nursery in environment.txt so the glide itself stays collection-free; desktop heads leave
+        // this hook uninstalled because CoreCLR has no such pause. See DECISIONS 2026-08-31.
+        var lastSettleCollect = 0L;
+        global::EmuShelf.App.Services.PlatformIdleHints.ScrollGlideSettled = () =>
+        {
+            var now = global::System.Environment.TickCount64;
+            if (now - lastSettleCollect < 2000)
+                return;
+            lastSettleCollect = now;
+            global::Avalonia.Threading.Dispatcher.UIThread.Post(
+                static () => global::System.GC.Collect(0),
+                global::Avalonia.Threading.DispatcherPriority.Background);
+        };
+
         return base.CustomizeAppBuilder(builder)
             .WithInterFont()
             // Pin EGL explicitly. The default [Egl, Software] list lets a failed EGL init fall back to

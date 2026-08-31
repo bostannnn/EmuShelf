@@ -1221,6 +1221,21 @@ public partial class MainViewModel : ViewModelBase
     private void RepackActiveGrid()
     {
         var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
+
+        // Before the first real width measurement the packer's availableWidth<=0 branch would place
+        // EVERY game on one degenerate row, and publishing that row once realized a tile per game in
+        // the couch grid (968 tiles built for a layout thrown away at the first SizeChanged — see
+        // DECISIONS 2026-08-31). Publish NO rows instead: the first SizeChanged always delivers a
+        // real width and repacks, and an empty row list renders the same as the loading state.
+        if (available <= 0 && Games.Count > 0)
+        {
+            if (GamepadRows.Count > 0)
+                GamepadRows.Clear();
+            if (CoverRows.Count > 0)
+                CoverRows.Clear();
+            return;
+        }
+
         var ratios = new double[Games.Count];
         for (var i = 0; i < Games.Count; i++)
             ratios[i] = CoverAspectRatioFor(Games[i]);
@@ -1366,7 +1381,9 @@ public partial class MainViewModel : ViewModelBase
     // rows (see RepackActiveGrid), scaled around a target height so each row fills the width. MaxCoverWidth
     // caps the cover decode so a wide (landscape) cover is still decoded crisp.
     private const double MaxCoverWidth = 232;
-    private const double CoverColumnSpacing = 28;    // gap between covers in a justified row
+    // Internal (not private): GamepadGridPanel must arrange tiles with the SAME gap the packer
+    // budgeted each justified width against, so it reads this constant rather than owning a copy.
+    internal const double CoverColumnSpacing = 28;   // gap between covers in a justified row
 
     // The ideal row height each mode's justified rows scale around. The couch grid runs a little taller
     // for a sofa viewing distance; both scale up/down per row to fill the width exactly.
@@ -3797,31 +3814,40 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode || Games.Count == 0)
             return;
 
-        var index = Games.IndexOf(focused);
-        if (index < 0)
-            return;
-
         if (ShowGamepadShelf)
         {
+            var index = Games.IndexOf(focused);
+            if (index < 0)
+                return;
+
             var shelfStart = Math.Max(0, index - ShelfNeighbourPrefetchRadius);
             var shelfEnd = Math.Min(Games.Count - 1, index + ShelfNeighbourPrefetchRadius);
             for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
             {
                 var shelfGame = Games[shelfIndex];
-                if (shelfGame.LoadCoverCommand.CanExecute(shelfGame))
+                if (shelfGame.NeedsCoverLoad && shelfGame.LoadCoverCommand.CanExecute(shelfGame))
                     shelfGame.LoadCoverCommand.Execute(shelfGame);
             }
             return;
         }
 
-        var minRow = focused.GridRowIndex - GamepadCoverPrefetchRows;
-        var maxRow = focused.GridRowIndex + GamepadCoverPrefetchRows;
-        foreach (var game in Games)
+        // This runs on EVERY d-pad move of a held scroll, so it must stay allocation- and work-free
+        // for the common case (window already warm). Walking only the window's rows via GamepadRows
+        // (not all 900+ Games), and skipping already-covered games BEFORE the async command machinery,
+        // keeps a warm-window prefetch to a few dozen field reads — the old shape allocated an async
+        // state machine per windowed game per move, and that churn was enough to trigger a GC (a
+        // visible ~100 ms hitch on the Thor) every second or so of held scrolling.
+        var minRow = Math.Max(0, focused.GridRowIndex - GamepadCoverPrefetchRows);
+        var maxRow = Math.Min(GamepadRows.Count - 1, focused.GridRowIndex + GamepadCoverPrefetchRows);
+        for (var rowIndex = minRow; rowIndex <= maxRow; rowIndex++)
         {
-            if (game.GridRowIndex < minRow || game.GridRowIndex > maxRow)
-                continue;
-            if (game.LoadCoverCommand.CanExecute(game))
-                game.LoadCoverCommand.Execute(game);
+            var row = GamepadRows[rowIndex];
+            for (var column = 0; column < row.Count; column++)
+            {
+                var game = row[column];
+                if (game.NeedsCoverLoad && game.LoadCoverCommand.CanExecute(game))
+                    game.LoadCoverCommand.Execute(game);
+            }
         }
     }
 
@@ -4344,16 +4370,34 @@ public partial class MainViewModel : ViewModelBase
         }
 
         // Not built yet: clear the outgoing tiles now so one platform's library can't sit under
-        // another platform's title, then debounce the heavy build so cycling through several unvisited
-        // platforms only builds the one the user settles on.
+        // another platform's title.
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
+
+        // Leading edge + trailing coalesce. The FIRST press of a burst builds immediately — a
+        // trailing-only debounce made every first visit to a platform pay the full interval before
+        // the build even started, which is most of why LB/RB cycling read as slow on the Thor
+        // (measured ~480ms per uncached switch, ~180ms of it pure debounce wait). Rapid follow-up
+        // presses still coalesce through the timer, so cycling past several unvisited platforms
+        // builds only the one the user settles on; a build started for a passed-over platform is
+        // superseded by ReloadGamesAsync's generation check exactly like any competing reload.
+        var now = Environment.TickCount64;
+        var isBurst = _platformReloadDebounce.IsEnabled ||
+                      now - _lastUncachedPlatformSwitch < PlatformReloadDebounceMs;
+        _lastUncachedPlatformSwitch = now;
+        if (!isBurst)
+            return ReloadGamesAsync(useCache: true);
+
         _platformReloadCompletion ??=
             new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _platformReloadDebounce.Stop();
         _platformReloadDebounce.Start();
         return _platformReloadCompletion.Task;
     }
+
+    // TickCount64 of the last uncached platform switch, so RequestLibraryReload can tell a first
+    // press (build immediately) from a cycling burst (debounce).
+    private long _lastUncachedPlatformSwitch = -1_000_000; // "long before boot" without overflow risk
 
     // Default (useCache: false) is the safe, data-changing reload used by every mutation and refresh
     // path: it drops the whole scope cache so the rebuild reflects the DB. Only the navigation hot path
@@ -4914,7 +4958,7 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task LoadGameCoverAsync(GameViewModel? game)
     {
-        if (game is null || game.CoverPath is null || game.HasCoverImage || game.IsCoverLoading)
+        if (game is null || !game.NeedsCoverLoad)
             return;
 
         if (_isFrontendSuspended)
@@ -4924,7 +4968,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         var generation = _loadGeneration;
-        var coverPath = game.CoverPath;
+        var coverPath = game.CoverPath!; // non-null: NeedsCoverLoad (checked above) requires it
         var coverRevision = game.CoverRevision;
         game.IsCoverLoading = true;
         // Bound how many covers decode at once. Acquired after the cheap guards above so queued tiles

@@ -509,6 +509,16 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public bool HasCoverImage => CoverImage is not null;
 
     /// <summary>
+    /// True while a cover load would do real work. The ONE guard shared by
+    /// <c>MainViewModel.LoadGameCoverAsync</c>'s opening no-op check and the couch grid's
+    /// per-d-pad-move prefetch (which must test this BEFORE invoking the async command — the
+    /// command allocates its state machine per call even when it immediately returns, and that
+    /// churn was measured as a mid-scroll GC hitch on the Thor). Keeping it here means the fast
+    /// pre-check and the command's own guard can never drift apart.
+    /// </summary>
+    internal bool NeedsCoverLoad => CoverPath is not null && !HasCoverImage && !IsCoverLoading;
+
+    /// <summary>
     /// Non-null (this) only while the tile has no cover. The couch grid binds a <c>ContentControl</c>'s
     /// content to this so the "artwork missing" placeholder subtree — a Grid, a medallion, and a SECOND
     /// per-tile <c>Image</c> (the platform artwork) — is instantiated ONLY for uncovered tiles. Covers are
