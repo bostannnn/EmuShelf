@@ -66,19 +66,40 @@
              and only exist in grid layout: shelf and spotlight paint their own backdrops. -->
         <Grid Grid.Row="0" Grid.RowSpan="3" IsHitTestVisible="False"
               IsVisible="{Binding IsGamepadGridLayout}">
+            <!-- Full-bleed platform tint: the whole stage takes a low hue shift toward the focused
+                 game's accent, so switching platforms recolours the room, not just a corner. Same
+                 code-behind swap + cross-fade as the corner pool below. -->
+            <Border x:Name="GamepadAmbientTint" Opacity="0.10">
+                <Border.Transitions>
+                    <Transitions>
+                        <BrushTransition Property="Background" Duration="0:0:0.45" />
+                    </Transitions>
+                </Border.Transitions>
+            </Border>
             <Border>
                 <Border.Background>
                     <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                        <GradientStop Offset="0" Color="#12FFFFFF" />
+                        <GradientStop Offset="0" Color="#1CFFFFFF" />
                         <GradientStop Offset="0.45" Color="#00000000" />
-                        <GradientStop Offset="1" Color="#38000000" />
+                        <GradientStop Offset="1" Color="#66000000" />
                     </LinearGradientBrush>
                 </Border.Background>
             </Border>
-            <Border x:Name="GamepadAmbientGlow" Opacity="0.15">
+            <!-- Counter-pool: a quiet theme-accent pond in the lower right, opposing the platform
+                 wash so the stage is lit from two corners instead of one flat sheet. Static. -->
+            <Border Background="{DynamicResource EmuAccentBrush}" Opacity="0.12">
+                <Border.OpacityMask>
+                    <RadialGradientBrush Center="85%,95%" GradientOrigin="85%,95%"
+                                         RadiusX="52%" RadiusY="60%">
+                        <GradientStop Offset="0" Color="#FFFFFFFF" />
+                        <GradientStop Offset="1" Color="#00FFFFFF" />
+                    </RadialGradientBrush>
+                </Border.OpacityMask>
+            </Border>
+            <Border x:Name="GamepadAmbientGlow" Opacity="0.45">
                 <Border.OpacityMask>
                     <RadialGradientBrush Center="22%,28%" GradientOrigin="22%,28%"
-                                         RadiusX="58%" RadiusY="72%">
+                                         RadiusX="72%" RadiusY="88%">
                         <GradientStop Offset="0" Color="#FFFFFFFF" />
                         <GradientStop Offset="1" Color="#00FFFFFF" />
                     </RadialGradientBrush>
@@ -263,9 +284,9 @@
                 Padding="36,12" IsVisible="{Binding IsGamepadGridLayout}">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
-                    <GradientStop Offset="0" Color="#0A000000" />
-                    <GradientStop Offset="0.6" Color="#59000000" />
-                    <GradientStop Offset="1" Color="#73000000" />
+                    <GradientStop Offset="0" Color="#14000000" />
+                    <GradientStop Offset="0.6" Color="#8C000000" />
+                    <GradientStop Offset="1" Color="#B3000000" />
                 </LinearGradientBrush>
             </Border.Background>
             <Grid x:Name="GamepadDockPrimaryRow" IsVisible="{Binding HasGames}"

@@ -9,6 +9,7 @@ using Avalonia.Media.Immutable;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System;
 using System.ComponentModel;
 using EmuShelf.App.Controls;
 using EmuShelf.App.Services;
@@ -109,11 +110,24 @@ public partial class GamepadShellView : UserControl
         if (_gamepadViewModel?.FocusedGame is not { } game)
             return;
 
-        var accent = game.ShelfAccent;
+        var accent = VividAmbient(game.ShelfAccent);
         if (GamepadAmbientGlow.Background is ImmutableSolidColorBrush current && current.Color == accent)
             return;
 
-        GamepadAmbientGlow.Background = new ImmutableSolidColorBrush(accent);
+        var brush = new ImmutableSolidColorBrush(accent);
+        GamepadAmbientGlow.Background = brush;
+        GamepadAmbientTint.Background = brush;
+    }
+
+    /// <summary>
+    /// The per-system accents are muted mid-tones picked for chips and placeholders (PS1 is literally
+    /// grey); layered at low opacity over a dark backdrop they disappear. Keep the HUE but force the
+    /// saturation and brightness up so the wash reads as coloured light at ambient strength.
+    /// </summary>
+    private static Color VividAmbient(Color accent)
+    {
+        var hsv = accent.ToHsv();
+        return HsvColor.ToRgb(hsv.H, Math.Max(hsv.S, 0.60), Math.Max(hsv.V, 0.95));
     }
 
     // Mirror of OnDataContextChanged's teardown, run when the view is permanently detached (activity

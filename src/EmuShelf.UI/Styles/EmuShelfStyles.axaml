@@ -377,7 +377,7 @@
              selection/focus restores full strength. Opacity (not a recolour) keeps each console's
              own badge art. -->
         <Style Selector="Button.gamepad-platform Image, Button.gamepad-platform PathIcon">
-            <Setter Property="Opacity" Value="0.55" />
+            <Setter Property="Opacity" Value="0.42" />
         </Style>
         <Style Selector="Button.gamepad-platform.selected Image, Button.gamepad-platform.selected PathIcon,
                          Button.gamepad-platform.focused Image, Button.gamepad-platform.focused PathIcon,
@@ -1067,7 +1067,7 @@
         <!-- Unfocused covers step back a notch so the focused tile owns the light. Rides the existing
              0.2s cover-image opacity transition, so focus moves fade rather than pop. -->
         <Style Selector="Button.gamepad-game:not(.focused) Image.cover-image.loaded">
-            <Setter Property="Opacity" Value="0.88" />
+            <Setter Property="Opacity" Value="0.78" />
         </Style>
         <!-- Titles follow the same hierarchy: dimmed at rest, full strength under the focus ring. -->
         <Style Selector="TextBlock.gamepad-tile-title">
