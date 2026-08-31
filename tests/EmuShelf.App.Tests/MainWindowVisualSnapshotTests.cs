@@ -1408,7 +1408,9 @@ public class MainWindowVisualSnapshotTests
                 "Shin Megami Tensei: Persona 3 FES — The Journey and The Answer";
             viewModel.OpenFocusedGameActionsCommand.Execute(null);
             await SaveGamepadOverlaySnapshotAsync(window, outputDirectory, "emushelf-gamepad-actions-1280x800.png");
-            AssertGamepadOverlayHeightBelow(window, 600);
+            // The actions side sheet anchors to the overlay host's full height (window minus the
+            // host's 36px margins) — a centred, content-sized card floated at arbitrary offsets.
+            AssertGamepadOverlayFillsHost(window);
             AssertGamepadOverlayTitleFits(window, viewModel.GamepadOverlayTitle);
             Assert.True(viewModel.GamepadOverlayOptions.Single(option => option.Label == "Remove from library").IsDestructive);
             viewModel.OpenFocusedDiscSelectionCommand.Execute(null);
@@ -2412,6 +2414,14 @@ public class MainWindowVisualSnapshotTests
             using var output = File.Create(Path.Combine(outputDirectory, fileName));
             frame.Save(output, PngBitmapEncoderOptions.Default);
         }
+    }
+
+    private static void AssertGamepadOverlayFillsHost(Window window)
+    {
+        var overlay = window.GetVisualDescendants()
+            .OfType<Border>()
+            .Single(control => control.Classes.Contains("gamepad-overlay"));
+        Assert.InRange(overlay.Bounds.Height, window.Bounds.Height - 74, window.Bounds.Height - 70);
     }
 
     private static void AssertGamepadOverlayHeightBelow(Window window, double previousFixedHeight)

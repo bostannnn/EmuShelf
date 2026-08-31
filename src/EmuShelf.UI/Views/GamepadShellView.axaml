@@ -15,6 +15,12 @@
             <Setter Property="Width" Value="{Binding #GamepadOverlayHost.Bounds.Width}" />
             <Setter Property="Height" Value="{Binding #GamepadOverlayHost.Bounds.Height}" />
         </Style>
+        <!-- The game-actions side sheet anchors to the host's full height: a centred, content-sized
+             card floated at arbitrary offsets from the screen edges; anchored chrome reads as part of
+             the shell. Width stays the side-sheet's own (EmuShelfStyles). -->
+        <Style Selector="Border.gamepad-overlay.side-sheet">
+            <Setter Property="Height" Value="{Binding #GamepadOverlayHost.Bounds.Height}" />
+        </Style>
         <!-- The Hotkeys overlay is a dense per-emulator × per-action matrix, so like Settings it fills
              the host and lets its matrix column scroll rather than centring a fixed-size card. -->
         <Style Selector="Border.gamepad-overlay.hotkeys">
@@ -743,7 +749,11 @@
                     <!-- The media host fills all the way to the bottom so the 3D shadow can extend into
                          (and be seen behind) the title text below, rather than being clipped at a surface
                          edge above it. The title is an overlay drawn on top of this same scene. -->
-                    <Grid x:Name="GamepadShelfMediaHost" Margin="16,4,16,0">
+                    <!-- Edge to edge: any inset here prints the flat root colour as stripes around the
+                         scene's gradient backdrop. The rail band above is the one deliberate boundary,
+                         and the shader's ramp starts at exactly the rail's fill so they meet without a
+                         seam. -->
+                    <Grid x:Name="GamepadShelfMediaHost">
                     <Panel x:Name="GamepadShelfViewport" ClipToBounds="True"
                            IsVisible="{Binding !ShelfSceneSupported}"
                            SizeChanged="OnGamepadShelfViewportSizeChanged">
@@ -961,7 +971,7 @@
                         </StackPanel>
                     </Grid>
 
-                    <Grid Grid.Row="1" RowDefinitions="Auto,*" RowSpacing="18">
+                    <Grid Grid.Row="1" RowDefinitions="Auto,*,Auto" RowSpacing="14">
                         <!-- System-menu body: the View mode / Sort picker and the option list share ONE
                              scroll region so a short couch panel (e.g. the AYN Thor at ~396dip usable
                              height) scrolls to every entry instead of starving the option row to zero and
@@ -975,12 +985,12 @@
                                       IsVisible="{Binding ShowsGamepadOverlayOptions}">
                         <!-- Right inset reserves the scroll gutter for BOTH the picker and the options, so
                              the thumb never overlaps the rightmost picker card when the menu scrolls. -->
-                        <StackPanel Spacing="18" Margin="0,0,18,0">
+                        <StackPanel Spacing="12" Margin="0,0,18,0">
                         <!-- Couch layout picker at the top of the start menu, gated to the system menu.
                              The active mode is filled; the pair lights up when the controller ring is on
                              the row. -->
                         <StackPanel x:Name="GamepadSystemMenuPicker" IsVisible="{Binding IsGamepadSystemMenuOpen}"
-                                    Spacing="12" Margin="0,0,0,4">
+                                    Spacing="9" Margin="0,0,0,2">
                             <Grid ColumnDefinitions="*,Auto">
                                 <TextBlock Text="VIEW MODE" FontSize="12" FontWeight="Bold"
                                            LetterSpacing="2.4"
@@ -1034,8 +1044,24 @@
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 <!-- Current direction (always shown) plus the A=Reverse affordance, which
                                      appears only while the sort row owns focus (A reverses only there). -->
-                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="7"
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10"
                                             VerticalAlignment="Center">
+                                    <!-- Always laid out, and only faded in. The A pill is taller than
+                                         the text beside it, so making it appear on focus grew this
+                                         header by nine pixels and pushed the sort row and the entire
+                                         options list down with it — the menu moved under the player on
+                                         every d-pad press between rows, and back up on the way out.
+                                         It sits BEFORE the direction chip so the chip stays flush with
+                                         the panel's right edge instead of drifting toward the centre. -->
+                                    <StackPanel Orientation="Horizontal" Spacing="7"
+                                                Classes="gamepad-sort-reverse-hint"
+                                                Classes.focused="{Binding IsGamepadSortRowFocused}">
+                                        <Border Classes="gamepad-key action-a">
+                                            <TextBlock Text="A" />
+                                        </Border>
+                                        <TextBlock Text="Reverse" FontSize="13" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    </StackPanel>
                                     <Border Background="{DynamicResource EmuSegmentBrush}"
                                             BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="1"
                                             CornerRadius="8" Padding="10,4">
@@ -1048,20 +1074,6 @@
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                         </StackPanel>
                                     </Border>
-                                    <!-- Always laid out, and only faded in. The A pill is taller than
-                                         the text beside it, so making it appear on focus grew this
-                                         header by nine pixels and pushed the sort row and the entire
-                                         options list down with it — the menu moved under the player on
-                                         every d-pad press between rows, and back up on the way out. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="7"
-                                                Classes="gamepad-sort-reverse-hint"
-                                                Classes.focused="{Binding IsGamepadSortRowFocused}">
-                                        <Border Classes="gamepad-key action-a" Margin="10,0,0,0">
-                                            <TextBlock Text="A" />
-                                        </Border>
-                                        <TextBlock Text="Reverse" FontSize="13" VerticalAlignment="Center"
-                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    </StackPanel>
                                 </StackPanel>
                             </Grid>
                             <!-- Sort row: same gamepad-viewmode-row / -card component as View mode above,
@@ -1111,31 +1123,45 @@
                         </StackPanel>
                             <ItemsControl x:Name="GamepadOverlayOptions" Classes="gamepad-overlay-options"
                                           Classes.top-aligned="{Binding AreGamepadOverlayOptionsTopAligned}"
-                                          ItemsSource="{Binding GamepadOverlayOptions}">
+                                          ItemsSource="{Binding GamepadOverlayPrimaryOptions}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
-                                        <StackPanel>
-                                            <!-- Destructive rows sit behind a hairline, so Remove/Quit read
-                                                 as a separate zone rather than the next item down. -->
-                                            <Border Height="1" Margin="6,10,6,4" IsVisible="{Binding IsDestructive}"
-                                                    Background="{DynamicResource EmuBorderBrush}" />
-                                            <Button Classes="gamepad-modal-option"
-                                                    Classes.destructive="{Binding IsDestructive}"
-                                                    Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                                    Classes.focused="{Binding IsFocused}" Command="{Binding Command}">
-                                                <StackPanel Orientation="Horizontal" Spacing="15">
-                                                    <PathIcon Width="20" Height="20" Data="{Binding Icon}"
-                                                              IsVisible="{Binding HasIcon}" VerticalAlignment="Center" />
-                                                    <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
-                                                </StackPanel>
-                                            </Button>
-                                        </StackPanel>
+                                        <Button Classes="gamepad-modal-option"
+                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
+                                                Classes.focused="{Binding IsFocused}" Command="{Binding Command}">
+                                            <StackPanel Orientation="Horizontal" Spacing="15">
+                                                <PathIcon Width="20" Height="20" Data="{Binding Icon}"
+                                                          IsVisible="{Binding HasIcon}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                         </StackPanel>
                         </ScrollViewer>
-                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadAchievementsOpen}"
+                        <!-- Destructive zone: Remove / Quit live OUTSIDE the scroller, pinned above the
+                             hint legend behind a hairline — always visible (never under a scroll fold)
+                             and always a deliberate reach past the safe rows. -->
+                        <StackPanel Grid.Row="2" IsVisible="{Binding ShowsGamepadDestructiveZone}">
+                            <Border Height="1" Margin="6,0,24,8" Background="{DynamicResource EmuBorderBrush}" />
+                            <ItemsControl ItemsSource="{Binding GamepadOverlayDestructiveOptions}" Margin="0,0,18,0">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadOverlayOptionViewModel">
+                                        <Button Classes="gamepad-modal-option destructive"
+                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
+                                                Classes.focused="{Binding IsFocused}" Command="{Binding Command}">
+                                            <StackPanel Orientation="Horizontal" Spacing="15">
+                                                <PathIcon Width="20" Height="20" Data="{Binding Icon}"
+                                                          IsVisible="{Binding HasIcon}" VerticalAlignment="Center" />
+                                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                                            </StackPanel>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                        <Grid Grid.RowSpan="3" IsVisible="{Binding IsGamepadAchievementsOpen}"
                               RowDefinitions="Auto,*" RowSpacing="16">
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
@@ -2021,7 +2047,7 @@
                              button bar — so nothing floats against an edge the way the shared picker layout
                              (top-left body, bottom-right buttons) did. Bound to the same GamepadOverlayOptions
                              the pickers use, so D-pad focus and A/B routing are unchanged. -->
-                        <StackPanel x:Name="GamepadConfirmationCard" Grid.RowSpan="2"
+                        <StackPanel x:Name="GamepadConfirmationCard" Grid.RowSpan="3"
                                     IsVisible="{Binding IsGamepadConfirmationOverlay}"
                                     VerticalAlignment="Center" HorizontalAlignment="Stretch" Spacing="22">
                             <TextBlock Text="{Binding GamepadOverlayTitle}"

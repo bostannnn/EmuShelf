@@ -11383,3 +11383,17 @@ down). Because it scales the RESOLVED colour, it recolours with theme and platfo
 zero-backdrop tube presentations stay zero. The spotlight list's rows kissed the card's top/bottom
 mid-scroll; the fix is Margin (viewport inset), not Padding (scroll-extent inset), so the gap is
 permanent rather than only at the list's ends.
+
+## 2026-09-01 — Couch panel polish: anchored sheet, pinned destructive zone, seamless shelf ramp
+
+Follow-ups from the first on-device round of the menu work. (1) The game-actions side sheet anchors
+to the overlay host's full height (the Settings/Hotkeys pattern) instead of floating as a centred
+content-sized card. (2) Destructive options (Remove / Quit) moved OUT of the option scroller into a
+pinned zone above the hint legend, published as GamepadOverlayPrimaryOptions /
+GamepadOverlayDestructiveOptions projections — navigation still walks the single
+GamepadOverlayOptions order. This also means Quit can never hide below the Thor's menu scroll fold,
+and with tightened option/picker metrics the start menu no longer scrolls there at all. (3) The
+sort-direction chip sits AFTER the always-reserved "A Reverse" hint so it stays flush right instead
+of drifting toward the centre. (4) The shelf's shader ramp tops out at exactly 1.0 — the scene's
+first pixel row equals the rail band's flat fill, so no seam — and the GL host's 16px side insets
+are gone (they printed the flat root colour as stripes around the gradient).

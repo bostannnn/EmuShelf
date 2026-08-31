@@ -187,7 +187,10 @@ void main()
     // layout's gradient backdrop. Scaling the RESOLVED backdrop (library colour + accent wash)
     // keeps it recolouring with the theme and focused platform exactly as the flat fill did; a
     // zero backdrop (tube presentations that composite over their own paint) stays zero.
-    backdrop *= mix(0.62, 1.35, uv.y);   // GL uv.y runs bottom-up: 0.62 at the floor, lit at the top
+    // GL uv.y runs bottom-up. The ramp's TOP factor is exactly 1.0 so the scene's first row of
+    // pixels equals the untouched resolved colour — the same fill the XAML rail band above the
+    // scene paints — and the stage darkens toward the floor with no seam where they meet.
+    backdrop *= mix(0.55, 1.0, uv.y);
 
     // The untouched image is only needed to lerp against, so at full intensity it is two texture
     // fetches per pixel that are multiplied by zero. This pass runs at native resolution over the

@@ -430,11 +430,11 @@
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option">
-            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="MinHeight" Value="46" />
             <Setter Property="FontSize" Value="18" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="18,12" />
+            <Setter Property="Padding" Value="16,9" />
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
@@ -767,7 +767,7 @@
              mode is filled with the accent wash; an accent glow wraps the pair while the controller ring
              is on the row (Left/Right switch and apply live). -->
         <Style Selector="Button.gamepad-viewmode-card">
-            <Setter Property="Height" Value="56" />
+            <Setter Property="Height" Value="50" />
             <!-- Tight, because three cards share the menu panel's width and each has to fit an icon,
                  a label and the space the check badge reserves. -->
             <Setter Property="Padding" Value="12,10" />

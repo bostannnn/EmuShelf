@@ -1141,6 +1141,22 @@ public partial class MainViewModel : ViewModelBase
     /// forces a real viewport so the list is visible and scrollable. Zero on the desktop targets, where the
     /// list already measures far taller and the pinned pixel-height snapshots must not move.
     /// </summary>
+    /// <summary>
+    /// The option list split for layout: destructive entries (Remove, Quit) render OUTSIDE the
+    /// option scroller, pinned above the hint legend behind a hairline, so they are always visible
+    /// (never below a scroll fold) and always a deliberate reach away from the safe rows.
+    /// Navigation still walks the single <see cref="GamepadOverlayOptions"/> order.
+    /// </summary>
+    public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayPrimaryOptions =>
+        GamepadOverlayOptions.Where(option => !option.IsDestructive).ToList();
+
+    public IReadOnlyList<GamepadOverlayOptionViewModel> GamepadOverlayDestructiveOptions =>
+        GamepadOverlayOptions.Where(option => option.IsDestructive).ToList();
+
+    public bool ShowsGamepadDestructiveZone =>
+        ShowsGamepadOverlayOptions && !IsGamepadConfirmationOverlay &&
+        GamepadOverlayOptions.Any(option => option.IsDestructive);
+
     public double GamepadOverlayOptionsMinHeight =>
         OperatingSystem.IsAndroid() && ShowsGamepadOverlayOptions ? 240 : 0;
     // The Achievements, Settings, Scraper, BatchScraper and Hotkeys overlays render their own bespoke
@@ -3594,6 +3610,9 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadConfirmationOverlay));
         OnPropertyChanged(nameof(ShowsGamepadConfirmationActions));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));
+        OnPropertyChanged(nameof(GamepadOverlayPrimaryOptions));
+        OnPropertyChanged(nameof(GamepadOverlayDestructiveOptions));
+        OnPropertyChanged(nameof(ShowsGamepadDestructiveZone));
         OnPropertyChanged(nameof(UsesGamepadDefaultOverlayHints));
         OnPropertyChanged(nameof(ShowsGamepadOverlayOptions));
         OnPropertyChanged(nameof(GamepadOverlayOptionsMinHeight));
