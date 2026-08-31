@@ -1116,7 +1116,11 @@
              6px border is preserved. Scaling only the cover grows it into the fixed ring and eats the
              frame at the corners. RenderTransform is composited and post-layout, so no row reflow; the
              ring's opacity (which tile is focused) stays instant — only the size eases. -->
-        <Style Selector="Panel.gamepad-cover-stack">
+        <!-- The zoom rides the WHOLE tile (cover + title strip together, class on TileRoot), not
+             just the cover stack: with the ringless selector the cover's growth would otherwise eat
+             the fixed title's breathing room, leaving the label crowded under a zoomed cover. Scaling
+             them as one unit keeps the cover-to-title gap proportional. -->
+        <Style Selector="Grid.gamepad-tile-zoom">
             <Setter Property="RenderTransformOrigin" Value="50%,50%" />
             <Setter Property="RenderTransform" Value="none" />
             <Setter Property="Transitions">
@@ -1126,7 +1130,7 @@
                 </Transitions>
             </Setter>
         </Style>
-        <Style Selector="Button.gamepad-game.focused Panel.gamepad-cover-stack">
+        <Style Selector="Button.gamepad-game.focused Grid.gamepad-tile-zoom">
             <Setter Property="RenderTransform" Value="scale(1.09)" />
         </Style>
         <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark

@@ -23,7 +23,7 @@
         <!-- The 58 here is the label strip under the cover. GamepadGridPanel computes every row's
              band height and tile rect from GamepadGridTile.LabelStripHeight; the ctor re-applies that
              constant to this RowDefinition so the two can never drift. -->
-        <Grid x:Name="TileRoot" Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
+        <Grid x:Name="TileRoot" Classes="gamepad-tile-zoom" Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
             <!-- The cover frame is this tile's packed size: the packer framed it to
                  the platform's canonical ratio and scaled the row to fill the width.
                  UniformToFill below crops off-ratio art to fill it; every cover in a
