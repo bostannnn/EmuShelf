@@ -3797,33 +3797,48 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadMode || Games.Count == 0)
             return;
 
-        var index = Games.IndexOf(focused);
-        if (index < 0)
-            return;
-
         if (ShowGamepadShelf)
         {
+            var index = Games.IndexOf(focused);
+            if (index < 0)
+                return;
+
             var shelfStart = Math.Max(0, index - ShelfNeighbourPrefetchRadius);
             var shelfEnd = Math.Min(Games.Count - 1, index + ShelfNeighbourPrefetchRadius);
             for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
             {
                 var shelfGame = Games[shelfIndex];
-                if (shelfGame.LoadCoverCommand.CanExecute(shelfGame))
+                if (NeedsCoverPrefetch(shelfGame) && shelfGame.LoadCoverCommand.CanExecute(shelfGame))
                     shelfGame.LoadCoverCommand.Execute(shelfGame);
             }
             return;
         }
 
-        var minRow = focused.GridRowIndex - GamepadCoverPrefetchRows;
-        var maxRow = focused.GridRowIndex + GamepadCoverPrefetchRows;
-        foreach (var game in Games)
+        // This runs on EVERY d-pad move of a held scroll, so it must stay allocation- and work-free
+        // for the common case (window already warm). Walking only the window's rows via GamepadRows
+        // (not all 900+ Games), and skipping already-covered games BEFORE the async command machinery,
+        // keeps a warm-window prefetch to a few dozen field reads — the old shape allocated an async
+        // state machine per windowed game per move, and that churn was enough to trigger a GC (a
+        // visible ~100 ms hitch on the Thor) every second or so of held scrolling.
+        var minRow = Math.Max(0, focused.GridRowIndex - GamepadCoverPrefetchRows);
+        var maxRow = Math.Min(GamepadRows.Count - 1, focused.GridRowIndex + GamepadCoverPrefetchRows);
+        for (var rowIndex = minRow; rowIndex <= maxRow; rowIndex++)
         {
-            if (game.GridRowIndex < minRow || game.GridRowIndex > maxRow)
-                continue;
-            if (game.LoadCoverCommand.CanExecute(game))
-                game.LoadCoverCommand.Execute(game);
+            var row = GamepadRows[rowIndex];
+            for (var column = 0; column < row.Count; column++)
+            {
+                var game = row[column];
+                if (NeedsCoverPrefetch(game) && game.LoadCoverCommand.CanExecute(game))
+                    game.LoadCoverCommand.Execute(game);
+            }
         }
     }
+
+    // Mirror of LoadGameCoverAsync's cheap no-op guards, checked BEFORE invoking the command so a
+    // warm prefetch window costs no allocations at all (the async command allocates per call even
+    // when its own guards immediately return).
+    private static bool NeedsCoverPrefetch(GameViewModel game) =>
+        game.CoverPath is not null && !game.HasCoverImage && !game.IsCoverLoading;
 
     private void ScheduleAmbientThemeUpdate(GameViewModel? game)
     {

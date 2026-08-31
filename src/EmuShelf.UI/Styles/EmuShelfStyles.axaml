@@ -255,7 +255,10 @@
         <Style Selector="Button.gamepad-game:pointerover Border.gamepad-hover-ring">
             <Setter Property="Opacity" Value="1" />
         </Style>
-        <Style Selector="Button.gamepad-game.controller-input:pointerover Border.gamepad-hover-ring">
+        <!-- While a controller drives the couch the mouse hover ring stays hidden. The class lives on
+             the grid's ScrollViewer (GamepadRowList) and reaches the pooled tiles through this
+             descendant selector — one class binding on the surface, instead of one per pooled tile. -->
+        <Style Selector="ScrollViewer.controller-input Button.gamepad-game:pointerover Border.gamepad-hover-ring">
             <Setter Property="Opacity" Value="0" />
         </Style>
         <!-- Per-tile controller focus ring: hidden by default, shown on the focused tile. Opacity

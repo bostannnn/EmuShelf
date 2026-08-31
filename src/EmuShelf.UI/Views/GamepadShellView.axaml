@@ -107,195 +107,27 @@
                 </Border>
             </Grid>
         </Border>
-        <!-- Row-virtualized grid: a ListBox renders one ROW per line and its VirtualizingStackPanel
-             realizes only the ~5 on-screen rows, so a 900-game library lays out ~40 tiles, not 900.
-             Each row is a horizontal strip holding exactly GamepadColumnCount tiles, so the rendered
-             column count always equals the navigation stride, and vertical virtualization has none of
-             the phantom-cell defects a virtualized UniformGridLayout had. The ListBox is a passive
-             renderer — navigation and the focus ring are driven by the flat Games list, not its
-             selection — so its selection/focus visuals are styled away below. -->
-        <ListBox x:Name="GamepadRowList" Grid.Row="1" Margin="52,26,52,26"
-                 ItemsSource="{Binding GamepadRows}"
-                 Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
-                 Background="Transparent" BorderThickness="0" Padding="0"
-                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                 ScrollViewer.VerticalScrollBarVisibility="Hidden"
-                 IsVisible="{Binding ShowGamepadGrid}"
-                 SizeChanged="OnGamepadLibrarySizeChanged"
-                 IsHitTestVisible="{Binding !HasGamepadOverlay}">
-            <ListBox.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <VirtualizingStackPanel Orientation="Vertical" />
-                </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.Styles>
-                <Style Selector="ListBoxItem">
-                    <Setter Property="Padding" Value="0" />
-                    <Setter Property="Margin" Value="0" />
-                    <Setter Property="MinHeight" Value="0" />
-                    <Setter Property="Background" Value="Transparent" />
-                    <Setter Property="FocusAdorner" Value="{x:Null}" />
-                </Style>
-                <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
-                                 ListBoxItem:pointerover /template/ ContentPresenter">
-                    <Setter Property="Background" Value="Transparent" />
-                </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-                <DataTemplate>
-                    <!-- One row of tiles. 40px side gutter + 28px inter-row spacing match the old grid.
-                         The side gutter is Padding (not Margin) so the row container spans the full width:
-                         a first/last-column tile's focus frame overflows 6px into the gutter and stays
-                         INSIDE the container, so it is never clipped at the grid's edge.
-                         The 28px vertical gap is split top(10)/bottom(18) instead of all-bottom, so EVERY
-                         row — including the first and last against the scroll viewport — has room above and
-                         below for the focus frame's 6px overflow. Inter-row spacing is unchanged (10+18=28). -->
-                    <ItemsControl ItemsSource="{Binding}" Margin="0,10,0,18" Padding="40,0,40,0"
-                                  ClipToBounds="False">
-                        <ItemsControl.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal" Spacing="28" ClipToBounds="False" />
-                            </ItemsPanelTemplate>
-                        </ItemsControl.ItemsPanel>
-                        <ItemsControl.ItemTemplate>
-                            <!-- CompileBindings on: this tile is recycled as rows virtualize in and out
-                                 during a scroll, so its dozen bindings re-evaluate constantly. Compiled
-                                 against the already-declared GameViewModel they skip the per-binding
-                                 reflection the rest of the shell still pays. -->
-                            <DataTemplate x:DataType="vm:GameViewModel" x:CompileBindings="True">
-                        <Button Classes="gamepad-game" Classes.focused="{Binding IsFocused}"
-                                Classes.unavailable="{Binding !IsAvailable}"
-                                Theme="{StaticResource GamepadGameButtonTheme}"
-                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                Width="{Binding CoverWidth}" Padding="0" Margin="0"
-                                ClipToBounds="False" VerticalAlignment="Top"
-                                Background="Transparent" BorderThickness="2"
-                                HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                                Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).FocusGameCommand}"
-                                CommandParameter="{Binding}"
-                                DoubleTapped="OnGameDoubleTapped">
-                            <Grid Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
-                                <!-- The cover frame is this tile's packed size: the packer framed it to
-                                     the platform's canonical ratio and scaled the row to fill the width.
-                                     UniformToFill below crops off-ratio art to fill it; every cover in a
-                                     row shares one height, so the row's covers line up top and bottom. -->
-                                  <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
-                                         Classes="gamepad-cover-stack" ClipToBounds="False">
-                                    <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
-                                         larger on every side with a concentric corner radius (12 + 6), so
-                                         the opaque cover masks its centre and the accent reads as an even
-                                         6px frame. Its inner edge is the cover's own rounded corner, so
-                                         corners can never mismatch and no artwork is ever hidden — unlike a
-                                         stroked border on top, whose inner corner radius (radius − thickness)
-                                         cannot follow the cover. Must stay first/bottom-most. Shown by
-                                         opacity on .focused (styles below); no transition, tracks the d-pad. -->
-                                    <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
-                                            Margin="-6" CornerRadius="18"
-                                            Background="{DynamicResource EmuAccentBrush}" />
-                                    <!-- Opaque well between the focus pad and the cover, sized to the cover
-                                         (the pad is 6px larger). It is never dimmed, so when an unavailable
-                                         cover drops to 58% opacity its centre reveals this dark well rather
-                                         than the accent pad behind it — the pad stays a clean 6px edge frame. -->
-                                    <Border IsHitTestVisible="False" CornerRadius="12"
-                                            Background="{DynamicResource EmuCoverWellBrush}" />
-                                    <!-- Rows virtualize, so a tile attaches only when its row scrolls
-                                         into view — loading the cover on attach fetches just the
-                                         on-screen covers, and recycled tiles reload via DataContext. -->
-                                    <Border Classes="gamepad-cover-shadow" IsHitTestVisible="False"
-                                            CornerRadius="12"
-                                            Background="{DynamicResource EmuCoverWellBrush}" />
-                                    <Border Classes="gamepad-cover-frame" CornerRadius="12" Background="{DynamicResource EmuCoverWellBrush}"
-                                            ClipToBounds="True"
-                                            AttachedToVisualTree="OnGameCoverAttached"
-                                            DataContextChanged="OnGameCoverDataContextChanged">
-                                        <Panel>
-                                            <!-- The "artwork missing" placeholder is built by a ContentControl
-                                                 whose content is non-null ONLY while the tile is uncovered
-                                                 (UncoveredPlaceholder). A covered tile therefore never
-                                                 instantiates this Grid + medallion + second Image. Covers are
-                                                 prefetched ahead of the scroll, so realized tiles are almost
-                                                 always already covered — this is the largest cut to per-row
-                                                 control-realization cost, the thing that stalls the scroll on
-                                                 device. It only ever appears (no crossfade needed) because it
-                                                 is removed, not dimmed, the moment a cover arrives. -->
-                                            <ContentControl Content="{Binding UncoveredPlaceholder}"
-                                                            HorizontalContentAlignment="Stretch"
-                                                            VerticalContentAlignment="Stretch">
-                                                <ContentControl.ContentTemplate>
-                                                    <DataTemplate x:DataType="vm:GameViewModel">
-                                                        <Grid RowDefinitions="5,*"
-                                                              Background="{DynamicResource EmuCoverWellBrush}">
-                                                            <Border Grid.Row="0" Background="{Binding AccentColor}" />
-                                                            <StackPanel Grid.Row="1" HorizontalAlignment="Center"
-                                                                        VerticalAlignment="Center" Spacing="12">
-                                                                <Border Width="88" Height="88" CornerRadius="44"
-                                                                        Background="{DynamicResource EmuPlaceholderMedallionBrush}">
-                                                                    <Image Width="62" Height="62" Source="{Binding PlatformArtwork}"
-                                                                           RenderOptions.BitmapInterpolationMode="None" />
-                                                                </Border>
-                                                                <TextBlock Text="ARTWORK MISSING" FontSize="8" FontWeight="Bold"
-                                                                           LetterSpacing="1.2" Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                            </StackPanel>
-                                                        </Grid>
-                                                    </DataTemplate>
-                                                </ContentControl.ContentTemplate>
-                                            </ContentControl>
-                                            <!-- UniformToFill so covers fill the frame with no letterbox bars.
-                                                 In a single-platform view the frame is that platform's true
-                                                 shape, so this is an exact fill; only a mixed view's uniform
-                                                 frame crops the off-ratio minority (wide SNES, square PS1). -->
-                                            <Image Source="{Binding CoverImage}" Classes="cover-image"
-                                                   Classes.loaded="{Binding HasCoverImage}"
-                                                   Stretch="UniformToFill" />
-                                            <Border IsVisible="{Binding IsMultiDisc}" Background="#D9000000"
-                                                    CornerRadius="4" Padding="9,5" Margin="10"
-                                                    HorizontalAlignment="Left" VerticalAlignment="Bottom">
-                                                <TextBlock Text="{Binding DiscBadgeText}" FontSize="10" FontWeight="Bold"
-                                                           LetterSpacing="0.8" Foreground="White" />
-                                            </Border>
-                                        </Panel>
-                                    </Border>
-                                    <!-- Same marks the desktop grid shows, sized for a couch viewing
-                                         distance. Both are Borders here: a focusable button inside a
-                                         tile button would capture controller focus, and every gamepad
-                                         action for a game is reached through the Y actions overlay. -->
-                                    <StackPanel Orientation="Horizontal" Spacing="6" Margin="10"
-                                                HorizontalAlignment="Left" VerticalAlignment="Top">
-                                        <Border Classes="gamepad-mark" IsVisible="{Binding ShowAchievementMark}">
-                                            <PathIcon Width="16" Height="16"
-                                                      Data="{StaticResource AchievementTrophyGeometry}"
-                                                      Foreground="{DynamicResource EmuAchievementBrush}" />
-                                        </Border>
-                                        <Border Classes="gamepad-mark" IsVisible="{Binding ShowTextureMark}">
-                                            <PathIcon Width="16" Height="16"
-                                                      Data="{StaticResource TexturePackLayersGeometry}"
-                                                      Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                        </Border>
-                                    </StackPanel>
-                                    <Border IsVisible="{Binding !IsAvailable}"
-                                            Background="#E1292D34" CornerRadius="5"
-                                            Padding="9,5" Margin="10"
-                                            HorizontalAlignment="Right" VerticalAlignment="Top">
-                                        <TextBlock Text="{Binding UnavailableBadgeText}" FontSize="10" FontWeight="Bold"
-                                                   LetterSpacing="0.9" Foreground="White" />
-                                    </Border>
-                                    <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
-                                            CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
-                                            BorderThickness="2" />
-                                  </Panel>
-                                <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding DisplayTitle}"
-                                           Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"
-                                           TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuGpLabelSize}" FontWeight="SemiBold"
-                                           TextAlignment="Center" HorizontalAlignment="Stretch"
-                                           VerticalAlignment="Top" MaxWidth="{Binding CoverWidth}" />
-                            </Grid>
-                        </Button>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </DataTemplate>
-            </ListBox.ItemTemplate>
-        </ListBox>
+        <!-- Row-virtualized grid. GamepadGridPanel keeps a fixed pool of permanently-attached
+             tiles and re-binds/repositions them as the offset crosses rows, with exact row geometry
+             from the packer (see the panel's remarks for the measured on-device reasons a ListBox +
+             VirtualizingStackPanel could not scroll smoothly here). The surface is passive —
+             navigation and the focus ring are driven by the flat Games list.
+             .controller-input here (not per tile) drives the hover-ring suppression style for every
+             pooled tile through a descendant selector — one binding instead of one per tile. -->
+        <ScrollViewer x:Name="GamepadRowList" Grid.Row="1" Margin="52,26,52,26"
+                      Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
+                      Classes.controller-input="{Binding IsGamepadControllerInputActive}"
+                      Background="Transparent" Padding="0"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Hidden"
+                      IsVisible="{Binding ShowGamepadGrid}"
+                      SizeChanged="OnGamepadLibrarySizeChanged"
+                      IsHitTestVisible="{Binding !HasGamepadOverlay}">
+            <!-- Transparent background so the WHOLE surface hit-tests: a touch pan started in the
+                 gutter or between tiles must reach the scroller, not fall through the panel. -->
+            <controls:GamepadGridPanel x:Name="GamepadGridSurface" Rows="{Binding GamepadRows}"
+                                       Background="Transparent" />
+        </ScrollViewer>
         <StackPanel Grid.Row="1" IsVisible="{Binding IsLibraryEmpty}"
                     HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="520">
             <TextBlock Text="{Binding EmptyLibraryTitle}" FontSize="30" FontWeight="Bold"

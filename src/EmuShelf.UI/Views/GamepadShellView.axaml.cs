@@ -9,6 +9,7 @@ using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.ComponentModel;
+using EmuShelf.App.Controls;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 
@@ -365,10 +366,11 @@ public partial class GamepadShellView : UserControl
     // View-focused coordination only: the view model owns which game is focused; this window reveals that
     // game's ROW and keeps it centred on one fixed viewport line, so the selector sits in the same place
     // on every platform regardless of cover aspect ratio. A d-pad move (animate) EASES the offset toward
-    // centre so a held direction glides; a scope switch / resize / far jump lands immediately. Positioning
-    // is always position-relative — measured from the realized row, never a hand-written absolute offset,
-    // which desynced the VirtualizingStackPanel's estimated extent on the real compositor (phantom space
-    // above the content, selector left off-screen; see DECISIONS 2026-08-05).
+    // centre so a held direction glides; a scope switch / resize / far jump lands immediately. The target
+    // offset is exact arithmetic over GamepadGridPanel's row geometry — the panel computes every row's
+    // band from the packed cover sizes, so centring never depends on the target row being realized and
+    // there is no estimated extent to drift (the disease behind DECISIONS 2026-08-05 is gone with the
+    // VirtualizingStackPanel that had it).
     private void RevealFocusedGame() => RevealFocusedGame(animate: false, attempt: 0);
 
     private void RevealFocusedGame(bool animate) => RevealFocusedGame(animate, 0);
@@ -386,7 +388,7 @@ public partial class GamepadShellView : UserControl
         // The packer stamped each cover with the justified row it landed in, so nav and the rendered
         // rows share one geometry (no arithmetic column count to drift out of sync).
         var rowIndex = focused.GridRowIndex;
-        if (rowIndex >= GamepadRowList.ItemCount)
+        if (!GamepadGridSurface.TryGetRowBounds(rowIndex, out var rowTop, out var rowHeight))
             return;
 
         var scroller = ResolveGamepadScroller();
@@ -399,83 +401,24 @@ public partial class GamepadShellView : UserControl
             return;
         }
 
+        var target = Math.Max(0, rowTop + rowHeight / 2 - scroller.Viewport.Height / 2);
+
         // Only a near move (a d-pad step) eases. A far change of row eases across many screens, which
-        // realizes and flashes a cover on every row it passes, so it snaps instead. The very first reveal
-        // in a scope (previous row unknown) also snaps.
+        // flashes a cover on every row it passes, so it snaps instead. The very first reveal in a scope
+        // (previous row unknown) also snaps. At the list ends the ScrollViewer clamps the offset, so the
+        // first/last rows rest against the edge.
         var previousRow = _lastRevealedRowIndex;
         _lastRevealedRowIndex = rowIndex;
         if (animate && previousRow is { } prev && Math.Abs(rowIndex - prev) <= GamepadMaxEaseRowStep)
         {
-            // Preferred: the target row is realized. Measure its centre offset ONCE here (a realized-row
-            // read, the safe context the snap uses) and ease toward that fixed number. The loop itself never
-            // touches the visual tree — a per-frame TranslatePoint/Bounds read forces a re-entrant layout
-            // that stack-overflows the virtualizing panel on short-cover rows. A held d-pad just retargets
-            // the one running loop.
-            if (GamepadRowList.ContainerFromIndex(rowIndex) is { } easeRow &&
-                TryMeasureCentreDelta(scroller, easeRow, out var easeDelta))
-            {
-                StartOrRetargetGamepadScroll(scroller, Math.Max(0, scroller.Offset.Y + easeDelta));
-                return;
-            }
-
-            // A fast held d-pad outran realization: the target row is not materialized yet. Rather than
-            // ScrollIntoView (a hard jump that breaks the glide — the residual Up/Down jank Left/Right never
-            // has), keep gliding by centring the still-realized PREVIOUS row and shifting one uniform
-            // row-stride per row moved. Rows are uniform per view (the invariant the whole centring relies
-            // on), so prev's own container height IS the stride, and the target lands the not-yet-realized
-            // row on centre. This is position-relative to a realized row — the sanctioned pattern — so the
-            // eased offset flows CONTINUOUSLY into the adjacent region (the panel realizes each row as the
-            // offset enters it) and never teleports far, so it cannot desync the estimated extent the way an
-            // absolute rowIndex*rowHeight jump did (DECISIONS 2026-08-05). Covers are pre-warmed
-            // (PrefetchCoversAroundFocus), so the row the glide uncovers is already painted, not a blank pop.
-            if (GamepadRowList.ContainerFromIndex(prev) is { Bounds.Height: > 0 } prevRow &&
-                TryMeasureCentreDelta(scroller, prevRow, out var prevDelta))
-            {
-                var target = scroller.Offset.Y + prevDelta + (rowIndex - prev) * prevRow.Bounds.Height;
-                StartOrRetargetGamepadScroll(scroller, Math.Max(0, target));
-                return;
-            }
-        }
-
-        // Snap path. Cancel any in-flight ease so it can't fight this landing. If the row is realized,
-        // centre it with one relative nudge; if not (a far jump into an unrealized region), ScrollIntoView
-        // realizes it, then a later pass — forced non-animate so it stays a snap — does the centring.
-        CancelGamepadScroll();
-        if (GamepadRowList.ContainerFromIndex(rowIndex) is { } rowContainer)
-        {
-            CentreRealizedRow(scroller, rowContainer);
+            StartOrRetargetGamepadScroll(scroller, target);
         }
         else
         {
-            GamepadRowList.ScrollIntoView(rowIndex);
-            if (attempt < 5)
-                Dispatcher.UIThread.Post(() => RevealFocusedGame(false, attempt + 1), DispatcherPriority.Loaded);
-        }
-    }
-
-    // Vertical distance (px) from the row container's centre to the viewport centre. Positive means the
-    // row is below centre. A realized-row read that must run in a safe context (input/loaded), never from
-    // the Render-priority ease loop — reading it there forces a re-entrant layout that stack-overflows the
-    // virtualizing panel on short-cover rows.
-    private static bool TryMeasureCentreDelta(ScrollViewer scroller, Control rowContainer, out double delta)
-    {
-        delta = 0;
-        if (rowContainer.TranslatePoint(new Point(0, 0), scroller) is not { } rowTopLeft)
-            return false;
-
-        delta = rowTopLeft.Y + rowContainer.Bounds.Height / 2 - scroller.Viewport.Height / 2;
-        return true;
-    }
-
-    // Snap the realized row's centre onto the viewport centre with a SINGLE relative nudge — immune to the
-    // extent-estimate drift that hand-written absolute offsets suffered. At the list ends the ScrollViewer
-    // clamps the offset, so the first/last rows rest against the edge.
-    private static void CentreRealizedRow(ScrollViewer scroller, Control rowContainer)
-    {
-        if (TryMeasureCentreDelta(scroller, rowContainer, out var delta) &&
-            Math.Abs(delta) >= GamepadScrollSettleThreshold)
-        {
-            scroller.Offset = scroller.Offset.WithY(Math.Max(0, scroller.Offset.Y + delta));
+            // Snap path. Cancel any in-flight ease so it can't fight this landing.
+            CancelGamepadScroll();
+            if (Math.Abs(scroller.Offset.Y - target) >= GamepadScrollSettleThreshold)
+                scroller.Offset = scroller.Offset.WithY(target);
         }
     }
 
@@ -528,6 +471,23 @@ public partial class GamepadShellView : UserControl
         _gamepadScrollVelocity = 0;
     }
 
+    // A minor GC during an active glide freezes the scroll for ~100 ms on the Thor (all threads busy,
+    // slow to reach safepoints), while the same collection at rest costs ~1 ms — so when a glide
+    // SETTLES, collect proactively. Together with the Android head's enlarged nursery
+    // (environment.txt) this keeps the glide itself collection-free: the nursery is emptied between
+    // holds instead of overflowing mid-hold. Throttled, and posted at Background priority so the
+    // settle frame itself renders first.
+    private long _lastSettleCollect;
+
+    private void ScheduleSettleCollect()
+    {
+        var now = Environment.TickCount64;
+        if (now - _lastSettleCollect < 2000)
+            return;
+        _lastSettleCollect = now;
+        Dispatcher.UIThread.Post(static () => GC.Collect(0), DispatcherPriority.Background);
+    }
+
     // Drive the glide from the compositor's own per-frame callback rather than a self-reposted Dispatcher
     // job. TopLevel.RequestAnimationFrame fires once immediately before each rendered frame, so the offset
     // advances in lock-step with vsync — the continuous-offset model a Flutter/canvas grid uses. A
@@ -578,6 +538,7 @@ public partial class GamepadShellView : UserControl
         {
             scroller.Offset = scroller.Offset.WithY(Math.Max(0, _gamepadScrollTarget));
             CancelGamepadScroll();
+            ScheduleSettleCollect();
             return;
         }
 
@@ -641,16 +602,9 @@ public partial class GamepadShellView : UserControl
         return result;
     }
 
-    // Cache the grid's ScrollViewer; it is stable once the ListBox realizes, but re-resolve if the
-    // cached instance was detached (e.g. after a template reload).
-    private ScrollViewer? ResolveGamepadScroller()
-    {
-        if (_gamepadScroller is { } cached && cached.IsAttachedToVisualTree())
-            return cached;
+    // The grid's scroller is now the named ScrollViewer itself (no ListBox template to dig through).
+    private ScrollViewer? ResolveGamepadScroller() => _gamepadScroller = GamepadRowList;
 
-        _gamepadScroller = GamepadRowList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
-        return _gamepadScroller;
-    }
 
     // Forces the system on-screen keyboard up once per Search/Rename open. The reveal runs on every couch
     // property change while the overlay is up, so guard on the view model's per-open revision to raise the
@@ -1203,11 +1157,6 @@ public partial class GamepadShellView : UserControl
             e.Handled = true;
         }
     }
-
-    // View wiring only: both grid and list items forward the double-tap gesture to the
-    // same command exposed by their game view model.
-    private void OnGameDoubleTapped(object? sender, TappedEventArgs e) =>
-        GameCoverInteractions.HandleDoubleTapped(sender, e);
 
     private void OnGamepadLibrarySizeChanged(object? sender, SizeChangedEventArgs e)
     {

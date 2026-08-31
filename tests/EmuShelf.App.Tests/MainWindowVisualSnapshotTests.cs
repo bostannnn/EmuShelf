@@ -1732,12 +1732,12 @@ public class MainWindowVisualSnapshotTests
             var achievementWidget = window.FindNamed<Border>("GamepadAchievementWidget");
             var playButton = window.FindNamed<Button>("GamepadPlayButton");
             var focusedDock = window.FindNamed<Border>("GamepadFocusedDock");
-            var rowList = window.FindNamed<ListBox>("GamepadRowList");
+            var rowList = window.FindNamed<ScrollViewer>("GamepadRowList");
             Assert.NotNull(achievementWidget);
             Assert.NotNull(playButton);
             Assert.NotNull(focusedDock);
             Assert.NotNull(rowList);
-            Assert.Equal(ScrollBarVisibility.Hidden, ScrollViewer.GetVerticalScrollBarVisibility(rowList));
+            Assert.Equal(ScrollBarVisibility.Hidden, rowList.VerticalScrollBarVisibility);
             Assert.InRange(focusedDock.Bounds.Height, 102, 106);
             Assert.Equal(playButton.Bounds.Height, achievementWidget.Bounds.Height, 1);
             Assert.InRange(playButton.Bounds.Height, 59, 61);
@@ -2108,17 +2108,22 @@ public class MainWindowVisualSnapshotTests
             viewModel.FocusedGame = viewModel.Games[0];
             await PumpAsync();
 
-            // The virtualized row list owns the scroller inside its template.
-            var rowList = window.FindNamed<ListBox>("GamepadRowList");
-            Assert.NotNull(rowList);
-            var scroller = rowList.GetVisualDescendants().OfType<ScrollViewer>().First();
+            // The grid surface's scroller is the named ScrollViewer itself.
+            var scroller = window.FindNamed<ScrollViewer>("GamepadRowList");
+            Assert.NotNull(scroller);
             var initialOffset = scroller.Offset.Y;
 
             // Walk down far enough to leave the first viewport regardless of the resolved column count.
+            // The reveal is a RequestAnimationFrame glide, and headless RAF only advances on explicit
+            // render ticks — without them the offset legitimately never moves (there are no frames).
             for (var step = 0; step < 6; step++)
             {
                 viewModel.MoveGamepadFocusDownCommand.Execute(null);
-                await PumpAsync();
+                for (var tick = 0; tick < 8; tick++)
+                {
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    await PumpAsync();
+                }
             }
 
             Assert.True(
@@ -2310,8 +2315,10 @@ public class MainWindowVisualSnapshotTests
                 .Where(button => button.Classes.Contains("gamepad-game"))
                 .ToArray();
             Assert.Equal(2, gameButtons.Length);
-            var tallButton = gameButtons[0];
-            var shortButton = gameButtons[1];
+            // Select by bound game, not visual-tree order: the grid surface pools its tile controls,
+            // so child order reflects pool history rather than row order.
+            var tallButton = gameButtons.Single(button => ReferenceEquals(button.DataContext, tallGame));
+            var shortButton = gameButtons.Single(button => !ReferenceEquals(button.DataContext, tallGame));
             static Border CoverFrameOf(Button tile) => tile.GetVisualDescendants()
                 .OfType<Border>()
                 .Single(border => border.Classes.Contains("gamepad-cover-frame"));

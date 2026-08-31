@@ -72,4 +72,12 @@
   <ItemGroup>
     <ProjectReference Include="..\EmuShelf.UI\EmuShelf.UI.csproj" />
   </ItemGroup>
+
+  <!-- Runtime tuning baked into the APK (see the file's comments): a larger SGen nursery keeps
+       minor GCs out of the couch grid's scroll glide, where one cost ~100ms of frozen frames on
+       the Thor. -->
+  <ItemGroup>
+    <AndroidEnvironment Include="environment.txt" />
+  </ItemGroup>
+
 </Project>

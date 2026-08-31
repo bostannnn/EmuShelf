@@ -11246,3 +11246,48 @@ deferral (a `ContentControl` gated on `GameViewModel.UncoveredPlaceholder` so co
 artwork-missing subtree) and a momentum grid scroll (SmoothDamp velocity-carry replacing exp-decay-to-target
 in `GamepadShellView`). A residual ~5 stalls of 83–100ms per long scroll remain (per-row realization AOT
 cannot fully erase); realizing rows ahead of the scroll is the follow-up.
+
+## 2026-08-31 — Couch grid: persistent-tile virtualizing panel replaces the row ListBox
+
+The couch grid's ListBox-of-rows is replaced by `GamepadGridPanel` (a custom panel inside a plain
+`ScrollViewer` still named `GamepadRowList`) that owns a fixed pool of PERMANENTLY-ATTACHED
+`GamepadGridTile` controls and re-binds/repositions them as the offset crosses rows. Why a rewrite
+instead of tuning: measured on the Thor, every row-crossing of a d-pad scroll froze the UI thread
+83–170ms (16 freezes per 20-row scroll, ~75% of scroll wall-time frozen). Instrumentation proved the
+cost was NOT construction (a tile pool with `created=0` was equally slow) but the visual-tree
+RE-ATTACH of the row's tiles — styling re-runs over ~40 controls per tile — and that is unavoidable
+in the ListBox: `VirtualizingStackPanel.RecycleElement` clears the pooled container's local
+Content/ContentTemplate, so the ContentPresenter discards the built child and the framework's own
+`DataTemplate.Build(data, existing)` recycling can never engage (a style-provided ContentTemplate
+detaches with the container — also tried, also rebuilt). Re-binding an already-attached tile costs
+~1ms, so tiles now never leave the tree. Grid geometry (row tops, extent, tile rects) is exact
+arithmetic over the packer's `CoverWidth`/`CoverHeight` (row band = 10 + coverH + 58 + 18, gutter 40,
+spacing 28 — mirrored from the old row template; snapshot tests pin the pixels), which also let
+`RevealFocusedGame` drop `ContainerFromIndex`/`ScrollIntoView`/realization-race fallbacks: any row's
+centre offset is computable whether or not it is realized, and the estimated-extent drift behind
+DECISIONS 2026-08-05 no longer exists. Two caps in the panel are load-bearing, found the hard way:
+(1) `MaxTilesPerRow=32` — before the first width measurement the packer emits the whole library as
+ONE degenerate row, and realizing it built a tile per game (968 tiles); (2) `MaxPooledTiles=48` —
+an unbounded pool kept those 968 tiles attached-but-invisible forever, and that ~40k-control live
+set made EVERY Mono minor GC a ~700ms stop-the-world freeze (~1 per second of scrolling, eventually
+an "Input dispatching timed out" ANR; sgen/bridge tuning via MONO_GC_PARAMS did nothing — the fix
+was shrinking the live set; a forced idle gen0 is back to ~1ms). Measured result on the Thor (968-game
+library, AOT build, SurfaceFlinger BLAST frame timing): 96% of scroll frames at a locked 16.7ms both
+directions, 2 stalls of ~100–117ms per 20-row burst (was 14–16 stalls, 71–77% frozen), GC count
+during a scroll burst 13→2. The hover-ring controller-input suppression moved from a per-tile class
+binding to one class on the ScrollViewer + a descendant selector. Build-loop gotcha that cost real
+time: incremental Android packaging can silently reuse a STALE `linked/shrunk` assembly (code edits
+never reach the device while the build "succeeds") — verify by searching the shrunk DLL for a new
+string, or clean `obj`/`bin` before a measurement build.
+
+Follow-up, same day: even with the panel the glide showed 1–2 ~100ms freezes per second of held
+scroll — a minor GC during ACTIVE scrolling costs ~100ms on the Thor while the identical collection
+at rest costs ~1ms. Two-part fix shipped: (1) the Android head bakes `MONO_GC_PARAMS=nursery-size=32m`
+(`environment.txt` + `@(AndroidEnvironment)`) so a held scroll doesn't organically fill the nursery
+mid-glide, and (2) `GamepadShellView` proactively runs `GC.Collect(0)` (throttled, Background
+priority) when a glide SETTLES, emptying the nursery between holds at the moment it costs ~1ms.
+`PrefetchCoversAroundFocus` was also rewritten to walk only the prefetch window's `GamepadRows` (not
+all 900+ `Games`) and to skip already-covered games BEFORE invoking the async command (which
+allocates per call even when its own guards no-op) — that churn was the main nursery filler. Final
+Thor measurement: a 60-row held d-pad scroll renders 100% of frames at 16.7ms — zero stalls, zero
+mid-scroll GCs, both directions.
