@@ -25,6 +25,7 @@ using EmuShelf.Integrations.Importing;
 using EmuShelf.Integrations.Achievements;
 using EmuShelf.Integrations.Emulators;
 using EmuShelf.Integrations.Emulators.Android;
+using EmuShelf.Integrations.Emulators.MelonDs;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Integrations.Metadata;
 using EmuShelf.Integrations.Launching;
@@ -307,8 +308,27 @@ public sealed class AppBootstrapper
         // PlayStation has no branch of its own: DuckStation is unreadable on Android, so PS1 syncs only
         // when configured for a RetroArch PS1 core (Beetle PSX), which the fallthrough resolves like any
         // other RetroArch system (null for a non-RetroArch or unconfigured emulator).
-        _ => ResolveAndroidRetroArch(configuration),
+        _ => ResolveAndroidStandalone(configuration) ?? ResolveAndroidRetroArch(configuration),
     };
+
+    // A folder-configurable standalone whose save folder only the user can supply (melonDS keeps its
+    // configuration in app-private storage). There is no package-derived root to hand over, so the
+    // installation carries just the emulator id — and that id is the load-bearing part: without it the
+    // active-emulator lookup falls back to the system's *default* profile, which for DS is RetroArch, and
+    // a restore would then land on the `.srm` a libretro core reads instead of the `.sav` melonDS reads.
+    // The folder itself still comes from the per-(system, emulator) save-location override.
+    private static SaveEmulatorInstallation? ResolveAndroidStandalone(EmulatorConfiguration? configuration)
+    {
+        if (configuration?.EmulatorId is not { } emulatorId)
+            return null;
+        var isMelonDs = AndroidEmulatorLaunchProfiles.All.Any(profile =>
+            string.Equals(profile.SelectionId, emulatorId, StringComparison.Ordinal) &&
+            MelonDsDefinition.All.Any(definition =>
+                string.Equals(definition.Id, profile.SelectionId, StringComparison.Ordinal)));
+        return isMelonDs
+            ? new SaveEmulatorInstallation(Directory: null, IsFlatpak: false, EmulatorId: emulatorId)
+            : null;
+    }
 
     // A RetroArch system auto-locates like the fixed-root emulators: retroarch.cfg lives in the
     // package's Android/data files dir (group-readable — measured on the Thor), and its

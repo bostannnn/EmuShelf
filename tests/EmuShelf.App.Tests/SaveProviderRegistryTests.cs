@@ -96,6 +96,42 @@ public class SaveProviderRegistryTests
         }
     }
 
+    [Theory]
+    [InlineData("melonds")]
+    [InlineData("melonds-nightly")]
+    public void AndroidMelonDs_ResolvesItsOwnProfileSoARestoreLandsOnTheExtensionItReads(string emulatorId)
+    {
+        // Android melonDS has no package-derived save root (its config is app-private), so its
+        // installation carries only the emulator id. That id is load-bearing: without it the active
+        // emulator reads as "none", the registry falls back to the system default (RetroArch for DS),
+        // and a restored save lands on the .srm a libretro core reads — which standalone melonDS
+        // ignores, so the game boots as new.
+        var installation = AppBootstrapper.ResolveAndroidEmulator(
+            "nds",
+            new EmulatorConfiguration("nds", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = emulatorId,
+            });
+
+        Assert.NotNull(installation);
+        Assert.Equal(emulatorId, installation!.EmulatorId);
+        Assert.Null(installation.Directory);
+        Assert.Equal(emulatorId, SaveProviderRegistry.Resolve("nds", installation.EmulatorId)!.EmulatorId);
+    }
+
+    [Fact]
+    public void AndroidWatermelonDs_StillFallsBackToTheRetroArchProfile()
+    {
+        // WatermelonDS is a RetroArch-shaped standalone (it writes <game>.srm into a flat folder), so it
+        // keeps resolving through the RetroArch provider's exact-folder override — unchanged behaviour.
+        Assert.Null(AppBootstrapper.ResolveAndroidEmulator(
+            "nds",
+            new EmulatorConfiguration("nds", ExecutablePath: null, LaunchArguments: null)
+            {
+                EmulatorId = "watermelonds",
+            }));
+    }
+
     [Fact]
     public void NintendoDsRow_ReadsTheSameWhicheverEmulatorIsActive()
     {
