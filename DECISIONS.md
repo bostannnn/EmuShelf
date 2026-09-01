@@ -11358,3 +11358,30 @@ folder may be shared with another emulator.
 Save states stay per channel (`melonds/nds/`, `melonds-nightly/nds/`): a `.ml0` is bound to the build
 that wrote it. Hotkeys and texture packs are not wired for melonDS — it simply does not appear in
 those sections.
+
+## 2026-09-01 — melonDS on Android is two more launch profiles, not a second model
+
+The desktop half above shipped without an Android counterpart, so on the Thor the DS picker still
+offered only WatermelonDS and the RetroArch cores — the feature looked missing on the device it was
+most wanted on. Android melonDS is now `AndroidEmulatorLaunchProfiles.MelonDs` and `MelonDsNightly`.
+
+WatermelonDS is a *fork of the same app*, so the handoff is already known-good: melonDS's manifest
+declares its action as `${applicationId}.LAUNCH_ROM` and `EmulatorActivity.KEY_URI` is `"uri"`, which
+is exactly the `ExtraUri` shape EmuShelf already proved on device. The two channels are separate
+profiles because the nightly flavor carries a `.nightly` `applicationIdSuffix` — a different package
+that installs alongside the release — so its action follows the suffixed id while the activity
+*class* keeps the base package name. WatermelonDS stays first for DS, so the default for a system
+that never chose an emulator is unchanged.
+
+Saves need nothing new: Android melonDS keeps its configuration in app-private storage EmuShelf
+cannot read, so it is folder-configurable like PPSSPP and Azahar — the user points the DS save row at
+the folder once, and the existing override path syncs it under the same per-game
+`nds/battery/<game>` key as everything else. `CreateMelonDsProvider` now builds an override-backed
+provider on Android instead of returning null, so the platform can never silently sit out if the
+melonDS emulator id reaches it.
+
+Process note, because this was the actual failure: adding an Android emulator is a **manifest**
+change as well as data — a package missing from `<queries>` reads as "not installed" on API 30+, so
+the choice appears and every launch through it fails. The manifest comment claimed a test kept the
+two in sync; it did not (it spot-checked three ids). `EveryProfilePackageIsDeclaredInTheAndroidHeads-
+QueriesBlock` now reads the head's manifest from source and asserts every profile package appears.

@@ -57,6 +57,8 @@
     <package android:name="org.ppsspp.ppsspp" />              <!-- PSP  PPSSPP -->
     <package android:name="org.azahar_emu.azahar" />          <!-- 3DS  Azahar -->
     <package android:name="me.magnum.melondualds" />          <!-- DS   WatermelonDS -->
+    <package android:name="me.magnum.melonds" />              <!-- DS   melonDS -->
+    <package android:name="me.magnum.melonds.nightly" />      <!-- DS   melonDS nightly -->
     <package android:name="com.retroarch.aarch64" />          <!-- multi RetroArch -->
   </queries>
   <application android:label="EmuShelf"

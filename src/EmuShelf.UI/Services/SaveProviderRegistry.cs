@@ -447,9 +447,21 @@ public static class SaveProviderRegistry
 
     private static ISaveLocationProvider? CreateMelonDsProvider(string emulatorId, SaveProviderContext context)
     {
-        // melonDS has no Android build EmuShelf launches, so the desktop resolver is the whole story.
+        // Android melonDS keeps its configuration in app-private storage EmuShelf cannot read, so there
+        // is no save folder to derive — it is folder-configurable, like PPSSPP and Azahar there, and
+        // syncs from the folder the user picks once. Without one the platform sits out rather than
+        // guessing at a path. (The desktop resolver below would probe desktop config locations that
+        // mean nothing on Android.)
         if (OperatingSystem.IsAndroid())
-            return null;
+        {
+            return string.IsNullOrWhiteSpace(context.DirectoryOverride)
+                ? null
+                : new MelonDsSaveLocationProvider(
+                    emulatorId,
+                    context.DirectoryOverride,
+                    saveDirectoryOverride: context.DirectoryOverride,
+                    gameFileNames: context.GameFileNames);
+        }
 
         // A Flatpak melonDS has a documented fixed config location, so it can participate with neither
         // an override nor a resolvable installation directory.

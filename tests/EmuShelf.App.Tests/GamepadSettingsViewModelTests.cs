@@ -332,23 +332,27 @@ public sealed class GamepadSettingsViewModelTests
             androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
         viewModel.SelectedSection = SettingsSection.Emulators;
 
+        string[] expectedChoices =
+        [
+            "WatermelonDS", "melonDS", "melonDS (nightly)",
+            "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME",
+        ];
         var settingsRow = viewModel.Settings.Rows.Single(row => row.SystemId == "nds");
-        Assert.Equal(
-            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
-            settingsRow.AvailableChoices.Select(choice => choice.DisplayName));
+        Assert.Equal(expectedChoices, settingsRow.AvailableChoices.Select(choice => choice.DisplayName));
         Assert.Equal("watermelonds", settingsRow.EmulatorId);
         Assert.Null(settingsRow.SelectedChoice?.CorePath);
         var emulatorRow = viewModel.Rows.Single(row => row.Key == "emulators.nds.emulator");
         Assert.Equal("WatermelonDS", emulatorRow.Value);
 
-        // A opens an explicit list without changing the value. Down + A chooses the first
-        // RetroArch-core-as-emulator item.
+        // A opens an explicit list without changing the value. Walking down to the first
+        // RetroArch-core-as-emulator item and confirming persists the (emulator, core) pair; the
+        // standalone builds above it carry no core.
         await emulatorRow.SelectCommand.ExecuteAsync(null);
         Assert.True(viewModel.IsChoicePickerOpen);
-        Assert.Equal(
-            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
-            viewModel.ChoiceOptions.Select(option => option.DisplayName));
+        Assert.Equal(expectedChoices, viewModel.ChoiceOptions.Select(option => option.DisplayName));
         Assert.Equal("watermelonds", settingsRow.EmulatorId);
+        viewModel.Dispatch(GamepadAction.NavigateDown);
+        viewModel.Dispatch(GamepadAction.NavigateDown);
         viewModel.Dispatch(GamepadAction.NavigateDown);
         viewModel.Dispatch(GamepadAction.Confirm);
         Assert.False(viewModel.IsChoicePickerOpen);
@@ -357,9 +361,11 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal(expectedPath, settingsRow.CorePath);
 
         // Direct Left/Right adjustment is symmetric and wraps, so a quick change never requires
-        // blindly pressing A through the whole list.
+        // blindly pressing A through the whole list. Left lands on the standalone nightly channel,
+        // which is its own emulator and carries no core.
         viewModel.Dispatch(GamepadAction.NavigateLeft);
-        Assert.Equal("watermelonds", settingsRow.EmulatorId);
+        Assert.Equal("melonds-nightly", settingsRow.EmulatorId);
+        Assert.Null(settingsRow.SelectedChoice?.CorePath);
         viewModel.Dispatch(GamepadAction.NavigateRight);
         Assert.Equal("retroarch", settingsRow.EmulatorId);
         Assert.Equal(expectedPath, settingsRow.CorePath);

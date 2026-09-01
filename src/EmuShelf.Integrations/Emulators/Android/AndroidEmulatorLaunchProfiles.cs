@@ -91,6 +91,42 @@ public static class AndroidEmulatorLaunchProfiles
         PayloadExtraName: "uri");
 
     /// <summary>
+    /// DS — standalone melonDS, the app WatermelonDS is forked from, so the same handoff:
+    /// <c>&lt;applicationId&gt;.LAUNCH_ROM</c> (its manifest declares the action as
+    /// <c>${applicationId}.LAUNCH_ROM</c>) plus the ROM content URI in the <c>uri</c> extra
+    /// (<c>EmulatorActivity.KEY_URI</c>). The activity also folds <c>intent.data</c> into that same key,
+    /// so the data-URI form works too; the extra is used here because it is the shape already proven on
+    /// the Thor by WatermelonDS.
+    /// </summary>
+    public static AndroidLaunchProfile MelonDs { get; } = new(
+        "android.melonds",
+        "melonds",
+        "melonDS",
+        ["nds"],
+        PackageName: "me.magnum.melonds",
+        ActivityName: "me.magnum.melonds.ui.emulator.EmulatorActivity",
+        PayloadSlot: AndroidRomPayloadSlot.ExtraUri,
+        Action: "me.magnum.melonds.LAUNCH_ROM",
+        PayloadExtraName: "uri");
+
+    /// <summary>
+    /// DS — melonDS nightly. Its own application id (the <c>nightly</c> flavor's <c>.nightly</c>
+    /// <c>applicationIdSuffix</c>), so both channels can be installed side by side, which is the whole
+    /// reason it is a separate profile. The activity <em>class</em> keeps the base package name, and the
+    /// action follows the suffixed application id.
+    /// </summary>
+    public static AndroidLaunchProfile MelonDsNightly { get; } = new(
+        "android.melonds.nightly",
+        "melonds-nightly",
+        "melonDS (nightly)",
+        ["nds"],
+        PackageName: "me.magnum.melonds.nightly",
+        ActivityName: "me.magnum.melonds.ui.emulator.EmulatorActivity",
+        PayloadSlot: AndroidRomPayloadSlot.ExtraUri,
+        Action: "me.magnum.melonds.nightly.LAUNCH_ROM",
+        PayloadExtraName: "uri");
+
+    /// <summary>
     /// RetroArch — the only plain-path target (its <c>targetSdk 28</c> predates scoped storage, so it
     /// holds all-files and needs no tree grant). VIEW + <c>ROM</c> (path) + <c>LIBRETRO</c> (core path).
     /// Backs the systems its libretro cores cover; the active per-system profile decides when it is used.
@@ -113,7 +149,11 @@ public static class AndroidEmulatorLaunchProfiles
         Dolphin,
         Ppsspp,
         Azahar,
+        // WatermelonDS stays first for DS: it is the measured, on-device-proven build, and the first
+        // profile for a system is the launch default when nothing has been selected.
         WatermelonDs,
+        MelonDs,
+        MelonDsNightly,
         RetroArch,
     ];
 

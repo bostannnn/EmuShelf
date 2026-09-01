@@ -447,6 +447,8 @@ emulator table in `/sdcard/User/Neostation/data.sqlite` (`app_emulators` → `an
 | PSP / PPSSPP | `org.ppsspp.ppsspp/.PpssppActivity` | `VIEW` | content URI **as intent DATA** (no extra) |
 | 3DS / Azahar | `org.azahar_emu.azahar/org.citra.citra_emu.activities.EmulationActivity` | `VIEW` | content URI **as intent DATA** |
 | DS / WatermelonDS | `me.magnum.melondualds/me.magnum.melonds.ui.emulator.EmulatorActivity` | `me.magnum.melondualds.LAUNCH_ROM` | **extra `uri`** = content URI |
+| DS / melonDS | `me.magnum.melonds/me.magnum.melonds.ui.emulator.EmulatorActivity` | `me.magnum.melonds.LAUNCH_ROM` | **extra `uri`** = content URI (added 2026-09-01; WatermelonDS is a fork of this app, so the same shape — its manifest declares `${applicationId}.LAUNCH_ROM` and `EmulatorActivity.KEY_URI` is `"uri"`, with `intent.data` folded into the same key) |
+| DS / melonDS nightly | `me.magnum.melonds.nightly/me.magnum.melonds.ui.emulator.EmulatorActivity` | `me.magnum.melonds.nightly.LAUNCH_ROM` | **extra `uri`** = content URI (the `nightly` flavor's `.nightly` `applicationIdSuffix`, so both channels install side by side; the activity class keeps the base package name) |
 | RetroArch | `com.retroarch.aarch64/com.retroarch.browser.retroactivity.RetroActivityFuture` | `VIEW` | extras `ROM` (path) + `LIBRETRO` (core `.so`) + `CONFIGFILE`/`DATADIR`/`SDCARD`/`EXTERNAL` (+ `APK`/`IME`) |
 
 > **`CONFIGFILE` is load-bearing (2026-08-21).** Cocoon's log records its RetroArch intent extras as
@@ -1158,7 +1160,7 @@ carry format constraints the desktop providers do not:
 | DuckStation (PS1) | `Android/data/<pkg>` | 1:1 | Confirmed 1:1 via CX File Manager, no root — the `Android/data` case, reachable on this firmware without root |
 | PS2 (NetherSX2 / AetherSX2 / ARMSX2) | `Android/data/<pkg>` | **format conversion** | **Folder memory cards are not accepted — Android wants a single-file `.ps2` card.** Desktop `Pcsx2SaveLocationProvider` is built around folder cards, so this is a real conversion step, not a copy. **Confirmed working on hardware (2026-08-20).** |
 | Azahar (3DS) | any chosen folder | 1:1 | Reachable without root |
-| WatermelonDS (DS) | any chosen folder | 1:1 | **Requires the "use `.srm` not `.sav`" toggle enabled** so the on-device filename matches what the provider syncs |
+| WatermelonDS / melonDS (DS) | any chosen folder | 1:1 | Sync from the folder the emulator is configured to write into. Since 2026-09-01 the DS battery key is per game (`nds/battery/<game>`), so the WatermelonDS "use `.srm` not `.sav`" toggle is no longer required — both spellings are one cloud entry |
 | Dolphin (GC/Wii) | `Android/data/<pkg>` | **path reshape** | Reached via CX File Manager, no root; **confirmed working on hardware (2026-08-20)**. GameCube saves sit under a deeper path than desktop: Windows can be configured at the region folder while Android uses `USA/Card A/`. The existing Dolphin provider already models the standard region+slot tree; Android now supplies its fixed `files/` user root. Deterministic mapping is green; device export/restore remains |
 | PPSSPP (PSP) | any chosen folder | 1:1 | Reachable without root; PPSSPP records its memstick path in app-private storage, so it must be *asked for*, not discovered (see capability model) |
 | RetroArch | RetroArch saves folder | 1:1 | Plain-path case; the only emulator handed `{file.path}` |
@@ -1166,7 +1168,8 @@ carry format constraints the desktop providers do not:
 Three design items before implementation, all now hardware-confirmed: the **PS2 single-file `.ps2`
 conversion** (folder card ⇄ `.ps2`, which the desktop provider has no path for), the **Dolphin
 GameCube region ⇄ region+slot path reshape**, and the **WatermelonDS `.srm`/`.sav` extension
-constraint**. PS2 still needs a format conversion and WatermelonDS needs an explicit setup check;
+constraint** (resolved 2026-09-01 by the per-game DS battery key — no toggle, no converter).
+PS2 still needs a format conversion;
 Dolphin's physical-path difference is absorbed by the existing provider once Android supplies the correct
 user root, so it does not need a divergent parser or cloud-id model.
 
