@@ -11458,3 +11458,43 @@ the line every other row rests on, and a library small enough to fit the viewpor
 and clipped the tops of its only row's covers. Measured on a 1280x460 couch viewport, where the last
 row's target falls below the ScrollViewer's max offset and so is NOT clamped; a tall desktop
 viewport clamps it and hides the bug, which is why the desktop snapshots never caught it.
+
+## 2026-09-01 — Couch Settings: Emulators collapses to one summary row per platform
+
+The Emulators section on the Thor was ~90 rows (15 platforms × header + Emulator + Launch screen +
+Rescan + Add folder + folder), so reaching PlayStation 2 took ~40 D-pad presses, and nothing in it
+said that the platform's chosen emulator was not installed or that "close emulator on return" was
+silently inert without the Shizuku grant. Four prototype rounds later Andrew's verdict was: keep the
+current design, take only the compacted Emulators page — every other section stays as it is.
+
+What changed, and why it is shaped this way:
+
+(1) A new `Summary` row kind: one focusable row per platform (artwork, name, "emulator · N games",
+chevron). A expands that platform's rows beneath it in place; only one platform is open at a time
+(`_expandedSystemId`), which keeps the list short and the focus target stable across rebuilds (the
+summary key never changes). The old non-focusable `Header` rows stay for the other sections.
+
+(2) Y is the row's secondary action, carried on the spec (`SecondaryLabel/SecondaryActivate`, with
+its own destructive/confirmation gate) and surfaced in the legend via `ActionsHint`: Y on a summary
+rescans that platform without expanding it, so the per-platform "Rescan library" row is gone; the
+folder row is now the rescan (A) and Y forgets it after the same confirmation as before; Y on the
+close-on-return toggle requests the Shizuku grant.
+
+(3) Problems are said where the setting lives. The Android head publishes two more static hooks —
+`App.InstalledPackageProbe` (PackageManager lookup, same check the launch path fails on) and
+`App.CloseOnReturnPrivilegeStatus` (Shizuku running/granted, without prompting) — and the view
+model paints the summary value / row description in the warning colour ("ARMSX2 not installed",
+"Shizuku permission not granted · press Y to grant it"). RetroArch-core choices resolve to
+RetroArch's package; unknown selection ids count as installed so a catalogue gap never warns.
+
+(4) Compact rows (`IsCompact`: one-line, state-first descriptions, 66/56 dip min height) are opted
+into per row and used only by this section; the row template gained `HasDescription`,
+`DescriptionMaxLines` and a `warning` class instead of a second template.
+
+(5) The rail lost the "‹ or LB / RB for sections" hint (the legend already says it) and gained a
+one-line status per section (game count, "Not signed in", the platform that needs attention),
+computed from the same settings model; the buttons went from fixed Height to MinHeight.
+
+Parity: summary and folder rows are `ExcludeFromParity`; the Desktop↔Gamepad parity test never
+covered Emulators, so nothing there moved. Game counts come from one `GetGames(systemId)` pass off
+the UI thread when Settings opens, not per rebuild.

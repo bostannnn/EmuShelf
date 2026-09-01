@@ -82,6 +82,8 @@ public sealed class SingleViewShell : IPlatformShell
         // await in the setter marshals the result back for the toast.
         global::EmuShelf.App.App.CloseOnReturnPrivilegePrepare =
             () => System.Threading.Tasks.Task.Run(() => _emulatorTerminator.PreparePrivilege());
+        global::EmuShelf.App.App.CloseOnReturnPrivilegeStatus = _emulatorTerminator.PrivilegeWarning;
+        global::EmuShelf.App.App.InstalledPackageProbe = gameLauncher.IsInstalled;
 
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(

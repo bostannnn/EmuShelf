@@ -2440,6 +2440,14 @@ public partial class MainViewModel : ViewModelBase
         {
             CloseGamepadSettingsProjection();
             var settings = await CreateSettingsViewModelAsync();
+            // Per-platform game counts for the Emulators summaries, read once off the UI thread
+            // (SQLite) rather than per row while the section rebuilds.
+            var systemIds = settings.Rows.Select(row => row.SystemId).ToList();
+            var gameCounts = await Task.Run(() => systemIds.ToDictionary(
+                systemId => systemId,
+                systemId => _library.GetGames(systemId).Count,
+                StringComparer.Ordinal));
+            var installed = EmuShelf.App.App.InstalledPackageProbe;
             GamepadSettings = new GamepadSettingsViewModel(
                 settings,
                 _onScreenKeyboard,
@@ -2448,7 +2456,15 @@ public partial class MainViewModel : ViewModelBase
                 OpenGamepadHotkeysFromSettings,
                 androidEmulatorChoices: OperatingSystem.IsAndroid()
                     ? AndroidEmulatorChoiceCatalog.BySystem
-                    : null);
+                    : null,
+                gameCountBySystem: systemId => gameCounts.GetValueOrDefault(systemId),
+                isEmulatorChoiceInstalled: installed is null
+                    ? null
+                    : choice => IsAndroidEmulatorChoiceInstalled(choice, installed),
+                closeOnReturnWarning: EmuShelf.App.App.CloseOnReturnPrivilegeStatus,
+                grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
+                    ? null
+                    : GrantCloseOnReturnPrivilegeAsync);
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
         catch (Exception ex)
@@ -7208,6 +7224,33 @@ public partial class MainViewModel : ViewModelBase
         }
 
         return result;
+    }
+
+    /// <summary>Whether the app behind an Android emulator choice is installed. RetroArch cores are files
+    /// inside RetroArch, so a core choice reports RetroArch's own package; unknown ids count as installed
+    /// so a catalogue gap never paints a false warning.</summary>
+    private static bool IsAndroidEmulatorChoiceInstalled(EmulatorChoice choice, Func<string, bool> installed)
+    {
+        var profile = AndroidEmulatorLaunchProfiles.All.FirstOrDefault(candidate =>
+            string.Equals(candidate.SelectionId, choice.EmulatorId, StringComparison.Ordinal));
+        return profile is null || installed(profile.PackageName);
+    }
+
+    /// <summary>Y on the close-on-return row: request the Shizuku grant now and show what happened.</summary>
+    private async Task GrantCloseOnReturnPrivilegeAsync()
+    {
+        if (EmuShelf.App.App.CloseOnReturnPrivilegePrepare is not { } prepare)
+            return;
+        try
+        {
+            var message = await prepare();
+            if (!string.IsNullOrEmpty(message))
+                SetStatus(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Requesting the close-on-return privilege failed.", ex);
+        }
     }
 
     private async Task SetCloseEmulatorOnReturnAsync(bool value)

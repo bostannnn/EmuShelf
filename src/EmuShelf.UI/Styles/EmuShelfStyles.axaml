@@ -659,7 +659,7 @@
             <Setter Property="Opacity" Value="0.4" />
         </Style>
         <Style Selector="Button.gamepad-settings-nav">
-            <Setter Property="Height" Value="50" />
+            <Setter Property="MinHeight" Value="50" />
             <Setter Property="Padding" Value="16,9" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -683,6 +683,19 @@
         <Style Selector="Button.gamepad-settings-nav.selected.rail-active">
             <Setter Property="BorderThickness" Value="2" />
             <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
+        </Style>
+        <!-- The one-line status under each rail entry (game count, "Not signed in", the platform that
+             needs attention). Secondary colour; warning colour when the section needs a look. -->
+        <Style Selector="TextBlock.gamepad-settings-nav-status">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.gamepad-settings-nav-status.warning">
+            <Setter Property="Foreground" Value="{DynamicResource EmuWarningBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-settings-nav.selected.rail-active TextBlock.gamepad-settings-nav-status">
             <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
         </Style>
         <Style Selector="Grid.rail-dimmed">
@@ -740,6 +753,26 @@
         <!-- Grouped rows are indented beneath their platform header so the section reads as a tree. -->
         <Style Selector="Button.gamepad-settings-row.grouped">
             <Setter Property="Margin" Value="24,0,0,10" />
+        </Style>
+        <!-- Compact rows (the Emulators section): one-line descriptions, so a platform's rows fit
+             beneath its summary without pushing the next platform off screen. -->
+        <Style Selector="Button.gamepad-settings-row.compact">
+            <Setter Property="MinHeight" Value="66" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Padding" Value="18,8" />
+        </Style>
+        <Style Selector="Button.gamepad-settings-row.compact.grouped">
+            <Setter Property="Margin" Value="24,0,0,8" />
+        </Style>
+        <!-- Platform summary rows: one line — artwork, name, "emulator · N games", chevron. -->
+        <Style Selector="Button.gamepad-settings-row.summary">
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="18,6" />
+        </Style>
+        <!-- A row's description or summary value that reports a problem. -->
+        <Style Selector="Button.gamepad-settings-row TextBlock.warning">
+            <Setter Property="Foreground" Value="{DynamicResource EmuWarningBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="Button.gamepad-theme-card">
             <Setter Property="Margin" Value="0,0,14,14" />

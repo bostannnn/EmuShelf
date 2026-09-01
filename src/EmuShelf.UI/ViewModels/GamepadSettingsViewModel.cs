@@ -25,6 +25,9 @@ public enum GamepadSettingsRowKind
     /// <summary>A non-focusable platform group heading (artwork + name) that gives the section a
     /// visible hierarchy instead of a flat list of equal-weight rows.</summary>
     Header,
+    /// <summary>A focusable one-line platform summary (artwork, name, "emulator · N games") that expands
+    /// its per-platform rows in place when activated, so a 15-platform section reads as 15 rows, not 90.</summary>
+    Summary,
 }
 
 /// <summary>One visible item in the controller-native choice picker opened from a settings row.</summary>
@@ -81,6 +84,20 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     /// <summary>True for a member row under a platform header; indents it beneath its group.</summary>
     public bool IsGrouped { get; private set; }
     public bool IsHeader => Kind == GamepadSettingsRowKind.Header;
+    public bool IsSummary => Kind == GamepadSettingsRowKind.Summary;
+    /// <summary>True while a summary row's platform rows are shown beneath it.</summary>
+    public bool IsExpanded { get; private set; }
+    /// <summary>True when the row's description/value reports a problem (emulator missing, permission
+    /// not granted) and should render in the warning colour.</summary>
+    public bool IsWarning { get; private set; }
+    /// <summary>True for rows rendered at the compact height with a one-line description.</summary>
+    public bool IsCompact { get; private set; }
+    public bool HasDescription => !string.IsNullOrEmpty(Description);
+    public int DescriptionMaxLines => IsCompact ? 1 : 2;
+    public string SummaryChevron => IsExpanded ? "▾" : "›";
+    /// <summary>Legend text for the Y action this row offers ("Rescan", "Forget folder"), or empty.</summary>
+    public string SecondaryLabel { get; private set; } = string.Empty;
+    public bool HasSecondary => !string.IsNullOrEmpty(SecondaryLabel) && IsEnabled;
     public bool IsNormalRow => !IsHeader && !IsSaveRow;
     public bool HasPlatformIcon => !string.IsNullOrEmpty(SystemId);
     /// <summary>True for gamepad-only view-state controls (e.g. expand inventory) that have no Desktop
@@ -141,6 +158,10 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         _ => "›",
     };
     internal Func<Task>? Activate { get; private set; }
+    internal Func<Task>? SecondaryActivate { get; private set; }
+    internal bool SecondaryIsDestructive { get; private set; }
+    internal string? SecondaryConfirmationTitle { get; private set; }
+    internal string? SecondaryConfirmationText { get; private set; }
     internal Action<int>? Adjust { get; private set; }
     internal string? ConfirmationTitle { get; private set; }
     internal string? ConfirmationText { get; private set; }
@@ -165,6 +186,14 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         IsGrouped = spec.IsGrouped;
         ExcludeFromParity = spec.ExcludeFromParity;
         Activate = spec.Activate;
+        IsExpanded = spec.IsExpanded;
+        IsWarning = spec.IsWarning;
+        IsCompact = spec.IsCompact;
+        SecondaryLabel = spec.SecondaryLabel ?? string.Empty;
+        SecondaryActivate = spec.SecondaryActivate;
+        SecondaryIsDestructive = spec.SecondaryIsDestructive;
+        SecondaryConfirmationTitle = spec.SecondaryConfirmationTitle;
+        SecondaryConfirmationText = spec.SecondaryConfirmationText;
         Adjust = spec.Adjust;
         ConfirmationTitle = spec.ConfirmationTitle;
         ConfirmationText = spec.ConfirmationText;
@@ -172,6 +201,15 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(CanActivate));
         OnPropertyChanged(nameof(ParityId));
         OnPropertyChanged(nameof(IsHeader));
+        OnPropertyChanged(nameof(IsSummary));
+        OnPropertyChanged(nameof(IsExpanded));
+        OnPropertyChanged(nameof(IsWarning));
+        OnPropertyChanged(nameof(IsCompact));
+        OnPropertyChanged(nameof(HasDescription));
+        OnPropertyChanged(nameof(DescriptionMaxLines));
+        OnPropertyChanged(nameof(SummaryChevron));
+        OnPropertyChanged(nameof(SecondaryLabel));
+        OnPropertyChanged(nameof(HasSecondary));
         OnPropertyChanged(nameof(IsNormalRow));
         OnPropertyChanged(nameof(HasPlatformIcon));
         OnPropertyChanged(nameof(IsGrouped));
@@ -205,7 +243,15 @@ internal sealed record GamepadSettingsRowSpec(
     bool? ToggleValue = null,
     string? SystemId = null,
     bool IsGrouped = false,
-    bool ExcludeFromParity = false);
+    bool ExcludeFromParity = false,
+    bool IsExpanded = false,
+    bool IsWarning = false,
+    bool IsCompact = false,
+    string? SecondaryLabel = null,
+    Func<Task>? SecondaryActivate = null,
+    bool SecondaryIsDestructive = false,
+    string? SecondaryConfirmationTitle = null,
+    string? SecondaryConfirmationText = null);
 
 /// <summary>
 /// Controller projection over <see cref="EmulatorSettingsViewModel"/>. It owns only navigation,
@@ -228,6 +274,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly Func<ThemePreference, Task>? _applyTheme;
     private readonly Func<Task>? _openHotkeys;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>> _androidEmulatorChoices;
+    private readonly Func<string, int>? _gameCountBySystem;
+    private readonly Func<EmulatorChoice, bool>? _isEmulatorChoiceInstalled;
+    private readonly Func<string?>? _closeOnReturnWarning;
+    private readonly Func<Task>? _grantCloseOnReturnPrivilege;
+    // The one platform whose rows are shown beneath its summary in the Emulators section; null = all
+    // collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable.
+    private string? _expandedSystemId;
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
     private Action<string>? _commitChoice;
@@ -424,7 +477,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         : SelectedSection switch
     {
         SettingsSection.Emulators when _androidEmulatorChoices.Count > 0 =>
-            "Choose which Android emulator launches each system, import games, and manage folders.",
+            "Which Android app runs each system, and where its games are.",
         SettingsSection.Emulators =>
             "Import games and manage each system's folders. Edit emulator paths, arguments, and cores in Desktop Settings.",
         SettingsSection.Hotkeys =>
@@ -441,6 +494,49 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
     };
+
+    // One-line status under each rail entry, so the rail doubles as a glance at what needs attention
+    // without opening every section. Kept to a word or two; the section itself carries the detail.
+    public string LibraryRailStatus => _gameCountBySystem is null
+        ? string.Empty
+        : FormatGames(_settings.Rows.Sum(row => _gameCountBySystem(row.SystemId)));
+
+    public string EmulatorsRailStatus
+    {
+        get
+        {
+            var attention = _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null);
+            if (attention is not null)
+                return $"{attention.SystemName} needs attention";
+            return CloseOnReturnWarning is not null ? "Shizuku needs attention" : string.Empty;
+        }
+    }
+
+    public bool IsEmulatorsRailWarning => !string.IsNullOrEmpty(EmulatorsRailStatus);
+    public string HotkeysRailStatus => string.Empty;
+    public string RetroAchievementsRailStatus => _settings.IsRetroAchievementsConnected
+        ? _settings.ConnectedAccountName ?? "Signed in"
+        : "Not signed in";
+    public string ArtworkRailStatus => _settings.IsScreenScraperConnected ? "Connected" : string.Empty;
+    public string SavesRailStatus => _settings.IsCloudConnected ? "Google Drive" : string.Empty;
+    public string TexturePacksRailStatus => string.Empty;
+    public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
+    public string AboutRailStatus => _settings.AppVersionDisplay;
+
+    private static string FormatGames(int count) => count == 1 ? "1 game" : $"{count} games";
+
+    private string? CloseOnReturnWarning =>
+        _settings.HasCloseEmulatorOnReturn && CloseEmulatorOnReturn ? _closeOnReturnWarning?.Invoke() : null;
+
+    /// <summary>The display name of the platform's chosen Android emulator when it is not installed on this
+    /// device, else null. Only standalone-app choices are probed; RetroArch cores live inside RetroArch.</summary>
+    private string? EmulatorMissingFor(EmulatorSettingsRowViewModel row)
+    {
+        if (_isEmulatorChoiceInstalled is null || !row.HasEmulatorChoices)
+            return null;
+        var choice = row.SelectedChoice ?? row.AvailableChoices[0];
+        return _isEmulatorChoiceInstalled(choice) ? null : choice.DisplayName;
+    }
 
     public string StatusText => IsThemesSection ? string.Empty : SelectedSection switch
     {
@@ -521,9 +617,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
         Func<ThemePreference, Task>? applyTheme = null,
         Func<Task>? openHotkeys = null,
-        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null)
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null,
+        Func<string, int>? gameCountBySystem = null,
+        Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
+        Func<string?>? closeOnReturnWarning = null,
+        Func<Task>? grantCloseOnReturnPrivilege = null)
     {
         _settings = settings;
+        _gameCountBySystem = gameCountBySystem;
+        _isEmulatorChoiceInstalled = isEmulatorChoiceInstalled;
+        _closeOnReturnWarning = closeOnReturnWarning;
+        _grantCloseOnReturnPrivilege = grantCloseOnReturnPrivilege;
         _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
         _themeChoices = themeChoices ?? [];
         _applyTheme = applyTheme;
@@ -753,6 +857,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             case GamepadAction.Confirm:
                 _ = ActivateFocusedAsync();
                 return true;
+            case GamepadAction.Actions:
+                // Y runs the focused row's secondary action (rescan a platform from its summary, forget a
+                // folder, grant the Shizuku privilege). Rows without one leave Y unhandled.
+                if (FocusedRow is { HasSecondary: true } secondary)
+                {
+                    _ = ActivateSecondaryAsync(secondary);
+                    return true;
+                }
+                return false;
             case GamepadAction.Cancel:
                 CloseRequested?.Invoke(false);
                 return true;
@@ -763,6 +876,34 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             default:
                 return false;
         }
+    }
+
+    /// <summary>Legend text for Y on the focused row, or empty when the row offers no Y action.</summary>
+    public string ActionsHint =>
+        IsNormal && !IsRailFocused && !IsThemesSection && FocusedRow is { HasSecondary: true } row
+            ? row.SecondaryLabel
+            : string.Empty;
+
+    public bool HasActionsHint => !string.IsNullOrEmpty(ActionsHint);
+
+    private async Task ActivateSecondaryAsync(GamepadSettingsRowViewModel row)
+    {
+        if (!IsNormal || row.SecondaryActivate is null || !row.IsEnabled)
+            return;
+
+        if (row.SecondaryIsDestructive)
+        {
+            _pendingConfirmation = row.SecondaryActivate;
+            ConfirmationTitle = row.SecondaryConfirmationTitle ?? row.SecondaryLabel;
+            ConfirmationText = row.SecondaryConfirmationText ?? "Continue with this action?";
+            IsConfirmChoiceSelected = false;
+            IsConfirmationOpen = true;
+            OnModalStateChanged();
+            return;
+        }
+
+        await row.SecondaryActivate();
+        RebuildRows(row.Key);
     }
 
     private void EnterRail()
@@ -1186,6 +1327,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         OnPropertyChanged(nameof(IsNormal));
         OnPropertyChanged(nameof(IsChoiceRowFocused));
+        OnPropertyChanged(nameof(ActionsHint));
+        OnPropertyChanged(nameof(HasActionsHint));
         OnPropertyChanged(nameof(KeyboardHint));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
@@ -1277,6 +1420,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         RememberFocusedRow();
         OnPropertyChanged(nameof(FocusedRow));
         OnPropertyChanged(nameof(IsChoiceRowFocused));
+        OnPropertyChanged(nameof(ActionsHint));
+        OnPropertyChanged(nameof(HasActionsHint));
         FocusRevision++;
     }
 
@@ -1314,10 +1459,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         RememberFocusedRow();
         OnPropertyChanged(nameof(FocusedRow));
         OnPropertyChanged(nameof(IsChoiceRowFocused));
+        OnPropertyChanged(nameof(ActionsHint));
+        OnPropertyChanged(nameof(HasActionsHint));
         OnPropertyChanged(nameof(SaveRow));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));
         OnPropertyChanged(nameof(IsWorkingInSection));
+        NotifyRailStatuses();
 
         // A shape change replaced the Rows collection wholesale. The view renders these into an
         // ItemsRepeater that does not re-realize its virtualized children on a bare collection reset;
@@ -1431,57 +1579,88 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// </summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
-        // A global launch-behavior toggle above the per-platform cards: close the emulator when EmuShelf
-        // returns to the foreground so it stops draining the battery in the background. Android-only — the
-        // host wires the preference only there — so the row is absent on Desktop, where the emulator is a
-        // child process that exits on its own.
         if (_settings.HasCloseEmulatorOnReturn)
         {
+            // The description reports the one thing that can silently break this setting (the Shizuku
+            // grant) instead of explaining what Shizuku is; Y requests the grant right here.
+            var warning = CloseOnReturnWarning;
             yield return ToggleRow(
                 "emulators.close-on-return",
                 "Close emulator on return",
-                "When you come back to EmuShelf, force-stop the game's emulator so it stops running in the background and draining the battery. Needs Shizuku (a free companion app) running — you'll be asked to grant EmuShelf permission the first time. Turn this off to keep the emulator warm for a faster return.",
+                warning ?? "Force-stop the game's emulator when you come back, so it stops draining the battery.",
                 CloseEmulatorOnReturn,
                 value => CloseEmulatorOnReturn = value,
                 onLabel: "CLOSE",
-                offLabel: "KEEP");
+                offLabel: "KEEP") with
+            {
+                IsCompact = true,
+                IsWarning = warning is not null,
+                SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Grant Shizuku" : null,
+                SecondaryActivate = warning is not null ? _grantCloseOnReturnPrivilege : null,
+            };
         }
 
-        // Header then action cards per platform, matching how Saves and Texture Packs render. No
-        // per-platform read-only info line: the emulator picker is the binding source on Android, then
-        // the existing library actions follow unchanged.
         foreach (var row in _settings.Rows)
         {
-            yield return HeaderRow($"emulators.{row.SystemId}.header", row.SystemName, row.SystemId);
+            var missing = EmulatorMissingFor(row);
+            var expanded = string.Equals(row.SystemId, _expandedSystemId, StringComparison.Ordinal);
+            yield return SummaryRow(row, missing, expanded);
+            if (!expanded)
+                continue;
+
             if (_androidEmulatorChoices.TryGetValue(row.SystemId, out var choices) && choices.Count > 0)
-                yield return AndroidEmulatorChoiceRow(row);
-            // Second-screen launch preference. Only a device with a second screen (the Android handheld)
-            // can honour it, so it is Android-only; this is where a pinned "always" choice — or the launch
-            // prompt itself — is changed or reset. Dual-screen consoles (DS/3DS) always use the built-in
-            // display, so the choice is meaningless for them and the row is omitted.
+                yield return AndroidEmulatorChoiceRow(row, missing);
             if (OperatingSystem.IsAndroid() && !row.IsDualScreen)
                 yield return LaunchScreenChoiceRow(row);
-            // RPCS3 does not run on Android, and the config-directory picker is a no-op stub there, so
-            // the sync always dead-ends — hide the row on the handheld (the import overlay already
-            // filters playstation3 the same way).
             if (row.HasSyncLibrary && !OperatingSystem.IsAndroid())
             {
-                // Same command and stable id as Desktop's PS3-row "Sync RPCS3 library" button. PS3 is
-                // skipped by "Rescan all consoles" and imported only from RPCS3's game list, so this is
-                // the controller path to bring PS3 games in.
                 yield return ActionRow(
                     row.SyncFieldId,
-                    // Same wording as Desktop's PS3-row button, so the shared field id reads identically
-                    // on both surfaces; the row's own "PlayStation 3" header supplies the platform.
                     "Sync RPCS3 library",
-                    "Read the RPCS3 game list to import PlayStation 3 titles. PS3 games are imported only this way.",
+                    "Read the RPCS3 game list to import PlayStation 3 titles.",
                     _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
                     row.SyncLibraryCommand,
                     row.CanSyncLibrary,
                     isGrouped: true,
-                    systemId: row.SystemId);
+                    systemId: row.SystemId) with { IsCompact = true };
             }
-            if (row.HasRescanLibrary)
+            if (row.HasFolderManagement)
+            {
+                foreach (var folder in row.LibraryFolders)
+                {
+                    // The folder row is the rescan: A rechecks it (the platform's remembered folders),
+                    // Y forgets it. Its line carries the availability and the platform's last scan result.
+                    yield return ActionRow(
+                        $"emulators.{row.SystemId}.folder.{folder.Id}",
+                        folder.Path,
+                        FolderDescription(row, folder),
+                        _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
+                        row.RescanLibraryCommand,
+                        row.CanRescan,
+                        isGrouped: true,
+                        systemId: row.SystemId,
+                        excludeFromParity: true) with
+                    {
+                        IsCompact = true,
+                        IsWarning = folder.IsMissing,
+                        SecondaryLabel = row.CanManageLibraryFolders ? "Forget folder" : null,
+                        SecondaryActivate = row.CanManageLibraryFolders ? () => ExecuteAsync(folder.ForgetCommand) : null,
+                        SecondaryIsDestructive = true,
+                        SecondaryConfirmationTitle = "Forget this folder?",
+                        SecondaryConfirmationText = "EmuShelf stops rescanning this folder. Games already imported and the files on disk are left untouched.",
+                    };
+                }
+                yield return ActionRow(
+                    row.AddFolderFieldId,
+                    "Add game folder",
+                    string.Empty,
+                    "A ADD FOLDER",
+                    row.AddLibraryFolderCommand,
+                    row.CanManageLibraryFolders,
+                    isGrouped: true,
+                    systemId: row.SystemId) with { IsCompact = true };
+            }
+            else if (row.HasRescanLibrary)
             {
                 yield return ActionRow(
                     row.RescanFieldId,
@@ -1491,36 +1670,53 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     row.RescanLibraryCommand,
                     row.CanRescan,
                     isGrouped: true,
-                    systemId: row.SystemId);
-            }
-            if (row.HasFolderManagement)
-            {
-                yield return ActionRow(
-                    row.AddFolderFieldId,
-                    "Add game folder",
-                    "Remember another folder to scan for this platform's games.",
-                    "A ADD FOLDER",
-                    row.AddLibraryFolderCommand,
-                    row.CanManageLibraryFolders,
-                    isGrouped: true,
-                    systemId: row.SystemId);
-                foreach (var folder in row.LibraryFolders)
-                {
-                    yield return ActionRow(
-                        $"emulators.{row.SystemId}.folder.{folder.Id}",
-                        folder.Path,
-                        $"{folder.AvailabilityText} — forgetting a folder stops scanning it; games already imported and the files on disk stay.",
-                        "A FORGET",
-                        folder.ForgetCommand,
-                        row.CanManageLibraryFolders,
-                        isDestructive: true,
-                        confirmationTitle: "Forget this folder?",
-                        confirmationText: "EmuShelf stops rescanning this folder. Games already imported and the files on disk are left untouched.",
-                        isGrouped: true,
-                        systemId: row.SystemId);
-                }
+                    systemId: row.SystemId) with { IsCompact = true };
             }
         }
+    }
+
+    private GamepadSettingsRowSpec SummaryRow(EmulatorSettingsRowViewModel row, string? missing, bool expanded)
+    {
+        var parts = new List<string>();
+        if (missing is not null)
+            parts.Add($"{missing} not installed");
+        else if (row.HasEmulatorChoices)
+            parts.Add((row.SelectedChoice ?? row.AvailableChoices[0]).DisplayName);
+        else if (!string.IsNullOrWhiteSpace(row.EmulatorName))
+            parts.Add(row.EmulatorName);
+        if (_gameCountBySystem is not null)
+            parts.Add(FormatGames(_gameCountBySystem(row.SystemId)));
+        if (!string.IsNullOrWhiteSpace(row.MaintenanceStatusText))
+            parts.Add(row.MaintenanceStatusText);
+
+        var key = $"emulators.{row.SystemId}.summary";
+        return new GamepadSettingsRowSpec(
+            key,
+            row.SystemName,
+            string.Empty,
+            string.Join(" · ", parts),
+            GamepadSettingsRowKind.Summary,
+            IsEnabled: true,
+            Activate: () =>
+            {
+                _expandedSystemId = expanded ? null : row.SystemId;
+                return Task.CompletedTask;
+            },
+            SystemId: row.SystemId,
+            ExcludeFromParity: true,
+            IsExpanded: expanded,
+            IsWarning: missing is not null,
+            IsCompact: true,
+            SecondaryLabel: row.CanRescan ? "Rescan" : null,
+            SecondaryActivate: row.CanRescan ? () => ExecuteAsync(row.RescanLibraryCommand) : null);
+    }
+
+    private static string FolderDescription(EmulatorSettingsRowViewModel row, LibraryFolderRowViewModel folder)
+    {
+        var parts = new List<string> { folder.AvailabilityText };
+        if (!string.IsNullOrWhiteSpace(row.MaintenanceStatusText))
+            parts.Add(row.MaintenanceStatusText);
+        return string.Join(" · ", parts);
     }
 
     private GamepadSettingsRowSpec LaunchScreenChoiceRow(EmulatorSettingsRowViewModel row)
@@ -1531,7 +1727,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         return ChoiceRow(
             $"emulators.{row.SystemId}.launch-screen",
             "Launch screen",
-            "Which screen this platform's games open on when a second screen is connected. “Ask each time” shows a chooser at launch; pick a screen here to skip it, or set it back to reset.",
+            "When a second screen is connected · “Ask each time” shows a chooser at launch",
             EmulatorSettingsRowViewModel.LaunchScreenLabel(row.LaunchScreen),
             labels,
             selected => row.LaunchScreen = EmulatorSettingsRowViewModel.LaunchScreenOrder
@@ -1539,17 +1735,19 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     EmulatorSettingsRowViewModel.LaunchScreenLabel(screen), selected, StringComparison.Ordinal)),
             isGrouped: true,
             systemId: row.SystemId,
-            excludeFromParity: true);
+            excludeFromParity: true) with { IsCompact = true };
     }
 
-    private GamepadSettingsRowSpec AndroidEmulatorChoiceRow(EmulatorSettingsRowViewModel row)
+    private GamepadSettingsRowSpec AndroidEmulatorChoiceRow(EmulatorSettingsRowViewModel row, string? missing)
     {
         var choices = row.AvailableChoices.Select(choice => choice.DisplayName).ToList();
         var value = row.SelectedChoice?.DisplayName ?? choices[0];
         return ChoiceRow(
             $"emulators.{row.SystemId}.emulator",
             "Emulator",
-            "Standalone apps and RetroArch cores are equal choices. Install the selected app or core first; EmuShelf never changes emulator files.",
+            missing is not null
+                ? $"{missing} is not installed on this device · pick another or install it first"
+                : "Standalone apps and RetroArch cores are equal choices · install the app or core first",
             value,
             choices,
             selected =>
@@ -1560,7 +1758,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             },
             isGrouped: true,
             systemId: row.SystemId,
-            excludeFromParity: true);
+            excludeFromParity: true) with { IsCompact = true, IsWarning = missing is not null };
     }
 
     /// <summary>
@@ -2229,6 +2427,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         command.Execute(parameter);
         return Task.CompletedTask;
+    }
+
+    private void NotifyRailStatuses()
+    {
+        OnPropertyChanged(nameof(LibraryRailStatus));
+        OnPropertyChanged(nameof(EmulatorsRailStatus));
+        OnPropertyChanged(nameof(IsEmulatorsRailWarning));
+        OnPropertyChanged(nameof(RetroAchievementsRailStatus));
+        OnPropertyChanged(nameof(ArtworkRailStatus));
+        OnPropertyChanged(nameof(SavesRailStatus));
+        OnPropertyChanged(nameof(ThemesRailStatus));
+        OnPropertyChanged(nameof(AboutRailStatus));
     }
 
     private void RememberFocusedRow()

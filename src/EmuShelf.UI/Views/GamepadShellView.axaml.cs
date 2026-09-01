@@ -756,6 +756,15 @@ public partial class GamepadShellView : UserControl
                 return;
             }
             element.BringIntoView();
+            // An expanded platform summary keeps focus while its rows appear beneath it; if it sits low in
+            // the scroller those rows land below the fold, so pull the summary up to the top of the view.
+            if (settingsRow is { IsSummary: true, IsExpanded: true })
+            {
+                var top = element.TranslatePoint(new Point(0, 0), GamepadSettingsRows)?.Y ?? 0;
+                GamepadSettingsScroller.Offset = new Vector(
+                    GamepadSettingsScroller.Offset.X,
+                    Math.Clamp(top, 0, Math.Max(0, GamepadSettingsScroller.Extent.Height - GamepadSettingsScroller.Viewport.Height)));
+            }
             var rowButton = element as Button ?? element.GetVisualDescendants()
                 .OfType<Button>()
                 .FirstOrDefault(button => ReferenceEquals(button.DataContext, settingsRow));

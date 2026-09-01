@@ -81,6 +81,19 @@ public partial class App : Application
     public static Func<Task<string?>>? CloseOnReturnPrivilegePrepare { get; set; }
 
     /// <summary>
+    /// Set by the Android head: reports, without prompting, why "close emulator on return" cannot work right
+    /// now (Shizuku not running, permission not granted) as a short line for the settings row, or null when
+    /// it is ready. Desktop leaves this null.
+    /// </summary>
+    public static Func<string?>? CloseOnReturnPrivilegeStatus { get; set; }
+
+    /// <summary>
+    /// Set by the Android head: whether an app package is installed on this device, so Settings can say
+    /// when a platform's chosen emulator is missing instead of failing at launch. Desktop leaves this null.
+    /// </summary>
+    public static Func<string, bool>? InstalledPackageProbe { get; set; }
+
+    /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that
     /// cannot resolve it themselves. Desktop leaves this null and <see cref="AppBootstrapper"/> uses
     /// <c>AppContext.BaseDirectory</c> / the per-user macOS location; the Android head sets it to the
