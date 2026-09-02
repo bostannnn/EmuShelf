@@ -2440,13 +2440,15 @@ public partial class MainViewModel : ViewModelBase
         {
             CloseGamepadSettingsProjection();
             var settings = await CreateSettingsViewModelAsync();
-            // Per-platform game counts for the Emulators summaries, read once off the UI thread
-            // (SQLite) rather than per row while the section rebuilds.
+            // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
+            // rather than per row while the section rebuilds. A scan started from inside Settings makes
+            // them stale, so the projection can ask for a fresh read through refreshGameCounts.
             var systemIds = settings.Rows.Select(row => row.SystemId).ToList();
-            var gameCounts = await Task.Run(() => systemIds.ToDictionary(
+            Task<Dictionary<string, int>> ReadGameCountsAsync() => Task.Run(() => systemIds.ToDictionary(
                 systemId => systemId,
                 systemId => _library.GetGames(systemId).Count,
                 StringComparer.Ordinal));
+            var gameCounts = await ReadGameCountsAsync();
             var installed = EmuShelf.App.App.InstalledPackageProbe;
             GamepadSettings = new GamepadSettingsViewModel(
                 settings,
@@ -2464,7 +2466,23 @@ public partial class MainViewModel : ViewModelBase
                 closeOnReturnWarning: EmuShelf.App.App.CloseOnReturnPrivilegeStatus,
                 grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
                     ? null
-                    : GrantCloseOnReturnPrivilegeAsync);
+                    : GrantCloseOnReturnPrivilegeAsync,
+                refreshGameCounts: async () =>
+                {
+                    try
+                    {
+                        gameCounts = await ReadGameCountsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        // A stale count is a wrong number on a summary line, not a broken screen: keep the
+                        // previous reading rather than tearing Settings down over a transient library read.
+                        _logger.Warning("Could not refresh the per-platform game counts for Settings.", ex);
+                    }
+                });
+            // The Shizuku grant and emulator installs change while EmuShelf is in the background, so the
+            // projection caches those probes and re-reads them here instead of on every rebuild.
+            EmuShelf.App.App.ForegroundReturned += RefreshGamepadSettingsDeviceState;
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
         catch (Exception ex)
@@ -7379,11 +7397,24 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
+    /// <summary>
+    /// EmuShelf is in front again, so whatever the user went away to do — grant Shizuku, install an
+    /// emulator — may now be true. Told to the open Settings projection, which is holding those probes.
+    /// </summary>
+    private void RefreshGamepadSettingsDeviceState()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            GamepadSettings?.RefreshDeviceState();
+        else
+            Dispatcher.UIThread.Post(() => GamepadSettings?.RefreshDeviceState());
+    }
+
     private void CloseGamepadSettingsProjection()
     {
         if (GamepadSettings is not { } settings)
             return;
 
+        EmuShelf.App.App.ForegroundReturned -= RefreshGamepadSettingsDeviceState;
         settings.Dispose();
         GamepadSettings = null;
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));

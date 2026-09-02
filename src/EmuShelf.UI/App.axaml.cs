@@ -90,8 +90,21 @@ public partial class App : Application
     /// <summary>
     /// Set by the Android head: whether an app package is installed on this device, so Settings can say
     /// when a platform's chosen emulator is missing instead of failing at launch. Desktop leaves this null.
+    /// Each probe is a PackageManager binder round trip, so callers cache the answer for the lifetime of
+    /// the screen and re-read it on <see cref="ForegroundReturned"/> rather than on every rebuild.
     /// </summary>
     public static Func<string, bool>? InstalledPackageProbe { get; set; }
+
+    /// <summary>
+    /// Raised by the Android head when EmuShelf becomes the top-resumed activity again. The device state
+    /// Settings reports — the Shizuku grant, whether an emulator app is installed — is changed from
+    /// outside EmuShelf, so this is when a screen holding cached probe results re-reads them. Desktop
+    /// never raises it; nothing there changes behind the app's back.
+    /// </summary>
+    public static event Action? ForegroundReturned;
+
+    /// <summary>Raises <see cref="ForegroundReturned"/>; the head cannot invoke the event directly.</summary>
+    public static void RaiseForegroundReturned() => ForegroundReturned?.Invoke();
 
     /// <summary>
     /// The portable-storage root the head hands to <see cref="AppBootstrapper"/>, for platforms that

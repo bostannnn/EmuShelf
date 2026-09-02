@@ -11498,3 +11498,39 @@ computed from the same settings model; the buttons went from fixed Height to Min
 Parity: summary and folder rows are `ExcludeFromParity`; the Desktop↔Gamepad parity test never
 covered Emulators, so nothing there moved. Game counts come from one `GetGames(systemId)` pass off
 the UI thread when Settings opens, not per rebuild.
+
+## 2026-09-02 — Settings caches its device probes and re-reads them on foreground return
+
+Review of the section above found the two new Android probes being paid for far more often than they
+are worth, and one of them never re-read at the only moment its answer changes.
+
+`NotifyRailStatuses` runs on every `RebuildRows` — which is every settings PropertyChanged, including
+each per-row progress message during a scan and every D-pad Left/Right on a choice row — and the rail
+is on screen in every section, not just Emulators. `EmulatorsRailStatus` and `IsEmulatorsRailWarning`
+were both getters, and the second calls the first, so each notification walked all 15 platforms twice
+calling `PackageManager.GetLaunchIntentForPackage` (a binder round trip that resolves activities),
+plus Shizuku's `pingBinder`/`checkSelfPermission`; with the section open `BuildEmulatorsRows` added a
+third pass. ~45 synchronous binder calls per rebuild, on the UI thread, on the Thor.
+
+Both probes answer questions only the system can change: the user grants Shizuku in Shizuku's own
+dialog, and installs an emulator from a store. So they are now read once per Settings screen and held
+(`_emulatorChoiceInstalled` keyed by choice id, `_closeOnReturnWarningRead`), and the rail status is
+computed once per rebuild into a field instead of twice per notification in a getter.
+
+The invalidation seam is a new `App.ForegroundReturned`, raised by the Android head from
+`AndroidActivityLifecycle.TopResumedChanged`'s leading edge — deliberately not the existing
+`ReturnedToForeground`, which is a single slot already owned by play-session completion. MainViewModel
+subscribes for the life of the Settings overlay and calls `GamepadSettingsViewModel.RefreshDeviceState`.
+This is also the fix for the Shizuku row: `PreparePrivilege` only raises Shizuku's dialog and returns
+immediately, so the grant lands after EmuShelf has lost the foreground — without the re-read the row
+kept telling the user to grant a permission they had just granted, until Settings was reopened.
+
+Per-platform game counts get the same treatment from the other direction: they are still a snapshot
+taken off the UI thread when Settings opens, but a scan started from inside Settings makes them wrong,
+so the projection now watches the falling edge of `IsMaintainingLibrary` and asks the host to re-read
+them (`refreshGameCounts`), then rebuilds. Watching that flag rather than parsing status text means
+both the per-platform rescan and a folder import are covered.
+
+Not changed: the folder row's A press rescans the platform without labelling itself as such. Andrew's
+call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
+quieter second path to the same action.

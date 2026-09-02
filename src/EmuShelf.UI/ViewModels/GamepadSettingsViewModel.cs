@@ -275,9 +275,19 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly Func<Task>? _openHotkeys;
     private readonly IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>> _androidEmulatorChoices;
     private readonly Func<string, int>? _gameCountBySystem;
+    private readonly Func<Task>? _refreshGameCounts;
     private readonly Func<EmulatorChoice, bool>? _isEmulatorChoiceInstalled;
     private readonly Func<string?>? _closeOnReturnWarning;
     private readonly Func<Task>? _grantCloseOnReturnPrivilege;
+    // Device probes held for the life of this screen, keyed by choice id; see EmulatorMissingFor.
+    private readonly Dictionary<string, bool> _emulatorChoiceInstalled = new(StringComparer.Ordinal);
+    private string? _cachedCloseOnReturnWarning;
+    private bool _closeOnReturnWarningRead;
+    private string _emulatorsRailStatus = string.Empty;
+    // Per-platform game counts are a snapshot taken when Settings opened, so a scan started from here has
+    // to re-read them. Tracks the falling edge of IsMaintainingLibrary, which every rescan and folder
+    // import raises, rather than guessing from status text.
+    private bool _maintainingLibrary;
     // The one platform whose rows are shown beneath its summary in the Emulators section; null = all
     // collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable.
     private string? _expandedSystemId;
@@ -501,18 +511,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         ? string.Empty
         : FormatGames(_settings.Rows.Sum(row => _gameCountBySystem(row.SystemId)));
 
-    public string EmulatorsRailStatus
+    // Computed once per rebuild rather than in the getter: both this and IsEmulatorsRailWarning are bound,
+    // and each evaluation walks every platform's install probe, so a getter would run that scan twice per
+    // notification — in every section, since the rail is always on screen.
+    public string EmulatorsRailStatus => _emulatorsRailStatus;
+
+    public bool IsEmulatorsRailWarning => !string.IsNullOrEmpty(_emulatorsRailStatus);
+
+    private string ComputeEmulatorsRailStatus()
     {
-        get
-        {
-            var attention = _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null);
-            if (attention is not null)
-                return $"{attention.SystemName} needs attention";
-            return CloseOnReturnWarning is not null ? "Shizuku needs attention" : string.Empty;
-        }
+        var attention = _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null);
+        if (attention is not null)
+            return $"{attention.SystemName} needs attention";
+        return CloseOnReturnWarning is not null ? "Shizuku needs attention" : string.Empty;
     }
 
-    public bool IsEmulatorsRailWarning => !string.IsNullOrEmpty(EmulatorsRailStatus);
     public string HotkeysRailStatus => string.Empty;
     public string RetroAchievementsRailStatus => _settings.IsRetroAchievementsConnected
         ? _settings.ConnectedAccountName ?? "Signed in"
@@ -525,8 +538,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private static string FormatGames(int count) => count == 1 ? "1 game" : $"{count} games";
 
-    private string? CloseOnReturnWarning =>
-        _settings.HasCloseEmulatorOnReturn && CloseEmulatorOnReturn ? _closeOnReturnWarning?.Invoke() : null;
+    // Both device probes below are binder round trips on Android and answer questions only the system can
+    // change (the user grants Shizuku in Shizuku's dialog, installs an emulator from a store), so they are
+    // read once and held until App.ForegroundReturned says the user has been away — see RefreshDeviceState.
+    private string? CloseOnReturnWarning
+    {
+        get
+        {
+            if (!_settings.HasCloseEmulatorOnReturn || !CloseEmulatorOnReturn)
+                return null;
+            if (!_closeOnReturnWarningRead)
+            {
+                _cachedCloseOnReturnWarning = _closeOnReturnWarning?.Invoke();
+                _closeOnReturnWarningRead = true;
+            }
+            return _cachedCloseOnReturnWarning;
+        }
+    }
 
     /// <summary>The display name of the platform's chosen Android emulator when it is not installed on this
     /// device, else null. Only standalone-app choices are probed; RetroArch cores live inside RetroArch.</summary>
@@ -535,7 +563,26 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         if (_isEmulatorChoiceInstalled is null || !row.HasEmulatorChoices)
             return null;
         var choice = row.SelectedChoice ?? row.AvailableChoices[0];
-        return _isEmulatorChoiceInstalled(choice) ? null : choice.DisplayName;
+        if (!_emulatorChoiceInstalled.TryGetValue(choice.Id, out var installed))
+        {
+            installed = _isEmulatorChoiceInstalled(choice);
+            _emulatorChoiceInstalled[choice.Id] = installed;
+        }
+        return installed ? null : choice.DisplayName;
+    }
+
+    /// <summary>
+    /// Drops the cached device probes and rebuilds, so a Shizuku grant or an emulator installed while the
+    /// user was away shows up without reopening Settings. Cheap when nothing changed: the rebuild is the
+    /// same one any settings edit already runs.
+    /// </summary>
+    public void RefreshDeviceState()
+    {
+        if (_disposed)
+            return;
+        _emulatorChoiceInstalled.Clear();
+        _closeOnReturnWarningRead = false;
+        RebuildRows();
     }
 
     public string StatusText => IsThemesSection ? string.Empty : SelectedSection switch
@@ -621,10 +668,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         Func<string, int>? gameCountBySystem = null,
         Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
         Func<string?>? closeOnReturnWarning = null,
-        Func<Task>? grantCloseOnReturnPrivilege = null)
+        Func<Task>? grantCloseOnReturnPrivilege = null,
+        Func<Task>? refreshGameCounts = null)
     {
         _settings = settings;
         _gameCountBySystem = gameCountBySystem;
+        _refreshGameCounts = refreshGameCounts;
+        _maintainingLibrary = settings.IsMaintainingLibrary;
         _isEmulatorChoiceInstalled = isEmulatorChoiceInstalled;
         _closeOnReturnWarning = closeOnReturnWarning;
         _grantCloseOnReturnPrivilege = grantCloseOnReturnPrivilege;
@@ -1596,7 +1646,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 IsCompact = true,
                 IsWarning = warning is not null,
                 SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Grant Shizuku" : null,
-                SecondaryActivate = warning is not null ? _grantCloseOnReturnPrivilege : null,
+                // Requesting the grant only raises Shizuku's dialog; the answer lands later. Drop the cached
+                // reading so the rebuild that follows re-asks, which covers the case where the permission was
+                // already granted. The grant made in that dialog is picked up by RefreshDeviceState on return.
+                SecondaryActivate = warning is not null && _grantCloseOnReturnPrivilege is not null
+                    ? async () =>
+                    {
+                        await _grantCloseOnReturnPrivilege();
+                        _closeOnReturnWarningRead = false;
+                    }
+                    : null,
             };
         }
 
@@ -2429,8 +2488,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>Re-reads the per-platform game counts the host captured when Settings opened, then rebuilds
+    /// so every "N games" line and the Library rail total reflect what the scan just imported.</summary>
+    private async Task RefreshGameCountsAsync()
+    {
+        if (_refreshGameCounts is null)
+            return;
+
+        await _refreshGameCounts();
+        if (!_disposed)
+            RebuildRows();
+    }
+
     private void NotifyRailStatuses()
     {
+        _emulatorsRailStatus = ComputeEmulatorsRailStatus();
         OnPropertyChanged(nameof(LibraryRailStatus));
         OnPropertyChanged(nameof(EmulatorsRailStatus));
         OnPropertyChanged(nameof(IsEmulatorsRailWarning));
@@ -2454,6 +2526,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         // RebuildRows itself, so honoring this echo too would rebuild the entire list twice per press.
         if (_synchronizingSection || _applyingLocalEdit)
             return;
+        // A rescan or folder import just finished, so the game counts captured when Settings opened are
+        // now wrong. Re-read them off the UI thread and rebuild again when they land.
+        var maintaining = _settings.IsMaintainingLibrary;
+        if (_maintainingLibrary && !maintaining)
+            _ = RefreshGameCountsAsync();
+        _maintainingLibrary = maintaining;
         RebuildRows();
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(HasStatus));

@@ -582,6 +582,112 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task EmulatorsSection_ProbesTheDeviceOncePerScreen_NotOncePerRebuild()
+    {
+        // Each probe is a PackageManager binder round trip on the device, and the rail status is evaluated
+        // in every section, so the answers are held until the user has been away.
+        var installedProbes = 0;
+        var shizukuProbes = 0;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            isEmulatorChoiceInstalled: _ =>
+            {
+                installedProbes++;
+                return true;
+            },
+            closeOnReturnWarning: () =>
+            {
+                shizukuProbes++;
+                return "Shizuku permission not granted · press Y to grant it";
+            });
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        var afterOpen = installedProbes;
+        Assert.InRange(afterOpen, 1, viewModel.Settings.Rows.Count);
+
+        // Rebuilds trigger a full rail recompute; none of them may re-probe the device.
+        await ExpandPlatformAsync(viewModel, "nds");
+        await ExpandPlatformAsync(viewModel, "snes");
+        viewModel.SelectedSection = SettingsSection.About;
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.Equal(afterOpen, installedProbes);
+        var afterRebuilds = shizukuProbes;
+
+        // Returning to the foreground is the one thing that can have changed either answer.
+        viewModel.RefreshDeviceState();
+        Assert.True(installedProbes > afterOpen);
+        Assert.True(shizukuProbes > afterRebuilds);
+    }
+
+    [AvaloniaFact]
+    public void EmulatorsSection_ShizukuWarningClears_WhenTheGrantLandsWhileAway()
+    {
+        // Y only raises Shizuku's own dialog; the grant lands after EmuShelf has lost the foreground, so
+        // without the re-read on return the row keeps telling the user to grant a permission they granted.
+        var granted = false;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            closeOnReturnWarning: () => granted ? null : "Shizuku permission not granted · press Y to grant it",
+            grantCloseOnReturnPrivilege: () => Task.CompletedTask);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.True(viewModel.Rows.Single(row => row.Key == "emulators.close-on-return").IsWarning);
+        Assert.Equal("Shizuku needs attention", viewModel.EmulatorsRailStatus);
+
+        granted = true;
+        viewModel.RefreshDeviceState();
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
+        Assert.False(row.IsWarning);
+        Assert.Equal("Force-stop the game's emulator when you come back, so it stops draining the battery.", row.Description);
+        Assert.Equal(string.Empty, viewModel.EmulatorsRailStatus);
+        Assert.False(viewModel.IsEmulatorsRailWarning);
+        Assert.Equal(string.Empty, viewModel.ActionsHint);
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_GameCountsAreRereadWhenAScanFinishes()
+    {
+        // Mirrors the host: the rows read a snapshot taken when Settings opened, and only refreshGameCounts
+        // re-reads the library. A rescan started from here has to make that happen or the line stays wrong.
+        var library = new Dictionary<string, int>(StringComparer.Ordinal) { ["snes"] = 0 };
+        var snapshot = new Dictionary<string, int>(library, StringComparer.Ordinal);
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) =>
+            {
+                library["snes"] = 52;
+                return Task.FromResult("Rescan complete — 52 games");
+            },
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            gameCountBySystem: systemId => snapshot.GetValueOrDefault(systemId),
+            refreshGameCounts: () =>
+            {
+                snapshot = new Dictionary<string, int>(library, StringComparer.Ordinal);
+                return Task.CompletedTask;
+            });
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.Contains("0 games", viewModel.Rows.Single(row => row.Key == "emulators.snes.summary").Value);
+
+        viewModel.FocusedRowIndex = viewModel.Rows.ToList().FindIndex(row => row.Key == "emulators.snes.summary");
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        await Task.Delay(50);
+
+        Assert.Contains("52 games", viewModel.Rows.Single(row => row.Key == "emulators.snes.summary").Value);
+        Assert.Equal("52 games", viewModel.LibraryRailStatus);
+    }
+
+    [AvaloniaFact]
     public async Task HotkeysSection_IsItsOwnRailEntryAndOpensTheControllerNativeEditor()
     {
         var snapshot = new HotkeyEmulatorSnapshot(
@@ -836,7 +942,8 @@ public sealed class GamepadSettingsViewModelTests
         Func<string, int>? gameCountBySystem = null,
         Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
         Func<string?>? closeOnReturnWarning = null,
-        Func<Task>? grantCloseOnReturnPrivilege = null) => new(
+        Func<Task>? grantCloseOnReturnPrivilege = null,
+        Func<Task>? refreshGameCounts = null) => new(
             CreateSettings(
                 maintenance,
                 metadataPreferences,
@@ -852,7 +959,8 @@ public sealed class GamepadSettingsViewModelTests
             gameCountBySystem: gameCountBySystem,
             isEmulatorChoiceInstalled: isEmulatorChoiceInstalled,
             closeOnReturnWarning: closeOnReturnWarning,
-            grantCloseOnReturnPrivilege: grantCloseOnReturnPrivilege);
+            grantCloseOnReturnPrivilege: grantCloseOnReturnPrivilege,
+            refreshGameCounts: refreshGameCounts);
 
     /// <summary>Emulators lists one summary row per platform; A on it reveals that platform's rows.</summary>
     private static async Task ExpandPlatformAsync(GamepadSettingsViewModel viewModel, string systemId)
