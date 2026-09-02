@@ -11385,3 +11385,31 @@ change as well as data — a package missing from `<queries>` reads as "not inst
 the choice appears and every launch through it fails. The manifest comment claimed a test kept the
 two in sync; it did not (it spot-checked three ids). `EveryProfilePackageIsDeclaredInTheAndroidHeads-
 QueriesBlock` now reads the head's manifest from source and asserts every profile package appears.
+
+## 2026-09-02 — An Android emulator with no derivable save folder still carries its id
+
+The entry above shipped `CreateMelonDsProvider`'s Android branch, but nothing reached it.
+`AppBootstrapper.ResolveAndroidEmulator` returns what EmuShelf knows about a system's emulator on
+Android, and for a folder-configurable one there is no directory to derive — so it returned `null`,
+which also dropped the emulator **id**. `SaveProviderContext.ActiveEmulatorId` is what
+`SaveProviderRegistry.Resolve` matches on, so a DS row set to standalone melonDS resolved to the
+system's *first* profile instead: RetroArch. On a single-profile system (PSP, 3DS) that fallback
+happens to name the same emulator, which is why this stayed invisible until DS gained a second.
+
+Two consequences, one of them destructive. The melonDS provider never ran, so a restore landed on the
+`.srm` a libretro core reads rather than the `.sav` melonDS reads — the save was ignored and the game
+booted as new. And the save-override key split: Settings reads it for the emulator in the picker
+(`nds|melonds`, empty), while every write and every sync resolves it through the active installation
+(`nds|retroarch`). Picking melonDS therefore blanked the folder box, and saving Settings wrote that
+blank through to the key the sync was using — clearing a configured DS save folder, after which the
+row had neither an override nor a core and synced nothing, silently.
+
+So the installation now carries the **id with a null directory**. The directory staying unset was
+always the real guarantee — no guessed path — while the id keeps Settings, the override key and
+provider selection in lock-step. WatermelonDS is unchanged: it is RetroArch-shaped and keeps
+resolving through that provider's exact-folder override.
+
+`CreateMelonDsProvider` also takes an explicit `isAndroid` seam, like `CreateDolphinProvider`.
+`OperatingSystem.IsAndroid()` is false on the test host, so the Android branch was unreachable from
+the suite *and* from production at once — the combination that let it ship looking done. Platform
+branches in the registry take the parameter so the desktop suite exercises both sides.

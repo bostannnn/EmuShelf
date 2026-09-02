@@ -133,6 +133,47 @@ public class SaveProviderRegistryTests
     }
 
     [Fact]
+    public async Task AndroidMelonDsProvider_SyncsTheChosenFolderAndSitsOutWithoutOne()
+    {
+        // The Android branch of CreateMelonDsProvider — the counterpart to the resolution above, and
+        // until now reachable from neither the suite (OperatingSystem.IsAndroid() is false on the test
+        // host) nor production (the resolution it depends on returned null). Unix-only for the same
+        // reason as the Dolphin case below: Path.GetFullPath rebases a POSIX path on Windows.
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "POSIX Android path; Path.GetFullPath rebases it on Windows.");
+        const string chosenFolder = "/storage/emulated/0/User/Watermelon-DS";
+
+        // No override → nothing to sync. melonDS records its save path in app-private storage EmuShelf
+        // cannot read, so the platform sits out rather than guessing at a path.
+        Assert.Null(SaveProviderRegistry.CreateMelonDsProvider(
+            "melonds",
+            new SaveProviderContext(
+                DirectoryOverride: null,
+                EmulatorDirectory: null,
+                IsFlatpak: false,
+                Paths: new StubPaths()),
+            isAndroid: true));
+
+        var provider = SaveProviderRegistry.CreateMelonDsProvider(
+            "melonds-nightly",
+            new SaveProviderContext(
+                DirectoryOverride: chosenFolder,
+                EmulatorDirectory: null,
+                IsFlatpak: false,
+                Paths: new StubPaths()),
+            isAndroid: true);
+
+        var melonDs = Assert.IsType<MelonDsSaveLocationProvider>(provider);
+        Assert.Equal("melonds-nightly", melonDs.EmulatorId);
+        Assert.Equal(
+            chosenFolder,
+            await melonDs.GetSaveDataDirectoryAsync(TestContext.Current.CancellationToken));
+        // The battery key stays cross-emulator so the same save meets WatermelonDS's and a libretro
+        // core's copy; only the save-state namespace is per channel.
+        Assert.Equal("nds/", melonDs.UnitIdPrefix);
+        Assert.Equal("melonds-nightly/nds/", melonDs.StateNamespacePrefix);
+    }
+
+    [Fact]
     public void NintendoDsRow_ReadsTheSameWhicheverEmulatorIsActive()
     {
         // The row's static text comes from the first profile for the system, so with three emulators
