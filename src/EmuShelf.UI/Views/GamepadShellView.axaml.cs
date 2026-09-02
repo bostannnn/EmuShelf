@@ -5,9 +5,11 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 using Avalonia.Media.Transformation;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using System;
 using System.ComponentModel;
 using EmuShelf.App.Controls;
 using EmuShelf.App.Services;
@@ -93,6 +95,53 @@ public partial class GamepadShellView : UserControl
         _gamepadViewModel = DataContext as MainViewModel;
         if (_gamepadViewModel is not null)
             _gamepadViewModel.PropertyChanged += OnGamepadViewModelPropertyChanged;
+
+        UpdateAmbientGlow();
+    }
+
+    /// <summary>
+    /// Retints the grid backdrop's radial wash to the focused game's per-system accent, so the stage
+    /// shifts mood as focus moves between platforms. Swapping the whole SolidColorBrush (rather than
+    /// mutating Color) lets the Border's BrushTransition cross-fade the change; runs only on focus
+    /// changes, never per frame. Keeps the last tint when focus empties so the backdrop never blinks.
+    /// </summary>
+    private void UpdateAmbientGlow()
+    {
+        if (_gamepadViewModel?.FocusedGame is not { } game)
+            return;
+
+        var accent = VividAmbient(game.ShelfAccent);
+        if (_ambientColor == accent)
+            return;
+        _ambientColor = accent;
+
+        // Direct radial (peak ~45% accent in the upper-left, falling to nothing) instead of a
+        // masked solid — see the XAML note: the OpacityMask compose was a per-frame full-screen
+        // cost. Rebuilt only here, on a focus change.
+        var pool = new RadialGradientBrush
+        {
+            Center = new RelativePoint(0.22, 0.28, RelativeUnit.Relative),
+            GradientOrigin = new RelativePoint(0.22, 0.28, RelativeUnit.Relative),
+            RadiusX = new RelativeScalar(0.72, RelativeUnit.Relative),
+            RadiusY = new RelativeScalar(0.88, RelativeUnit.Relative),
+        };
+        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x73, accent.R, accent.G, accent.B), 0));
+        pool.GradientStops.Add(new GradientStop(Color.FromArgb(0x00, accent.R, accent.G, accent.B), 1));
+        GamepadAmbientGlow.Background = pool;
+        GamepadAmbientTint.Background = new ImmutableSolidColorBrush(accent);
+    }
+
+    private Color? _ambientColor;
+
+    /// <summary>
+    /// The per-system accents are muted mid-tones picked for chips and placeholders (PS1 is literally
+    /// grey); layered at low opacity over a dark backdrop they disappear. Keep the HUE but force the
+    /// saturation and brightness up so the wash reads as coloured light at ambient strength.
+    /// </summary>
+    private static Color VividAmbient(Color accent)
+    {
+        var hsv = accent.ToHsv();
+        return HsvColor.ToRgb(hsv.H, Math.Max(hsv.S, 0.60), Math.Max(hsv.V, 0.95));
     }
 
     // Mirror of OnDataContextChanged's teardown, run when the view is permanently detached (activity
@@ -200,6 +249,7 @@ public partial class GamepadShellView : UserControl
             // is not on screen (RevealFocusedGame acts on the hidden grid, CentreShelf on the hidden strip).
             RevealFocusedGame(animate: true);
             CentreShelf();
+            UpdateAmbientGlow();
             return;
         }
 
@@ -706,6 +756,15 @@ public partial class GamepadShellView : UserControl
                 return;
             }
             element.BringIntoView();
+            // An expanded platform summary keeps focus while its rows appear beneath it; if it sits low in
+            // the scroller those rows land below the fold, so pull the summary up to the top of the view.
+            if (settingsRow is { IsSummary: true, IsExpanded: true })
+            {
+                var top = element.TranslatePoint(new Point(0, 0), GamepadSettingsRows)?.Y ?? 0;
+                GamepadSettingsScroller.Offset = new Vector(
+                    GamepadSettingsScroller.Offset.X,
+                    Math.Clamp(top, 0, Math.Max(0, GamepadSettingsScroller.Extent.Height - GamepadSettingsScroller.Viewport.Height)));
+            }
             var rowButton = element as Button ?? element.GetVisualDescendants()
                 .OfType<Button>()
                 .FirstOrDefault(button => ReferenceEquals(button.DataContext, settingsRow));
@@ -769,9 +828,13 @@ public partial class GamepadShellView : UserControl
         }
         else if (viewModel.HasGamepadOverlay && viewModel.IsGamepadControllerInputActive)
         {
-            var focusedOption = GamepadOverlayOptions.GetVisualDescendants()
-                .OfType<Button>()
-                .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
+            // BOTH option lists, not just the scroller's: destructive rows (Remove / Quit) are pinned
+            // in their own ItemsControl outside it. Missing them here does not merely skip a
+            // BringIntoView — native focus would stay on the last primary row, which keeps matching
+            // Button.gamepad-modal-option:focus (a solid accent fill), so two rows read as selected at
+            // once and a hardware Space activates the stale one.
+            var focusedOption = FindFocusedOverlayOption(GamepadOverlayOptions)
+                ?? FindFocusedOverlayOption(GamepadOverlayDestructiveOptions);
             if (focusedOption is not null)
             {
                 focusedOption.BringIntoView();
@@ -779,6 +842,11 @@ public partial class GamepadShellView : UserControl
             }
         }
     }
+
+    private static Button? FindFocusedOverlayOption(ItemsControl list) =>
+        list.GetVisualDescendants()
+            .OfType<Button>()
+            .FirstOrDefault(button => button.DataContext is GamepadOverlayOptionViewModel { IsFocused: true });
 
     // The section rail scrolls when it holds more sections than fit the column, so keep the current
     // section's button in view. The selected button carries the "selected" style class (bound to the

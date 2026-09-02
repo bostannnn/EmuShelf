@@ -23,28 +23,27 @@
         <!-- The 58 here is the label strip under the cover. GamepadGridPanel computes every row's
              band height and tile rect from GamepadGridTile.LabelStripHeight; the ctor re-applies that
              constant to this RowDefinition so the two can never drift. -->
-        <Grid x:Name="TileRoot" Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
+        <Grid x:Name="TileRoot" Classes="gamepad-tile-zoom" Width="{Binding CoverWidth}" RowDefinitions="Auto,58" ClipToBounds="False">
             <!-- The cover frame is this tile's packed size: the packer framed it to
                  the platform's canonical ratio and scaled the row to fill the width.
                  UniformToFill below crops off-ratio art to fill it; every cover in a
                  row shares one height, so the row's covers line up top and bottom. -->
             <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                    Classes="gamepad-cover-stack" ClipToBounds="False">
-                <!-- Controller focus frame. A solid accent pad BEHIND the cover, 6px
-                     larger on every side with a concentric corner radius (12 + 6), so
-                     the opaque cover masks its centre and the accent reads as an even
-                     6px frame. Its inner edge is the cover's own rounded corner, so
-                     corners can never mismatch and no artwork is ever hidden — unlike a
-                     stroked border on top, whose inner corner radius (radius − thickness)
-                     cannot follow the cover. Must stay first/bottom-most. Shown by
-                     opacity on .focused (styles); no transition, tracks the d-pad. -->
+                <!-- Controller focus: NO ring — light does the selecting. This invisible box is only
+                     the shadow caster: on .focused (styles) it gains a deep neutral drop shadow while
+                     the cover stack scales up, and the unfocused tiles' dimming supplies the brightness
+                     contrast. A small accent light pool under the tile (gamepad-focus-pool, below)
+                     grounds the lifted cover. Rings were tried twice — the solid accent pad read as a
+                     sticker frame, the thin white ring + coloured glow fought the cover art's own
+                     colours ("cover lights"). Must stay first/bottom-most so the shadow projects from
+                     UNDER the cover. Shown by opacity on .focused; no transition, tracks the d-pad. -->
                 <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
-                        Margin="-6" CornerRadius="18"
-                        Background="{DynamicResource EmuAccentBrush}" />
-                <!-- Opaque well between the focus pad and the cover, sized to the cover
-                     (the pad is 6px larger). It is never dimmed, so when an unavailable
-                     cover drops to 58% opacity its centre reveals this dark well rather
-                     than the accent pad behind it — the pad stays a clean 6px edge frame. -->
+                        Margin="-7" CornerRadius="19"
+                        Background="Transparent" />
+                <!-- Opaque well behind the cover, sized to the cover. It is never dimmed, so when an
+                     unavailable cover drops to 58% opacity its centre reveals this dark well rather
+                     than the lit stage behind the tile. -->
                 <Border IsHitTestVisible="False" CornerRadius="12"
                         Background="{DynamicResource EmuCoverWellBrush}" />
                 <Border Classes="gamepad-cover-shadow" IsHitTestVisible="False"
@@ -105,6 +104,17 @@
                         </Border>
                     </Panel>
                 </Border>
+                <!-- A faint diagonal catch-light across the cover's top-left, so tiles read as glossy
+                     inserts instead of flat stickers. One static gradient layer per tile — dropped
+                     wholesale under .reduced-effects (styles) to protect the Android scroll budget. -->
+                <Border Classes="gamepad-cover-sheen" IsHitTestVisible="False" CornerRadius="12">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="65%,100%">
+                            <GradientStop Offset="0" Color="#17FFFFFF" />
+                            <GradientStop Offset="0.28" Color="#00FFFFFF" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
                 <!-- Same marks the desktop grid shows, sized for a couch viewing
                      distance. Both are Borders here: a focusable button inside a
                      tile button would capture controller focus, and every gamepad
@@ -132,6 +142,20 @@
                 <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                         CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                         BorderThickness="2" />
+                <!-- The focused tile's accent light pool: a soft radial puddle spilling from under the
+                     cover's bottom edge onto the stage, in the theme accent. The OpacityMask is fine
+                     here — the element is ~250x26 on ONE tile, not a full-screen layer. -->
+                <Border Classes="gamepad-focus-pool" IsHitTestVisible="False"
+                        Height="26" VerticalAlignment="Bottom" Margin="18,0,18,-26"
+                        Background="{DynamicResource EmuAccentBrush}">
+                    <Border.OpacityMask>
+                        <RadialGradientBrush Center="50%,0%" GradientOrigin="50%,0%"
+                                             RadiusX="55%" RadiusY="100%">
+                            <GradientStop Offset="0" Color="#FFFFFFFF" />
+                            <GradientStop Offset="1" Color="#00FFFFFF" />
+                        </RadialGradientBrush>
+                    </Border.OpacityMask>
+                </Border>
             </Panel>
             <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding DisplayTitle}"
                        Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"

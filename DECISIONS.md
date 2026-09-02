@@ -11413,3 +11413,179 @@ resolving through that provider's exact-folder override.
 `OperatingSystem.IsAndroid()` is false on the test host, so the Android branch was unreachable from
 the suite *and* from production at once — the combination that let it ship looking done. Platform
 branches in the registry take the parameter so the desktop suite exercises both sides.
+## 2026-08-31 — Couch grid visual pass: light and depth instead of new palettes
+
+The couch grid's flatness ("any admin dashboard, not a console") was addressed by an A/B-mocked
+pass Andrew approved: keep the layout, the achievement widget, and the green PLAY button exactly as
+they are, change only atmosphere and focus. What shipped: (1) a grid-mode backdrop over the flat
+EmuLibraryBrush root — a vertical light ramp plus a radial wash tinted by the FOCUSED game's
+per-system accent (swapped in code-behind on FocusedGame changes, cross-faded by a BrushTransition;
+never per-frame); (2) the platform rail is a translucent dark ramp that fades into that backdrop
+instead of a second flat slab, with unselected console icons at 55% opacity; (3) the focused tile's
+6px solid accent pad is now a 3px text-primary-toned stroke floated 4px off the art, with an
+accent glow + drop shadow (`EmuGamepadFocusGlow`) and a 1.045→1.06 scale lift; (4) unfocused
+covers/titles recede (88% cover opacity, secondary-brush titles) and covers get a faint light rim
+plus a diagonal sheen; (5) the dock mirrors the rail's fade and its system label became a
+letterspaced uppercase eyebrow (`TextConverters.Uppercase` — Avalonia has no text-transform).
+
+Non-obvious choices: all new backdrop/rail/dock paints are THEME-AGNOSTIC black/white alphas
+layered over the themed root, so 29 palettes get the pass for free — only the glow needed a new
+per-palette token (`EmuGamepadFocusGlow`, derived from each palette's EmuFocusGlow accent). The
+glow lives on the focus ring, so exactly ONE shadowed element exists per grid — it deliberately
+stays inside the reduced-effects budget that dropped the ~40 per-tile cover shadows on Android;
+the per-tile sheen, being a per-tile overdraw layer, IS dropped under reduced-effects the same way.
+The ambient wash uses the per-system accent (not a cover-derived dominant color) — cheap, already
+modeled (GameViewModel.ShelfAccent), and it shifts mood per platform; cover-derived color stays a
+possible upgrade. The backdrop container is a Grid, not a Panel, because a visual test identifies
+the spotlight backdrop as "the only bare Panel child of GamepadRoot".
+
+## 2026-08-31 — Couch dock becomes an overlay; edge insets protect the focus ring; masked backdrop layers removed
+
+Three fixes from the first on-device round of the visual pass. (1) The focused dock is no longer a
+104px layout row: it floats over the grid's lower edge behind a transparent-to-dark fade, so covers
+scroll beneath it and the grid gains the row's height. The reveal centres rows and clamps at list
+ends, so `GamepadGridPanel.EdgeInsetBottom` (156) holds the clamped last row above the overlay;
+`EdgeInsetTop` (24) gives the first row's focus ring + glow headroom INSIDE the scrollable extent
+(the ring overflows ~20px once the 1.06 focus scale applies, and the viewport was hard-clipping it) —
+the host ScrollViewer's top margin drops by the same 24 so resting layout is unchanged. (2) The
+ambient backdrop's two full-screen `OpacityMask` layers are gone — each forced a full-screen
+offscreen compose per scrolled frame on the Thor. The platform pool is now a DIRECT radial gradient
+(accent→transparent) built in code on focus change, the counter-pool was dropped, and the focus
+glow's blurs shrank (56→26 / 42→22). Colour changes on the pool snap; the solid tint layer's
+BrushTransition carries the perceived cross-fade. (3) The "fans ramping" report was mostly
+self-inflicted: the visual-pass installs were DEBUG builds, replacing the Release+AOT build the
+device had (AOT halves scroll cost — DECISIONS 2026-08-30). Design iterations that get installed on
+the Thor should be built `-c Release` unless the debug tooling is specifically needed.
+
+## 2026-08-31 — Couch menus: one selection language; shelf joins the gradient stage
+
+The couch panels' selection state was a barely-visible wash+ring; after a mocked A/B round the
+menus adopted ONE language: selection/focus is a SOLID accent fill with inverted text — the
+view-mode cards, sort cards, and every overlay option row share it. The view-mode cards' reserved
+check badges are gone (the fill is the state), which is also what finally fits "Shelf" unabridged
+(with the system-menu panel widened 460→500). Overlay option rows gained an optional Geometry icon
+(GamepadOptionIcons — the system menu and game-actions sheet set them; list-like overlays stay
+text-only), destructive options (Remove / Quit) render behind a hairline as a separate zone, and
+the game-actions header became the game's title with a letterspaced platform eyebrow instead of
+"<title> actions" wrapped across three lines. The sort direction label is now chip-dressed so it
+reads as the pressable it is.
+
+Shelf mode's flat GL backdrop joined the grid's gradient stage with one shader line: the resolved
+backdrop (library colour + accent wash) is scaled by a vertical ramp in crt.frag.glsl —
+`mix(0.62, 1.35, uv.y)`, remembering GL's uv.y runs bottom-up (the first attempt shipped upside
+down). Because it scales the RESOLVED colour, it recolours with theme and platform for free, and
+zero-backdrop tube presentations stay zero. The spotlight list's rows kissed the card's top/bottom
+mid-scroll; the fix is Margin (viewport inset), not Padding (scroll-extent inset), so the gap is
+permanent rather than only at the list's ends.
+
+## 2026-09-01 — Couch panel polish: anchored sheet, pinned destructive zone, seamless shelf ramp
+
+Follow-ups from the first on-device round of the menu work. (1) The game-actions side sheet anchors
+to the overlay host's full height (the Settings/Hotkeys pattern) instead of floating as a centred
+content-sized card. (2) Destructive options (Remove / Quit) moved OUT of the option scroller into a
+pinned zone above the hint legend, published as GamepadOverlayPrimaryOptions /
+GamepadOverlayDestructiveOptions projections — navigation still walks the single
+GamepadOverlayOptions order. This also means Quit can never hide below the Thor's menu scroll fold,
+and with tightened option/picker metrics the start menu no longer scrolls there at all. (3) The
+sort-direction chip sits AFTER the always-reserved "A Reverse" hint so it stays flush right instead
+of drifting toward the centre. (4) The shelf's shader ramp tops out at exactly 1.0 — the scene's
+first pixel row equals the rail band's flat fill, so no seam — and the GL host's 16px side insets
+are gone (they printed the flat root colour as stripes around the gradient).
+
+## 2026-09-01 — Couch review fixes: reveal walks both option lists, edge insets are extent-only
+
+Two defects from the panel-polish round above, both from the same shape of mistake — a projection
+that changed a structure's meaning without updating the code that consumed it.
+
+(1) Splitting the option list into primary/destructive left RevealGamepadOverlayFocus searching only
+the scroller's ItemsControl, so a ring on the pinned Remove/Quit row never took NATIVE focus. Focus
+stayed on the last primary row, which keeps matching `Button.gamepad-modal-option:focus` — now a
+solid accent fill — so two rows painted as selected at once, and a hardware Space fired the stale
+one. The reveal now walks both lists (the pinned one is named GamepadOverlayDestructiveOptions).
+Worth noting for anyone writing couch focus tests: the reveal is posted at DispatcherPriority.Input,
+which is LOWER than Loaded, so a Loaded-only pump returns before it has run and no focus is taken —
+the test pumps Input explicitly.
+
+(2) GamepadGridPanel's edge insets are EXTENT-only and live in `_extentHeight`, never in `_rowTops`.
+Folding EdgeInsetBottom into `_rowTops[^1]` made TryGetRowBounds report the last row 156px taller
+than it is, and the reveal centres on `rowTop + rowHeight / 2` — so that one row settled ~78px above
+the line every other row rests on, and a library small enough to fit the viewport scrolled anyway
+and clipped the tops of its only row's covers. Measured on a 1280x460 couch viewport, where the last
+row's target falls below the ScrollViewer's max offset and so is NOT clamped; a tall desktop
+viewport clamps it and hides the bug, which is why the desktop snapshots never caught it.
+
+## 2026-09-01 — Couch Settings: Emulators collapses to one summary row per platform
+
+The Emulators section on the Thor was ~90 rows (15 platforms × header + Emulator + Launch screen +
+Rescan + Add folder + folder), so reaching PlayStation 2 took ~40 D-pad presses, and nothing in it
+said that the platform's chosen emulator was not installed or that "close emulator on return" was
+silently inert without the Shizuku grant. Four prototype rounds later Andrew's verdict was: keep the
+current design, take only the compacted Emulators page — every other section stays as it is.
+
+What changed, and why it is shaped this way:
+
+(1) A new `Summary` row kind: one focusable row per platform (artwork, name, "emulator · N games",
+chevron). A expands that platform's rows beneath it in place; only one platform is open at a time
+(`_expandedSystemId`), which keeps the list short and the focus target stable across rebuilds (the
+summary key never changes). The old non-focusable `Header` rows stay for the other sections.
+
+(2) Y is the row's secondary action, carried on the spec (`SecondaryLabel/SecondaryActivate`, with
+its own destructive/confirmation gate) and surfaced in the legend via `ActionsHint`: Y on a summary
+rescans that platform without expanding it, so the per-platform "Rescan library" row is gone; the
+folder row is now the rescan (A) and Y forgets it after the same confirmation as before; Y on the
+close-on-return toggle requests the Shizuku grant.
+
+(3) Problems are said where the setting lives. The Android head publishes two more static hooks —
+`App.InstalledPackageProbe` (PackageManager lookup, same check the launch path fails on) and
+`App.CloseOnReturnPrivilegeStatus` (Shizuku running/granted, without prompting) — and the view
+model paints the summary value / row description in the warning colour ("ARMSX2 not installed",
+"Shizuku permission not granted · press Y to grant it"). RetroArch-core choices resolve to
+RetroArch's package; unknown selection ids count as installed so a catalogue gap never warns.
+
+(4) Compact rows (`IsCompact`: one-line, state-first descriptions, 66/56 dip min height) are opted
+into per row and used only by this section; the row template gained `HasDescription`,
+`DescriptionMaxLines` and a `warning` class instead of a second template.
+
+(5) The rail lost the "‹ or LB / RB for sections" hint (the legend already says it) and gained a
+one-line status per section (game count, "Not signed in", the platform that needs attention),
+computed from the same settings model; the buttons went from fixed Height to MinHeight.
+
+Parity: summary and folder rows are `ExcludeFromParity`; the Desktop↔Gamepad parity test never
+covered Emulators, so nothing there moved. Game counts come from one `GetGames(systemId)` pass off
+the UI thread when Settings opens, not per rebuild.
+
+## 2026-09-02 — Settings caches its device probes and re-reads them on foreground return
+
+Review of the section above found the two new Android probes being paid for far more often than they
+are worth, and one of them never re-read at the only moment its answer changes.
+
+`NotifyRailStatuses` runs on every `RebuildRows` — which is every settings PropertyChanged, including
+each per-row progress message during a scan and every D-pad Left/Right on a choice row — and the rail
+is on screen in every section, not just Emulators. `EmulatorsRailStatus` and `IsEmulatorsRailWarning`
+were both getters, and the second calls the first, so each notification walked all 15 platforms twice
+calling `PackageManager.GetLaunchIntentForPackage` (a binder round trip that resolves activities),
+plus Shizuku's `pingBinder`/`checkSelfPermission`; with the section open `BuildEmulatorsRows` added a
+third pass. ~45 synchronous binder calls per rebuild, on the UI thread, on the Thor.
+
+Both probes answer questions only the system can change: the user grants Shizuku in Shizuku's own
+dialog, and installs an emulator from a store. So they are now read once per Settings screen and held
+(`_emulatorChoiceInstalled` keyed by choice id, `_closeOnReturnWarningRead`), and the rail status is
+computed once per rebuild into a field instead of twice per notification in a getter.
+
+The invalidation seam is a new `App.ForegroundReturned`, raised by the Android head from
+`AndroidActivityLifecycle.TopResumedChanged`'s leading edge — deliberately not the existing
+`ReturnedToForeground`, which is a single slot already owned by play-session completion. MainViewModel
+subscribes for the life of the Settings overlay and calls `GamepadSettingsViewModel.RefreshDeviceState`.
+This is also the fix for the Shizuku row: `PreparePrivilege` only raises Shizuku's dialog and returns
+immediately, so the grant lands after EmuShelf has lost the foreground — without the re-read the row
+kept telling the user to grant a permission they had just granted, until Settings was reopened.
+
+Per-platform game counts get the same treatment from the other direction: they are still a snapshot
+taken off the UI thread when Settings opens, but a scan started from inside Settings makes them wrong,
+so the projection now watches the falling edge of `IsMaintainingLibrary` and asks the host to re-read
+them (`refreshGameCounts`), then rebuilds. Watching that flag rather than parsing status text means
+both the per-platform rescan and a folder import are covered.
+
+Not changed: the folder row's A press rescans the platform without labelling itself as such. Andrew's
+call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
+quieter second path to the same action.

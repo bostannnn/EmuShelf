@@ -273,6 +273,17 @@
         </Style>
         <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-tile-ring">
             <Setter Property="Opacity" Value="1" />
+            <!-- Depth for the focused tile, cast by the invisible focus box so it exists only while
+                 focused. Deliberately NEUTRAL (no accent halo): the coloured glow fought the cover
+                 art. One shadowed element per grid, so it stays clear of the reduced-effects budget
+                 that dropped the per-tile cover shadows on Android. -->
+            <Setter Property="BoxShadow" Value="0 18 40 0 #B3000000" />
+        </Style>
+        <Style Selector="Border.gamepad-focus-pool">
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-pool">
+            <Setter Property="Opacity" Value="0.6" />
         </Style>
         <!-- Spotlight hero actions (Play / Achievements) reuse the grid's accent focus pad. -->
         <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
@@ -369,6 +380,17 @@
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
         </Style>
+        <!-- Unselected console badges recede so the active tab is the rail's one bright point;
+             selection/focus restores full strength. Opacity (not a recolour) keeps each console's
+             own badge art. -->
+        <Style Selector="Button.gamepad-platform Image, Button.gamepad-platform PathIcon">
+            <Setter Property="Opacity" Value="0.42" />
+        </Style>
+        <Style Selector="Button.gamepad-platform.selected Image, Button.gamepad-platform.selected PathIcon,
+                         Button.gamepad-platform.focused Image, Button.gamepad-platform.focused PathIcon,
+                         Button.gamepad-platform:pointerover Image, Button.gamepad-platform:pointerover PathIcon">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Button.gamepad-platform:pointerover">
             <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
@@ -389,6 +411,8 @@
              instantly, because animating it is a per-frame layout pass on the UI thread that stutters. -->
         <Style Selector="Border.gamepad-platform-indicator">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentMutedBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="VerticalAlignment" Value="Top" />
@@ -406,26 +430,29 @@
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option">
-            <Setter Property="MinHeight" Value="52" />
+            <Setter Property="MinHeight" Value="46" />
             <Setter Property="FontSize" Value="18" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
-            <Setter Property="Padding" Value="18,12" />
+            <Setter Property="Padding" Value="16,9" />
             <Setter Property="CornerRadius" Value="9" />
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="2" />
         </Style>
+        <!-- Focus is a SOLID accent fill with inverted text — the one selection language the couch
+             menus and the view-mode/sort cards now share, instead of the barely-visible wash+ring. -->
         <Style Selector="Button.gamepad-modal-option.focused, Button.gamepad-modal-option:focus">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.controller-input:pointerover">
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.focused.controller-input:pointerover">
-            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.destructive">
@@ -433,7 +460,9 @@
             <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
         <Style Selector="Button.gamepad-modal-option.destructive.focused, Button.gamepad-modal-option.destructive:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuDangerBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuDangerBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <Style Selector="Border.gamepad-key">
             <Setter Property="MinWidth" Value="28" />
@@ -524,7 +553,9 @@
         <Style Selector="Border.gamepad-overlay.system-menu">
             <Setter Property="HorizontalAlignment" Value="Right" />
             <Setter Property="Margin" Value="0,0,30,0" />
-            <Setter Property="Width" Value="460" />
+            <!-- 500, not 460: with the check badges gone the third view-mode card still needs the
+                 room for "Shelf" at the Thor's density instead of truncating to "Sh…". -->
+            <Setter Property="Width" Value="500" />
         </Style>
         <!-- Confirmations are compact modals, not the 620px picker sheet: a tighter card centres its
              title/body/buttons as one group. -->
@@ -628,7 +659,7 @@
             <Setter Property="Opacity" Value="0.4" />
         </Style>
         <Style Selector="Button.gamepad-settings-nav">
-            <Setter Property="Height" Value="50" />
+            <Setter Property="MinHeight" Value="50" />
             <Setter Property="Padding" Value="16,9" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -652,6 +683,19 @@
         <Style Selector="Button.gamepad-settings-nav.selected.rail-active">
             <Setter Property="BorderThickness" Value="2" />
             <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
+        </Style>
+        <!-- The one-line status under each rail entry (game count, "Not signed in", the platform that
+             needs attention). Secondary colour; warning colour when the section needs a look. -->
+        <Style Selector="TextBlock.gamepad-settings-nav-status">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
+        </Style>
+        <Style Selector="TextBlock.gamepad-settings-nav-status.warning">
+            <Setter Property="Foreground" Value="{DynamicResource EmuWarningBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-settings-nav.selected.rail-active TextBlock.gamepad-settings-nav-status">
             <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
         </Style>
         <Style Selector="Grid.rail-dimmed">
@@ -710,6 +754,26 @@
         <Style Selector="Button.gamepad-settings-row.grouped">
             <Setter Property="Margin" Value="24,0,0,10" />
         </Style>
+        <!-- Compact rows (the Emulators section): one-line descriptions, so a platform's rows fit
+             beneath its summary without pushing the next platform off screen. -->
+        <Style Selector="Button.gamepad-settings-row.compact">
+            <Setter Property="MinHeight" Value="66" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Padding" Value="18,8" />
+        </Style>
+        <Style Selector="Button.gamepad-settings-row.compact.grouped">
+            <Setter Property="Margin" Value="24,0,0,8" />
+        </Style>
+        <!-- Platform summary rows: one line — artwork, name, "emulator · N games", chevron. -->
+        <Style Selector="Button.gamepad-settings-row.summary">
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="18,6" />
+        </Style>
+        <!-- A row's description or summary value that reports a problem. -->
+        <Style Selector="Button.gamepad-settings-row TextBlock.warning">
+            <Setter Property="Foreground" Value="{DynamicResource EmuWarningBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
         <Style Selector="Button.gamepad-theme-card">
             <Setter Property="Margin" Value="0,0,14,14" />
             <Setter Property="Padding" Value="14" />
@@ -736,7 +800,7 @@
              mode is filled with the accent wash; an accent glow wraps the pair while the controller ring
              is on the row (Left/Right switch and apply live). -->
         <Style Selector="Button.gamepad-viewmode-card">
-            <Setter Property="Height" Value="56" />
+            <Setter Property="Height" Value="50" />
             <!-- Tight, because three cards share the menu panel's width and each has to fit an icon,
                  a label and the space the check badge reserves. -->
             <Setter Property="Padding" Value="12,10" />
@@ -750,8 +814,9 @@
             <Setter Property="FocusAdorner" Value="{x:Null}" />
         </Style>
         <Style Selector="Button.gamepad-viewmode-card.selected">
-            <Setter Property="Background" Value="{DynamicResource EmuAccentMutedBrush}" />
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
         </Style>
         <!-- The check badge is always laid out and only fades in, so the label has the same width
              whether or not its card is the selected one.
@@ -1041,9 +1106,28 @@
         <Style Selector="Button.gamepad-game.unavailable TextBlock.gamepad-tile-title">
             <Setter Property="Opacity" Value="0.58" />
         </Style>
+        <!-- A faint light edge instead of the theme border: on artwork it reads as a catch-light on
+             the tile's rim, giving the cover a slight physical lip against the dark backdrop. -->
         <Style Selector="Border.gamepad-cover-frame">
-            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
             <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <!-- Unfocused covers step back a notch so the focused tile owns the light. Rides the existing
+             0.2s cover-image opacity transition, so focus moves fade rather than pop. -->
+        <Style Selector="Button.gamepad-game:not(.focused) Image.cover-image.loaded">
+            <Setter Property="Opacity" Value="0.78" />
+        </Style>
+        <!-- Titles follow the same hierarchy: dimmed at rest, full strength under the focus ring. -->
+        <Style Selector="TextBlock.gamepad-tile-title">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-game.focused TextBlock.gamepad-tile-title">
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+        </Style>
+        <!-- The sheen is one extra translucent layer over every realized tile, so the reduced-effects
+             (Android) grid drops it the same way it drops the per-tile cover shadows. -->
+        <Style Selector="Grid.gamepad-root.reduced-effects Border.gamepad-cover-sheen">
+            <Setter Property="IsVisible" Value="False" />
         </Style>
         <!-- The tile's drop shadow, on a Border of its own with nothing inside it.
              It used to sit on the cover frame, which holds the artwork — and a BoxShadow on a Border
@@ -1073,7 +1157,11 @@
              6px border is preserved. Scaling only the cover grows it into the fixed ring and eats the
              frame at the corners. RenderTransform is composited and post-layout, so no row reflow; the
              ring's opacity (which tile is focused) stays instant — only the size eases. -->
-        <Style Selector="Panel.gamepad-cover-stack">
+        <!-- The zoom rides the WHOLE tile (cover + title strip together, class on TileRoot), not
+             just the cover stack: with the ringless selector the cover's growth would otherwise eat
+             the fixed title's breathing room, leaving the label crowded under a zoomed cover. Scaling
+             them as one unit keeps the cover-to-title gap proportional. -->
+        <Style Selector="Grid.gamepad-tile-zoom">
             <Setter Property="RenderTransformOrigin" Value="50%,50%" />
             <Setter Property="RenderTransform" Value="none" />
             <Setter Property="Transitions">
@@ -1083,8 +1171,8 @@
                 </Transitions>
             </Setter>
         </Style>
-        <Style Selector="Button.gamepad-game.focused Panel.gamepad-cover-stack">
-            <Setter Property="RenderTransform" Value="scale(1.045)" />
+        <Style Selector="Button.gamepad-game.focused Grid.gamepad-tile-zoom">
+            <Setter Property="RenderTransform" Value="scale(1.09)" />
         </Style>
         <!-- Couch-distance counterpart to the desktop cover marks (Button.achievement-mark
              and Border.texture-mark), which are sized for a pointer at desk distance. -->

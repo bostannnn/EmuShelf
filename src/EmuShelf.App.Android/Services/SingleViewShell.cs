@@ -82,6 +82,13 @@ public sealed class SingleViewShell : IPlatformShell
         // await in the setter marshals the result back for the toast.
         global::EmuShelf.App.App.CloseOnReturnPrivilegePrepare =
             () => System.Threading.Tasks.Task.Run(() => _emulatorTerminator.PreparePrivilege());
+        global::EmuShelf.App.App.CloseOnReturnPrivilegeStatus = _emulatorTerminator.PrivilegeWarning;
+        global::EmuShelf.App.App.InstalledPackageProbe = gameLauncher.IsInstalled;
+        // Both probes above answer questions only the system can change — the user grants Shizuku in
+        // Shizuku's own dialog, and installs an emulator from a store — so Settings caches them and
+        // re-reads on return instead of paying a binder round trip per platform on every rebuild. This
+        // is that return signal; ReturnedToForeground is a single slot already owned by play sessions.
+        AndroidActivityLifecycle.TopResumedChanged += OnTopResumedForDeviceState;
 
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(
@@ -290,6 +297,14 @@ public sealed class SingleViewShell : IPlatformShell
                 break;
             // NotAttempted: nothing to say.
         }
+    }
+
+    // Only the leading edge matters: losing the top spot changes nothing EmuShelf reads, and re-reading on
+    // the way out would probe while the emulator (or Shizuku's dialog) is still coming up.
+    private static void OnTopResumedForDeviceState(bool topResumed)
+    {
+        if (topResumed)
+            global::EmuShelf.App.App.RaiseForegroundReturned();
     }
 
     // Maps an emulator package back to its friendly name (e.g. org.dolphinemu.dolphinemu -> "Dolphin") for
