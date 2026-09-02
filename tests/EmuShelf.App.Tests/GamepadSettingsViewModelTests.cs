@@ -5,6 +5,7 @@ using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Library;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.TexturePacks;
@@ -221,6 +222,7 @@ public sealed class GamepadSettingsViewModelTests
             });
         using var viewModel = CreateGamepadSettings(maintenance);
         viewModel.SelectedSection = SettingsSection.Emulators;
+        await ExpandPlatformAsync(viewModel, "playstation3");
 
         // Same stable id and command as Desktop's PS3-row "Sync RPCS3 library" button — now reachable
         // on a controller because Emulators is a couch section instead of Desktop-only.
@@ -232,13 +234,14 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void EmulatorsSection_OmitsRpcs3Sync_WhenTheMaintenanceActionIsUnavailable()
+    public async Task EmulatorsSection_OmitsRpcs3Sync_WhenTheMaintenanceActionIsUnavailable()
     {
         var maintenance = new LibraryMaintenanceActions(
             (_, _) => Task.FromResult(string.Empty),
             _ => Task.FromResult(string.Empty));
         using var viewModel = CreateGamepadSettings(maintenance);
         viewModel.SelectedSection = SettingsSection.Emulators;
+        await ExpandPlatformAsync(viewModel, "playstation3");
 
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.playstation3.sync");
     }
@@ -331,6 +334,7 @@ public sealed class GamepadSettingsViewModelTests
         using var viewModel = CreateGamepadSettings(
             androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
         viewModel.SelectedSection = SettingsSection.Emulators;
+        await ExpandPlatformAsync(viewModel, "nds");
 
         var settingsRow = viewModel.Settings.Rows.Single(row => row.SystemId == "nds");
         Assert.Equal(
@@ -404,12 +408,283 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void EmulatorChoice_IsOnlyProjectedWhenAndroidSuppliesTheCatalog()
+    public async Task EmulatorChoice_IsOnlyProjectedWhenAndroidSuppliesTheCatalog()
     {
         using var viewModel = CreateGamepadSettings();
         viewModel.SelectedSection = SettingsSection.Emulators;
+        await ExpandPlatformAsync(viewModel, "nds");
 
         Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".emulator", StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_ListsOnePlatformSummaryEach_AndExpandsOnlyOneInPlace()
+    {
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: systemId => systemId == "nds" ? 131 : 0);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        // Collapsed: one focusable summary per platform, no per-platform rows, no non-focusable headers.
+        var summaries = viewModel.Rows.Where(row => row.IsSummary).ToList();
+        Assert.Equal(viewModel.Settings.Rows.Count, summaries.Count);
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".emulator", StringComparison.Ordinal));
+        var ds = summaries.Single(row => row.SystemId == "nds");
+        Assert.Equal("Nintendo DS", ds.Label);
+        Assert.Equal("WatermelonDS · 131 games", ds.Value);
+        Assert.False(ds.IsExpanded);
+        Assert.True(ds.IsCompact);
+
+        // A expands that platform beneath its summary; expanding another collapses it.
+        await ds.SelectCommand.ExecuteAsync(null);
+        ds = viewModel.Rows.Single(row => row.Key == "emulators.nds.summary");
+        Assert.True(ds.IsExpanded);
+        Assert.Contains(viewModel.Rows, row => row.Key == "emulators.nds.emulator");
+        Assert.Same(ds, viewModel.FocusedRow);
+        await ExpandPlatformAsync(viewModel, "gba");
+        Assert.False(viewModel.Rows.Single(row => row.Key == "emulators.nds.summary").IsExpanded);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.nds.emulator");
+        Assert.Contains(viewModel.Rows, row => row.Key == "emulators.gba.emulator");
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_YOnASummaryRescansThatPlatform()
+    {
+        var rescanned = new List<string>();
+        var maintenance = new LibraryMaintenanceActions(
+            (systemId, _) =>
+            {
+                rescanned.Add(systemId);
+                return Task.FromResult("Rescan complete — no new games");
+            },
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        var index = viewModel.Rows.ToList().FindIndex(row => row.Key == "emulators.snes.summary");
+        viewModel.FocusedRowIndex = index;
+        Assert.Equal("Rescan", viewModel.ActionsHint);
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        await Task.Delay(50);
+
+        Assert.Equal(["snes"], rescanned);
+        // The platform stays collapsed: Y never changes the list shape.
+        Assert.False(viewModel.Rows.Single(row => row.Key == "emulators.snes.summary").IsExpanded);
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_SaysWhenTheChosenAndroidEmulatorIsNotInstalled()
+    {
+        using var viewModel = CreateGamepadSettings(
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: _ => 234,
+            isEmulatorChoiceInstalled: choice => choice.EmulatorId != "armsx2");
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        var ps2 = viewModel.Rows.Single(row => row.Key == "emulators.playstation2.summary");
+        Assert.True(ps2.IsWarning);
+        Assert.Equal("ARMSX2 not installed · 234 games", ps2.Value);
+        Assert.False(viewModel.Rows.Single(row => row.Key == "emulators.nds.summary").IsWarning);
+        Assert.Equal("PlayStation 2 needs attention", viewModel.EmulatorsRailStatus);
+        Assert.True(viewModel.IsEmulatorsRailWarning);
+
+        await ps2.SelectCommand.ExecuteAsync(null);
+        var choice = viewModel.Rows.Single(row => row.Key == "emulators.playstation2.emulator");
+        Assert.True(choice.IsWarning);
+        Assert.StartsWith("ARMSX2 is not installed on this device", choice.Description);
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_CloseOnReturnRow_ReportsTheShizukuGapAndYRequestsIt()
+    {
+        var granted = 0;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            closeOnReturnWarning: () => "Shizuku permission not granted · press Y to grant it",
+            grantCloseOnReturnPrivilege: () =>
+            {
+                granted++;
+                return Task.CompletedTask;
+            });
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
+        Assert.True(row.IsWarning);
+        Assert.Equal("Shizuku permission not granted · press Y to grant it", row.Description);
+        Assert.Equal("Shizuku needs attention", viewModel.EmulatorsRailStatus);
+        viewModel.FocusedRowIndex = viewModel.Rows.IndexOf(row);
+        Assert.Equal("Grant Shizuku", viewModel.ActionsHint);
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        await Task.Delay(50);
+        Assert.Equal(1, granted);
+
+        // Off, the setting has nothing to warn about and Y does nothing.
+        await row.SelectCommand.ExecuteAsync(null);
+        row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
+        Assert.False(row.IsWarning);
+        Assert.Equal(string.Empty, viewModel.ActionsHint);
+        Assert.False(viewModel.Dispatch(GamepadAction.Actions));
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_FolderRow_RescansOnA_AndForgetsOnYAfterConfirmation()
+    {
+        var rescanned = new List<string>();
+        var forgotten = new List<long>();
+        var folders = new List<LibraryFolder> { new() { Id = 7, SystemId = "snes", Path = "/roms/snes" } };
+        var maintenance = new LibraryMaintenanceActions(
+            (systemId, _) =>
+            {
+                rescanned.Add(systemId);
+                return Task.FromResult(string.Empty);
+            },
+            _ => Task.FromResult(string.Empty),
+            Folders: new LibraryFolderManagementActions(
+                systemId => folders.Where(folder => folder.SystemId == systemId).ToArray(),
+                (_, _) => Task.FromResult("Folder remembered."),
+                (_, _, _) => Task.FromResult("Folder changed."),
+                (_, id) =>
+                {
+                    forgotten.Add(id);
+                    folders.RemoveAll(folder => folder.Id == id);
+                    return Task.FromResult("Folder forgotten.");
+                }));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        await ExpandPlatformAsync(viewModel, "snes");
+
+        var folder = viewModel.Rows.Single(row => row.Key == "emulators.snes.folder.7");
+        Assert.Equal("/roms/snes", folder.Label);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "emulators.snes.rescan");
+        await folder.SelectCommand.ExecuteAsync(null);
+        Assert.Equal(["snes"], rescanned);
+
+        viewModel.FocusedRowIndex = viewModel.Rows.IndexOf(
+            viewModel.Rows.Single(row => row.Key == "emulators.snes.folder.7"));
+        Assert.Equal("Forget folder", viewModel.ActionsHint);
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        Assert.True(viewModel.IsConfirmationOpen);
+        Assert.Equal("Forget this folder?", viewModel.ConfirmationTitle);
+        viewModel.Dispatch(GamepadAction.NavigateRight);
+        viewModel.Dispatch(GamepadAction.Confirm);
+        await Task.Delay(50);
+        Assert.Equal([7L], forgotten);
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_ProbesTheDeviceOncePerScreen_NotOncePerRebuild()
+    {
+        // Each probe is a PackageManager binder round trip on the device, and the rail status is evaluated
+        // in every section, so the answers are held until the user has been away.
+        var installedProbes = 0;
+        var shizukuProbes = 0;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            isEmulatorChoiceInstalled: _ =>
+            {
+                installedProbes++;
+                return true;
+            },
+            closeOnReturnWarning: () =>
+            {
+                shizukuProbes++;
+                return "Shizuku permission not granted · press Y to grant it";
+            });
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        var afterOpen = installedProbes;
+        Assert.InRange(afterOpen, 1, viewModel.Settings.Rows.Count);
+
+        // Rebuilds trigger a full rail recompute; none of them may re-probe the device.
+        await ExpandPlatformAsync(viewModel, "nds");
+        await ExpandPlatformAsync(viewModel, "snes");
+        viewModel.SelectedSection = SettingsSection.About;
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.Equal(afterOpen, installedProbes);
+        var afterRebuilds = shizukuProbes;
+
+        // Returning to the foreground is the one thing that can have changed either answer.
+        viewModel.RefreshDeviceState();
+        Assert.True(installedProbes > afterOpen);
+        Assert.True(shizukuProbes > afterRebuilds);
+    }
+
+    [AvaloniaFact]
+    public void EmulatorsSection_ShizukuWarningClears_WhenTheGrantLandsWhileAway()
+    {
+        // Y only raises Shizuku's own dialog; the grant lands after EmuShelf has lost the foreground, so
+        // without the re-read on return the row keeps telling the user to grant a permission they granted.
+        var granted = false;
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask);
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            closeOnReturnWarning: () => granted ? null : "Shizuku permission not granted · press Y to grant it",
+            grantCloseOnReturnPrivilege: () => Task.CompletedTask);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.True(viewModel.Rows.Single(row => row.Key == "emulators.close-on-return").IsWarning);
+        Assert.Equal("Shizuku needs attention", viewModel.EmulatorsRailStatus);
+
+        granted = true;
+        viewModel.RefreshDeviceState();
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
+        Assert.False(row.IsWarning);
+        Assert.Equal("Force-stop the game's emulator when you come back, so it stops draining the battery.", row.Description);
+        Assert.Equal(string.Empty, viewModel.EmulatorsRailStatus);
+        Assert.False(viewModel.IsEmulatorsRailWarning);
+        Assert.Equal(string.Empty, viewModel.ActionsHint);
+    }
+
+    [AvaloniaFact]
+    public async Task EmulatorsSection_GameCountsAreRereadWhenAScanFinishes()
+    {
+        // Mirrors the host: the rows read a snapshot taken when Settings opened, and only refreshGameCounts
+        // re-reads the library. A rescan started from here has to make that happen or the line stays wrong.
+        var library = new Dictionary<string, int>(StringComparer.Ordinal) { ["snes"] = 0 };
+        var snapshot = new Dictionary<string, int>(library, StringComparer.Ordinal);
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) =>
+            {
+                library["snes"] = 52;
+                return Task.FromResult("Rescan complete — 52 games");
+            },
+            _ => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(
+            maintenance,
+            gameCountBySystem: systemId => snapshot.GetValueOrDefault(systemId),
+            refreshGameCounts: () =>
+            {
+                snapshot = new Dictionary<string, int>(library, StringComparer.Ordinal);
+                return Task.CompletedTask;
+            });
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        Assert.Contains("0 games", viewModel.Rows.Single(row => row.Key == "emulators.snes.summary").Value);
+
+        viewModel.FocusedRowIndex = viewModel.Rows.ToList().FindIndex(row => row.Key == "emulators.snes.summary");
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        await Task.Delay(50);
+
+        Assert.Contains("52 games", viewModel.Rows.Single(row => row.Key == "emulators.snes.summary").Value);
+        Assert.Equal("52 games", viewModel.LibraryRailStatus);
     }
 
     [AvaloniaFact]
@@ -663,7 +938,12 @@ public sealed class GamepadSettingsViewModelTests
         IOnScreenKeyboardService? onScreenKeyboard = null,
         AppUpdateCoordinator? updates = null,
         IReadOnlyList<ThemeChoiceViewModel>? themeChoices = null,
-        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null) => new(
+        IReadOnlyDictionary<string, IReadOnlyList<EmulatorChoice>>? androidEmulatorChoices = null,
+        Func<string, int>? gameCountBySystem = null,
+        Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
+        Func<string?>? closeOnReturnWarning = null,
+        Func<Task>? grantCloseOnReturnPrivilege = null,
+        Func<Task>? refreshGameCounts = null) => new(
             CreateSettings(
                 maintenance,
                 metadataPreferences,
@@ -675,7 +955,19 @@ public sealed class GamepadSettingsViewModelTests
                 androidEmulatorChoices),
             onScreenKeyboard,
             themeChoices,
-            androidEmulatorChoices: androidEmulatorChoices);
+            androidEmulatorChoices: androidEmulatorChoices,
+            gameCountBySystem: gameCountBySystem,
+            isEmulatorChoiceInstalled: isEmulatorChoiceInstalled,
+            closeOnReturnWarning: closeOnReturnWarning,
+            grantCloseOnReturnPrivilege: grantCloseOnReturnPrivilege,
+            refreshGameCounts: refreshGameCounts);
+
+    /// <summary>Emulators lists one summary row per platform; A on it reveals that platform's rows.</summary>
+    private static async Task ExpandPlatformAsync(GamepadSettingsViewModel viewModel, string systemId)
+    {
+        var summary = viewModel.Rows.Single(row => row.Key == $"emulators.{systemId}.summary");
+        await summary.SelectCommand.ExecuteAsync(null);
+    }
 
     private EmulatorSettingsViewModel CreateSettings(
         LibraryMaintenanceActions? maintenance = null,

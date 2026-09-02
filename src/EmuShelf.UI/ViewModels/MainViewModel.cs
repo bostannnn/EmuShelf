@@ -2440,6 +2440,16 @@ public partial class MainViewModel : ViewModelBase
         {
             CloseGamepadSettingsProjection();
             var settings = await CreateSettingsViewModelAsync();
+            // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
+            // rather than per row while the section rebuilds. A scan started from inside Settings makes
+            // them stale, so the projection can ask for a fresh read through refreshGameCounts.
+            var systemIds = settings.Rows.Select(row => row.SystemId).ToList();
+            Task<Dictionary<string, int>> ReadGameCountsAsync() => Task.Run(() => systemIds.ToDictionary(
+                systemId => systemId,
+                systemId => _library.GetGames(systemId).Count,
+                StringComparer.Ordinal));
+            var gameCounts = await ReadGameCountsAsync();
+            var installed = EmuShelf.App.App.InstalledPackageProbe;
             GamepadSettings = new GamepadSettingsViewModel(
                 settings,
                 _onScreenKeyboard,
@@ -2448,7 +2458,31 @@ public partial class MainViewModel : ViewModelBase
                 OpenGamepadHotkeysFromSettings,
                 androidEmulatorChoices: OperatingSystem.IsAndroid()
                     ? AndroidEmulatorChoiceCatalog.BySystem
-                    : null);
+                    : null,
+                gameCountBySystem: systemId => gameCounts.GetValueOrDefault(systemId),
+                isEmulatorChoiceInstalled: installed is null
+                    ? null
+                    : choice => IsAndroidEmulatorChoiceInstalled(choice, installed),
+                closeOnReturnWarning: EmuShelf.App.App.CloseOnReturnPrivilegeStatus,
+                grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
+                    ? null
+                    : GrantCloseOnReturnPrivilegeAsync,
+                refreshGameCounts: async () =>
+                {
+                    try
+                    {
+                        gameCounts = await ReadGameCountsAsync();
+                    }
+                    catch (Exception ex)
+                    {
+                        // A stale count is a wrong number on a summary line, not a broken screen: keep the
+                        // previous reading rather than tearing Settings down over a transient library read.
+                        _logger.Warning("Could not refresh the per-platform game counts for Settings.", ex);
+                    }
+                });
+            // The Shizuku grant and emulator installs change while EmuShelf is in the background, so the
+            // projection caches those probes and re-reads them here instead of on every rebuild.
+            EmuShelf.App.App.ForegroundReturned += RefreshGamepadSettingsDeviceState;
             OpenGamepadOverlay(GamepadOverlayKind.Settings);
         }
         catch (Exception ex)
@@ -7210,6 +7244,33 @@ public partial class MainViewModel : ViewModelBase
         return result;
     }
 
+    /// <summary>Whether the app behind an Android emulator choice is installed. RetroArch cores are files
+    /// inside RetroArch, so a core choice reports RetroArch's own package; unknown ids count as installed
+    /// so a catalogue gap never paints a false warning.</summary>
+    private static bool IsAndroidEmulatorChoiceInstalled(EmulatorChoice choice, Func<string, bool> installed)
+    {
+        var profile = AndroidEmulatorLaunchProfiles.All.FirstOrDefault(candidate =>
+            string.Equals(candidate.SelectionId, choice.EmulatorId, StringComparison.Ordinal));
+        return profile is null || installed(profile.PackageName);
+    }
+
+    /// <summary>Y on the close-on-return row: request the Shizuku grant now and show what happened.</summary>
+    private async Task GrantCloseOnReturnPrivilegeAsync()
+    {
+        if (EmuShelf.App.App.CloseOnReturnPrivilegePrepare is not { } prepare)
+            return;
+        try
+        {
+            var message = await prepare();
+            if (!string.IsNullOrEmpty(message))
+                SetStatus(message);
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Requesting the close-on-return privilege failed.", ex);
+        }
+    }
+
     private async Task SetCloseEmulatorOnReturnAsync(bool value)
     {
         // Persist through the shared settings service so the Android shell reads the latest value when it
@@ -7336,11 +7397,24 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
+    /// <summary>
+    /// EmuShelf is in front again, so whatever the user went away to do — grant Shizuku, install an
+    /// emulator — may now be true. Told to the open Settings projection, which is holding those probes.
+    /// </summary>
+    private void RefreshGamepadSettingsDeviceState()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            GamepadSettings?.RefreshDeviceState();
+        else
+            Dispatcher.UIThread.Post(() => GamepadSettings?.RefreshDeviceState());
+    }
+
     private void CloseGamepadSettingsProjection()
     {
         if (GamepadSettings is not { } settings)
             return;
 
+        EmuShelf.App.App.ForegroundReturned -= RefreshGamepadSettingsDeviceState;
         settings.Dispose();
         GamepadSettings = null;
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));

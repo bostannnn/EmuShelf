@@ -125,6 +125,19 @@ public sealed class AndroidEmulatorProcessTerminator
     }
 
     /// <summary>
+    /// The one-line reason close-on-return cannot work right now, for the settings row, or null when Shizuku
+    /// is running and has authorized EmuShelf. Never prompts; <see cref="PreparePrivilege"/> does that.
+    /// </summary>
+    public string? PrivilegeWarning()
+    {
+        if (!_shizuku.IsRunning)
+            return "Shizuku is not running · start it, then press Y to grant permission";
+        if (!_shizuku.HasPermission)
+            return "Shizuku permission not granted · press Y to grant it";
+        return null;
+    }
+
+    /// <summary>
     /// Called when the user turns the close-on-return setting on, so the Shizuku permission is requested up
     /// front rather than only on the first return. Returns a short status to show the user, or null when
     /// everything is already in place (Shizuku running and authorized) and nothing needs saying.

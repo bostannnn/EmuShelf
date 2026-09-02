@@ -11458,3 +11458,79 @@ the line every other row rests on, and a library small enough to fit the viewpor
 and clipped the tops of its only row's covers. Measured on a 1280x460 couch viewport, where the last
 row's target falls below the ScrollViewer's max offset and so is NOT clamped; a tall desktop
 viewport clamps it and hides the bug, which is why the desktop snapshots never caught it.
+
+## 2026-09-01 — Couch Settings: Emulators collapses to one summary row per platform
+
+The Emulators section on the Thor was ~90 rows (15 platforms × header + Emulator + Launch screen +
+Rescan + Add folder + folder), so reaching PlayStation 2 took ~40 D-pad presses, and nothing in it
+said that the platform's chosen emulator was not installed or that "close emulator on return" was
+silently inert without the Shizuku grant. Four prototype rounds later Andrew's verdict was: keep the
+current design, take only the compacted Emulators page — every other section stays as it is.
+
+What changed, and why it is shaped this way:
+
+(1) A new `Summary` row kind: one focusable row per platform (artwork, name, "emulator · N games",
+chevron). A expands that platform's rows beneath it in place; only one platform is open at a time
+(`_expandedSystemId`), which keeps the list short and the focus target stable across rebuilds (the
+summary key never changes). The old non-focusable `Header` rows stay for the other sections.
+
+(2) Y is the row's secondary action, carried on the spec (`SecondaryLabel/SecondaryActivate`, with
+its own destructive/confirmation gate) and surfaced in the legend via `ActionsHint`: Y on a summary
+rescans that platform without expanding it, so the per-platform "Rescan library" row is gone; the
+folder row is now the rescan (A) and Y forgets it after the same confirmation as before; Y on the
+close-on-return toggle requests the Shizuku grant.
+
+(3) Problems are said where the setting lives. The Android head publishes two more static hooks —
+`App.InstalledPackageProbe` (PackageManager lookup, same check the launch path fails on) and
+`App.CloseOnReturnPrivilegeStatus` (Shizuku running/granted, without prompting) — and the view
+model paints the summary value / row description in the warning colour ("ARMSX2 not installed",
+"Shizuku permission not granted · press Y to grant it"). RetroArch-core choices resolve to
+RetroArch's package; unknown selection ids count as installed so a catalogue gap never warns.
+
+(4) Compact rows (`IsCompact`: one-line, state-first descriptions, 66/56 dip min height) are opted
+into per row and used only by this section; the row template gained `HasDescription`,
+`DescriptionMaxLines` and a `warning` class instead of a second template.
+
+(5) The rail lost the "‹ or LB / RB for sections" hint (the legend already says it) and gained a
+one-line status per section (game count, "Not signed in", the platform that needs attention),
+computed from the same settings model; the buttons went from fixed Height to MinHeight.
+
+Parity: summary and folder rows are `ExcludeFromParity`; the Desktop↔Gamepad parity test never
+covered Emulators, so nothing there moved. Game counts come from one `GetGames(systemId)` pass off
+the UI thread when Settings opens, not per rebuild.
+
+## 2026-09-02 — Settings caches its device probes and re-reads them on foreground return
+
+Review of the section above found the two new Android probes being paid for far more often than they
+are worth, and one of them never re-read at the only moment its answer changes.
+
+`NotifyRailStatuses` runs on every `RebuildRows` — which is every settings PropertyChanged, including
+each per-row progress message during a scan and every D-pad Left/Right on a choice row — and the rail
+is on screen in every section, not just Emulators. `EmulatorsRailStatus` and `IsEmulatorsRailWarning`
+were both getters, and the second calls the first, so each notification walked all 15 platforms twice
+calling `PackageManager.GetLaunchIntentForPackage` (a binder round trip that resolves activities),
+plus Shizuku's `pingBinder`/`checkSelfPermission`; with the section open `BuildEmulatorsRows` added a
+third pass. ~45 synchronous binder calls per rebuild, on the UI thread, on the Thor.
+
+Both probes answer questions only the system can change: the user grants Shizuku in Shizuku's own
+dialog, and installs an emulator from a store. So they are now read once per Settings screen and held
+(`_emulatorChoiceInstalled` keyed by choice id, `_closeOnReturnWarningRead`), and the rail status is
+computed once per rebuild into a field instead of twice per notification in a getter.
+
+The invalidation seam is a new `App.ForegroundReturned`, raised by the Android head from
+`AndroidActivityLifecycle.TopResumedChanged`'s leading edge — deliberately not the existing
+`ReturnedToForeground`, which is a single slot already owned by play-session completion. MainViewModel
+subscribes for the life of the Settings overlay and calls `GamepadSettingsViewModel.RefreshDeviceState`.
+This is also the fix for the Shizuku row: `PreparePrivilege` only raises Shizuku's dialog and returns
+immediately, so the grant lands after EmuShelf has lost the foreground — without the re-read the row
+kept telling the user to grant a permission they had just granted, until Settings was reopened.
+
+Per-platform game counts get the same treatment from the other direction: they are still a snapshot
+taken off the UI thread when Settings opens, but a scan started from inside Settings makes them wrong,
+so the projection now watches the falling edge of `IsMaintainingLibrary` and asks the host to re-read
+them (`refreshGameCounts`), then rebuilds. Watching that flag rather than parsing status text means
+both the per-platform rescan and a folder import are covered.
+
+Not changed: the folder row's A press rescans the platform without labelling itself as such. Andrew's
+call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
+quieter second path to the same action.

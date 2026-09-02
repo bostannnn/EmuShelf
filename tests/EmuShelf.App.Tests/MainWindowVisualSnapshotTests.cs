@@ -22,6 +22,7 @@ using EmuShelf.Core.Achievements;
 using EmuShelf.Core.Hotkeys;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
+using EmuShelf.Integrations.Emulators.Android;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.TexturePacks;
@@ -2492,6 +2493,113 @@ public class MainWindowVisualSnapshotTests
             Task.FromResult(RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>.Failure(
                 RetroAchievementsRequestStatus.Offline));
         public void Clear() { }
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadSettingsEmulatorsAt1280x800_ShowsOneSummaryPerPlatformAndExpandsInPlace()
+    {
+        // The Emulators section as the Thor sees it: Android app choices, per-platform game counts,
+        // one platform whose chosen app is missing, and the Shizuku grant absent. One summary row per
+        // platform (compact), no per-platform rows until one is opened, everything inside the overlay.
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            GetCloseEmulatorOnReturn: () => true,
+            SetCloseEmulatorOnReturn: _ => Task.CompletedTask,
+            Folders: new LibraryFolderManagementActions(
+                systemId => [new LibraryFolder { Id = 1, SystemId = systemId, Path = $"/storage/AE6A-1092/roms/{systemId}" }],
+                (_, _) => Task.FromResult(string.Empty),
+                (_, _, _) => Task.FromResult(string.Empty),
+                (_, _) => Task.FromResult(string.Empty)));
+        var desktopSettings = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            maintenance,
+            fixedEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
+        var counts = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["nes"] = 26, ["snes"] = 52, ["gbc"] = 15, ["gba"] = 106, ["gamecube"] = 27, ["nds"] = 131,
+            ["wii"] = 78, ["3ds"] = 79, ["megadrive"] = 42, ["dreamcast"] = 23, ["playstation"] = 43,
+            ["playstation2"] = 234, ["psp"] = 65, ["arcade"] = 60,
+        };
+        var gamepadSettings = new GamepadSettingsViewModel(
+            desktopSettings,
+            androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: systemId => counts.GetValueOrDefault(systemId),
+            isEmulatorChoiceInstalled: choice => choice.EmulatorId != "armsx2",
+            closeOnReturnWarning: () => "Shizuku permission not granted · press Y to grant it",
+            grantCloseOnReturnPrivilege: () => Task.CompletedTask)
+        {
+            SelectedSection = SettingsSection.Emulators,
+        };
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            GamepadSettings = gamepadSettings,
+            GamepadOverlay = GamepadOverlayKind.Settings,
+        };
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1280,
+            Height = 800,
+        };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            var summaries = gamepadSettings.Rows.Where(row => row.IsSummary).ToList();
+            Assert.Equal(desktopSettings.Rows.Count, summaries.Count);
+            Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsHeader);
+            Assert.Equal("PlayStation 2 needs attention", gamepadSettings.EmulatorsRailStatus);
+
+            // Focus the platform that needs attention so the snapshot shows the warning row focused.
+            gamepadSettings.FocusedRowIndex = gamepadSettings.Rows.IndexOf(
+                gamepadSettings.Rows.Single(row => row.Key == "emulators.playstation2.summary"));
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-emulators-1280x800.png");
+            var rows = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row")
+                    && button.Classes.Contains("summary"))
+                .ToArray();
+            Assert.NotEmpty(rows);
+            Assert.All(rows, row => Assert.InRange(row.Bounds.Height, 56, 66));
+
+            // A on the summary opens the platform's rows beneath it; they render compact and indented.
+            gamepadSettings.Dispatch(GamepadAction.Confirm);
+            await PumpAsync();
+            Assert.True(gamepadSettings.Rows.Single(row => row.Key == "emulators.playstation2.summary").IsExpanded);
+            Assert.Contains(gamepadSettings.Rows, row => row.Key == "emulators.playstation2.emulator");
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-emulators-expanded-1280x800.png");
+            var grouped = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row")
+                    && button.Classes.Contains("grouped"))
+                .ToArray();
+            Assert.NotEmpty(grouped);
+            Assert.All(grouped, row => Assert.Contains("compact", row.Classes));
+            Assert.All(grouped, row => Assert.InRange(row.Bounds.Height, 66, 80));
+            AssertGamepadOverlayFillsHost(window);
+        }
+        finally
+        {
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
