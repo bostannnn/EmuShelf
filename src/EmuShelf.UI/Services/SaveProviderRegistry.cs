@@ -445,11 +445,28 @@ public static class SaveProviderRegistry
                   "type in a slot has no place for the other machine's cards there, and leaves them in the cloud.");
     }
 
-    private static ISaveLocationProvider? CreateMelonDsProvider(string emulatorId, SaveProviderContext context)
+    internal static ISaveLocationProvider? CreateMelonDsProvider(
+        string emulatorId,
+        SaveProviderContext context,
+        bool? isAndroid = null)
     {
-        // melonDS has no Android build EmuShelf launches, so the desktop resolver is the whole story.
-        if (OperatingSystem.IsAndroid())
-            return null;
+        // Android melonDS keeps its configuration in app-private storage EmuShelf cannot read, so there
+        // is no save folder to derive — it is folder-configurable, like PPSSPP and Azahar there, and
+        // syncs from the folder the user picks once. Without one the platform sits out rather than
+        // guessing at a path. (The desktop resolver below would probe desktop config locations that
+        // mean nothing on Android.) The seam is explicit, like CreateDolphinProvider's, because
+        // OperatingSystem.IsAndroid() is false on the test host: this branch shipped uncovered, and
+        // unreachable in production, and neither the suite nor a device pass could have caught it.
+        if (isAndroid ?? OperatingSystem.IsAndroid())
+        {
+            return string.IsNullOrWhiteSpace(context.DirectoryOverride)
+                ? null
+                : new MelonDsSaveLocationProvider(
+                    emulatorId,
+                    context.DirectoryOverride,
+                    saveDirectoryOverride: context.DirectoryOverride,
+                    gameFileNames: context.GameFileNames);
+        }
 
         // A Flatpak melonDS has a documented fixed config location, so it can participate with neither
         // an override nor a resolvable installation directory.

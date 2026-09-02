@@ -117,7 +117,10 @@ public class EmulatorSettingsViewModelTests
             .Rows.Single(row => row.SystemId == "nds");
 
         Assert.Equal(
-            ["WatermelonDS", "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME"],
+            [
+                "WatermelonDS", "melonDS", "melonDS (nightly)",
+                "RetroArch · melonDS DS", "RetroArch · melonDS", "RetroArch · DeSmuME",
+            ],
             nds.AvailableChoices.Select(choice => choice.DisplayName));
         Assert.Equal("watermelonds", nds.EmulatorId);
         Assert.Equal("WatermelonDS", nds.SelectedChoice?.DisplayName);
