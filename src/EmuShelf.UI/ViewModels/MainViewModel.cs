@@ -1118,6 +1118,9 @@ public partial class MainViewModel : ViewModelBase
     public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
+    /// <summary>The pre-launch "which screen?" chooser, which renders its own two-card body instead of
+    /// the shared option list (see <see cref="AddLaunchScreenOptions"/>).</summary>
+    public bool IsGamepadLaunchScreenOpen => GamepadOverlay == GamepadOverlayKind.LaunchScreen;
     /// <summary>The three yes/no confirmations (Remove, Desktop-mode switch, Quit). They share one
     /// standard two-button layout — an explanatory body over a right-aligned [Cancel] [action] row that
     /// Left/Right walk — instead of the vertical option list the picker overlays use.</summary>
@@ -1131,7 +1134,7 @@ public partial class MainViewModel : ViewModelBase
     public bool AreGamepadOverlayOptionsTopAligned => GamepadOverlay is
         GamepadOverlayKind.Actions or
         GamepadOverlayKind.DiscSelection or GamepadOverlayKind.SystemMenu or
-        GamepadOverlayKind.ImportSystem or GamepadOverlayKind.LaunchScreen;
+        GamepadOverlayKind.ImportSystem;
     /// <summary>
     /// The option list split for layout: destructive entries (Remove, Quit) render OUTSIDE the
     /// option scroller, pinned above the hint legend behind a hairline, so they are always visible
@@ -1168,12 +1171,14 @@ public partial class MainViewModel : ViewModelBase
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
          GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
+         GamepadOverlayKind.LaunchScreen or
          GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
          GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
-         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.LaunchScreen or
+         GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     // Confirmations render their own centred title inside the dialog card, so the chrome header title
     // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
@@ -1183,8 +1188,13 @@ public partial class MainViewModel : ViewModelBase
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     /// <summary>The quiet platform line under the actions sheet's title — the header names the game,
     /// this names where it lives. Null for every other overlay (no eyebrow row).</summary>
-    public string? GamepadOverlayEyebrow =>
-        GamepadOverlay == GamepadOverlayKind.Actions ? FocusedGame?.SystemName : null;
+    public string? GamepadOverlayEyebrow => GamepadOverlay switch
+    {
+        GamepadOverlayKind.Actions => FocusedGame?.SystemName,
+        // The chooser's title asks the question; this names the game it was asked about.
+        GamepadOverlayKind.LaunchScreen => LaunchScreenPromptTitle,
+        _ => null,
+    };
 
     public bool HasGamepadOverlayEyebrow => GamepadOverlayEyebrow is not null;
 
@@ -1194,9 +1204,10 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.Search => "Search",
         GamepadOverlayKind.Rename => "Rename game",
         GamepadOverlayKind.DiscSelection => FocusedGame is null ? "Select disc" : $"{FocusedGame.DisplayTitle} — select disc",
-        GamepadOverlayKind.LaunchScreen => _launchScreenPromptGame is { } launching
-            ? $"{launching.DisplayTitle} — choose a screen"
-            : "Choose a screen",
+        // The game is named by the eyebrow line under this title, so the title itself stays the short
+        // question. Titling it "<long game name> — choose a screen" wrapped to two lines and pushed the
+        // actual choice down the sheet.
+        GamepadOverlayKind.LaunchScreen => "Where do you want to play?",
         GamepadOverlayKind.ImportSystem => "Add games — choose system",
         GamepadOverlayKind.RemoveConfirmation => "Remove game?",
         GamepadOverlayKind.CoverDesktopHandoff => "Set cover",
@@ -1265,7 +1276,7 @@ public partial class MainViewModel : ViewModelBase
             ratios[i] = CoverAspectRatioFor(Games[i]);
 
         var placements = Layout.JustifiedCoverLayout.Pack(
-            ratios, available, CoverColumnSpacing, ActiveTargetRowHeight);
+            ratios, available, ActiveCoverColumnSpacing, ActiveTargetRowHeight, ActiveMinCoversPerRow);
 
         for (var i = 0; i < Games.Count; i++)
         {
@@ -1405,15 +1416,32 @@ public partial class MainViewModel : ViewModelBase
     // rows (see RepackActiveGrid), scaled around a target height so each row fills the width. MaxCoverWidth
     // caps the cover decode so a wide (landscape) cover is still decoded crisp.
     private const double MaxCoverWidth = 232;
+    // Gap between covers in a justified row. The desktop value is mirrored by MainWindow.axaml's row
+    // StackPanel Spacing; keep the two together.
+    private const double CoverColumnSpacing = 28;
+    // The couch grid runs a wider gutter than the desktop one: its focused tile lifts to 1.09 and casts a
+    // 40px-blur drop shadow, and at the desktop's 28px that lift alone nearly closed the gap to the
+    // neighbouring cover — the selection had no air around it, which is most of why it read badly.
     // Internal (not private): GamepadGridPanel must arrange tiles with the SAME gap the packer
     // budgeted each justified width against, so it reads this constant rather than owning a copy.
-    internal const double CoverColumnSpacing = 28;   // gap between covers in a justified row
+    internal const double GamepadCoverColumnSpacing = 44;
+    private double ActiveCoverColumnSpacing => IsGamepadMode ? GamepadCoverColumnSpacing : CoverColumnSpacing;
 
     // The ideal row height each mode's justified rows scale around. The couch grid runs a little taller
     // for a sofa viewing distance; both scale up/down per row to fill the width exactly.
     private const double DesktopTargetRowHeight = 250;
     private const double GamepadTargetRowHeight = 300;
     private double ActiveTargetRowHeight => IsGamepadMode ? GamepadTargetRowHeight : DesktopTargetRowHeight;
+
+    /// <summary>
+    /// Fewest covers a full couch row may hold. Landscape platforms (SNES's wide cardboard boxes,
+    /// arcade's 4:3 snaps) fill the target height after three covers on the Thor, so the shelf jumped
+    /// from five portrait covers a row to three huge landscape ones. Four is the floor; the packer
+    /// drops it again on a viewport too narrow to give each cover real width. Desktop keeps the plain
+    /// height rule — its window is wide enough that a landscape row already packs four or more.
+    /// </summary>
+    private const int GamepadMinCoversPerRow = 4;
+    private int ActiveMinCoversPerRow => IsGamepadMode ? GamepadMinCoversPerRow : 1;
 
     // Rows either side of the focused row whose covers are warmed ahead of the scroll (see
     // PrefetchCoversAroundFocus). A held d-pad steps ~one row per 110ms, so a few rows of lead lets the
@@ -3174,6 +3202,11 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NavigateRight when IsGamepadConfirmationOverlay:
                 MoveGamepadOverlaySelection(1); // step onto the action (right button)
                 return true;
+            // The screen chooser is a two-card row over a toggle, not a column, so it owns all four
+            // directions rather than letting the shared list walk its options top to bottom.
+            case GamepadAction.NavigateLeft or GamepadAction.NavigateRight or
+                 GamepadAction.NavigateUp or GamepadAction.NavigateDown when IsGamepadLaunchScreenOpen:
+                return DispatchLaunchScreenNavigation(action);
             case GamepadAction.NavigateLeft when IsGamepadSystemMenuOpen && IsGamepadViewModeRowFocused:
                 MoveGamepadViewModeSelection(-1);
                 return true;
@@ -3421,34 +3454,110 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
-    // The one-time pre-launch screen chooser. Two "play once" picks and two "always" picks that also pin
-    // the per-system preference — one overlay covering both the one-off launch and the save-per-platform
-    // choice, with no separate toggle widget the D-pad list can't host cleanly. Changing or resetting a
-    // pinned preference later lives in Settings → Emulators, not here.
+    // The one-time pre-launch screen chooser: the two screens as a pair of cards the D-pad steps
+    // between, and one "remember this" row below them. It used to be four sentence-long rows — the same
+    // two choices written twice, once plain and once prefixed "Always use…" — which read as a settings
+    // list at the exact moment the player is trying to start a game. The remember flag is now a state
+    // the pick carries, so either card honours it. Changing or resetting a pinned preference later
+    // still lives in Settings → Emulators, not here.
     private void AddLaunchScreenOptions()
     {
-        if (_launchScreenPromptGame is not { } game)
+        if (_launchScreenPromptGame is null)
             return;
 
+        // Labels name the handheld's two panels, not "built-in vs external": the only hardware that ever
+        // shows this prompt owns both screens (see EmulatorSettingsRowViewModel.LaunchScreenLabel).
         AddOption(
-            "Play on the built-in screen",
-            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.BuiltIn, remember: false)));
+            EmulatorSettingsRowViewModel.LaunchScreenLabel(GameLaunchScreen.BuiltIn),
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.BuiltIn, RememberLaunchScreenChoice)));
         AddOption(
-            "Play on the external screen",
-            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.External, remember: false)));
-        AddOption(
-            $"Always use the built-in screen for {game.SystemName}",
-            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.BuiltIn, remember: true)));
-        AddOption(
-            $"Always use the external screen for {game.SystemName}",
-            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.External, remember: true)));
+            EmulatorSettingsRowViewModel.LaunchScreenLabel(GameLaunchScreen.External),
+            new AsyncRelayCommand(() => ChooseLaunchScreenAsync(GameLaunchScreen.External, RememberLaunchScreenChoice)));
+        AddOption(LaunchScreenRememberLabel, ToggleRememberLaunchScreenCommand);
     }
+
+    /// <summary>The three launch-screen rows, surfaced individually because that overlay lays them out as
+    /// two cards plus a toggle rather than the shared vertical list — while still riding the same option
+    /// view models, so focus, A-routing and the tests are the option machinery everything else uses.</summary>
+    public GamepadOverlayOptionViewModel? LaunchScreenBuiltInOption => LaunchScreenOption(0);
+
+    /// <inheritdoc cref="LaunchScreenBuiltInOption"/>
+    public GamepadOverlayOptionViewModel? LaunchScreenExternalOption => LaunchScreenOption(1);
+
+    /// <inheritdoc cref="LaunchScreenBuiltInOption"/>
+    public GamepadOverlayOptionViewModel? LaunchScreenRememberOption => LaunchScreenOption(2);
+
+    private GamepadOverlayOptionViewModel? LaunchScreenOption(int index) =>
+        IsGamepadLaunchScreenOpen && index < GamepadOverlayOptions.Count ? GamepadOverlayOptions[index] : null;
+
+    /// <summary>Position of the remember toggle in the chooser's option list — the row A treats differently.</summary>
+    private const int LaunchScreenRememberIndex = 2;
+
+    /// <summary>
+    /// The verb the hint legend prints beside A while the chooser is open. On a card A starts the game;
+    /// on the remember row it only ticks the box, and a legend that still promised "Play here" there sent
+    /// the player to press A expecting a launch and hand them a checkbox instead.
+    /// </summary>
+    public string LaunchScreenConfirmHint =>
+        GamepadOverlaySelectionIndex == LaunchScreenRememberIndex ? "Toggle" : "Play here";
+
+    /// <summary>Whether the pick about to be made is also pinned as the system's preference. Reset on every
+    /// open — a remembered choice is a deliberate act, never a leftover from the last prompt.</summary>
+    [ObservableProperty]
+    public partial bool RememberLaunchScreenChoice { get; set; }
+
+    public string LaunchScreenRememberLabel =>
+        $"Always use this screen for {_launchScreenPromptGame?.SystemName ?? "this system"}";
+
+    /// <summary>The game the chooser is about to launch, named above the cards so the prompt is clearly
+    /// about the thing just picked and not a settings page that appeared.</summary>
+    public string? LaunchScreenPromptTitle => _launchScreenPromptGame?.DisplayTitle;
+
+    [RelayCommand]
+    private void ToggleRememberLaunchScreen() => RememberLaunchScreenChoice = !RememberLaunchScreenChoice;
 
     private void OpenLaunchScreenPrompt(GameViewModel game)
     {
         _launchScreenPromptGame = game;
+        RememberLaunchScreenChoice = false;
         OpenGamepadOverlay(GamepadOverlayKind.LaunchScreen);
     }
+
+    // Card row (built-in | external) on top, remember toggle beneath: Left/Right walk the pair, Up/Down
+    // step between the pair and the toggle. Without this the shared list would treat all three as one
+    // vertical column and Left/Right would do nothing on a layout that visibly reads as two columns.
+    private bool DispatchLaunchScreenNavigation(GamepadAction action)
+    {
+        const int rememberIndex = LaunchScreenRememberIndex;
+        switch (action)
+        {
+            case GamepadAction.NavigateLeft:
+                if (GamepadOverlaySelectionIndex == 1)
+                    GamepadOverlaySelectionIndex = 0;
+                return true;
+            case GamepadAction.NavigateRight:
+                if (GamepadOverlaySelectionIndex == 0)
+                    GamepadOverlaySelectionIndex = 1;
+                return true;
+            case GamepadAction.NavigateDown:
+                if (GamepadOverlaySelectionIndex < rememberIndex)
+                {
+                    _launchScreenReturnIndex = GamepadOverlaySelectionIndex;
+                    GamepadOverlaySelectionIndex = rememberIndex;
+                }
+                return true;
+            case GamepadAction.NavigateUp:
+                if (GamepadOverlaySelectionIndex == rememberIndex)
+                    GamepadOverlaySelectionIndex = _launchScreenReturnIndex;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    // Which card Up returns to from the toggle row — the one Down was pressed from, so a trip to the
+    // toggle and back leaves the selection where the player left it.
+    private int _launchScreenReturnIndex;
 
     private async Task ChooseLaunchScreenAsync(GameLaunchScreen screen, bool remember)
     {
@@ -3502,6 +3611,9 @@ public partial class MainViewModel : ViewModelBase
         var rowFocused = IsGamepadSystemMenuOpen && MenuFocusRegion != GamepadMenuFocusRegion.Options;
         for (var index = 0; index < GamepadOverlayOptions.Count; index++)
             GamepadOverlayOptions[index].IsFocused = !rowFocused && index == GamepadOverlaySelectionIndex;
+        // The screen chooser's A-button legend names what A does to the row now under the selection, so
+        // it is re-read here — the one place every selection move funnels through.
+        OnPropertyChanged(nameof(LaunchScreenConfirmHint));
     }
 
     private void FocusFirstAchievement()
@@ -3642,6 +3754,12 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
+        OnPropertyChanged(nameof(IsGamepadLaunchScreenOpen));
+        OnPropertyChanged(nameof(LaunchScreenBuiltInOption));
+        OnPropertyChanged(nameof(LaunchScreenExternalOption));
+        OnPropertyChanged(nameof(LaunchScreenRememberOption));
+        OnPropertyChanged(nameof(LaunchScreenRememberLabel));
+        OnPropertyChanged(nameof(LaunchScreenPromptTitle));
         OnPropertyChanged(nameof(IsGamepadConfirmationOverlay));
         OnPropertyChanged(nameof(ShowsGamepadConfirmationActions));
         OnPropertyChanged(nameof(AreGamepadOverlayOptionsTopAligned));

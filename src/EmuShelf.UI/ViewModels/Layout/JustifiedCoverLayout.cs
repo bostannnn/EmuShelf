@@ -25,15 +25,33 @@ public static class JustifiedCoverLayout
     public const double MinAspectRatio = 0.4;
     public const double MaxAspectRatio = 2.4;
 
+    /// <summary>
+    /// The width a cover must still be able to reach for <c>minCoversPerRow</c> to be honoured. A
+    /// landscape platform (SNES, arcade) fills the target height with very few covers, so without a
+    /// floor the minimum would be applied on any width — including a narrow window, where forcing the
+    /// count would shrink the whole library to thumbnails. On a viewport too small to give every cover
+    /// this much room the minimum simply lapses and the height rule packs the row alone.
+    /// </summary>
+    public const double MinimumColumnCoverWidth = 150;
+
     /// <param name="aspectRatios">Each cover's width ÷ height, in display order.</param>
     /// <param name="availableWidth">Content width the rows fill (gutters already removed).</param>
     /// <param name="spacing">Gap between covers in a row.</param>
     /// <param name="targetRowHeight">The height the packer keeps every full row at (or just under).</param>
+    /// <param name="minCoversPerRow">
+    /// Fewest covers a full row may hold. The height rule alone commits a landscape row (SNES's
+    /// 1.43 boxes, arcade's 4:3 snaps) after two or three covers, which reads as an oversized,
+    /// half-empty shelf next to the five portrait covers the same viewport fits. Raising this packs
+    /// those rows denser — the covers are correspondingly shorter, which is the trade. Ignored when
+    /// the viewport is too narrow (see <see cref="MinimumColumnCoverWidth"/>) and for the leftover
+    /// last row, which is always short by definition.
+    /// </param>
     public static IReadOnlyList<CoverPlacement> Pack(
         IReadOnlyList<double> aspectRatios,
         double availableWidth,
         double spacing,
-        double targetRowHeight)
+        double targetRowHeight,
+        int minCoversPerRow = 1)
     {
         var placements = new CoverPlacement[aspectRatios.Count];
         if (aspectRatios.Count == 0)
@@ -51,6 +69,11 @@ public static class JustifiedCoverLayout
             return placements;
         }
 
+        // How many covers this width can hold at MinimumColumnCoverWidth each; the requested minimum is
+        // capped by it so a narrow viewport falls back to the height rule instead of packing slivers.
+        var affordableColumns = (int)Math.Floor((availableWidth + spacing) / (MinimumColumnCoverWidth + spacing));
+        var minPerRow = Math.Max(1, Math.Min(minCoversPerRow, affordableColumns));
+
         var rowIndex = 0;
         var start = 0;
         var ratioSum = 0d;      // sum of clamped aspect ratios (widths at height = 1) in the current row
@@ -66,7 +89,7 @@ public static class JustifiedCoverLayout
             // dense and at ~target height instead of a sparse row that has to stretch or gap.
             var filledHeight = (availableWidth - gaps) / ratioSum;
 
-            if (filledHeight <= targetRowHeight)
+            if (filledHeight <= targetRowHeight && count >= minPerRow)
             {
                 FinalizeRow(aspectRatios, placements, start, i + 1, rowIndex, filledHeight, spacing);
                 lastRowHeight = Math.Round(filledHeight);

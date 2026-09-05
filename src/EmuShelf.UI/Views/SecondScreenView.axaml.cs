@@ -21,7 +21,14 @@ public partial class SecondScreenView : UserControl
     {
         InitializeComponent();
         AddHandler(InputElement.HoldingEvent, OnHolding, RoutingStrategies.Bubble);
+        // Every touch anywhere on the companion counts as "still using it", so the wake window is
+        // restarted from the root on the TUNNEL pass with handledEventsToo — a tap that a dock slot or a
+        // badge handles must extend the window just as much as a tap on empty space does.
+        AddHandler(InputElement.PointerPressedEvent, OnSurfacePointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
     }
+
+    private void OnSurfacePointerPressed(object? sender, PointerPressedEventArgs e) =>
+        (DataContext as SecondScreenViewModel)?.NoteInteraction();
 
     private SecondScreenViewModel? _boundModel;
 

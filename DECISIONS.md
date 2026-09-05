@@ -11589,3 +11589,103 @@ both the per-platform rescan and a folder import are covered.
 Not changed: the folder row's A press rescans the platform without labelling itself as such. Andrew's
 call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
 quieter second path to the same action.
+
+## 2026-09-05 — Couch polish: the focus glow is the selector, and the packer takes a column floor
+
+Four fixes from a Thor pass, three of which are one story: the couch grid was retuned for the
+justified-row repack and never re-tuned for what that repack did to the *selection*.
+
+**The couch grid's selection marker moved OFF the artwork.** The ringless focus (PR #226) leans on
+light, and its light was `gamepad-focus-pool`, a 26 px puddle spilling from the cover's bottom edge,
+sized back when covers shared one canonical frame. Against a full-bleed justified row it read as a
+smudge, so this pass replaced it with a proper accent halo behind the whole cover — brighter, bigger,
+breathing. The owner's verdict on device: "selection glow is terrible, it looks very bad". That is the
+THIRD coloured treatment this grid has rejected (the solid accent pad read as a sticker frame; the thin
+white ring + coloured glow fought the artwork's own colours), and the pattern across all three is the
+finding: **anything painted on or around a cover competes with the art instead of pointing at it.**
+
+Three replacements were built and shot on the Thor with his real library, and he picked from the
+photographs: no marker at all (lift + shadow + neighbours dimmed to 0.5), a colourless white rim-light,
+and a crisp accent bar in the gap under the cover. **The bar ships.** It works because it is the first
+treatment that does not touch the artwork at all: it lives in the 10 px lead-in between the cover and
+its title, drawn inside the cover stack (not the label row) so the 1.09 focus zoom scales it with the
+tile and no text ever moves. Neighbour covers sit at 0.6 — 0.78 was too polite to register, 0.5 was
+what the no-marker option needed and is more dimming than a marked selection calls for. The bar wipes
+out from the centre over 0.22 s as focus lands, re-fired per tile, so browsing feels alive and a
+resting grid animates nothing.
+
+Removed with the halo: `EmuTileFocusGlowBrush` and the `AppThemeService.PublishDerivedTokens` seam that
+recomputed it per palette. Worth recording because the seam was the right shape for the problem — an
+accent-derived *gradient* cannot be authored in the ~30 palette files or in the generated artwork
+dictionary, so deriving it centrally at apply time is how any future accent gradient should be done.
+
+**A continuous animation on the couch costs half a core, whatever it animates.** The halo was first
+built breathing (2.8 s alternating opacity+scale), which is what was asked for. Measured on the Thor
+(Release, full library, idle couch grid, 10 s windows of `/proc/<pid>/task/*/stat`):
+
+| couch grid at rest | render thread | UI thread |
+| --- | --- | --- |
+| 2.8 s breathing loop | 43.3% of a core | 8.2% |
+| no animation | 0.0% | 0.5% |
+
+The layer itself is not the cost — a small gradient rect, no offscreen. The cost is that ANY perpetual
+animation keeps the compositor awake every vsync, and each of those frames recomposites the ~40
+realized tiles; filtered to four games the same loop cost 19.7%, so it scales with what is on screen,
+not with the animation. Same fixed per-frame floor the shelf sway hit (2026-08-24), where dropping the
+animation's frame rate changed nothing. The rule for this shell: **a couch animation that runs while
+nobody is touching the device is not affordable; make it one-shot and re-trigger it on input.**
+
+**Couch gutters are their own constants now.** `CoverColumnSpacing` stays 28 for desktop (mirrored by
+MainWindow's row `Spacing`); the couch uses `GamepadCoverColumnSpacing` = 44 and row margins 20/32,
+because the focused tile scales to 1.09 and its halo spills past that — at 28 the lift alone nearly
+touched the neighbouring cover. `EdgeInsetTop` rises 24 → 48 so the top row's halo is not shaved by
+the scroller.
+
+**The packer takes a minimum covers-per-row.** Justified packing commits a row as soon as filling the
+width brings its height down to the target, which for landscape art (SNES 1.434, arcade 1.333) happens
+after three covers on the Thor — beside a portrait platform's five, that read as a broken shelf of
+oversized boxes. `JustifiedCoverLayout.Pack` now takes `minCoversPerRow`, which the couch sets to 4 and
+desktop leaves at 1 (its window is wide enough already, and its pixels are snapshot-tested). The
+minimum lapses on a viewport too narrow to give each cover `MinimumColumnCoverWidth` (150 px), so a
+small window shows fewer, readable covers rather than slivers.
+
+**The companion's logo was drawn twice.** `SecondScreenView` paints the running game's logo in the
+standby wash, and the resting spotlight underneath kept painting its own copy through the 95%-opaque
+wash. The two were centred in different regions — the resting one in the spotlight row, the standby one
+across the whole surface including the 64 px dock bar — so they landed ~32 px apart and read as a
+doubled logo on Screen-2. Two changes, because the first alone was not enough: the resting copy (and
+the no-artwork wordmark) fade out for as long as standby is up (`SpotlightLogoOpacity` /
+`ShowRestingBranding`), AND the standby copy moved out of the wash into the spotlight row so both are
+centred on the same rect. Without the second, the 0.35 s wash fade and the 0.30 s logo fade overlapped
+and the two offset copies crossed over visibly for ~300 ms on every dim and every tap-to-wake — the
+same artefact, just briefer (caught in review). Headless tests assert exactly one of the two mounted
+images is ever painted, in standby and while browsing, and that their centres coincide.
+
+**A touch wakes the dimmed companion; it goes back to sleep on its own.** While a game runs, the idle
+companion sits under a near-black wash — good for a burn-in-prone panel, useless for finding the dock
+slot you want to press. The wash is now hit-testable *only while it is up*, so the first touch is
+swallowed and simply lifts the dim (`SecondScreenViewModel.NoteInteraction`) instead of launching
+whatever sat under the finger in the dark. Every later touch lands there too, through the tunnel handler
+on the view's root, and restarts a 5 s countdown, so the panel stays lit for as long as it is being
+used and goes dark again quickly when it is left alone (his call on the duration; it is one field). `IsStandby` gained one more term (`&& !IsAwake`); the overlay
+rule is untouched, so achievements and the app drawer still lift the dim on their own and restore it on
+close, gamepad-driven or not. The window is torn down on both edges of a play session, so a stale one
+can never swallow the next game's dim.
+
+**The launch-screen chooser is a picture of the choice, and the choice is between two panels of one
+device.** It was four rows — "Play on the built-in screen", "Play on the external screen", then the same
+two prefixed "Always use…" — which reads as a settings list at the moment the player is trying to start
+a game. It is now two cards that Left/Right walk, over a "remember" checkbox that Down reaches and A
+flips; whichever card is then chosen honours the flag. Both cards draw the SAME device with the screen
+being chosen lit and the other dark. The drawing is the actual hardware — the Thor is a DS-style
+clamshell (6" 16:9 in the lid, 3.92" near-square touch screen in the base between the D-pad, face
+buttons and sticks), which is worth knowing before drawing anything for this device: an abstract
+two-panel diagram was tried first and rejected as "just idiotic infographic". "External screen" is gone from every user-facing string, here and in
+Settings → Emulators: this feature is gated behind `IExternalDisplayProbe`, which only the Android head
+implements, so the only hardware that ever sees it is a handheld that owns both screens — "external"
+described a monitor that is not there. The enum member stays `GameLaunchScreen.External`; it is a stored
+value. Still three `GamepadOverlayOptionViewModel`s
+under the surface, so focus, A-routing and the existing tests keep working; the chooser only owns its
+four directions (`DispatchLaunchScreenNavigation`) because the layout is a row, not a column. The title
+carries the question and the eyebrow carries the game name, so a long game title no longer wraps the
+header onto two lines.
