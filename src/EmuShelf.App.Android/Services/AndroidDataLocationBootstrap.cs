@@ -175,26 +175,42 @@ public sealed class AndroidDataLocationBootstrap : IDataLocationBootstrap
 
         try
         {
+            // More than one can exist (an earlier install's abandoned folder next to the live one); the
+            // library written most recently is the one the user was actually using.
+            string? best = null;
+            var bestWrite = DateTime.MinValue;
             foreach (var root in CandidateRoots())
             {
-                if (IsDataFolder(Path.Combine(root, DataFolderName)))
-                    return Path.Combine(root, DataFolderName);
-
-                foreach (var child in SafeSubdirectories(root))
+                foreach (var candidate in Candidates(root))
                 {
-                    var candidate = Path.Combine(child, DataFolderName);
-                    if (IsDataFolder(candidate))
-                        return candidate;
+                    var database = LibraryDatabase(candidate);
+                    if (!File.Exists(database))
+                        continue;
+                    var written = File.GetLastWriteTimeUtc(database);
+                    if (written > bestWrite)
+                    {
+                        best = candidate;
+                        bestWrite = written;
+                    }
                 }
             }
+            return best;
         }
         catch (Exception ex)
         {
             _logger.Warning("Could not look for an existing data folder.", ex);
+            return null;
         }
-
-        return null;
     }
+
+    private static IEnumerable<string> Candidates(string root)
+    {
+        yield return Path.Combine(root, DataFolderName);
+        foreach (var child in SafeSubdirectories(root))
+            yield return Path.Combine(child, DataFolderName);
+    }
+
+    private static string LibraryDatabase(string directory) => Path.Combine(directory, "Data", "library.db");
 
     public Task<DataLocationPickResult> UseExistingFolderAsync(string baseDirectory)
     {
@@ -213,8 +229,7 @@ public sealed class AndroidDataLocationBootstrap : IDataLocationBootstrap
         return Task.FromResult(DataLocationPickResult.Success(baseDirectory));
     }
 
-    private static bool IsDataFolder(string directory) =>
-        File.Exists(Path.Combine(directory, "Data", "library.db"));
+    private static bool IsDataFolder(string directory) => File.Exists(LibraryDatabase(directory));
 
     private static IEnumerable<string> CandidateRoots()
     {
