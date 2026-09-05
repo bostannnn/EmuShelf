@@ -129,6 +129,12 @@ public sealed class GamepadSettingsSetupModeTests
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.Equal(SetupStep.SecondScreen, vm.CurrentSetupStep);
+        // The two pre-boot steps stay reachable: their answers are shown, and the folder can be moved.
+        Assert.True(vm.Dispatch(GamepadAction.Cancel));
+        Assert.Equal(SetupStep.DataFolder, vm.CurrentSetupStep);
+        Assert.Contains(vm.Rows, row => row.Key == "setup.folder.current");
+        Assert.True(vm.Dispatch(GamepadAction.Cancel));
+        Assert.Equal(SetupStep.StorageAccess, vm.CurrentSetupStep);
         Assert.Null(closed);
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.False(closed);
@@ -150,6 +156,15 @@ public sealed class GamepadSettingsSetupModeTests
         Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
         Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
         Assert.Equal(SetupStep.ClosingGames, vm.CurrentSetupStep);
+        // Up walks all the way to the top of the rail.
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.Equal(SetupStep.DataFolder, vm.CurrentSetupStep);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.Equal(SetupStep.StorageAccess, vm.CurrentSetupStep);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateDown));
+        Assert.True(vm.Dispatch(GamepadAction.NavigateDown));
+        Assert.True(vm.Dispatch(GamepadAction.NavigateDown));
 
         Assert.True(vm.Dispatch(GamepadAction.NavigateRight));
         Assert.False(vm.IsRailFocused);

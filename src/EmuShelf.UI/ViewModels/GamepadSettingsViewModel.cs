@@ -714,10 +714,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
         if (_setup is not null)
         {
-            // The steps this device gets, in order. Storage access and the data folder are already done
-            // (the pre-boot page handled them) and are listed so the rail reads as one wizard; the rest are
-            // live only when the feature exists here (a second screen, the close-on-return setting, cloud
-            // saves) so a phone with none of them sees a two-step wizard, not a list of dead ends.
+            // The steps this device gets, in order. Storage access and the data folder were answered by the
+            // pre-boot page; they stay reachable here (to see the answer, and to move the folder) so the
+            // rail is one wizard the user can walk up and down. The rest are live only when the feature
+            // exists here (a second screen, the close-on-return setting, cloud saves), so a phone with none
+            // of them sees a short wizard, not a list of dead ends.
+            _liveSetupSteps.Add(SetupStep.StorageAccess);
+            _liveSetupSteps.Add(SetupStep.DataFolder);
             if (_setup.HasSecondScreen)
                 _liveSetupSteps.Add(SetupStep.SecondScreen);
             if (_settings.HasCloseEmulatorOnReturn)
@@ -725,12 +728,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             _liveSetupSteps.Add(SetupStep.GamesAndEmulators);
             if (_settings.HasCloudSaves && Sections.Contains(SettingsSection.Saves))
                 _liveSetupSteps.Add(SetupStep.Saves);
-            SetupRail.Steps.Add(new SetupStepViewModel(SetupStep.StorageAccess));
-            SetupRail.Steps.Add(new SetupStepViewModel(SetupStep.DataFolder));
             foreach (var step in _liveSetupSteps)
                 SetupRail.Steps.Add(new SetupStepViewModel(step));
             SetupRail.StartCommand = new AsyncRelayCommand(AdvanceSetupAsync);
-            SelectedSection = SectionForSetupStep(_liveSetupSteps[0]);
+            // Open on the first step that still has something to decide: the two pre-boot steps are done.
+            _setupIndex = Math.Min(2, _liveSetupSteps.Count - 1);
+            SelectedSection = SectionForSetupStep(CurrentSetupStep);
             PrepareSetupStep();
         }
 
@@ -2709,6 +2712,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private string SetupTitle => CurrentSetupStep switch
     {
+        SetupStep.StorageAccess => "Storage access",
+        SetupStep.DataFolder => "Data folder",
         SetupStep.SecondScreen => "Playing on the second screen",
         SetupStep.ClosingGames => "Closing games",
         SetupStep.GamesAndEmulators => "Games & emulators",
@@ -2718,6 +2723,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private string SetupDescription => CurrentSetupStep switch
     {
+        SetupStep.StorageAccess => "EmuShelf reads your games and keeps its library on this device's storage. Android asked you to allow this once.",
+        SetupStep.DataFolder => "Where EmuShelf keeps its library, covers, settings and saves. Your game files are never moved.",
         SetupStep.SecondScreen => "This device has a second screen. A game can run there while the library stays here.",
         SetupStep.ClosingGames => "What happens to the emulator when you come back to EmuShelf from a game.",
         SetupStep.GamesAndEmulators => "Open a system to add the folders its games are in, and check which app plays it.",
@@ -2746,6 +2753,36 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     {
         switch (CurrentSetupStep)
         {
+            case SetupStep.StorageAccess:
+                yield return InformationRow(
+                    "setup.storage.grant",
+                    "Allow access to all files",
+                    "Allowed. Android remembers this until you turn it off in its settings.",
+                    "Allowed");
+                yield return InformationRow(
+                    "setup.storage.why",
+                    "What this is used for",
+                    "Reading your games where they are, and writing only inside EmuShelf's own folder. Games are never moved or deleted.",
+                    string.Empty);
+                break;
+            case SetupStep.DataFolder:
+                yield return InformationRow(
+                    "setup.folder.current",
+                    "Data folder",
+                    _settings.HasDataDirectory ? _settings.DataDirectory ?? string.Empty : "Not set",
+                    string.Empty);
+                if (_settings.CanChangeDataFolder)
+                {
+                    yield return ActionRow(
+                        "general.change-data-folder",
+                        "Choose a different folder",
+                        "Android's folder picker. EmuShelf restarts into the new folder; your existing data stays where it is.",
+                        "A CHOOSE",
+                        _settings.ChangeDataFolderCommand,
+                        enabled: !_settings.IsBusy,
+                        excludeFromParity: true);
+                }
+                break;
             case SetupStep.SecondScreen:
             {
                 var ready = IsSecondScreenReturnReady;
