@@ -96,12 +96,14 @@ public class GamepadLibraryLayoutTests : IDisposable
     }
 
     /// <summary>
-    /// Regression: the rail and title moved to the new platform immediately while Games kept the
-    /// old platform's tiles until the load finished two awaits later, so a GBA game could be seen
-    /// under the PlayStation tab.
+    /// The outgoing platform's tiles stay on screen while the incoming one is read, under the
+    /// library-surface fade that <see cref="MainViewModel.IsLibraryLoading"/> drives: the switch is a
+    /// fade-out/fade-in, not a hard cut to an empty stage (which is what clearing the list here used
+    /// to produce on every LB/RB). The empty-state panels stay suppressed meanwhile — "no games here"
+    /// must not be claimed about a platform that has not been read yet.
     /// </summary>
     [AvaloniaFact]
-    public async Task ChangingPlatformClearsTheOutgoingTilesBeforeAwaiting()
+    public async Task ChangingPlatformKeepsTheOutgoingTilesUnderTheFadeUntilTheNewOnesLand()
     {
         AddGame(Ps1, "Crash Bandicoot", ".cue");
         AddGame(Gba, "Advance Wars", ".gba");
@@ -111,19 +113,42 @@ public class GamepadLibraryLayoutTests : IDisposable
         Assert.Single(viewModel.Games);
         Assert.Equal("Advance Wars", viewModel.Games[0].Title);
 
-        // Setting the platform runs synchronously up to the first await, which is exactly the
-        // window the user was seeing. Nothing from the previous platform may survive it.
         viewModel.SelectedSystem = Ps1;
-
-        Assert.Empty(viewModel.Games);
-        Assert.False(viewModel.HasGames);
+        // The reload runs synchronously up to its first await: by then the fade is up and the old
+        // tiles are still the ones on screen.
+        var load = viewModel.ReloadGamesAsync();
         Assert.True(viewModel.IsLibraryLoading);
-        // "No games here" must not be claimed about a platform that has not been read yet.
+        Assert.Equal("Advance Wars", Assert.Single(viewModel.Games).Title);
+        Assert.True(viewModel.HasGames);
         Assert.False(viewModel.IsLibraryEmpty);
         Assert.False(viewModel.IsSearchEmpty);
 
-        await viewModel.ReloadGamesAsync();
+        await load;
+        // The setter also queued its own deferred reload; the newer of the two owns the flag.
+        await viewModel.SelectedSystemLoad;
         Assert.False(viewModel.IsLibraryLoading);
+        Assert.Equal("Crash Bandicoot", Assert.Single(viewModel.Games).Title);
+    }
+
+    /// <summary>
+    /// The reload a platform switch triggers is posted behind the frame that moves the rail pill
+    /// (Background priority), so the press's own dispatcher job never carries the library swap.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task ChangingPlatformDefersTheReloadBehindThePressFrame()
+    {
+        AddGame(Ps1, "Crash Bandicoot", ".cue");
+        AddGame(Gba, "Advance Wars", ".gba");
+        var viewModel = CreateViewModel();
+        viewModel.SelectedSystem = Gba;
+        await viewModel.ReloadGamesAsync();
+
+        viewModel.SelectedSystem = Ps1;
+        // Nothing has been swapped or cleared in the setter's own job.
+        Assert.False(viewModel.IsLibraryLoading);
+        Assert.Equal("Advance Wars", Assert.Single(viewModel.Games).Title);
+
+        await viewModel.SelectedSystemLoad;
         Assert.Equal("Crash Bandicoot", Assert.Single(viewModel.Games).Title);
     }
 
