@@ -27,16 +27,16 @@ public sealed record DataLocationPickResult(string? BaseDirectory, string? Error
 public interface IDataLocationBootstrap
 {
     /// <summary>
-    /// The already-resolved base directory, or null when onboarding is required. When non-null the shared
-    /// composition root skips onboarding entirely and boots against this path.
+    /// Decides, right now, whether EmuShelf has a usable data folder or must onboard first. Deliberately a
+    /// method, not a value captured at process start: on Android the process is often created with no
+    /// Activity at all (the system re-binds the accessibility service after every install; Shizuku pokes
+    /// the provider), and a verdict frozen in such a process — early boot, storage not yet mounted — was
+    /// what the user later saw when they finally opened the app. The composition root calls this when an
+    /// Activity actually asks for a view, and onboarding calls it again on every return to the foreground
+    /// so a pointer that becomes readable (grant restored, card remounted, mirror found after a reinstall)
+    /// completes onboarding without a manual pick.
     /// </summary>
-    string? ResolvedBaseDirectory { get; }
-
-    /// <summary>
-    /// Why onboarding is required, valid only when <see cref="ResolvedBaseDirectory"/> is null. Seeds the
-    /// onboarding view-model's first message (fresh install vs. lost grant vs. missing folder).
-    /// </summary>
-    DataLocationOnboardingReason OnboardingReason { get; }
+    DataLocationResolution Resolve();
 
     /// <summary>Whether the platform gates path access behind a runtime grant (true on Android).</summary>
     bool RequiresStoragePermission { get; }

@@ -34,6 +34,11 @@ public sealed partial class OnboardingViewModel : ViewModelBase
 
     private int _focusIndex;
 
+    // Onboarding hands off exactly once. Two paths can reach completion within milliseconds of each other —
+    // a folder pick landing, and the foreground-return re-resolve that follows the picker closing — and on
+    // Android the handoff restarts the process, so a second call must be a no-op rather than a second restart.
+    private bool _completed;
+
     /// <summary>Whether the all-files-access step is shown at all (true on Android, false where no grant is needed).</summary>
     public bool RequiresPermission => _bootstrap.RequiresStoragePermission;
 
@@ -248,6 +253,22 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     /// </summary>
     public void RefreshPermissionState()
     {
+        // First: is there anything left to onboard? The pointer may have become readable behind our back —
+        // the all-files grant was just flipped on and the pointer's shared-storage mirror is now visible
+        // (a reinstall), the SD card holding the folder was remounted, or the verdict this process was
+        // created with was simply stale. In every such case the user has nothing to choose, so complete
+        // straight away instead of showing a folder picker they already answered.
+        if (!_completed)
+        {
+            var resolution = _bootstrap.Resolve();
+            if (resolution.IsResolved)
+            {
+                _logger.Information($"Data folder resolved on foreground return: '{resolution.BaseDirectory}'.");
+                Complete(resolution.BaseDirectory!);
+                return;
+            }
+        }
+
         // Setting IsPermissionGranted raises the focus/step properties. Reset the ring to the first live
         // action so it lands on the recommended button the moment the grant clears. Also re-read the
         // second-screen-return switch: enabling it in system Settings and returning drops that step and its
@@ -290,6 +311,16 @@ public sealed partial class OnboardingViewModel : ViewModelBase
     [RelayCommand]
     private Task ChooseDifferentAsync() => CompleteWithAsync(_bootstrap.PickFolderAsync);
 
+    // The single exit: detach from the platform signal and hand the base directory to the composition root.
+    private void Complete(string baseDirectory)
+    {
+        if (_completed)
+            return;
+        _completed = true;
+        _bootstrap.StoragePermissionMaybeChanged -= OnStoragePermissionMaybeChanged;
+        _onCompleted(baseDirectory);
+    }
+
     // Shared body for both folder actions: run it, complete onboarding on success, surface a rejection
     // reason otherwise, and never let an exception leave the screen stuck.
     private async Task CompleteWithAsync(Func<Task<DataLocationPickResult>> action)
@@ -304,8 +335,7 @@ public sealed partial class OnboardingViewModel : ViewModelBase
             if (result.Succeeded)
             {
                 _logger.Information($"Data folder chosen: '{result.BaseDirectory}'.");
-                _bootstrap.StoragePermissionMaybeChanged -= OnStoragePermissionMaybeChanged;
-                _onCompleted(result.BaseDirectory!);
+                Complete(result.BaseDirectory!);
                 return;
             }
 

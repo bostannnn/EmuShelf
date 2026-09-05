@@ -2129,6 +2129,18 @@ breaks the whole-solution macOS build/test loop.
           API_V23` + `ShizukuProvider`. On-device: Dolphin force-stopped on return, log `Shizuku force-stop …
           exited with 0`. Requires the user to install + start Shizuku (once per boot on non-rooted devices).
           See DECISIONS 2026-08-25 and 2026-08-26.
+    - [x] **S5 — onboarding no longer reappears after it was completed** (2026-09-05). Two device-read
+          causes: (1) the onboarding-vs-shell verdict was taken at *process* creation (`Application.OnCreate`),
+          and Android creates the process headlessly — re-binding the accessibility service after every
+          install, Shizuku's provider — so a stale verdict (and a fully composed shell + Screen-2 Presentation
+          nobody asked for) was frozen into the process the user later opened; (2) the data-folder pointer
+          lived only in app-private storage, so a reinstall re-ran onboarding over a library that was still
+          there. Now: `App` installs an `IActivityApplicationLifetime.MainViewFactory` that resolves when the
+          Activity asks for its first view, onboarding re-resolves on every foreground return and completes
+          itself when the pointer becomes readable, and `JsonDataLocationStore` mirrors the pointer to
+          `<shared storage>/.emushelf-data-location.json` (best-effort, self-healing). Verdict logged to
+          logcat as `EmuShelfBoot`. Side fix: the SAF picker's and the L3 overlay's TopLevel lookups read the
+          Activity content, not the always-null `MainView`. See DECISIONS 2026-09-05.
     - [x] **S5 — couch UI polish round: selection, row density, second-screen wake, screen chooser**
           (2026-09-05, driven from a Thor pass and verified on it). (1) **The selection marker moved off
           the artwork.** The focus puddle had become a smudge after the justified-row repack; a proper

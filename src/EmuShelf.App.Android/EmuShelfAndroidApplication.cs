@@ -28,11 +28,12 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
 
     protected override AppBuilder CustomizeAppBuilder(AppBuilder builder)
     {
-        // Decide where EmuShelf keeps its data before Avalonia starts. The user chooses an external folder
-        // on first launch (D2), so the base directory is resolved from a pointer persisted in app-private
-        // storage — the one place always writable without a grant — plus the all-files grant and a
-        // writability probe. Resolved → boot against the chosen folder; otherwise hand the composition root
-        // a bootstrap so it shows onboarding instead of opening the database against nothing.
+        // Wire (but do not yet run) the data-folder resolution. The user chooses an external folder on first
+        // launch (D2); the base directory comes from a pointer persisted in app-private storage — the one
+        // place always writable without a grant — plus the all-files grant and a writability probe. The
+        // resolver itself runs only when an Activity asks for a view: this method executes at PROCESS
+        // creation, which the system also does headlessly (accessibility re-bind after an install, a Shizuku
+        // provider query), and a verdict frozen there was what the user later saw on the panel.
         var appPrivateFilesDir = FilesDir?.AbsolutePath ?? ApplicationContext?.FilesDir?.AbsolutePath;
         WireDataLocation(appPrivateFilesDir);
 
@@ -149,17 +150,22 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // dirs are created there — so onboarding, permission, and resolve diagnostics are readable via adb
         // even before a folder is picked. FileAppLogger swallows its own I/O errors, so this is safe.
         var prebootLogger = new FileAppLogger(new AppPaths(appPrivateFilesDir));
-        var store = new JsonDataLocationStore(Path.Combine(appPrivateFilesDir, "data-location.json"), prebootLogger);
+        // The pointer's primary copy is app-private; its mirror is a dotfile on primary shared storage, which
+        // an uninstall leaves alone. That is what lets a reinstall find its library again instead of
+        // re-running onboarding over it (it needs the all-files grant to be readable, so the grant step still
+        // runs after a reinstall — but the folder pick does not).
+        var store = new JsonDataLocationStore(
+            Path.Combine(appPrivateFilesDir, "data-location.json"),
+            DataLocationMirrorPath(),
+            prebootLogger);
         var permission = new AndroidStoragePermissionService(() => ApplicationContext, prebootLogger);
         var resolver = new DataLocationResolver(store, permission, DirectoryWritability.IsWritable);
-        var resolution = resolver.Resolve();
 
-        // Always expose the bootstrap and the restart hook, even when the folder is already resolved: the
-        // Settings "change data folder" row re-runs the same SAF pick and restart on a device that has long
-        // finished onboarding. App only starts onboarding when ResolvedBaseDirectory is null, so handing it a
-        // resolved bootstrap boots straight to the library exactly as the plain BaseDirectoryOverride did.
+        // The bootstrap is always exposed: the composition root resolves through it when the Activity asks
+        // for its first view, onboarding re-resolves through it on foreground return, and the Settings
+        // "change data folder" row re-runs its SAF pick on a device that has long finished onboarding.
         var bootstrap = new AndroidDataLocationBootstrap(
-            store, permission, ResolveShellTopLevel, resolution, prebootLogger);
+            store, permission, ResolveShellTopLevel, resolver.Resolve, prebootLogger);
         global::EmuShelf.App.App.DataLocation = bootstrap;
 
         // The process restart used both to hand off from onboarding to the real shell (the single-view host
@@ -167,29 +173,29 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // the newly chosen folder after Settings re-points it.
         global::EmuShelf.App.App.RestartRequested = () => AndroidAppRelaunch.Restart(ApplicationContext);
 
-        if (resolution.IsResolved)
-        {
-            global::EmuShelf.App.App.BaseDirectoryOverride = resolution.BaseDirectory;
-            return;
-        }
-
-        // While onboarding is up the shell's return signal isn't wired yet, so point the Activity's
-        // foreground callback at the grant refresh; SingleViewShell re-points it once the real UI composes.
+        // Both Activity-side hooks start out routed to onboarding, unconditionally: whether onboarding will
+        // show is not known here (see above), and SingleViewShell overwrites both the moment the real shell
+        // composes. Until then the foreground callback drives the grant refresh (and the auto-complete when
+        // the pointer becomes readable), and the couch controller reaches the onboarding card — late-bound
+        // through the App hook, which is null (a no-op) while no onboarding view-model exists.
         AndroidActivityLifecycle.ReturnedToForeground = bootstrap.NotifyForegroundReturned;
-
-        // Route the couch controller into onboarding too — the shared shell's dispatcher does not exist yet,
-        // so without this the D-pad and A button would be dead on the first screen on a gamepad-first device.
-        // Late-bound through the App hook (set once the onboarding view-model is built); SingleViewShell
-        // overwrites Dispatch with the real view-model once a folder is chosen.
         AndroidGamepadInput.Dispatch = action =>
             global::EmuShelf.App.App.OnboardingGamepadDispatch?.Invoke(action) ?? false;
     }
 
-    // The single-view MainView — the onboarding view before a folder is picked, the composed shell after —
-    // is what the folder picker's TopLevel is reached through, so both onboarding and the Settings
-    // change-folder pick resolve it the same way.
+    // <primary shared storage>/.emushelf-data-location.json — pointer-independent, survives an uninstall,
+    // hidden from file managers by the leading dot. Null (no mirror) if the primary volume is unknown.
+    private static string? DataLocationMirrorPath()
+    {
+        var primary = global::Android.OS.Environment.ExternalStorageDirectory?.AbsolutePath;
+        return string.IsNullOrEmpty(primary) ? null : Path.Combine(primary, ".emushelf-data-location.json");
+    }
+
+    // The live Activity's content — the onboarding view before a folder is picked, the composed shell's
+    // MainView after — is what the folder picker's TopLevel is reached through. Read from the Activity, not
+    // from ISingleViewApplicationLifetime.MainView: the views come from IActivityApplicationLifetime's
+    // MainViewFactory, and Avalonia's Android lifetime leaves MainView null on that path (it only mirrors a
+    // view that was assigned to MainView directly), so the old lookup returned null once the shell was up.
     private static TopLevel? ResolveShellTopLevel() =>
-        (global::Avalonia.Application.Current?.ApplicationLifetime as ISingleViewApplicationLifetime)?.MainView is { } view
-            ? TopLevel.GetTopLevel(view)
-            : null;
+        MainActivity.Current?.Content is Control view ? TopLevel.GetTopLevel(view) : null;
 }
