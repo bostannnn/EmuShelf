@@ -11665,7 +11665,7 @@ and legend, which he approved in the round-4 Settings pass.
 - **Phase B, inside the composed app**: the existing `GamepadSettingsViewModel` in setup mode
   (`SetupWizardOptions`), so every row, picker, confirmation and text entry is the one Settings already has.
   Steps, each only where it applies: Second screen (a device with a companion display), Closing games
-  (the close-on-return setting), Games and emulators (the Emulators section, minus the close-on-return row),
+  (the close-on-return setting), Games & emulators (the Emulators section, minus the close-on-return row),
   Saves (the Saves section). START continues, Finish is the ordinary Save, B goes back and on the first step
   leaves the wizard unfinished. LB/RB and the rail are inert. `AppSettings.SetupCompletedVersion` records
   completion against `MainViewModel.SetupWizardVersion`, so a later step is offered once, not the whole

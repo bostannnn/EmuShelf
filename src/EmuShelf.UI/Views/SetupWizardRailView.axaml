@@ -48,7 +48,7 @@
                 <Border Classes="gamepad-key"><TextBlock Text="START" /></Border>
                 <StackPanel Grid.Column="1" VerticalAlignment="Center">
                     <TextBlock Text="{Binding StartLabel}" FontWeight="Bold" />
-                    <TextBlock Text="{Binding StartDetail}" FontSize="13"
+                    <TextBlock Text="{Binding StartDetail}" FontSize="13" TextTrimming="CharacterEllipsis"
                                IsVisible="{Binding StartDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                 </StackPanel>

@@ -2699,7 +2699,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     {
         SetupStep.SecondScreen => "Playing on the second screen",
         SetupStep.ClosingGames => "Closing games",
-        SetupStep.GamesAndEmulators => "Games and emulators",
+        SetupStep.GamesAndEmulators => "Games & emulators",
         SetupStep.Saves => "Saves",
         _ => "Setup",
     };
@@ -2780,8 +2780,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     yield return row;
                 break;
             case SetupStep.Saves:
+                // The step is for choices (connect, save folders, state sync); the one-off "sync all now",
+                // the disconnect and the per-platform replace actions stay in Settings.
                 foreach (var row in BuildSaveRows())
+                {
+                    if (row.Key is "saves.sync" or "saves.disconnect"
+                        || row.Key.EndsWith("replace-cloud", StringComparison.Ordinal)
+                        || row.Key.EndsWith("replace-local", StringComparison.Ordinal))
+                        continue;
                     yield return row;
+                }
                 break;
         }
     }

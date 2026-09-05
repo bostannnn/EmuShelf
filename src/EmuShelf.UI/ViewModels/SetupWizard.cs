@@ -29,7 +29,7 @@ public static class SetupStepLabels
         SetupStep.DataFolder => "Data folder",
         SetupStep.SecondScreen => "Second screen",
         SetupStep.ClosingGames => "Closing games",
-        SetupStep.GamesAndEmulators => "Games and emulators",
+        SetupStep.GamesAndEmulators => "Games & emulators",
         SetupStep.Saves => "Saves",
         _ => step.ToString(),
     };
