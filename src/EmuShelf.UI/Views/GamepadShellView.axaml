@@ -99,6 +99,14 @@
         </Grid>
         <Border Grid.Row="0" Padding="42,18,42,12" Classes="gamepad-toolbar"
                 Classes.shelf-view="{Binding IsGamepadShelfView}">
+            <!-- LB | icon strip | RB. Icons only: every tab is the same icon-sized square and never
+                 grows, so a switch moves exactly one thing — the pill — and the strip's layout never
+                 changes. Measured on the Thor before this: the active tab expanded to show its name on
+                 the first frame, every icon around it jumped, the pill (already resized to the wider
+                 tab) glided from the old tab under a label that was already there, and the widened
+                 strip overflowed the viewport so BringIntoView snapped the scroll offset. Andrew's
+                 call (2026-09-05): no platform name in the rail at all — a name slot beside the strip
+                 was cut to "Me…" at the Thor's 1280-dip couch width, and the icons say enough. -->
             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="22">
                 <Border Classes="gamepad-key" VerticalAlignment="Center">
                     <TextBlock Text="LB" />
@@ -106,9 +114,10 @@
                 <ScrollViewer x:Name="GamepadRailScroller" Grid.Column="1" HorizontalScrollBarVisibility="Hidden"
                               VerticalScrollBarVisibility="Disabled" SizeChanged="OnGamepadRailSizeChanged">
                     <Panel>
-                        <!-- Behind the tabs, snapped over the active one by UpdateRailIndicator. -->
+                        <!-- Behind the tabs, translated over the active one by UpdateRailIndicator. Fixed
+                             to the tab size, so only its translate ever animates. -->
                         <Border x:Name="GamepadRailIndicator" Classes="gamepad-platform-indicator"
-                                Width="0" Height="54" IsVisible="False" />
+                                Width="58" Height="54" IsVisible="False" />
                         <StackPanel x:Name="GamepadRailTabs" Orientation="Horizontal" Spacing="10"
                                     HorizontalAlignment="Center">
                         <Button x:Name="GamepadAllGamesTab" Classes="gamepad-platform"
@@ -116,16 +125,11 @@
                                 Command="{Binding ShowAllGamesCommand}"
                                 Classes.selected="{Binding IsAllGamesSelected}"
                                 ToolTip.Tip="All Games" AutomationProperties.Name="All Games"
-                                MinHeight="54" Padding="14,10">
-                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                <!-- No bitmap exists for "everything", so a 2x2 grid glyph stands in for
-                                     the console badges the other tabs carry. -->
-                                <PathIcon Width="30" Height="30"
-                                          Data="M3,3 H10 V10 H3 Z M14,3 H21 V10 H14 Z M3,14 H10 V21 H3 Z M14,14 H21 V21 H14 Z" />
-                                <TextBlock Text="All Games" VerticalAlignment="Center" Margin="10,0,2,0"
-                                           IsVisible="{Binding IsAllGamesSelected}"
-                                           FontSize="{DynamicResource EmuGpLabelSize}" />
-                            </StackPanel>
+                                Width="58" Height="54" Padding="0">
+                            <!-- No bitmap exists for "everything", so a 2x2 grid glyph stands in for
+                                 the console badges the other tabs carry. -->
+                            <PathIcon Width="30" Height="30" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                      Data="M3,3 H10 V10 H3 Z M14,3 H21 V10 H14 Z M3,14 H10 V21 H3 Z M14,14 H21 V21 H14 Z" />
                         </Button>
                         <ItemsControl ItemsSource="{Binding GamepadPlatforms}">
                             <ItemsControl.ItemsPanel>
@@ -133,22 +137,17 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:GamepadPlatformTabViewModel">
-                                    <!-- Icon-only rail: the name is dropped to declutter and only
-                                         reappears on the active tab so "you are here" stays legible.
-                                         Tooltip/automation keep the name for pointer and screen readers. -->
+                                    <!-- Icon-only, constant-size tab. Tooltip/automation keep the name
+                                         for pointer and screen readers. -->
                                     <Button Classes="gamepad-platform"
                                             Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                            Classes.selected="{Binding IsActive}" MinHeight="54" Padding="14,10"
+                                            Classes.selected="{Binding IsActive}" Width="58" Height="54" Padding="0"
                                             ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}"
                                             Command="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).SelectPlatformCommand}"
                                             CommandParameter="{Binding System}">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <Image Width="30" Height="30" Source="{Binding Artwork}"
-                                                   RenderOptions.BitmapInterpolationMode="None" />
-                                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Margin="10,0,2,0"
-                                                       IsVisible="{Binding IsActive}"
-                                                       FontSize="{DynamicResource EmuGpLabelSize}" />
-                                        </StackPanel>
+                                        <Image Width="30" Height="30" Source="{Binding Artwork}"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               RenderOptions.BitmapInterpolationMode="None" />
                                     </Button>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -273,7 +272,8 @@
              slab row occupied. GamepadGridPanel.EdgeInsetBottom keeps the clamped last row (and the
              centred focused row) clear of it. -->
         <Border x:Name="GamepadFocusedDock" Grid.Row="1" VerticalAlignment="Bottom"
-                Padding="36,48,36,12" IsVisible="{Binding IsGamepadGridLayout}">
+                Padding="36,48,36,12" IsVisible="{Binding IsGamepadGridLayout}"
+                Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}">
             <Border.Background>
                 <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
                     <GradientStop Offset="0" Color="#00000000" />
@@ -736,7 +736,10 @@
                      returned — the shared GL surface resized, rebuilt, and the media visibly "popped big
                      then shrank" on every LB/RB. A single-cell layout keeps the scene viewport a constant
                      size, so the media stays put and stays large. -->
-                <Grid Margin="0,112,0,0">
+                <!-- library-surface/.loading: the whole stage — scene and the title overlay under it —
+                     fades out together while a platform's library is being built and back in when it
+                     lands (the same 0.10s fade the grid uses), instead of cutting to an empty stage. -->
+                <Grid Margin="0,112,0,0" Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}">
                     <!-- Coverflow strip viewport. GamepadShelfStrip is translated by the code-behind so
                          the focused slot lands on centre; the viewport's ClipToBounds hides the off-screen
                          covers. Slots are a uniform 410px wide (matching MainWindow.ShelfSlotWidth) so the

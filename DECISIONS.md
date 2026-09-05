@@ -11590,6 +11590,58 @@ Not changed: the folder row's A press rescans the platform without labelling its
 call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
 quieter second path to the same action.
 
+## 2026-09-05 — Couch platform rail: fixed-size tabs, caption slot, reload off the press frame, staged shelf swap
+
+Andrew: the top-row platform selector on the Thor is "very janky and not smooth at all". Measured before
+changing anything (SurfaceFlinger BLAST frame timing + a 60fps `screenrecord` diffed frame by frame; the
+extractor recipe is in the project notes). Four separate things stacked up on every LB/RB press:
+
+1. The active tab grew to show its name. The label popped in at full width on the first frame, the icons
+   beside it jumped, and the pill — already resized to the wider tab — glided from the *old* tab for 220ms
+   under a label that was already sitting outside it. When the widened strip overflowed the viewport,
+   `BringIntoView` snapped the scroll offset as well.
+2. The reload ran inline in the press's dispatcher job (cache hit: swap + shelf rebuild; miss: clear + DB
+   read), so the pill's first glide frame waited on it.
+3. `BeginScopeChange` cleared `Games`, so the shelf cut to an empty stage, then the fresh cartridges flashed
+   grey "ARTWORK MISSING" labels for a frame or two before their decoded labels landed.
+4. Face textures (pixel swizzle + `glTexImage2D`) were built on the render thread in the first frame that
+   showed them; a switch or a landing decode put several full-size faces into one frame (50–70ms frames
+   ~0.7s after every move). Unvisited platforms additionally froze the UI thread ~200ms mid-glide.
+
+What changed:
+
+- **Rail (GamepadShellView.axaml, EmuShelfStyles.axaml, code-behind).** Icons only. Every tab is a fixed
+  58×54 icon square, the pill is the same fixed size and only ever translates (0.3s `ExponentialEaseOut`,
+  retargeting mid-glide so a held button reads as one sweep), so a switch changes nothing in the strip's
+  layout. The platform name is gone from the rail: a name slot beside the strip was tried first and was cut
+  to "Me…" on the Thor (the couch lays out at 1280 dip there; sixteen tabs leave ~60 dip), and Andrew's
+  verdict on seeing it was "remove it and keep only icons". A caption under the active tab was also
+  written and dropped for the same verdict. Sixteen icon tabs fit the Thor's width, so the strip no longer
+  scrolls there; the `ScrollViewer` stays for narrow windows.
+- **Reload deferral (MainViewModel).** `OnSelectedSystemChanged` and the direct All-Games path post
+  `RequestLibraryReload` at `DispatcherPriority.Background` (`DeferLibraryReloadAsync`), so the frame that
+  carries the pill's first step, the caption swap and the title is committed before the library work begins.
+  Background is the priority the existing debounce timers already run at on the Thor.
+- **Staged swap (MainViewModel + shelf markup).** `BeginScopeChange` no longer clears `Games`/`HasGames`/
+  `FocusedGame`; it only raises `IsLibraryLoading`, which now also drives the `library-surface.loading`
+  fade on the shelf stage grid and the grid's focused dock (the grid surface already had it). The outgoing
+  covers and title fade out over the build, the new list fades in when it lands; `FocusedGame` is nulled at
+  the swap itself. While the flag is up, `DispatchLibraryAction` drops every action except LB/RB/Menu/Cancel,
+  so A during the fade cannot launch the outgoing platform's focused game under the new platform's caption.
+- **Pending ≠ missing (MediaShelf3DControl).** A face whose scan path exists but has not decoded yet now
+  draws bare (platform tint) instead of the "artwork missing" label; only a face with no path, or one whose
+  decode failed, wears the placeholder. Failures are recorded per path in `_failedPhysicalArtwork`, which
+  also stops the visibility pass re-queuing a known-bad file on every publish.
+- **Rationed uploads (MediaShelf3DControl).** `SynchronizeArtworkTextures` uploads about one 1024² face's
+  worth of pixels per frame (`FaceUploadPixelBudgetPerFrame`, always at least one face), fronts for every
+  visible item before backs/spines/disc labels, and a frame that left faces behind requests the next one
+  (and cannot take the CRT's same-scene shortcut). A count-based ration was tried first: the cost is in the
+  pixel swizzle, so two large scraped covers still made one 78ms frame. A `PerfTrace` `UPLOAD` line (≥4ms
+  or deferred) makes the cost readable from logcat.
+
+Not changed: building an unvisited scope's view models still happens on the UI thread inside `Task.Run`'s
+continuation (`ApplyFilter`, `RestoreFocusedGame`, the shelf's `RebuildLayout`); the deferral moves it off
+the press frame and the fade covers it, but a large scope still costs one long frame when it lands.
 ## 2026-09-05 — Couch polish: an accent bar under the focused cover is the selector, and the packer takes a column floor
 
 Four fixes from a Thor pass, three of which are one story: the couch grid was retuned for the

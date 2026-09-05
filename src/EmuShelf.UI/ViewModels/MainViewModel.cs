@@ -2054,8 +2054,21 @@ public partial class MainViewModel : ViewModelBase
         // is for live LB/RB cycling: the highlight and title move at once, but the heavy grid reload is
         // coalesced so holding/tapping does not rebuild the library on every press.
         if (!_isRestoringViewState)
-            _selectedSystemLoad = RequestLibraryReload();
+            _selectedSystemLoad = DeferLibraryReloadAsync();
     }
+
+    // A platform switch moves the rail pill, the caption and the title in the dispatcher job that
+    // handles the press. The reload — which swaps the whole library and rebuilds the shelf or grid —
+    // is posted at Background priority, so the frame carrying the pill's first glide step is laid out
+    // and committed before that work starts. Measured on the Thor with the reload inline: the first
+    // frame after LB/RB waited on the shelf rebuild, so the glide began late and read as lag-then-hop.
+    // Background is the same priority the debounce timers run at, so nothing here can be starved that
+    // they are not.
+    private Task DeferLibraryReloadAsync() =>
+        Dispatcher.UIThread.InvokeAsync(RequestLibraryReload, DispatcherPriority.Background);
+
+    /// <summary>The reload the last platform selection queued, for tests that must await it.</summary>
+    internal Task SelectedSystemLoad => _selectedSystemLoad;
 
     partial void OnCurrentLibraryScopeChanged(LibraryScope value)
     {
@@ -3235,6 +3248,17 @@ public partial class MainViewModel : ViewModelBase
 
     private bool DispatchLibraryAction(GamepadAction action)
     {
+        // Between scopes the list on screen is the outgoing platform's, fading out under the new
+        // platform's caption, and the focused game still belongs to it. Launching it or opening its
+        // actions would act on a game the rail no longer names, so those two are dropped until the
+        // new list lands (the flag falls in ApplyFilter's caller for both the cached and the built
+        // path, and in the reload's failure path). Everything else still passes: moving focus in the
+        // fading list is harmless (the swap resets it), and search applies to whatever lands.
+        if (IsLibraryLoading && action is GamepadAction.Confirm or GamepadAction.Actions)
+        {
+            return true;
+        }
+
         switch (action)
         {
             case GamepadAction.PreviousPlatform:
@@ -3815,7 +3839,7 @@ public partial class MainViewModel : ViewModelBase
         {
             // Reached All Games / Recently Added directly (a menu, or an LB/RB stop that did not pass
             // through a system). Debounce it the same way so cycling across this stop does not thrash.
-            await RequestLibraryReload();
+            await DeferLibraryReloadAsync();
         }
     }
 
@@ -4551,8 +4575,8 @@ public partial class MainViewModel : ViewModelBase
             return swap;
         }
 
-        // Not built yet: clear the outgoing tiles now so one platform's library can't sit under
-        // another platform's title.
+        // Not built yet: start fading the outgoing library now, so the build's wait shows the old
+        // covers dimming out rather than a hard cut to an empty stage.
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
 
@@ -4648,10 +4672,10 @@ public partial class MainViewModel : ViewModelBase
         // lazily if the user later switches to the list (M40 item 2). Captured on the UI thread here.
         var listActive = !IsGridView && !IsGamepadMode;
 
-        // The rail, the title and the count all move to the new platform the instant the selection
-        // changes, but the games behind them only arrive two awaits later. Drop the outgoing
-        // platform's tiles now so that gap shows an empty grid rather than one platform's library
-        // sitting under another platform's name. A reload of the scope already on screen (an
+        // The rail, the caption and the count all move to the new platform the instant the selection
+        // changes, but the games behind them only arrive two awaits later. Start the outgoing
+        // platform's fade-out now so that gap reads as a transition rather than one platform's library
+        // sitting fully lit under another platform's name. A reload of the scope already on screen (an
         // availability pass, a rescan) keeps its tiles, so refreshes do not flash.
         if (!string.Equals(scopeKey, _displayedScopeKey, StringComparison.Ordinal))
             BeginScopeChange();
@@ -4763,6 +4787,10 @@ public partial class MainViewModel : ViewModelBase
             }
 
             ClearSelection();
+            // The outgoing focus stayed alive through the fade-out (BeginScopeChange keeps the old
+            // list on screen); drop it only now, as the lists swap, so the shelf's focus change is a
+            // clean null-to-new rather than a departure pose from a game the new scope does not hold.
+            FocusedGame = null;
 
             // Dispose the outgoing on-screen view models only if the cache is not keeping them. On a
             // scope switch the previous scope stays cached, so its tiles must survive; on a forced
@@ -4808,17 +4836,19 @@ public partial class MainViewModel : ViewModelBase
         scope == LibraryScope.System ? $"system:{system?.Id}" : scope.ToString();
 
     /// <summary>
-    /// Empties the visible grid for an incoming scope. The empty-library and no-results panels are
-    /// suppressed meanwhile: nothing is known yet, and claiming the platform is empty before it has
-    /// been read is its own wrong answer. <see cref="ApplyFilter"/> restores all of it.
+    /// Marks the library as between scopes. The outgoing games, title and focus stay on screen so the
+    /// <c>library-surface.loading</c> style can fade them out; <see cref="ApplyFilter"/> swaps them for
+    /// the new scope once it is built and clears the flag, which fades the new list in. Clearing the
+    /// list here instead (as this used to) made every platform switch a hard cut to an empty stage,
+    /// with the fade animating nothing. The empty-library and no-results panels are suppressed
+    /// meanwhile: nothing is known yet, and claiming the platform is empty before it has been read is
+    /// its own wrong answer. While the flag is up, <see cref="DispatchLibraryAction"/> drops actions on
+    /// the (outgoing) focused game.
     /// </summary>
     private void BeginScopeChange()
     {
         IsLibraryLoading = true;
         ClearSelection();
-        FocusedGame = null;
-        Games.Clear();
-        HasGames = false;
         IsLibraryEmpty = false;
         IsSearchEmpty = false;
     }

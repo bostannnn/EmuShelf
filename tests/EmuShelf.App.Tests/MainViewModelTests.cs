@@ -1753,6 +1753,30 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void DispatchGamepadAction_BetweenScopes_DropsConfirmAndActionsOnly()
+    {
+        // While a platform's library is being built, the list on screen is the outgoing platform's,
+        // fading out under the new platform's caption, and the focused game still belongs to it.
+        // A (launch) and Y (actions) on that game would act on a game the rail no longer names, so
+        // they are swallowed; search, menu and cancel still pass so the couch is never stuck.
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+        vm.IsLibraryLoading = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Search));
+        Assert.Equal(GamepadOverlayKind.Search, vm.GamepadOverlay);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
+    }
+
+    [AvaloniaFact]
     public void OpeningATextOverlay_BumpsTheTextEntryRevision_OncePerOpen()
     {
         // The couch Search/Rename fields use the native OS keyboard: a gamepad-driven open forces the system

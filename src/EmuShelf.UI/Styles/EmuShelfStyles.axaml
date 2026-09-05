@@ -96,7 +96,7 @@
         <!-- Library surface: dips out and eases back as a new scope loads, so switching platform or
              collection dissolves instead of blanking and popping the incoming grid in. A cached scope
              swaps synchronously (the flag never renders as true), so it stays instant with no fade. -->
-        <Style Selector="ScrollViewer.library-surface, Grid.library-surface, ListBox.library-surface">
+        <Style Selector="ScrollViewer.library-surface, Grid.library-surface, ListBox.library-surface, Border.library-surface">
             <Setter Property="Opacity" Value="1" />
             <Setter Property="Transitions">
                 <Transitions>
@@ -108,7 +108,7 @@
                 </Transitions>
             </Setter>
         </Style>
-        <Style Selector="ScrollViewer.library-surface.loading, Grid.library-surface.loading, ListBox.library-surface.loading">
+        <Style Selector="ScrollViewer.library-surface.loading, Grid.library-surface.loading, ListBox.library-surface.loading, Border.library-surface.loading">
             <Setter Property="Opacity" Value="0" />
         </Style>
 
@@ -431,10 +431,11 @@
         <Style Selector="Button.gamepad-platform.selected">
             <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
         </Style>
-        <!-- The rail pill that slides between tabs. Code-behind sizes it to the active tab and drives a
-             translate transform to overlay it. ONLY the translate eases (it is GPU-composited, so the
-             glide stays smooth even while the library relayouts on a platform switch); Width is set
-             instantly, because animating it is a per-frame layout pass on the UI thread that stutters. -->
+        <!-- The rail pill that slides between tabs. It is the size of one tab and never resizes; the
+             code-behind only drives a translate transform onto the active tab. The translate is
+             GPU-composited, so the glide stays smooth even while the library reloads underneath. The
+             0.3s exponential ease starts fast and lands soft, so a held LB/RB reads as one continuous
+             sweep (the transition retargets from wherever the pill currently is) rather than short hops. -->
         <Style Selector="Border.gamepad-platform-indicator">
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentMutedBrush}" />
@@ -446,7 +447,7 @@
             <Setter Property="Transitions">
                 <Transitions>
                     <TransformOperationsTransition Property="RenderTransform"
-                                                   Duration="0:0:0.22" Easing="CubicEaseOut" />
+                                                   Duration="0:0:0.3" Easing="ExponentialEaseOut" />
                 </Transitions>
             </Setter>
         </Style>
