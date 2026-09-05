@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:views="using:EmuShelf.App.Views"
              xmlns:controls="using:EmuShelf.App.Controls"
              xmlns:sys="using:EmuShelf.Core.Systems"
              xmlns:settings="using:EmuShelf.Core.Settings"
@@ -1400,7 +1401,14 @@
                             <Border Grid.Column="0" Padding="16" CornerRadius="14"
                                     Background="{DynamicResource EmuWindowBackgroundBrush}"
                                     BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
-                                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+                                <Panel>
+                                <!-- Setup-wizard mode swaps the section rail for the step rail (shared with
+                                     the pre-boot setup page); everything to the right is the same projection. -->
+                                <Panel IsVisible="{Binding GamepadSettings.IsSetupMode}">
+                                    <views:SetupWizardRailView DataContext="{Binding GamepadSettings.SetupRail}" />
+                                </Panel>
+                                <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14"
+                                      IsVisible="{Binding !GamepadSettings.IsSetupMode}">
                                     <StackPanel Spacing="3">
                                         <TextBlock Text="Settings" FontSize="26" FontWeight="Bold" />
                                     </StackPanel>
@@ -1583,6 +1591,7 @@
                                         </Grid>
                                     </Button>
                                 </Grid>
+                                </Panel>
                             </Border>
 
                             <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="16"
@@ -1631,183 +1640,10 @@
                                             </ItemsRepeater.Layout>
                                             <ItemsRepeater.ItemTemplate>
                                                 <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
-                                                    <Panel>
-                                                        <!-- Non-focusable platform group header: artwork + name give the
-                                                             section a visible hierarchy over a flat list of equal rows. -->
-                                                        <Grid IsVisible="{Binding IsHeader}"
-                                                              ColumnDefinitions="Auto,*" ColumnSpacing="16"
-                                                              Margin="18,16,0,8">
-                                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
-                                                                    IsVisible="{Binding HasPlatformIcon}"
-                                                                    Background="{DynamicResource EmuPlaceholderMedallionBrush}">
-                                                                <Image Width="30" Height="30"
-                                                                       Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                                                                       RenderOptions.BitmapInterpolationMode="None" />
-                                                            </Border>
-                                                            <!-- Generic group (sign-in / advanced): an accent bar stands in for the
-                                                                 missing artwork so the header reads as a clear group divider, and the
-                                                                 label is accent-coloured to separate it from ordinary rows. -->
-                                                            <Border Grid.Column="0" Width="5" Height="26" CornerRadius="3"
-                                                                    IsVisible="{Binding !HasPlatformIcon}"
-                                                                    VerticalAlignment="Center"
-                                                                    Background="{DynamicResource EmuAccentBrush}" />
-                                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
-                                                                       FontWeight="Bold" LetterSpacing="0.4" VerticalAlignment="Center"
-                                                                       IsVisible="{Binding HasPlatformIcon}"
-                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
-                                                                       FontWeight="Bold" LetterSpacing="0.6" VerticalAlignment="Center"
-                                                                       IsVisible="{Binding !HasPlatformIcon}"
-                                                                       Foreground="{DynamicResource EmuAccentBrush}" />
-                                                        </Grid>
-
-                                                        <Button Classes="gamepad-settings-row"
-                                                                Classes.focused="{Binding IsFocused}"
-                                                                Classes.destructive="{Binding IsDestructive}"
-                                                                Classes.info="{Binding IsInformation}"
-                                                                Classes.grouped="{Binding IsGrouped}"
-                                                                Classes.compact="{Binding IsCompact}"
-                                                                Classes.summary="{Binding IsSummary}"
-                                                                Classes.controller-input="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}"
-                                                                IsVisible="{Binding IsNormalRow}"
-                                                                IsEnabled="{Binding IsEnabled}"
-                                                                HorizontalAlignment="Stretch"
-                                                                AutomationProperties.AutomationId="{Binding ParityId}"
-                                                                Command="{Binding SelectCommand}">
-                                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
-                                                            <!-- Leading icon: platform artwork for platform-scoped rows,
-                                                                 otherwise a glyph that categorises the row. Read-only info
-                                                                 rows stay icon-free so inventory reads as a light list. -->
-                                                            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
-                                                                    VerticalAlignment="Center"
-                                                                    IsVisible="{Binding !IsInformation}"
-                                                                    Background="{DynamicResource EmuPlaceholderMedallionBrush}">
-                                                                <Panel>
-                                                                    <Image Width="30" Height="30"
-                                                                           IsVisible="{Binding HasPlatformIcon}"
-                                                                           Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                                                                           RenderOptions.BitmapInterpolationMode="None" />
-                                                                    <TextBlock IsVisible="{Binding !HasPlatformIcon}"
-                                                                               Text="{Binding LeadingGlyph}" FontSize="19"
-                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                                </Panel>
-                                                            </Border>
-
-                                                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                                                                <TextBlock Text="{Binding Label}" FontSize="17"
-                                                                           FontWeight="SemiBold" TextWrapping="Wrap"
-                                                                           MaxLines="2" TextTrimming="CharacterEllipsis" />
-                                                                <!-- Compact rows (Emulators) keep the description to one state-first
-                                                                     line; a row reporting a problem (emulator missing, Shizuku grant
-                                                                     absent) paints it in the warning colour so it reads at a glance. -->
-                                                                <TextBlock Text="{Binding Description}" FontSize="14"
-                                                                           IsVisible="{Binding HasDescription}"
-                                                                           Classes.warning="{Binding IsWarning}"
-                                                                           TextWrapping="Wrap" MaxLines="{Binding DescriptionMaxLines}"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                            </StackPanel>
-
-                                                            <!-- Platform summary: "emulator · N games" on the right and a chevron that
-                                                                 turns when the platform's rows are expanded beneath it. -->
-                                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14"
-                                                                        IsVisible="{Binding IsSummary}" VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Value}" FontSize="14" MaxWidth="420"
-                                                                           Classes.warning="{Binding IsWarning}"
-                                                                           VerticalAlignment="Center" TextAlignment="Right"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                                <TextBlock Text="{Binding SummaryChevron}" FontSize="22" Width="18"
-                                                                           TextAlignment="Center" VerticalAlignment="Center"
-                                                                           Foreground="{DynamicResource EmuAccentBrush}" />
-                                                            </StackPanel>
-
-                                                            <Border Grid.Column="2" Classes="gamepad-settings-switch"
-                                                                    Classes.on="{Binding IsToggleOn}"
-                                                                    IsVisible="{Binding IsToggle}"
-                                                                    VerticalAlignment="Center">
-                                                                <Grid>
-                                                                    <TextBlock Text="{Binding Value}"
-                                                                               IsVisible="{Binding !IsToggleOn}"
-                                                                               Margin="0,0,14,0" HorizontalAlignment="Right"
-                                                                               VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                                    <TextBlock Text="{Binding Value}"
-                                                                               IsVisible="{Binding IsToggleOn}"
-                                                                               Margin="14,0,0,0" HorizontalAlignment="Left"
-                                                                               VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                                    <Border Width="40" Height="40" Margin="4"
-                                                                            IsVisible="{Binding !IsToggleOn}"
-                                                                            HorizontalAlignment="Left" CornerRadius="20"
-                                                                            Background="{DynamicResource EmuTextTertiaryBrush}" />
-                                                                    <Border Width="40" Height="40" Margin="4"
-                                                                            IsVisible="{Binding IsToggleOn}"
-                                                                            HorizontalAlignment="Right" CornerRadius="20"
-                                                                            Background="{DynamicResource EmuAccentBrush}">
-                                                                        <TextBlock Text="✓" FontSize="18" HorizontalAlignment="Center"
-                                                                                   VerticalAlignment="Center" Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
-                                                                    </Border>
-                                                                </Grid>
-                                                            </Border>
-
-                                                            <Border Grid.Column="2" Classes="gamepad-settings-affordance"
-                                                                    IsVisible="{Binding IsChoice}"
-                                                                    VerticalAlignment="Center" MinWidth="250">
-                                                                <!-- Both arrows are real controls: Left/Right select adjacent
-                                                                     values, while A opens the complete labelled choice list. -->
-                                                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
-                                                                    <TextBlock Grid.Column="0" Text="‹" FontSize="24" VerticalAlignment="Center"
-                                                                               Foreground="{DynamicResource EmuAccentBrush}" />
-                                                                    <TextBlock Grid.Column="1" Text="{Binding Value}"
-                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                               TextAlignment="Center" FontWeight="SemiBold"
-                                                                               TextTrimming="CharacterEllipsis" />
-                                                                    <TextBlock Grid.Column="2" Text="›" FontSize="24" VerticalAlignment="Center"
-                                                                               Foreground="{DynamicResource EmuAccentBrush}" />
-                                                                </Grid>
-                                                            </Border>
-
-                                                            <Grid Grid.Column="2" IsVisible="{Binding IsEditableValue}"
-                                                                  MaxWidth="380" ColumnDefinitions="*,Auto" ColumnSpacing="12"
-                                                                  VerticalAlignment="Center">
-                                                                <TextBlock Text="{Binding Value}" VerticalAlignment="Center"
-                                                                           TextAlignment="Right" TextWrapping="NoWrap"
-                                                                           TextTrimming="CharacterEllipsis"
-                                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                                <Border Grid.Column="1" Classes="gamepad-settings-action-button">
-                                                                    <TextBlock Text="{Binding ActionGlyph}" FontSize="24" FontWeight="Bold"
-                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                               Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
-                                                                </Border>
-                                                            </Grid>
-
-                                                            <!-- When an action is running the row disables; show its working
-                                                                 label ("CONNECTING…", "SCANNING…") beside the circle so the
-                                                                 feedback sits on the row the user just pressed A on, not only
-                                                                 in the far-away status pill. -->
-                                                            <Grid Grid.Column="2" IsVisible="{Binding IsAction}"
-                                                                  ColumnDefinitions="Auto,Auto" ColumnSpacing="12"
-                                                                  VerticalAlignment="Center">
-                                                                <TextBlock Grid.Column="0" Text="{Binding ActionButtonText}"
-                                                                           IsVisible="{Binding ShowsWorkingLabel}"
-                                                                           VerticalAlignment="Center" FontSize="13" FontWeight="Bold"
-                                                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                                <Border Grid.Column="1" Classes="gamepad-settings-action-button">
-                                                                    <TextBlock Text="{Binding ActionGlyph}" FontSize="24" FontWeight="Bold"
-                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                                                               Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
-                                                                </Border>
-                                                            </Grid>
-
-                                                            <TextBlock Grid.Column="2" IsVisible="{Binding IsInformation}"
-                                                                       Text="{Binding Value}" MaxWidth="390"
-                                                                       VerticalAlignment="Center" TextAlignment="Right"
-                                                                       TextWrapping="Wrap" MaxLines="2"
-                                                                       TextTrimming="CharacterEllipsis"
-                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                        </Grid>
-                                                    </Button>
-                                                    </Panel>
+                                                    <!-- The row itself lives in GamepadSettingsRowView, shared with the
+                                                         Android setup wizard so both surfaces render the same row. -->
+                                                    <views:GamepadSettingsRowView
+                                                        IsControllerInputActive="{Binding #GamepadRoot.((vm:MainViewModel)DataContext).IsGamepadControllerInputActive}" />
                                                 </DataTemplate>
                                             </ItemsRepeater.ItemTemplate>
                                         </ItemsRepeater>
@@ -2788,8 +2624,27 @@
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>
+                        <!-- Setup wizard: steps are walked with START/B; no sections, no save. -->
                         <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
-                                    IsVisible="{Binding IsGamepadSettingsNormal}">
+                                    IsVisible="{Binding IsGamepadSetupLegendVisible}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Navigate" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"
+                                    IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}"><TextBlock Text="← →" /></Border>
+                            <TextBlock Text="Change" IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Options" IsVisible="{Binding GamepadSettings.IsChoiceRowFocused}" />
+                            <TextBlock Text="Select" IsVisible="{Binding !GamepadSettings.IsChoiceRowFocused}" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="START" /></Border>
+                            <TextBlock Text="{Binding GamepadSettings.SetupRail.StartLabel}" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Back" />
+                            <Border Classes="gamepad-key action-y" Margin="8,0,0,0"
+                                    IsVisible="{Binding GamepadSettings.HasActionsHint}"><TextBlock Text="Y" /></Border>
+                            <TextBlock Text="{Binding GamepadSettings.ActionsHint}" IsVisible="{Binding GamepadSettings.HasActionsHint}" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadSettingsLegendVisible}">
                             <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
                             <TextBlock Text="Navigate" />
                             <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="LB/RB" /></Border>

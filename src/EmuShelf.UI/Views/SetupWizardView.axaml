@@ -1,0 +1,77 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:views="using:EmuShelf.App.Views"
+             x:Class="EmuShelf.App.Views.SetupWizardView"
+             x:DataType="vm:SetupWizardViewModel">
+    <!-- The pre-boot setup page (storage access, data folder). Deliberately the couch Settings overlay's
+         geometry and controls — the same rail, rows and legend — so the in-app steps that follow look like
+         a continuation, not a second design. It renders before the composition root exists, so it binds
+         only to its own view-model; the theme brushes come from App resources, which are already loaded. -->
+    <!-- Always the dark couch look, whatever the system variant says: this page is the couch UI. -->
+    <ThemeVariantScope RequestedThemeVariant="Dark">
+    <Grid Background="{DynamicResource EmuWindowBackgroundBrush}"
+          TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
+          TextElement.Foreground="{DynamicResource EmuTextPrimaryBrush}">
+        <Border Margin="36,28" Padding="22" CornerRadius="18"
+                Background="{DynamicResource EmuCardBrush}"
+                BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+            <Grid RowDefinitions="*,Auto" RowSpacing="14">
+                <Grid ColumnDefinitions="1*,3*" ColumnSpacing="26">
+                    <Border Grid.Column="0" Padding="16" CornerRadius="14"
+                            Background="{DynamicResource EmuWindowBackgroundBrush}"
+                            BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+                        <views:SetupWizardRailView DataContext="{Binding Rail}" />
+                    </Border>
+
+                    <Grid Grid.Column="1" RowDefinitions="Auto,*" RowSpacing="16">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="18">
+                            <StackPanel Spacing="3">
+                                <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="Bold" />
+                                <TextBlock Text="{Binding Description}" FontSize="15" TextWrapping="Wrap"
+                                           MaxLines="2" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </StackPanel>
+                            <Border Grid.Column="1" IsVisible="{Binding HasStatus}"
+                                    MaxWidth="430" Padding="14,9" CornerRadius="10" VerticalAlignment="Center"
+                                    Background="{DynamicResource EmuFormatPillBrush}"
+                                    BorderBrush="{DynamicResource EmuBorderBrush}" BorderThickness="1">
+                                <TextBlock Text="{Binding StatusMessage}" FontSize="14" TextWrapping="Wrap"
+                                           MaxLines="3" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                            </Border>
+                        </Grid>
+
+                        <ScrollViewer x:Name="RowsScroller" Grid.Row="1" Classes="gamepad-scroll"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                            <ItemsRepeater x:Name="RowsRepeater" HorizontalAlignment="Stretch"
+                                           ItemsSource="{Binding Rows}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Spacing="0" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
+                                        <views:GamepadSettingsRowView IsControllerInputActive="True" />
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+
+                <StackPanel Grid.Row="1" Classes="gamepad-hint" Orientation="Horizontal">
+                    <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                    <TextBlock Text="Navigate" />
+                    <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                    <TextBlock Text="Select" />
+                    <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="START" /></Border>
+                    <TextBlock Text="{Binding Rail.StartLabel}" />
+                    <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                    <TextBlock Text="Back" />
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+    </ThemeVariantScope>
+</UserControl>

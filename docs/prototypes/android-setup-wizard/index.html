@@ -73,7 +73,7 @@
 <script>
 // The rail lists every step of setup. Phase A steps (storage, data folder) run before the app can boot;
 // phase B steps run inside the composed app and are dimmed until the folder is set.
-const STEPS=[['Storage access'],['Data folder'],['Second screen'],['Emulator return'],['Game folders'],['Emulators'],['Saves']];
+const STEPS=[['Storage access'],['Data folder'],['Second screen'],['Closing games'],['Game folders'],['Emulators'],['Saves']];
 function rail(cur, status, opts={}){
   const items=STEPS.map(([l],i)=>{
     const st=status[i]||{};
@@ -108,49 +108,49 @@ const B=(i,extra={})=>{
 
 const S=[
  {name:'1 · Storage access',shot:'current/onboarding.jpg',
-  html:()=>page(0,A0,'Storage access','EmuShelf reads your game files and keeps its library on shared storage. Android asks you to allow this once.',
-   row({l:'All-files access',d:'<span class="w">Not granted</span> · A opens the Android settings page for EmuShelf',act:'›',f:true})+
-   row({l:'What EmuShelf touches',d:'Reads game files where they are · writes only inside its own data folder · never moves or deletes a game',txt:''}),
-   [['A','Open settings']],{startDis:true,startS:'Grant access first'}),
+  html:()=>page(0,A0,'Storage access','EmuShelf needs to read your games and keep its library on this device\'s storage. Android asks you to allow this once.',
+   row({l:'Allow access to all files',d:'<span class="w">Not allowed yet</span> · A opens Android\'s permission page for EmuShelf',act:'›',f:true})+
+   row({l:'What this is used for',d:'Reading your games where they are, and writing only inside EmuShelf\'s own folder. Games are never moved or deleted.',txt:''}),
+   [['A','Open']],{startDis:true,startS:'Allow access first'}),
   notes:['Same panel, rail, rows and legend as Settings — one visual language across the app instead of the standalone card.','The rail is the progress indicator: every step is visible, done steps show their outcome, steps that need the app booted (Second screen onwards) are dimmed until the folder is set.','One row per decision. The "what EmuShelf touches" row replaces the small grey footnote and reads at couch size.','START is the only way forward, exactly like Save and close in Settings; it is disabled with a reason until the grant is held. Coming back from Android settings re-checks the grant and flips the row to Granted on its own.']},
  {name:'2 · Data folder (after reinstall)',shot:'current/onboarding.jpg',
   html:()=>page(1,A1,'Data folder','Where EmuShelf keeps its library, covers, settings and saves. Your game files are never moved.',
-   row({l:'Continue with your existing data',d:'<span class="ok">Found</span> /storage/emulated/0/User/EmuShelf · 981 games · last used today',act:'›',f:true})+
-   row({l:'Use the recommended folder',d:'/storage/emulated/0/EmuShelf · created for you on internal storage',act:'›',mut:true})+
-   row({l:'Choose a different folder',d:'Opens the Android folder picker · Download, Documents and the storage root are not allowed',act:'›',mut:true}),
+   row({l:'Use your existing library',d:'<span class="ok">Found</span> /storage/emulated/0/User/EmuShelf · 981 games · last used today',act:'›',f:true})+
+   row({l:'Create a new folder here',d:'/storage/emulated/0/EmuShelf on this device\'s storage',act:'›',mut:true})+
+   row({l:'Pick another folder',d:'Android\'s folder picker · Download, Documents and the top level can\'t be picked',act:'›',mut:true}),
    [['A','Select'],['B','Back']],{startDis:true,startS:'Pick a folder first'}),
   notes:['A reinstall no longer looks like a first run: the pointer mirror on shared storage (PR #231) and a scan of known roots surface the existing library as the first, focused row. One press and you are back.','On a genuine first run this row is absent and the recommended folder is focused instead.','The picker’s refusals (Download, Documents, root) are stated on the row, not discovered after a failed pick.','After this step the app composes in-process and the rail’s remaining steps light up; no process restart, no flash.']},
  {name:'3 · Second screen',shot:'current/onboarding.jpg',
-  html:()=>page(2,B(2),'Second screen','This Thor has a second screen. Games can play there while the library stays on this one.',
-   row({l:'Second-screen return',d:'<span class="w">Off</span> · A opens Accessibility settings · needed so a game closed on the second screen returns you here',act:'›',f:true})+
-   row({l:'What the watcher reads',d:'Only which app is in front on the second screen · never screen content · off means games launch on this screen only',txt:''}),
-   [['A','Open settings'],['B','Back']],{startT:'Continue',startS:'Keep games on this screen'}),
-  notes:['Shown only on a device with a second display (today: the Thor). The requirement moves from a card that blocked the folder buttons below it to its own step, in the order things actually happen.','Not a hard gate anymore: START continues with second-screen launches disabled (the launch path already refuses an external launch while the watcher is off). The status line says what continuing without it means.','Returning from Accessibility settings re-reads the switch; the row flips to On and the rail status turns green.']},
- {name:'4 · Emulator return',shot:'current/emulators.jpg',
-  html:()=>page(3,B(3,{2:{t:'On',cls:'ok'}}),'Emulator return','What happens to the emulator when you come back to EmuShelf.',
-   row({l:'Close emulator on return',d:'<span class="w">Shizuku is not running</span> · start Shizuku, then A grants its permission',toggle:true,on:'CLOSE',off:'KEEP',f:true})+
-   row({l:'Why Shizuku',d:'Only an adb-level helper can stop a running emulator · without it the emulator keeps running in the background',txt:''}),
-   [['A','Grant'],['Y','Skip step'],['B','Back']]),
-  notes:['Today this toggle lives in Settings and silently does nothing until Shizuku is granted (a toast after a launch is the only hint). As a step it gets asked once, with the reason on the row.','Optional: Y skips, and the rail records "Skipped" so it is obvious later where to come back to.']},
+  html:()=>page(2,B(2),'Playing on the second screen','This device has a second screen. A game can run there while the library stays here.',
+   row({l:'Bring EmuShelf back when a game closes',d:'<span class="w">Off</span> · needs Android\'s accessibility permission · A opens that page',act:'›',f:true})+
+   row({l:'What EmuShelf can see',d:'Only which app is open on the second screen. Never what it shows.',txt:''}),
+   [['A','Open'],['B','Back']],{startT:'Continue',startS:'Games stay on this screen'}),
+  notes:['Shown only on a device with a second screen (today: the Thor). Plain words instead of “second-screen return” and “watcher”: the row says what happens (EmuShelf comes back when the game closes) and what it needs (an accessibility permission).','Not a hard gate anymore: START continues with second-screen launches disabled (the launch path already refuses an external launch while the watcher is off). The status line says what continuing without it means.','Returning from Accessibility settings re-reads the switch; the row flips to On and the rail status turns green.']},
+ {name:'4 · Closing games',shot:'current/emulators.jpg',
+  html:()=>page(3,B(3,{2:{t:'On',cls:'ok'}}),'Closing games','What happens to the emulator when you come back to EmuShelf from a game.',
+   row({l:'Close the emulator when I come back',d:'<span class="w">Needs Shizuku, which is not running</span> · start Shizuku, then press Y to allow',toggle:true,on:'CLOSE',off:'KEEP',f:true})+
+   row({l:'Why Shizuku',d:'Android does not let one app close another. Shizuku is a small helper that can. Without it the emulator keeps running in the background.',txt:''}),
+   [['A','Switch'],['Y','Allow'],['B','Back']]),
+  notes:['Was “Emulator return”. Today this toggle lives in Settings and silently does nothing until Shizuku is allowed (a toast after a launch is the only hint). As a step it is asked once, with the reason on the row and Y to allow.','Optional: Y skips, and the rail records "Skipped" so it is obvious later where to come back to.']},
  {name:'5 · Game folders',shot:'current/library.jpg',
-  html:()=>page(4,B(4,{2:{t:'On',cls:'ok'},3:{t:'Skipped'}}),'Game folders','Folders EmuShelf scans for games. Each folder is one system; nothing inside is changed.',
-   row({sys:'playstation2',l:'/storage/AE6A-1092/roms/ps2',d:'PlayStation 2 · 234 games found · Y forgets this folder',act:'↻'})+
-   row({sys:'psp',l:'/storage/AE6A-1092/roms/psp',d:'PSP · 65 games found · Y forgets this folder',act:'↻'})+
-   row({l:'Add game folder',d:'Pick a folder, then the system it holds',act:'+',mut:true,f:true}),
-   [['A','Add'],['Y','Forget'],['B','Back']],{startS:'2 folders · 299 games'}),
+  html:()=>page(4,B(4,{2:{t:'On',cls:'ok'},3:{t:'Keep'}}),'Game folders','The folders your games are in. Each folder holds one system. Nothing inside is changed.',
+   row({sys:'playstation2',l:'/storage/AE6A-1092/roms/ps2',d:'PlayStation 2 · 234 games found · Y removes it from the list',act:'↻'})+
+   row({sys:'psp',l:'/storage/AE6A-1092/roms/psp',d:'PSP · 65 games found · Y removes it from the list',act:'↻'})+
+   row({l:'Add game folder',d:'Pick a folder, then say which system it holds',act:'+',mut:true,f:true}),
+   [['A','Add'],['Y','Remove'],['B','Back']],{startS:'2 folders · 299 games'}),
   notes:['The first thing a new user actually wants to do, brought forward from Settings → Emulators → per-platform → Add game folder.','Same folder row as Settings round 4 (A rescans, Y forgets, count on the line). START shows the running total so continuing feels earned.','Optional: an empty list is fine; the library then opens with the empty-state prompt it has today.']},
  {name:'6 · Emulators',shot:'current/emulators.jpg',
-  html:()=>page(5,B(5,{2:{t:'On',cls:'ok'},3:{t:'Skipped'},4:{t:'2 folders'}}),'Emulators','Which Android app runs each system you added. Detected from what is installed.',
-   sum('playstation2','PlayStation 2','<span class="w2">PCSX2 not installed</span> · ARMSX2 is · 234 games',{f:true})+
+  html:()=>page(5,B(5,{2:{t:'On',cls:'ok'},3:{t:'Keep'},4:{t:'2 folders'}}),'Emulators','Which app plays each system. EmuShelf checked what is installed on this device.',
+   sum('playstation2','PlayStation 2','<span class="w2">PCSX2 is not installed</span> · ARMSX2 is · 234 games',{f:true})+
    sum('psp','PSP','PPSSPP · 65 games'),
    [['A','Change'],['B','Back']],{startS:'1 needs attention'}),
   notes:['Only systems with games appear, so a two-folder library shows two rows, not fifteen.','Detection happens up front: the PS2-set-to-PCSX2 mistake that Settings surfaces after the fact is caught here, with the installed alternative named.','A opens the same choice row as Settings; nothing new to learn.']},
  {name:'7 · Saves',shot:'current/saves.jpg',
-  html:()=>page(6,B(6,{2:{t:'On',cls:'ok'},3:{t:'Skipped'},4:{t:'2 folders'},5:{t:'1 warning',cls:'warn'}}),'Saves','Back up emulator saves through your own Google Drive, and tell EmuShelf where each emulator keeps them.',
-   row({l:'Google Drive',d:'Not connected · A opens sign-in in your browser',act:'›',f:true})+
-   row({l:'Sync save states too',d:'Battery saves always sync · states only work with the same emulator version on both devices',toggle:false,on:'SYNC',off:'SKIP'})+
-   row({sys:'playstation2',l:'PlayStation 2 memory cards',d:'ARMSX2 default folder · single-file .ps2 cards sync, folder cards do not',act:'›',mut:true})+
-   row({sys:'psp',l:'PSP save folder',d:'PPSSPP memory stick · not set · A picks the folder',act:'›',mut:true}),
+  html:()=>page(6,B(6,{2:{t:'On',cls:'ok'},3:{t:'Keep'},4:{t:'2 folders'},5:{t:'1 warning',cls:'warn'}}),'Saves','Back up emulator saves through your own Google Drive, and tell EmuShelf where each emulator keeps them.',
+   row({l:'Google Drive',d:'Not connected · A opens the sign-in page in your browser',act:'›',f:true})+
+   row({l:'Sync save states too',d:'In-game saves always sync · save states need the same emulator version on both devices',toggle:false,on:'SYNC',off:'SKIP'})+
+   row({sys:'playstation2',l:'PlayStation 2 memory cards',d:'ARMSX2\'s default folder · only single-file .ps2 memory cards can sync',act:'›',mut:true})+
+   row({sys:'psp',l:'PSP saves',d:'PPSSPP memory stick · not set · A picks the folder',act:'›',mut:true}),
    [['A','Connect'],['Y','Skip step'],['B','Back']],{startT:'Finish',startS:'Open the library'}),
   notes:['The per-system save folders are the manual selections the sync model needs (DS → WatermelonDS folder, PS2 → single-file cards); asking for them once here beats a silent "6 saves were not synced" in settings.json later.','Only systems from step 5 appear. Y skips the whole step; every row is reachable again in Settings → Saves.','START becomes Finish on the last step and opens the library. Completion is stored with a setup version, so a step added in a later release is shown once on its own, not the whole wizard again.']},
 ];

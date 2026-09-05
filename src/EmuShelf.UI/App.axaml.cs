@@ -127,10 +127,10 @@ public partial class App : Application
     public static IDataLocationBootstrap? DataLocation { get; set; }
 
     /// <summary>
-    /// The couch controller dispatcher for the first-run onboarding screen, or null when onboarding is not
-    /// showing. The Android head points its key-event bridge at this so the D-pad and A button work on the
-    /// onboarding card too — before the shared shell (and its own dispatcher) exists. Set while onboarding
-    /// is up and cleared once a folder is chosen.
+    /// The couch controller dispatcher for the pre-boot setup page, or null when it is not showing. The
+    /// Android head points its key-event bridge at this so the D-pad, A, B and START work on the first
+    /// screen the user ever sees — before the shared shell (and its own dispatcher) exists. Set while the
+    /// page is up and cleared once a folder is chosen.
     /// </summary>
     public static Func<GamepadAction, bool>? OnboardingGamepadDispatch { get; private set; }
 
@@ -231,19 +231,19 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Builds the onboarding view for an unresolved data folder. Its view-model completes by handing back
-    /// the chosen (or newly readable) base directory, at which point <see cref="OnDataFolderChosen"/>
-    /// hands off to the real shell.
+    /// Builds the pre-boot setup page for an unresolved data folder. Its view-model completes by handing
+    /// back the chosen (or newly readable) base directory, at which point <see cref="OnDataFolderChosen"/>
+    /// hands off to the real shell — where the in-app half of the wizard opens on its own.
     /// </summary>
-    private Views.OnboardingView CreateOnboardingView(IDataLocationBootstrap bootstrap, DataLocationResolution resolution)
+    private Views.SetupWizardView CreateOnboardingView(IDataLocationBootstrap bootstrap, DataLocationResolution resolution)
     {
-        var onboarding = new OnboardingViewModel(
+        var wizard = new SetupWizardViewModel(
             bootstrap,
             resolution.OnboardingReason ?? DataLocationOnboardingReason.FirstRun,
             onCompleted: OnDataFolderChosen);
-        // Route the Android key-event bridge into onboarding until the real shell takes over.
-        OnboardingGamepadDispatch = onboarding.DispatchGamepadAction;
-        return new Views.OnboardingView { DataContext = onboarding };
+        // Route the Android key-event bridge into the page until the real shell takes over.
+        OnboardingGamepadDispatch = wizard.DispatchGamepadAction;
+        return new Views.SetupWizardView { DataContext = wizard };
     }
 
     private void OnDataFolderChosen(string baseDirectory)

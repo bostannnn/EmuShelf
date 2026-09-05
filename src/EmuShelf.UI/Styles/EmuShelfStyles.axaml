@@ -695,6 +695,14 @@
         <Style Selector="TextBlock.gamepad-settings-nav-status.warning">
             <Setter Property="Foreground" Value="{DynamicResource EmuWarningBrush}" />
         </Style>
+        <!-- Setup wizard rail: a step that cannot be reached yet (the in-app steps while the pre-boot
+             page is up), and a step whose outcome is satisfied. -->
+        <Style Selector="Button.gamepad-settings-nav.dimmed">
+            <Setter Property="Opacity" Value="0.4" />
+        </Style>
+        <Style Selector="TextBlock.gamepad-settings-nav-status.done">
+            <Setter Property="Foreground" Value="{DynamicResource EmuSuccessBrush}" />
+        </Style>
         <Style Selector="Button.gamepad-settings-nav.selected.rail-active TextBlock.gamepad-settings-nav-status">
             <Setter Property="Foreground" Value="{DynamicResource EmuGamepadButtonTextBrush}" />
         </Style>

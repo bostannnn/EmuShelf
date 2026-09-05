@@ -11642,3 +11642,41 @@ Also observed, not changed: the Thor's second-screen return watcher is currently
 `enabled_accessibility_services` (only Odin's and NeoStation's are), so if onboarding does show, its
 mandatory second-screen gate blocks too. Pre-boot diagnostics were unreadable because the local Release
 build is not debuggable; the resolve verdict is therefore now also logged to logcat under `EmuShelfBoot`.
+
+## 2026-09-05 — Android first-run onboarding becomes a two-phase setup wizard in the Settings language
+
+Andrew's verdict on the onboarding card: badly structured (three steps in three different treatments, the
+mandatory second-screen gate drawn below the folder buttons it disabled, one status line carrying three
+meanings, a hand-rolled focus ring) and confusingly worded ("second-screen return", "emulator return",
+"watcher"). He asked for a redesign that also asks up front for the things a user has to pick by hand.
+
+Decided: one wizard, two phases, one visual language — the couch Settings overlay's rail, rows, toggles
+and legend, which he approved in the round-4 Settings pass.
+
+- **Phase A, before the app can boot** (`SetupWizardViewModel` + `SetupWizardView`, replacing
+  `OnboardingViewModel`/`OnboardingView`): Storage access, then Data folder. The rail lists the whole wizard
+  with the in-app steps dimmed. The Data folder step offers "Use your existing library" first when
+  `IDataLocationBootstrap.FindExistingDataFolder` finds `Data/library.db` under `EmuShelf` at the root or one
+  level down of primary storage or any mounted volume — the reinstall case the pointer mirror (same day)
+  only half covers, since the grant resets with the uid and the pointer is unreadable until it is allowed
+  again. A grant landing on foreground return advances to the folder step by itself; a pointer that resolves
+  completes the page by itself. Completion still restarts the process (the known-good handoff); the shell
+  then opens phase B on its own.
+- **Phase B, inside the composed app**: the existing `GamepadSettingsViewModel` in setup mode
+  (`SetupWizardOptions`), so every row, picker, confirmation and text entry is the one Settings already has.
+  Steps, each only where it applies: Second screen (a device with a companion display), Closing games
+  (the close-on-return setting), Games and emulators (the Emulators section, minus the close-on-return row),
+  Saves (the Saves section). START continues, Finish is the ordinary Save, B goes back and on the first step
+  leaves the wizard unfinished. LB/RB and the rail are inert. `AppSettings.SetupCompletedVersion` records
+  completion against `MainViewModel.SetupWizardVersion`, so a later step is offered once, not the whole
+  wizard; Settings → Library gains "Run setup again" on Android.
+- **Shared pieces**: the settings row template moved out of `GamepadShellView` into
+  `GamepadSettingsRowView`, rows take an `IGamepadSettingsRowHost` instead of the settings projection, and
+  `SetupWizardRailView`/`SetupWizardRailModel` draw the step rail for both phases. The wizard cannot drift
+  into a second row design because there is only one.
+- **Words**: "second-screen return" → "Bring EmuShelf back when a game closes"; "emulator return" → "Closing
+  games" / "Close the emulator when I come back"; "grant" → "allow"; "watcher" is gone from every user-facing
+  line. The second-screen step is no longer a hard gate: the launch path already refuses an external launch
+  while the permission is off, and the row says what continuing without it means.
+
+Prototype and per-screen notes: `docs/prototypes/android-setup-wizard/`.

@@ -63,9 +63,9 @@ public partial class GamepadChoiceOptionViewModel : ObservableObject
 /// <summary>A single controller-sized row projected from the existing Desktop settings model.</summary>
 public partial class GamepadSettingsRowViewModel : ObservableObject
 {
-    private readonly GamepadSettingsViewModel _owner;
+    private readonly IGamepadSettingsRowHost _owner;
 
-    internal GamepadSettingsRowViewModel(GamepadSettingsViewModel owner, GamepadSettingsRowSpec spec)
+    internal GamepadSettingsRowViewModel(IGamepadSettingsRowHost owner, GamepadSettingsRowSpec spec)
     {
         _owner = owner;
         Apply(spec);
@@ -258,7 +258,7 @@ internal sealed record GamepadSettingsRowSpec(
 /// draft entry, and confirmation state; all values, validation, operations, and persistence remain
 /// in the existing settings view model and services.
 /// </summary>
-public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
+public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGamepadSettingsRowHost
 {
     private const int ThemeColumns = 3;
 
@@ -279,6 +279,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly Func<EmulatorChoice, bool>? _isEmulatorChoiceInstalled;
     private readonly Func<string?>? _closeOnReturnWarning;
     private readonly Func<Task>? _grantCloseOnReturnPrivilege;
+    // Setup-wizard mode (the in-app half of Android first-run setup): the same projection walked as a
+    // sequence of steps instead of a rail of sections. Null in ordinary Settings.
+    private readonly SetupWizardOptions? _setup;
+    private readonly List<SetupStep> _liveSetupSteps = [];
+    private int _setupIndex;
+    private bool _secondScreenReadyRead;
+    private bool _cachedSecondScreenReady;
+    // Ordinary Settings only: the Library row that re-runs the wizard on demand (Android).
+    private readonly IAsyncRelayCommand? _runSetupCommand;
     // Device probes held for the life of this screen, keyed by choice id; see EmulatorMissingFor.
     private readonly Dictionary<string, bool> _emulatorChoiceInstalled = new(StringComparer.Ordinal);
     private string? _cachedCloseOnReturnWarning;
@@ -470,7 +479,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     public GamepadSettingsRowViewModel? SaveRow => Rows.FirstOrDefault(row => row.IsSaveRow);
 
-    public string SectionTitle => IsThemesSection ? "Themes" : SelectedSection switch
+    public string SectionTitle => IsSetupMode ? SetupTitle : IsThemesSection ? "Themes" : SelectedSection switch
     {
         SettingsSection.Emulators => "Emulators",
         SettingsSection.Hotkeys => "Hotkeys",
@@ -482,7 +491,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         _ => "Library",
     };
 
-    public string SectionDescription => IsThemesSection
+    public string SectionDescription => IsSetupMode ? SetupDescription : IsThemesSection
         ? "Personalize EmuShelf's colors. A theme applies instantly and is shared with Desktop mode."
         : SelectedSection switch
     {
@@ -582,6 +591,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             return;
         _emulatorChoiceInstalled.Clear();
         _closeOnReturnWarningRead = false;
+        _secondScreenReadyRead = false;
         RebuildRows();
     }
 
@@ -669,9 +679,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
         Func<string?>? closeOnReturnWarning = null,
         Func<Task>? grantCloseOnReturnPrivilege = null,
-        Func<Task>? refreshGameCounts = null)
+        Func<Task>? refreshGameCounts = null,
+        SetupWizardOptions? setup = null,
+        Func<Task>? runSetup = null)
     {
         _settings = settings;
+        _setup = setup;
+        _runSetupCommand = runSetup is null || setup is not null ? null : new AsyncRelayCommand(runSetup);
         _gameCountBySystem = gameCountBySystem;
         _refreshGameCounts = refreshGameCounts;
         _maintainingLibrary = settings.IsMaintainingLibrary;
@@ -697,6 +711,27 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         Sections = settings.Sections
             .Where(section => section is not SettingsSection.Themes)
             .ToArray();
+
+        if (_setup is not null)
+        {
+            // The steps this device gets, in order. Storage access and the data folder are already done
+            // (the pre-boot page handled them) and are listed so the rail reads as one wizard; the rest are
+            // live only when the feature exists here (a second screen, the close-on-return setting, cloud
+            // saves) so a phone with none of them sees a two-step wizard, not a list of dead ends.
+            if (_setup.HasSecondScreen)
+                _liveSetupSteps.Add(SetupStep.SecondScreen);
+            if (_settings.HasCloseEmulatorOnReturn)
+                _liveSetupSteps.Add(SetupStep.ClosingGames);
+            _liveSetupSteps.Add(SetupStep.GamesAndEmulators);
+            if (_settings.HasCloudSaves && Sections.Contains(SettingsSection.Saves))
+                _liveSetupSteps.Add(SetupStep.Saves);
+            SetupRail.Steps.Add(new SetupStepViewModel(SetupStep.StorageAccess));
+            SetupRail.Steps.Add(new SetupStepViewModel(SetupStep.DataFolder));
+            foreach (var step in _liveSetupSteps)
+                SetupRail.Steps.Add(new SetupStepViewModel(step));
+            SetupRail.StartCommand = new AsyncRelayCommand(AdvanceSetupAsync);
+            SelectedSection = SectionForSetupStep(_liveSetupSteps[0]);
+        }
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
         // The update-download coordinator is a separate ObservableObject, so its per-percent progress
@@ -879,6 +914,25 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             }
         }
 
+        if (IsSetupMode)
+        {
+            // Steps are walked with START/B only; LB/RB and Left-to-rail are swallowed so nothing jumps.
+            switch (action)
+            {
+                case GamepadAction.PreviousPlatform:
+                case GamepadAction.NextPlatform:
+                    return true;
+                case GamepadAction.NavigateLeft when FocusedRow?.IsChoice != true:
+                    return true;
+                case GamepadAction.Cancel:
+                    BackSetup();
+                    return true;
+                case GamepadAction.Menu:
+                    _ = AdvanceSetupAsync();
+                    return true;
+            }
+        }
+
         switch (action)
         {
             case GamepadAction.PreviousPlatform:
@@ -958,7 +1012,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private void EnterRail()
     {
-        if (!IsNormal)
+        if (!IsNormal || IsSetupMode)
             return;
         IsRailFocused = true;
         FocusRevision++;
@@ -1171,7 +1225,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         ? ActivateAsync(row)
         : Task.CompletedTask;
 
-    internal async Task FocusAndActivateAsync(GamepadSettingsRowViewModel row)
+    public async Task FocusAndActivateAsync(GamepadSettingsRowViewModel row)
     {
         var index = Rows.IndexOf(row);
         if (index < 0)
@@ -1530,6 +1584,14 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRows()
     {
+        if (IsSetupMode)
+        {
+            // No "Save and close" row: the wizard moves with START (the rail chip), and Finish is the save.
+            foreach (var row in BuildSetupRows())
+                yield return row;
+            yield break;
+        }
+
         // Keep Save one D-pad step above the first section-specific row. Some sections can contain
         // dozens of platform rows, so placing it at the tail would make committing a small change
         // require traversing the entire inventory.
@@ -1567,6 +1629,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private IEnumerable<GamepadSettingsRowSpec> BuildGeneralRows()
     {
+        if (_runSetupCommand is not null)
+        {
+            yield return ActionRow(
+                "general.run-setup",
+                "Run setup again",
+                "Walk through the first-run steps again: second screen, closing games, games and emulators, saves.",
+                "A OPEN",
+                _runSetupCommand,
+                !_settings.IsWorking,
+                excludeFromParity: true) with { IsCompact = true };
+        }
+
         yield return ToggleRow(
             "general.empty-platforms",
             "Empty platforms",
@@ -1627,36 +1701,48 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// The remaining rows cover PS3 sync (the one platform "Rescan all" skips), per-platform rescan,
     /// and remembered-folder management.
     /// </summary>
+    /// <summary>
+    /// The close-on-return toggle. The description reports the one thing that can silently break this
+    /// setting (the Shizuku grant) instead of explaining what Shizuku is; Y requests the grant right here.
+    /// Shared by the Emulators section and the wizard's Closing games step, which words it in full.
+    /// </summary>
+    private GamepadSettingsRowSpec CloseOnReturnRow(string label, string description, bool compact)
+    {
+        var warning = CloseOnReturnWarning;
+        return ToggleRow(
+            "emulators.close-on-return",
+            label,
+            warning ?? description,
+            CloseEmulatorOnReturn,
+            value => CloseEmulatorOnReturn = value,
+            onLabel: "CLOSE",
+            offLabel: "KEEP") with
+        {
+            IsCompact = compact,
+            IsWarning = warning is not null,
+            SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Allow Shizuku" : null,
+            // Requesting the grant only raises Shizuku's dialog; the answer lands later. Drop the cached
+            // reading so the rebuild that follows re-asks, which covers the case where the permission was
+            // already granted. The grant made in that dialog is picked up by RefreshDeviceState on return.
+            SecondaryActivate = warning is not null && _grantCloseOnReturnPrivilege is not null
+                ? async () =>
+                {
+                    await _grantCloseOnReturnPrivilege();
+                    _closeOnReturnWarningRead = false;
+                }
+                : null,
+        };
+    }
+
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
-        if (_settings.HasCloseEmulatorOnReturn)
+        // In the wizard this setting has its own step (Closing games), so the list holds only platforms.
+        if (_settings.HasCloseEmulatorOnReturn && !IsSetupMode)
         {
-            // The description reports the one thing that can silently break this setting (the Shizuku
-            // grant) instead of explaining what Shizuku is; Y requests the grant right here.
-            var warning = CloseOnReturnWarning;
-            yield return ToggleRow(
-                "emulators.close-on-return",
+            yield return CloseOnReturnRow(
                 "Close emulator on return",
-                warning ?? "Force-stop the game's emulator when you come back, so it stops draining the battery.",
-                CloseEmulatorOnReturn,
-                value => CloseEmulatorOnReturn = value,
-                onLabel: "CLOSE",
-                offLabel: "KEEP") with
-            {
-                IsCompact = true,
-                IsWarning = warning is not null,
-                SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Grant Shizuku" : null,
-                // Requesting the grant only raises Shizuku's dialog; the answer lands later. Drop the cached
-                // reading so the rebuild that follows re-asks, which covers the case where the permission was
-                // already granted. The grant made in that dialog is picked up by RefreshDeviceState on return.
-                SecondaryActivate = warning is not null && _grantCloseOnReturnPrivilege is not null
-                    ? async () =>
-                    {
-                        await _grantCloseOnReturnPrivilege();
-                        _closeOnReturnWarningRead = false;
-                    }
-                    : null,
-            };
+                "Force-stop the game's emulator when you come back, so it stops draining the battery.",
+                compact: true);
         }
 
         foreach (var row in _settings.Rows)
@@ -2503,6 +2589,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private void NotifyRailStatuses()
     {
         _emulatorsRailStatus = ComputeEmulatorsRailStatus();
+        RefreshSetupRail();
         OnPropertyChanged(nameof(LibraryRailStatus));
         OnPropertyChanged(nameof(EmulatorsRailStatus));
         OnPropertyChanged(nameof(IsEmulatorsRailWarning));
@@ -2586,6 +2673,205 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    // ----- Setup-wizard mode -------------------------------------------------------------------------
+
+    /// <summary>True when this projection is the in-app half of the Android setup wizard.</summary>
+    public bool IsSetupMode => _setup is not null;
+
+    /// <summary>The wizard rail (steps + START chip) the shared rail view binds to; empty outside setup mode.</summary>
+    public SetupWizardRailModel SetupRail { get; } = new();
+
+    /// <summary>The step whose rows are showing; <see cref="SetupStep.GamesAndEmulators"/> outside setup mode.</summary>
+    public SetupStep CurrentSetupStep =>
+        _liveSetupSteps.Count == 0 ? SetupStep.GamesAndEmulators : _liveSetupSteps[_setupIndex];
+
+    private bool IsLastSetupStep => _setupIndex >= _liveSetupSteps.Count - 1;
+
+    private static SettingsSection SectionForSetupStep(SetupStep step) => step switch
+    {
+        SetupStep.GamesAndEmulators => SettingsSection.Emulators,
+        SetupStep.Saves => SettingsSection.Saves,
+        _ => SettingsSection.General,
+    };
+
+    private string SetupTitle => CurrentSetupStep switch
+    {
+        SetupStep.SecondScreen => "Playing on the second screen",
+        SetupStep.ClosingGames => "Closing games",
+        SetupStep.GamesAndEmulators => "Games and emulators",
+        SetupStep.Saves => "Saves",
+        _ => "Setup",
+    };
+
+    private string SetupDescription => CurrentSetupStep switch
+    {
+        SetupStep.SecondScreen => "This device has a second screen. A game can run there while the library stays here.",
+        SetupStep.ClosingGames => "What happens to the emulator when you come back to EmuShelf from a game.",
+        SetupStep.GamesAndEmulators => "Open a system to add the folders its games are in, and check which app plays it.",
+        SetupStep.Saves => "Back up emulator saves through your own Google Drive, and tell EmuShelf where each emulator keeps them.",
+        _ => string.Empty,
+    };
+
+    // Read once per screen and again after a foreground return (the user flips the switch in Android's
+    // Accessibility settings and comes back), like the other device probes.
+    private bool IsSecondScreenReturnReady
+    {
+        get
+        {
+            if (_setup is null)
+                return true;
+            if (!_secondScreenReadyRead)
+            {
+                _cachedSecondScreenReady = _setup.IsSecondScreenReturnReady();
+                _secondScreenReadyRead = true;
+            }
+            return _cachedSecondScreenReady;
+        }
+    }
+
+    private IEnumerable<GamepadSettingsRowSpec> BuildSetupRows()
+    {
+        switch (CurrentSetupStep)
+        {
+            case SetupStep.SecondScreen:
+            {
+                var ready = IsSecondScreenReturnReady;
+                yield return new GamepadSettingsRowSpec(
+                    "setup.second-screen.return",
+                    "Bring EmuShelf back when a game closes",
+                    ready
+                        ? "On. A game closed on the second screen returns you to the library."
+                        : "Off. Needs Android's accessibility permission. A opens that page.",
+                    ready ? "On" : "A OPEN",
+                    ready ? GamepadSettingsRowKind.Information : GamepadSettingsRowKind.Action,
+                    Activate: ready
+                        ? null
+                        : () =>
+                        {
+                            _setup!.RequestSecondScreenReturn();
+                            // The answer lands on foreground return; forget the cached reading so that
+                            // rebuild re-asks.
+                            _secondScreenReadyRead = false;
+                            return Task.CompletedTask;
+                        },
+                    IsWarning: !ready,
+                    ExcludeFromParity: true);
+                yield return InformationRow(
+                    "setup.second-screen.privacy",
+                    "What EmuShelf can see",
+                    "Only which app is open on the second screen. Never what it shows.",
+                    string.Empty);
+                break;
+            }
+            case SetupStep.ClosingGames:
+                yield return CloseOnReturnRow(
+                    "Close the emulator when I come back",
+                    "The emulator stops running in the background, so it does not drain the battery.",
+                    compact: false);
+                yield return InformationRow(
+                    "setup.closing-games.why",
+                    "Why Shizuku",
+                    "Android does not let one app close another. Shizuku is a small helper that can. Without it the emulator keeps running in the background.",
+                    string.Empty);
+                break;
+            case SetupStep.GamesAndEmulators:
+                foreach (var row in BuildEmulatorsRows())
+                    yield return row;
+                break;
+            case SetupStep.Saves:
+                foreach (var row in BuildSaveRows())
+                    yield return row;
+                break;
+        }
+    }
+
+    private void RefreshSetupRail()
+    {
+        if (_setup is null)
+            return;
+
+        foreach (var entry in SetupRail.Steps)
+        {
+            var (status, warning, done) = entry.Step switch
+            {
+                SetupStep.StorageAccess => ("Allowed", false, true),
+                SetupStep.DataFolder => (_setup.DataFolderStatus, false, true),
+                SetupStep.SecondScreen => IsSecondScreenReturnReady ? ("On", false, true) : ("Off", true, false),
+                SetupStep.ClosingGames => !CloseEmulatorOnReturn
+                    ? ("Keep running", false, true)
+                    : CloseOnReturnWarning is not null
+                        ? ("Needs Shizuku", true, false)
+                        : ("Close", false, true),
+                // Only missing emulators count here; the Shizuku gap belongs to the Closing games step.
+                SetupStep.GamesAndEmulators => _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null) is { } attention
+                    ? ($"{attention.SystemName} needs attention", true, false)
+                    : (LibraryRailStatus, false, LibraryRailStatus.Length > 0),
+                SetupStep.Saves => string.IsNullOrEmpty(SavesRailStatus)
+                    ? ("Not connected", false, false)
+                    : (SavesRailStatus, false, true),
+                _ => (string.Empty, false, false),
+            };
+            entry.Status = status;
+            entry.IsWarning = warning;
+            entry.IsDone = done;
+            entry.IsCurrent = entry.Step == CurrentSetupStep;
+        }
+
+        SetupRail.StartLabel = IsLastSetupStep ? "Finish" : "Continue";
+        SetupRail.StartDetail = IsLastSetupStep
+            ? "Open the library"
+            : $"Next: {SetupStepLabels.For(_liveSetupSteps[_setupIndex + 1])}";
+        SetupRail.IsStartEnabled = !_settings.IsWorking;
+    }
+
+    private void SelectSetupStep(int index)
+    {
+        if (_setup is null || index < 0 || index >= _liveSetupSteps.Count)
+            return;
+
+        RememberFocusedRow();
+        _setupIndex = index;
+        if (IsThemesSection)
+            IsThemesSection = false;
+        var section = SectionForSetupStep(CurrentSetupStep);
+        if (SelectedSection != section)
+            SelectedSection = section;
+        RebuildRows();
+        OnPropertyChanged(nameof(CurrentSetupStep));
+        OnPropertyChanged(nameof(SectionTitle));
+        OnPropertyChanged(nameof(SectionDescription));
+        FocusRevision++;
+    }
+
+    /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
+    private async Task AdvanceSetupAsync()
+    {
+        if (_setup is null || !IsNormal)
+            return;
+
+        if (!IsLastSetupStep)
+        {
+            SelectSetupStep(_setupIndex + 1);
+            return;
+        }
+
+        // Finish = the ordinary Save: it persists every edit and raises CloseRequested(saved: true), which
+        // the host treats as wizard completion.
+        await ExecuteAsync(_settings.SaveCommand);
+    }
+
+    /// <summary>B: the previous step, or on the first step leave the wizard without finishing it.</summary>
+    private void BackSetup()
+    {
+        if (_setup is null)
+            return;
+
+        if (_setupIndex > 0)
+            SelectSetupStep(_setupIndex - 1);
+        else
+            CloseRequested?.Invoke(false);
+    }
 
     public void Dispose()
     {

@@ -1,0 +1,58 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.SetupWizardRailView"
+             x:DataType="vm:SetupWizardRailModel">
+    <!-- The setup wizard's left column: every step with its one-line outcome, and the START chip that
+         moves forward. Same nav-button and Save-button styles as the Settings rail, so the wizard reads as
+         Settings walked in order. Shared by the pre-boot page and the in-app overlay. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
+        <TextBlock Text="Setup" FontSize="26" FontWeight="Bold" />
+        <Border Grid.Row="1" Height="1" Background="{DynamicResource EmuBorderBrush}" />
+        <ItemsControl Grid.Row="2" ItemsSource="{Binding Steps}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <StackPanel Spacing="6" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SetupStepViewModel">
+                    <!-- Not a real button: steps are walked with START/B, never jumped to. It keeps the
+                         nav-button look so the current step is marked exactly like a selected section. -->
+                    <Button Classes="gamepad-settings-nav"
+                            Classes.selected="{Binding IsCurrent}"
+                            Classes.dimmed="{Binding IsDimmed}"
+                            Focusable="False" IsHitTestVisible="False">
+                        <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
+                            <Border Width="5" CornerRadius="3"
+                                    Background="{DynamicResource EmuAccentBrush}"
+                                    IsVisible="{Binding IsCurrent}" />
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                <TextBlock Text="{Binding Label}" />
+                                <TextBlock Classes="gamepad-settings-nav-status"
+                                           Classes.warning="{Binding IsWarning}"
+                                           Classes.done="{Binding IsDone}"
+                                           Text="{Binding Status}"
+                                           IsVisible="{Binding Status, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+                        </Grid>
+                    </Button>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <Button Grid.Row="3" Classes="gamepad-settings-save"
+                Classes.focused="{Binding IsStartFocused}"
+                IsEnabled="{Binding IsStartEnabled}"
+                Command="{Binding StartCommand}">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Border Classes="gamepad-key"><TextBlock Text="START" /></Border>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding StartLabel}" FontWeight="Bold" />
+                    <TextBlock Text="{Binding StartDetail}" FontSize="13"
+                               IsVisible="{Binding StartDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </Button>
+    </Grid>
+</UserControl>

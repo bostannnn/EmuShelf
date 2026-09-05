@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -158,6 +159,89 @@ public sealed class AndroidDataLocationBootstrap : IDataLocationBootstrap
         catch (Exception ex)
         {
             _logger.Warning("Could not open the accessibility settings screen.", ex);
+        }
+    }
+
+    /// <summary>
+    /// Looks for a data folder left by a previous install: <c>Data/library.db</c> under <c>EmuShelf</c> at
+    /// the root or one level down of primary shared storage and of every mounted volume (the Thor keeps
+    /// its library at <c>/storage/emulated/0/User/EmuShelf</c>). Read-only and shallow, so it costs a
+    /// handful of stats. Null before the all-files grant, when shared storage is not readable.
+    /// </summary>
+    public string? FindExistingDataFolder()
+    {
+        if (!_permission.IsGranted)
+            return null;
+
+        try
+        {
+            foreach (var root in CandidateRoots())
+            {
+                if (IsDataFolder(Path.Combine(root, DataFolderName)))
+                    return Path.Combine(root, DataFolderName);
+
+                foreach (var child in SafeSubdirectories(root))
+                {
+                    var candidate = Path.Combine(child, DataFolderName);
+                    if (IsDataFolder(candidate))
+                        return candidate;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning("Could not look for an existing data folder.", ex);
+        }
+
+        return null;
+    }
+
+    public Task<DataLocationPickResult> UseExistingFolderAsync(string baseDirectory)
+    {
+        if (!IsDataFolder(baseDirectory))
+            return Task.FromResult(DataLocationPickResult.Failed("That folder no longer holds an EmuShelf library."));
+
+        if (!DirectoryWritability.IsWritable(baseDirectory))
+        {
+            _logger.Warning($"Existing data folder '{baseDirectory}' is not writable.");
+            return Task.FromResult(DataLocationPickResult.Failed(
+                "EmuShelf can't write to that folder. Make sure all-files access is allowed, then try again."));
+        }
+
+        _store.Write(new DataLocation(baseDirectory, null, DateTimeOffset.UtcNow));
+        _logger.Information($"Data folder set to existing library '{baseDirectory}'.");
+        return Task.FromResult(DataLocationPickResult.Success(baseDirectory));
+    }
+
+    private static bool IsDataFolder(string directory) =>
+        File.Exists(Path.Combine(directory, "Data", "library.db"));
+
+    private static IEnumerable<string> CandidateRoots()
+    {
+        var primary = AndroidEnvironment.ExternalStorageDirectory?.AbsolutePath;
+        if (!string.IsNullOrEmpty(primary))
+            yield return primary;
+
+        // Removable volumes mount as /storage/XXXX-XXXX; "emulated" is the primary volume's tree and
+        // "self" a symlink to it, so both are skipped.
+        foreach (var volume in SafeSubdirectories("/storage"))
+        {
+            var name = Path.GetFileName(volume);
+            if (name is "emulated" or "self")
+                continue;
+            yield return volume;
+        }
+    }
+
+    private static IEnumerable<string> SafeSubdirectories(string directory)
+    {
+        try
+        {
+            return Directory.Exists(directory) ? Directory.GetDirectories(directory) : [];
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 
