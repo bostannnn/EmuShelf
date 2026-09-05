@@ -25,6 +25,7 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
     private bool _completed;
     private string? _existingDataFolder;
     private bool _existingProbed;
+    private bool _existingAdoptAttempted;
 
     public ObservableCollection<GamepadSettingsRowViewModel> Rows { get; } = [];
 
@@ -147,10 +148,22 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
             StatusMessage = string.Empty;
             _existingProbed = false;
             SelectStep(_index + 1);
-            return;
+        }
+        else
+        {
+            Rebuild();
         }
 
-        Rebuild();
+        // A library from a previous install is adopted without asking: the pointer is the only thing that
+        // was lost, and Settings can still move the data folder later. Runs from the foreground signal
+        // (which also fires once on a cold start) rather than the constructor, so the restart it triggers
+        // never happens inside the view factory.
+        if (CurrentStep == SetupStep.DataFolder && !_existingAdoptAttempted && _existingDataFolder is { } existing && !IsBusy)
+        {
+            _existingAdoptAttempted = true;
+            _logger.Information($"Adopting the existing library at '{existing}'.");
+            _ = CompleteWithAsync(() => _bootstrap.UseExistingFolderAsync(existing));
+        }
     }
 
     /// <summary>
@@ -287,7 +300,8 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
         if (_existingDataFolder is { } existing)
         {
-            // A library from a previous install: the first, focused row, so a reinstall is one press.
+            // Normally adopted without a press (see RefreshPermissionState); the row exists for the moment
+            // before that runs, and as the fallback when adopting it failed.
             yield return new GamepadSettingsRowSpec(
                 "setup.folder.existing",
                 "Use your existing library",
@@ -298,13 +312,15 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
                 Activate: () => CompleteWithAsync(() => _bootstrap.UseExistingFolderAsync(existing)));
         }
 
+        // Two rows: the default, and the way to change it. The default is created by path (no document
+        // picker), which is what sidesteps the picker's refusal of Download, Documents and the top level.
         if (_bootstrap.RecommendedBaseDirectory is { } recommended)
         {
             yield return new GamepadSettingsRowSpec(
                 "setup.folder.recommended",
-                "Create a new folder here",
-                $"{recommended} on this device's storage",
-                "A CREATE",
+                "Keep EmuShelf's data here",
+                $"{recommended} on this device's storage. Your game files are never moved.",
+                "A CONTINUE",
                 GamepadSettingsRowKind.Action,
                 IsEnabled: enabled,
                 Activate: () => CompleteWithAsync(_bootstrap.UseRecommendedFolderAsync));
@@ -312,19 +328,12 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
         yield return new GamepadSettingsRowSpec(
             "setup.folder.pick",
-            "Pick another folder",
+            "Choose a different folder",
             "Android's folder picker. Download, Documents and the top level can't be picked.",
-            "A PICK",
+            "A CHOOSE",
             GamepadSettingsRowKind.Action,
             IsEnabled: enabled,
             Activate: () => CompleteWithAsync(_bootstrap.PickFolderAsync));
-
-        yield return new GamepadSettingsRowSpec(
-            "setup.folder.note",
-            "EmuShelf only writes inside this folder",
-            "Your game files stay where they are and are never moved.",
-            string.Empty,
-            GamepadSettingsRowKind.Information);
     }
 
     private void RefreshRail()

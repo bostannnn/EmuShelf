@@ -60,7 +60,7 @@ public sealed class SetupWizardViewModelTests
     }
 
     [Fact]
-    public void GrantLanding_AdvancesToTheFolderStep_AndOffersTheExistingLibraryFirst()
+    public async Task GrantLanding_AdvancesToTheFolderStep_AndAdoptsTheExistingLibraryByItself()
     {
         var bootstrap = new FakeBootstrap
         {
@@ -69,16 +69,50 @@ public sealed class SetupWizardViewModelTests
             RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
             ExistingDataFolder = "/storage/emulated/0/User/EmuShelf",
         };
-        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+        string? chosen = null;
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, dir => chosen = dir);
 
         bootstrap.IsStoragePermissionGranted = true;
         bootstrap.RaisePermissionMaybeChanged();
+        await Task.Yield();
 
         Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
-        Assert.Equal("setup.folder.existing", vm.FocusedRow!.Key);
-        Assert.Contains("/storage/emulated/0/User/EmuShelf", vm.FocusedRow.Description);
         Assert.Equal("Allowed", vm.Rail.Steps[0].Status);
-        Assert.True(vm.Rail.Steps[0].IsDone);
+        Assert.Equal("/storage/emulated/0/User/EmuShelf", chosen);
+        Assert.Equal("/storage/emulated/0/User/EmuShelf", bootstrap.AdoptedFolder);
+    }
+
+    [Fact]
+    public void FolderStep_WithNoEarlierLibrary_IsTwoRows_DefaultFirst()
+    {
+        var bootstrap = new FakeBootstrap { RequiresStoragePermission = false, RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf" };
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+        vm.RefreshPermissionState();
+
+        Assert.Equal(["setup.folder.recommended", "setup.folder.pick"], vm.Rows.Select(row => row.Key).ToArray());
+        Assert.Equal("setup.folder.recommended", vm.FocusedRow!.Key);
+    }
+
+    [Fact]
+    public async Task ExistingLibraryThatCannotBeAdopted_FallsBackToTheRows()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            ExistingDataFolder = "/storage/AE6A-1092/EmuShelf",
+            AdoptResult = DataLocationPickResult.Failed("EmuShelf can't write to that folder."),
+        };
+        var completed = false;
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => completed = true);
+
+        vm.RefreshPermissionState();
+        await Task.Yield();
+
+        Assert.False(completed);
+        Assert.Equal("EmuShelf can't write to that folder.", vm.StatusMessage);
+        Assert.Contains(vm.Rows, row => row.Key == "setup.folder.existing");
+        Assert.Contains(vm.Rows, row => row.Key == "setup.folder.recommended");
     }
 
     [Fact]
@@ -100,23 +134,6 @@ public sealed class SetupWizardViewModelTests
         Assert.True(vm.Rail.IsStartEnabled);
         vm.DispatchGamepadAction(GamepadAction.Menu);
         Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
-    }
-
-    [Fact]
-    public async Task ExistingLibraryRow_CompletesWithThatFolder()
-    {
-        var bootstrap = new FakeBootstrap
-        {
-            RequiresStoragePermission = false,
-            ExistingDataFolder = "/storage/emulated/0/User/EmuShelf",
-        };
-        string? chosen = null;
-        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, dir => chosen = dir);
-
-        await vm.FocusAndActivateAsync(vm.Rows.Single(row => row.Key == "setup.folder.existing"));
-
-        Assert.Equal("/storage/emulated/0/User/EmuShelf", chosen);
-        Assert.Equal("/storage/emulated/0/User/EmuShelf", bootstrap.AdoptedFolder);
     }
 
     [Fact]
@@ -244,6 +261,7 @@ public sealed class SetupWizardViewModelTests
         public string? RecommendedBaseDirectory { get; set; }
         public string? ExistingDataFolder { get; set; }
         public string? AdoptedFolder { get; private set; }
+        public DataLocationPickResult? AdoptResult { get; set; }
         public int GrantRequests { get; private set; }
         public DataLocationPickResult PickResult { get; set; } = DataLocationPickResult.Cancelled();
         public DataLocationPickResult RecommendedResult { get; set; } = DataLocationPickResult.Cancelled();
@@ -259,7 +277,7 @@ public sealed class SetupWizardViewModelTests
         public Task<DataLocationPickResult> UseExistingFolderAsync(string baseDirectory)
         {
             AdoptedFolder = baseDirectory;
-            return Task.FromResult(DataLocationPickResult.Success(baseDirectory));
+            return Task.FromResult(AdoptResult ?? DataLocationPickResult.Success(baseDirectory));
         }
         public Task<DataLocationPickResult> UseRecommendedFolderAsync() => Task.FromResult(RecommendedResult);
         public Task<DataLocationPickResult> PickFolderAsync() => Task.FromResult(PickResult);

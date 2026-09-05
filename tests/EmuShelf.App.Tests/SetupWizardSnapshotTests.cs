@@ -35,7 +35,6 @@ public class SetupWizardSnapshotTests
             IsStoragePermissionGranted = false,
             ShowSecondScreenReturnStep = true,
             RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
-            ExistingDataFolder = "/storage/emulated/0/User/EmuShelf",
         };
         var viewModel = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
         var window = new Window
@@ -55,7 +54,7 @@ public class SetupWizardSnapshotTests
             bootstrap.RaisePermissionMaybeChanged();
             await PumpAsync();
             Assert.Equal(SetupStep.DataFolder, viewModel.CurrentStep);
-            Assert.Equal(4, window.GetVisualDescendants().OfType<GamepadSettingsRowView>().Count());
+            Assert.Equal(2, window.GetVisualDescendants().OfType<GamepadSettingsRowView>().Count());
             await SaveAsync(window, "setup-wizard-a2-folder.png");
         }
         finally

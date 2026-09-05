@@ -181,6 +181,10 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         AndroidActivityLifecycle.ReturnedToForeground = bootstrap.NotifyForegroundReturned;
         AndroidGamepadInput.Dispatch = action =>
             global::EmuShelf.App.App.OnboardingGamepadDispatch?.Invoke(action) ?? false;
+        // The D-pad (a hat axis on the Thor) and the left stick reach the setup page through the motion
+        // reader, since no shell poll loop exists yet to read it. A no-op once the shell is up.
+        AndroidGamepadReader.PreShellNavigate = action =>
+            global::EmuShelf.App.App.OnboardingGamepadDispatch?.Invoke(action) ?? false;
     }
 
     // <primary shared storage>/.emushelf-data-location.json — pointer-independent, survives an uninstall,
