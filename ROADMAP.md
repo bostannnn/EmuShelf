@@ -2170,3 +2170,13 @@ breaks the whole-solution macOS build/test loop.
           and one legend with couch Settings. Plain wording throughout (no "second-screen return", "emulator
           return", "watcher"). `SetupCompletedVersion` gates the auto-open; Settings → Library has "Run setup
           again". See DECISIONS 2026-09-05 (second entry) and `docs/prototypes/android-setup-wizard/`.
+    - [x] **S7 — every couch Settings section in the Emulators language, one control vocabulary**
+          (2026-09-05; Thor pass pending). Library, RetroAchievements, Artwork & Metadata, Saves, Themes,
+          About and Texture Packs now use the compact one-line rows PR #228 gave Emulators. A row ends in
+          one of four things — chevron (red when destructive), caption-less switch, ‹ value ›, or a plain
+          value; the glyph circles, switch captions, leading glyph wells and flat "info" rows are gone.
+          Saves and Texture Packs platforms are summary rows that open one at a time; Y on an account row
+          (Google Drive, RetroAchievements, ScreenScraper) disconnects it, Y on Export includes cloud
+          copies, Y on a texture folder returns to the detected one. Parity is compared against
+          `CollectParityIds` (every platform open, Y keys included). See DECISIONS 2026-09-05 (third
+          entry) and `docs/prototypes/couch-settings-v5/`.

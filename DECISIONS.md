@@ -11850,3 +11850,52 @@ and legend, which he approved in the round-4 Settings pass.
   while the permission is off, and the row says what continuing without it means.
 
 Prototype and per-screen notes: `docs/prototypes/android-setup-wizard/`.
+
+## 2026-09-05 — Every couch Settings section speaks the Emulators language, with one control vocabulary
+
+PR #228 gave the Emulators section compact one-line rows, one summary row per platform that opens in place,
+problems stated on the row in the warning colour and Y as the row's secondary action. Andrew asked for the
+other sections to follow ("more usable, readable and smaller"), then for a polishing pass because there were
+"too many different toggles/buttons". Prototype and per-screen notes: `docs/prototypes/couch-settings-v5/`
+(three-way flip: today's Thor screenshot → first pass → polished).
+
+Decided:
+
+- **One trailing control per row, four kinds in total.** A row ends in a chevron `›` (A does what the label
+  says; red on destructive rows), a switch with no caption, `‹ value ›` for a choice, or a plain value for a
+  read-only row. Gone: the seven glyph circles (↻ › ↓ ↑ ✎ × +) in three colours, the SHOW/HIDE · AUTO/MANUAL
+  · CLOSE/KEEP · ON/OFF switch captions, the muted circle on disabled rows (the whole row dims), the leading
+  glyph well on non-platform rows, and the flat transparent "info" rows (every row is the same card). An
+  action row's Value is either an "A …" prompt (hidden — the chevron is the prompt) or a word shown before
+  the chevron: what A does when the label alone does not say ("Sync now"), or that it is running ("Working…").
+- **State first.** `ToggleRow` prefixes its description with the state word ("Off · …", "Hidden · …",
+  "Manual · …") because the switch no longer carries it; a warning that replaces the description is left alone.
+  Action rows say what is true now before what A does (last scan result, last sync, "12 games still have no
+  cover" where the section knows it).
+- **Every section row is compact** (66 dip; summaries 56). Only the wizard's own explanatory pages keep the
+  two-line height; the Settings sections it reuses render compact there too.
+- **Y on an account row disconnects it.** The Google Drive, RetroAchievements Account and ScreenScraper rows
+  carry the account name as their value and disconnect through Y behind the existing confirmation. The three
+  separate red "Disconnect …" rows are gone. Likewise Export saves is one row (A = this device, Y = include
+  cloud-only copies) and a texture folder row is A = pick, Y = back to the detected folder, replacing the
+  "Use detected folder" rows.
+- **Header rows are gone.** Saves and Texture Packs platforms become summary rows that open one at a time
+  (`_expandedSavesSystemId`, `_expandedTextureSystemId`; kept apart from Emulators' so opening PS2 in one
+  section does not open it in another). Headers that only repeated the section title ("Sign in to
+  RetroAchievements", "Built-in catalogue", "Web image search" above a row of the same name) are dropped;
+  signed-out ScreenScraper is three plainly named rows. About's commit and date fold into the Version row's
+  description. Library puts the data folder path in the row's value, where the save-folder rows put theirs.
+- **Parity keeps its meaning.** A Desktop field folded into Y still has to be reachable on the couch, so a
+  row spec carries a `SecondaryKey` and `GamepadSettingsRowSpec.ParityIdsOf` yields it alongside the row's
+  own key. Fields behind a collapsed platform are one A press away, so the parity test now compares Desktop
+  against `GamepadSettingsViewModel.CollectParityIds(prefix)`, which projects every platform open. The
+  realized-row automation-id check is unchanged.
+- **Rail statuses carry warnings** the way Emulators' does: Saves names the platform with no save folder, a
+  detection error or a sync notice; Artwork says "ScreenScraper connected".
+- **Themes**: the two toggles are the same compact caption-less row (their state-first line comes from
+  `CrtToggleDescription` / `AmbientToggleDescription`). The prototype promised "all six themes on screen";
+  the catalogue has thirty, so the gallery still scrolls — the compact toggles buy a full first row of
+  cards inside the viewport on the Thor (pinned by `GamepadSettingsThemesAt1280x720…`).
+
+Not done here: the counts some state-first lines want (games without a cover, per-platform last sync as a
+date) — the rows fall back to the status texts the sections already have.

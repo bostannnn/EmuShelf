@@ -828,30 +828,29 @@
             <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
-        <!-- Destructive rows read as ordinary settings until focused; the danger cue is the tinted
-             action circle plus the confirmation gate, not a wall of red titles across the section. -->
+        <!-- Destructive rows read as ordinary settings until focused; the danger cue is the red chevron
+             plus the confirmation gate, not a wall of red titles across the section. -->
         <Style Selector="Button.gamepad-settings-row.destructive.focused, Button.gamepad-settings-row.destructive:focus">
             <Setter Property="BorderBrush" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
-        <!-- Read-only rows (inventory, logs, connected account) are a flat list, not solid cards, so
-             a long texture-pack inventory reads as reference data rather than dead action buttons. -->
-        <Style Selector="Button.gamepad-settings-row.info">
-            <Setter Property="MinHeight" Value="60" />
-            <Setter Property="Margin" Value="0,0,0,6" />
-            <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="BorderBrush" Value="Transparent" />
+        <!-- The one trailing affordance for actions, edits, picks and platform summaries. -->
+        <Style Selector="Button.gamepad-settings-row TextBlock.gamepad-settings-chevron">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="Width" Value="18" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
-        <Style Selector="Button.gamepad-settings-row.info.focused, Button.gamepad-settings-row.info:focus">
-            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
-            <Setter Property="BorderThickness" Value="0" />
+        <Style Selector="Button.gamepad-settings-row.destructive TextBlock.gamepad-settings-chevron">
+            <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
         <!-- Grouped rows are indented beneath their platform header so the section reads as a tree. -->
         <Style Selector="Button.gamepad-settings-row.grouped">
             <Setter Property="Margin" Value="24,0,0,10" />
         </Style>
-        <!-- Compact rows (the Emulators section): one-line descriptions, so a platform's rows fit
-             beneath its summary without pushing the next platform off screen. -->
+        <!-- Compact rows (every Settings section): one-line descriptions, so a platform's rows fit
+             beneath its summary without pushing the next platform off screen. The wizard's explanatory
+             pages are the only rows left at the taller two-line height. -->
         <Style Selector="Button.gamepad-settings-row.compact">
             <Setter Property="MinHeight" Value="66" />
             <Setter Property="Margin" Value="0,0,0,8" />
@@ -958,10 +957,11 @@
                  that cost the row its contents. -->
             <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
+        <!-- The switch draws no words: the row's description opens with the state. -->
         <Style Selector="Border.gamepad-settings-switch">
-            <Setter Property="Width" Value="140" />
-            <Setter Property="Height" Value="48" />
-            <Setter Property="CornerRadius" Value="24" />
+            <Setter Property="Width" Value="72" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="CornerRadius" Value="20" />
             <Setter Property="Background" Value="{DynamicResource EmuFormatPillBrush}" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
@@ -975,17 +975,6 @@
             <Setter Property="Background" Value="Transparent" />
             <Setter Property="BorderBrush" Value="Transparent" />
             <Setter Property="BorderThickness" Value="0" />
-        </Style>
-        <Style Selector="Border.gamepad-settings-action-button">
-            <Setter Property="Width" Value="48" />
-            <Setter Property="Height" Value="48" />
-            <Setter Property="CornerRadius" Value="24" />
-            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
-            <Setter Property="BorderBrush" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-        </Style>
-        <Style Selector="Button.gamepad-settings-row.destructive Border.gamepad-settings-action-button">
-            <Setter Property="Background" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
         <Style Selector="Button.gamepad-settings-confirm">
             <Setter Property="MinWidth" Value="180" />

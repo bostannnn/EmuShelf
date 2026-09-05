@@ -1524,7 +1524,7 @@
                                                         IsVisible="{Binding GamepadSettings.IsSavesSection}" />
                                                 <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                                                     <TextBlock Text="Saves" />
-                                                    <TextBlock Classes="gamepad-settings-nav-status" Text="{Binding GamepadSettings.SavesRailStatus}"
+                                                    <TextBlock Classes="gamepad-settings-nav-status" Classes.warning="{Binding GamepadSettings.IsSavesRailWarning}" Text="{Binding GamepadSettings.SavesRailStatus}"
                                                                IsVisible="{Binding GamepadSettings.SavesRailStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                                                 </StackPanel>
                                             </Grid>
@@ -1662,7 +1662,10 @@
                                              the top grid row lands here; A toggles it. -->
                                         <!-- CRT toggle: the topmost focus target in the Themes view
                                              (the -2 sentinel), above the ambient toggle. -->
-                                        <Button Grid.Row="0" Classes="gamepad-settings-row"
+                                        <!-- The two Themes toggles are the same compact, caption-less row as every
+                                             other setting; their description opens with the state. Compact rows
+                                             free the height the second row of theme cards needs. -->
+                                        <Button Grid.Row="0" Classes="gamepad-settings-row compact"
                                                 Classes.focused="{Binding GamepadSettings.IsCrtToggleFocused}"
                                                 IsVisible="{Binding GamepadSettings.IsThemesVisible}"
                                                 HorizontalAlignment="Stretch"
@@ -1671,37 +1674,27 @@
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
                                                     <TextBlock Text="CRT screen effect" FontSize="17"
                                                                FontWeight="SemiBold" />
-                                                    <TextBlock Text="Show the shelf through a curved, scanned picture tube. Costs GPU time and keeps the shelf redrawing."
-                                                               FontSize="14" TextWrapping="Wrap" MaxLines="2"
+                                                    <TextBlock Text="{Binding GamepadSettings.CrtToggleDescription}"
+                                                               FontSize="14" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </StackPanel>
                                                 <Border Grid.Column="1" Classes="gamepad-settings-switch"
                                                         Classes.on="{Binding GamepadSettings.CrtScreenEffect}"
                                                         VerticalAlignment="Center">
-                                                    <Grid>
-                                                        <TextBlock Text="OFF" IsVisible="{Binding !GamepadSettings.CrtScreenEffect}"
-                                                                   Margin="0,0,14,0" HorizontalAlignment="Right"
-                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                        <TextBlock Text="ON" IsVisible="{Binding GamepadSettings.CrtScreenEffect}"
-                                                                   Margin="14,0,0,0" HorizontalAlignment="Left"
-                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                        <Border Width="40" Height="40" Margin="4"
+                                                    <Panel>
+                                                        <Border Width="32" Height="32" Margin="4"
                                                                 IsVisible="{Binding !GamepadSettings.CrtScreenEffect}"
-                                                                HorizontalAlignment="Left" CornerRadius="20"
+                                                                HorizontalAlignment="Left" CornerRadius="16"
                                                                 Background="{DynamicResource EmuTextTertiaryBrush}" />
-                                                        <Border Width="40" Height="40" Margin="4"
+                                                        <Border Width="32" Height="32" Margin="4"
                                                                 IsVisible="{Binding GamepadSettings.CrtScreenEffect}"
-                                                                HorizontalAlignment="Right" CornerRadius="20"
-                                                                Background="{DynamicResource EmuAccentBrush}">
-                                                            <TextBlock Text="✓" FontSize="18" HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
-                                                        </Border>
-                                                    </Grid>
+                                                                HorizontalAlignment="Right" CornerRadius="16"
+                                                                Background="{DynamicResource EmuAccentBrush}" />
+                                                    </Panel>
                                                 </Border>
                                             </Grid>
                                         </Button>
-                                        <Button Grid.Row="1" Classes="gamepad-settings-row"
+                                        <Button Grid.Row="1" Classes="gamepad-settings-row compact"
                                                 Classes.focused="{Binding GamepadSettings.IsAmbientToggleFocused}"
                                                 IsVisible="{Binding GamepadSettings.IsThemesVisible}"
                                                 HorizontalAlignment="Stretch"
@@ -1710,33 +1703,23 @@
                                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
                                                     <TextBlock Text="Match colours to game artwork" FontSize="17"
                                                                FontWeight="SemiBold" />
-                                                    <TextBlock Text="Recolour the interface from the highlighted game; the theme below is the fallback."
-                                                               FontSize="14" TextWrapping="Wrap" MaxLines="2"
+                                                    <TextBlock Text="{Binding GamepadSettings.AmbientToggleDescription}"
+                                                               FontSize="14" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
                                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                                 </StackPanel>
                                                 <Border Grid.Column="1" Classes="gamepad-settings-switch"
                                                         Classes.on="{Binding GamepadSettings.AmbientThemeFromArtwork}"
                                                         VerticalAlignment="Center">
-                                                    <Grid>
-                                                        <TextBlock Text="OFF" IsVisible="{Binding !GamepadSettings.AmbientThemeFromArtwork}"
-                                                                   Margin="0,0,14,0" HorizontalAlignment="Right"
-                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                        <TextBlock Text="ON" IsVisible="{Binding GamepadSettings.AmbientThemeFromArtwork}"
-                                                                   Margin="14,0,0,0" HorizontalAlignment="Left"
-                                                                   VerticalAlignment="Center" FontSize="13" FontWeight="Bold" />
-                                                        <Border Width="40" Height="40" Margin="4"
+                                                    <Panel>
+                                                        <Border Width="32" Height="32" Margin="4"
                                                                 IsVisible="{Binding !GamepadSettings.AmbientThemeFromArtwork}"
-                                                                HorizontalAlignment="Left" CornerRadius="20"
+                                                                HorizontalAlignment="Left" CornerRadius="16"
                                                                 Background="{DynamicResource EmuTextTertiaryBrush}" />
-                                                        <Border Width="40" Height="40" Margin="4"
+                                                        <Border Width="32" Height="32" Margin="4"
                                                                 IsVisible="{Binding GamepadSettings.AmbientThemeFromArtwork}"
-                                                                HorizontalAlignment="Right" CornerRadius="20"
-                                                                Background="{DynamicResource EmuAccentBrush}">
-                                                            <TextBlock Text="✓" FontSize="18" HorizontalAlignment="Center"
-                                                                       VerticalAlignment="Center"
-                                                                       Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
-                                                        </Border>
-                                                    </Grid>
+                                                                HorizontalAlignment="Right" CornerRadius="16"
+                                                                Background="{DynamicResource EmuAccentBrush}" />
+                                                    </Panel>
                                                 </Border>
                                             </Grid>
                                         </Button>

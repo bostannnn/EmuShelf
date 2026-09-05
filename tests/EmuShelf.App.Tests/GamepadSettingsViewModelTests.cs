@@ -166,9 +166,15 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal("s3cret-pass", connectedPassword);
         Assert.Equal("collector", viewModel.Settings.ScreenScraperConnectedName);
 
-        // Connected: the entry rows collapse into the account summary and a disconnect action.
-        Assert.Contains(viewModel.Rows, row => row.Key == "scraper.disconnect");
+        // Connected: the entry rows collapse into one account row whose Y disconnects (the Desktop
+        // disconnect button is reachable through Y, which the parity id records).
+        var account = viewModel.Rows.Single(row => row.Key == "scraper.account");
+        Assert.Equal("collector", account.Value);
+        Assert.Equal("Disconnect", account.SecondaryLabel);
+        Assert.Equal("scraper.disconnect", account.SecondaryKey);
+        Assert.Contains("scraper.disconnect", account.ParityIds);
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.connect");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.disconnect");
     }
 
     [AvaloniaFact]
@@ -263,12 +269,13 @@ public sealed class GamepadSettingsViewModelTests
         viewModel.SelectedSection = SettingsSection.Emulators;
 
         var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
-        Assert.Equal("CLOSE", row.Value);
+        Assert.Equal("Close", row.Value);
+        Assert.StartsWith("Close · ", row.Description, StringComparison.Ordinal);
 
-        // Activating the toggle flips it (the row re-renders to KEEP) and Save persists the new value.
+        // Activating the toggle flips it (the row re-renders to Keep) and Save persists the new value.
         await row.SelectCommand.ExecuteAsync(null);
         Assert.False(viewModel.CloseEmulatorOnReturn);
-        Assert.Equal("KEEP", viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return").Value);
+        Assert.Equal("Keep", viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return").Value);
 
         await viewModel.Settings.SaveCommand.ExecuteAsync(null);
         Assert.False(saved);
@@ -302,10 +309,11 @@ public sealed class GamepadSettingsViewModelTests
         viewModel.SelectedSection = SettingsSection.General;
 
         var row = viewModel.Rows.Single(candidate => candidate.Key == "general.change-data-folder");
-        Assert.True(row.IsAction);
-        // The current location is shown in place of a file-manager button, and the row is surface-specific
-        // (no Desktop counterpart), so it stays out of the cross-surface parity comparison.
-        Assert.Contains("/storage/emulated/0/EmuShelf", row.Description);
+        // The current location is the row's value (where the save-folder rows put theirs) ahead of the
+        // chevron, and the row is surface-specific (no Desktop counterpart), so it stays out of the
+        // cross-surface parity comparison.
+        Assert.True(row.IsEditableValue);
+        Assert.Equal("/storage/emulated/0/EmuShelf", row.Value);
         Assert.Equal(string.Empty, row.ParityId);
 
         await row.SelectCommand.ExecuteAsync(null);
@@ -654,7 +662,8 @@ public sealed class GamepadSettingsViewModelTests
 
         var row = viewModel.Rows.Single(candidate => candidate.Key == "emulators.close-on-return");
         Assert.False(row.IsWarning);
-        Assert.Equal("Force-stop the game's emulator when you come back, so it stops draining the battery.", row.Description);
+        // With the warning gone the description is the ordinary state-first line again.
+        Assert.Equal("Close · Force-stop the game's emulator when you come back, so it stops draining the battery.", row.Description);
         Assert.Equal(string.Empty, viewModel.EmulatorsRailStatus);
         Assert.False(viewModel.IsEmulatorsRailWarning);
         Assert.Equal(string.Empty, viewModel.ActionsHint);
@@ -799,6 +808,8 @@ public sealed class GamepadSettingsViewModelTests
                 return Task.FromResult(CloudSaveSyncOutcome.Completed(new SaveSyncReport([])));
             }));
         viewModel.SelectedSection = SettingsSection.Saves;
+        // Replace lives under its platform; open the first platform to reach it.
+        await viewModel.Rows.First(row => row.IsSummary).SelectCommand.ExecuteAsync(null);
         var replace = viewModel.Rows.Single(row => row.Key.EndsWith("replace-local", StringComparison.Ordinal));
 
         await replace.SelectCommand.ExecuteAsync(null);
@@ -826,6 +837,9 @@ public sealed class GamepadSettingsViewModelTests
         using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(
             updateOverride: (systemId, value) => persisted[systemId] = value));
         viewModel.SelectedSection = SettingsSection.Saves;
+        // Platforms are collapsed summaries until opened, like Emulators.
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
+        await viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").SelectCommand.ExecuteAsync(null);
         var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
 
         await folder.SelectCommand.ExecuteAsync(null);
@@ -870,7 +884,7 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void RowsExposeDistinctControllerControlSemantics()
+    public async Task RowsExposeDistinctControllerControlSemantics()
     {
         using var viewModel = CreateGamepadSettings(
             retroAchievements: CreateRetroAchievementsContext(),
@@ -881,20 +895,29 @@ public sealed class GamepadSettingsViewModelTests
         var action = viewModel.Rows.Single(row => row.Key == "general.rescan");
         Assert.True(toggle.IsToggle);
         Assert.False(toggle.IsAction);
+        // The switch draws no caption; the description opens with the state instead.
+        Assert.Matches("^(Shown|Hidden) · ", toggle.Description);
         Assert.True(action.IsAction);
-        Assert.Equal("RESCAN", action.ActionButtonText);
+        // Every action ends in the chevron; an "A …" prompt shows no word before it.
+        Assert.True(action.ShowsChevron);
+        Assert.False(action.HasActionText);
         Assert.Same(viewModel.Rows.Single(row => row.IsSaveRow), viewModel.SaveRow);
 
         viewModel.SelectedSection = SettingsSection.RetroAchievements;
         var secret = viewModel.Rows.Single(row => row.Key == "retro.api-key");
         Assert.True(secret.IsEditableValue);
-        Assert.True(secret.ShowsActionButton);
-        Assert.Equal("EDIT", secret.ActionButtonText);
+        Assert.True(secret.ShowsChevron);
+        Assert.Equal("Not entered", secret.Value);
 
         viewModel.SelectedSection = SettingsSection.Saves;
+        // Disconnected: the Google Drive row's A connects, and says so before the chevron.
+        var drive = viewModel.Rows.Single(row => row.Key == "saves.connect");
+        Assert.True(drive.HasActionText);
+        Assert.Equal("Connect", drive.ActionText);
+        await viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").SelectCommand.ExecuteAsync(null);
         var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
         Assert.True(folder.IsEditableValue);
-        Assert.Equal("CHOOSE", folder.ActionButtonText);
+        Assert.True(folder.ShowsChevron);
 
         viewModel.SelectedSection = SettingsSection.TexturePacks;
         Assert.True(viewModel.Rows.Single(row => row.Key == "textures.status-filter").IsChoice);
@@ -910,7 +933,7 @@ public sealed class GamepadSettingsViewModelTests
         string CheckRowHint() => viewModel.Rows.Single(row => row.Key == "about.check-updates").Description;
 
         // Idle: the check row falls back to its static prompt.
-        Assert.Equal("Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.", CheckRowHint());
+        Assert.Equal("Looks for a newer release on GitHub · only the public releases page is contacted", CheckRowHint());
 
         // A download begins: the coordinator drives the live percentage on its own object, which must
         // rebuild the row so its hint reflects the moving progress rather than a static line.
@@ -923,7 +946,7 @@ public sealed class GamepadSettingsViewModelTests
 
         // Once the download settles the row returns to the static status the Desktop view model owns.
         coordinator.IsBusy = false;
-        Assert.Equal("Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.", CheckRowHint());
+        Assert.Equal("Looks for a newer release on GitHub · only the public releases page is contacted", CheckRowHint());
     }
 
     private static AppUpdateCoordinator CreateUpdateCoordinator() => new(
@@ -1013,6 +1036,120 @@ public sealed class GamepadSettingsViewModelTests
             setShowEmpty(value);
             return Task.CompletedTask;
         });
+
+    [AvaloniaFact]
+    public async Task ScreenScraperAccountRow_DisconnectsThroughY_BehindTheConfirmation()
+    {
+        var disconnected = false;
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            screenScraper: CreateScreenScraperContext(connected: true, onDisconnect: () => disconnected = true));
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
+
+        // Connected: no header rows, no red Disconnect row — one account row that Y disconnects.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.disconnect");
+        var account = viewModel.Rows.Single(row => row.Key == "scraper.account");
+        Assert.True(account.IsInformation);
+        Assert.Equal("Disconnect", account.SecondaryLabel);
+        Assert.Contains("scraper.disconnect", account.ParityIds);
+        viewModel.FocusedRowIndex = viewModel.Rows.IndexOf(account);
+        Assert.Equal("Disconnect", viewModel.ActionsHint);
+
+        Assert.True(viewModel.Dispatch(GamepadAction.Actions));
+        Assert.True(viewModel.IsConfirmationOpen);
+        Assert.False(disconnected);
+        viewModel.Dispatch(GamepadAction.NavigateRight);
+        await viewModel.ChooseConfirmationConfirmCommand.ExecuteAsync(null);
+
+        Assert.True(disconnected);
+        Assert.False(viewModel.IsConfirmationOpen);
+    }
+
+    [AvaloniaFact]
+    public async Task SavesSection_ListsOneSummaryPerPlatform_AndFoldsDisconnectAndCloudExportIntoY()
+    {
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(connected: true));
+        viewModel.SelectedSection = SettingsSection.Saves;
+
+        // One Google Drive row: A syncs (said before the chevron), Y disconnects; no separate red row.
+        var drive = viewModel.Rows.Single(row => row.Key == "saves.sync");
+        Assert.Equal("Google Drive", drive.Label);
+        Assert.Equal("Sync now", drive.ActionText);
+        Assert.StartsWith("Connected · ", drive.Description, StringComparison.Ordinal);
+        Assert.Equal("Disconnect", drive.SecondaryLabel);
+        Assert.Equal("saves.disconnect", drive.SecondaryKey);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.disconnect");
+
+        // Platforms are collapsed summaries; A opens one and its rows appear beneath it.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
+        var summary = viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary");
+        Assert.True(summary.IsSummary);
+        Assert.Equal("playstation2", summary.SystemId);
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+        await summary.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").IsExpanded);
+        Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
+        Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.states");
+        Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.replace-cloud");
+        Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.replace-local");
+        Assert.All(viewModel.Rows.Where(row => row.IsGrouped), row => Assert.Equal("playstation2", row.SystemId));
+        Assert.All(viewModel.Rows.Where(row => !row.IsSaveRow), row => Assert.True(row.IsCompact));
+
+        // Export is one row: A writes this device's saves, Y includes the cloud-only copies.
+        var export = viewModel.Rows.Single(row => row.Key == "saves.export.device");
+        Assert.Equal("saves.export.cloud", export.SecondaryKey);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.export.cloud");
+    }
+
+    [AvaloniaFact]
+    public void CollectParityIds_CountsFieldsBehindYAndInsideCollapsedPlatforms()
+    {
+        using var viewModel = CreateGamepadSettings(
+            cloudSaves: CreateCloudContext(connected: true),
+            texturePacks: CreateTextureContext());
+        viewModel.SelectedSection = SettingsSection.Saves;
+
+        // Nothing is open, yet every Desktop field is one press away and counts as reachable.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+        var saves = viewModel.CollectParityIds("saves.");
+        Assert.Contains("saves.sync", saves);
+        Assert.Contains("saves.disconnect", saves);
+        Assert.Contains("saves.export.device", saves);
+        Assert.Contains("saves.export.cloud", saves);
+        Assert.Contains("saves.playstation2.folder", saves);
+        Assert.Contains("saves.playstation2.states", saves);
+        Assert.Contains("saves.playstation2.replace-local", saves);
+        Assert.DoesNotContain("saves.playstation2.summary", saves);
+        // Collecting must not leave the section opened up.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+
+        viewModel.SelectedSection = SettingsSection.TexturePacks;
+        var textures = viewModel.CollectParityIds("textures.");
+        Assert.Contains("textures.gamecube.folder", textures);
+        Assert.Contains("textures.gamecube.detected", textures);
+        Assert.DoesNotContain("textures.gamecube.summary", textures);
+    }
+
+    [AvaloniaFact]
+    public async Task TexturePlatformRow_OpensToItsFolder_WhoseYReturnsToTheDetectedOne()
+    {
+        using var viewModel = CreateGamepadSettings(texturePacks: CreateTextureContext());
+        viewModel.SelectedSection = SettingsSection.TexturePacks;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "textures.gamecube.detected");
+        var summary = viewModel.Rows.Single(row => row.Key == "textures.gamecube.summary");
+        await summary.SelectCommand.ExecuteAsync(null);
+
+        var folder = viewModel.Rows.Single(row => row.Key == "textures.gamecube.folder");
+        Assert.True(folder.IsGrouped);
+        Assert.Equal("/dolphin/Load/Textures", folder.Value);
+        Assert.Equal("textures.gamecube.detected", folder.SecondaryKey);
+        // No override yet, so there is nothing for Y to return to; the field still counts for parity.
+        Assert.Equal(string.Empty, folder.SecondaryLabel);
+        Assert.Contains("textures.gamecube.detected", folder.ParityIds);
+    }
 
     private static RetroAchievementsSettingsContext CreateRetroAchievementsContext() => new(
         null,

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>EmuShelf couch Settings — round 5: every other section in the Emulators language</title>
+<style>
+@font-face{font-family:"Exo 2";src:url(../../../src/EmuShelf.UI/Assets/Fonts/Exo2.ttf)}
+:root{--panel:#2b3f39;--rail:#0c1512;--row:#1e332c;--rowf:#425834;--well:#3d544c;--acc:#a8cd40;--acc2:#c3e04c;--txt:#dff2e6;--sec:#afcabc;--ter:#86a294;--warn:#f0ae54;--bad:#ff6673;--ok:#70d3a4}
+*{box-sizing:border-box}html,body{margin:0;background:#070b09;color:#ddd;font-family:"Exo 2",system-ui,sans-serif}
+#top{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#101714;border-bottom:1px solid #1f2b27;flex-wrap:wrap}
+#top .tab{padding:8px 14px;border-radius:8px;background:#1d2925;color:#cfd;cursor:pointer;font-size:14px}#top .tab.on{background:var(--acc2);color:#16220e;font-weight:700}
+#top .flip{margin-left:auto;display:flex;border-radius:8px;overflow:hidden;border:1px solid #345}#top .flip div{padding:8px 16px;cursor:pointer;font-size:14px;color:#bcc}#top .flip div.on{background:#e8f0ea;color:#111;font-weight:700}
+#hint{font-size:12px;color:#8a9;padding:6px 16px}
+#stagewrap{position:relative;margin:0 auto}#stage{width:1920px;height:1080px;position:relative;transform-origin:0 0;overflow:hidden;background:#070707;cursor:pointer}
+#stage img.shot{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#000}
+#stage .noshot{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#8a9;font-size:30px;text-align:center;line-height:1.5}
+#notes{max-width:1100px;margin:16px auto 40px;padding:0 16px;color:#cdd;font-size:14px;line-height:1.5}#notes h3{margin:0 0 6px;font-size:15px;color:#fff}#notes ul{margin:0;padding-left:18px}
+.bg{position:absolute;inset:0;background:url(assets/shelf-bg.jpg) center/cover;filter:brightness(.22)}
+.panel{position:absolute;left:57px;top:57px;width:1806px;height:967px;border-radius:30px;background:var(--panel);border:2px solid rgba(255,255,255,.07)}
+.rail{position:absolute;left:46px;top:75px;width:412px;height:756px;border-radius:22px;background:var(--rail);padding:26px 22px 0}
+.rail h1{margin:0;font-size:44px;font-weight:600;color:var(--txt);line-height:1.1}
+.rail .div{height:2px;background:#263f38;margin:18px 0 16px}
+.ri{height:66px;margin:0 0 8px;border-radius:14px;display:flex;align-items:center;padding:0 22px 0 26px;color:var(--txt);font-size:24px;font-weight:600;position:relative}
+.ri .s{font-size:16.5px;font-weight:500;color:var(--ter);margin-top:1px}
+.ri .s.warn{color:var(--warn)}
+.ri.cur{border:3px solid var(--acc);color:var(--acc2);padding-left:44px}
+.ri.cur::before{content:"";position:absolute;left:24px;top:50%;width:5px;height:26px;margin-top:-13px;border-radius:3px;background:var(--acc)}
+.ri.cur .s{color:var(--sec)}
+.start{position:absolute;left:24px;bottom:24px;width:364px;height:76px;border-radius:16px;background:var(--row);border:2px solid #3a5a4e;display:flex;align-items:center;gap:16px;padding:0 22px}
+.start .chip{background:#1f3640;border:2px solid #3f6a7a;color:#dff2e6;font-size:17px;font-weight:700;padding:7px 12px;border-radius:9px;letter-spacing:.04em}
+.start .t{font-size:24px;font-weight:600;color:var(--txt);line-height:1.05}.start .t small{display:block;font-size:19px;font-weight:500;color:var(--sec)}
+.content{position:absolute;left:505px;top:75px;width:1228px}
+.content h2{margin:0;font-size:44px;font-weight:600;color:var(--txt);line-height:1.05}
+.content .d{font-size:23px;color:var(--sec);margin:6px 0 0}
+.clip{position:absolute;left:505px;top:175px;width:1228px;height:660px;overflow:hidden}
+.rows{display:flex;flex-direction:column;gap:14px}
+/* Compact row = the shipped Emulators row (66 dip → 100 px on the Thor's 1920 canvas). */
+.row{min-height:100px;border-radius:18px;background:var(--row);display:flex;align-items:center;padding:0 28px 0 30px;color:var(--txt);position:relative}
+.row.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}
+.row.dg.f{outline-color:#ff8a94}
+.row .well{width:62px;height:62px;border-radius:12px;background:var(--well);display:flex;align-items:center;justify-content:center;flex:none;margin:0 26px 0 -3px}
+.row .well img{width:44px;height:44px;object-fit:contain}
+.row .lab{flex:1;min-width:0}
+.row .lab .l{font-size:26px;font-weight:600;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .lab .dd{font-size:20.5px;color:var(--ter);margin-top:5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.f .lab .dd{color:#c9d6bf}
+.row .lab .dd .w,.sum .m .wn{color:var(--warn);font-weight:600}
+.row .lab .dd .ok,.sum .m .ok{color:var(--ok);font-weight:600}
+.row .val{display:flex;align-items:center;gap:26px;margin-left:24px;flex:none}
+.row .val .txt{font-size:22px;font-weight:500;color:var(--ter);max-width:560px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.f .val .txt{color:#c9d6bf}
+.row .val .arr{font-size:34px;color:var(--acc);line-height:1}
+.row .val .choice{font-size:22px;font-weight:600;min-width:200px;text-align:center}
+/* One chevron for every action: A does what the label says. Red only on destructive rows. */
+.chev{font-size:30px;color:var(--acc);width:26px;text-align:center;margin-left:4px;flex:none;line-height:1}
+.chev.dg{color:#ff8a94}
+.row.dis{opacity:.45}
+/* One switch, no words: the description's first word already states the value. */
+.tog{width:104px;height:56px;border-radius:28px;background:#3a566d;display:flex;align-items:center;padding:4px;flex:none}
+.tog i{width:48px;height:48px;border-radius:50%;background:#86a294;display:block}
+.tog.on{background:#4f6d33}.tog.on i{background:var(--acc);margin-left:auto}
+.row.g{margin-left:35px}
+/* Summary row = the shipped platform summary (56 dip → 84 px). */
+.sum{height:84px;border-radius:18px;background:var(--row);display:flex;align-items:center;gap:20px;padding:0 28px 0 27px;color:var(--txt);font-size:25px;font-weight:600;flex:none}
+.sum .w{width:60px;height:60px;border-radius:12px;background:var(--well);display:flex;align-items:center;justify-content:center;flex:none}.sum .w img{width:44px;height:44px;object-fit:contain}
+.sum .n{flex:1;white-space:nowrap}
+.sum .m{font-size:20.5px;font-weight:500;color:var(--ter);white-space:nowrap}
+.sum.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}.sum.f .m{color:#c9d6bf}
+.legend{position:absolute;left:43px;top:887px;display:flex;gap:26px;align-items:center;font-size:24px;color:#aac9bd}
+.legend .k{display:inline-flex;align-items:center;gap:12px}
+.chip{display:inline-flex;align-items:center;justify-content:center;height:36px;min-width:36px;padding:0 12px;border-radius:10px;background:#435550;color:#e8f2ec;font-weight:700;font-size:19px}
+.chip.a{background:#5da379;color:#0c2312;border-radius:50%;width:36px;padding:0}.chip.b{background:#e57a8a;color:#3a0d14;border-radius:50%;width:36px;padding:0}.chip.y{background:#e6c650;color:#3a2f06;border-radius:50%;width:36px;padding:0}
+.fade{position:absolute;left:505px;width:1228px;top:790px;height:44px;background:linear-gradient(transparent,var(--panel))}
+.theme{width:395px;height:200px;border-radius:16px;background:var(--row);padding:14px;color:var(--txt)}
+.theme .pv{height:136px;border-radius:10px;position:relative}.theme .pv i{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px;border-radius:50%}.theme .pv b{position:absolute;left:14px;top:12px;width:56px;height:8px;border-radius:4px;opacity:.5}.theme .pv u{position:absolute;left:14px;bottom:12px;width:90px;height:8px;border-radius:4px}
+.theme .n{font-size:22px;font-weight:600;margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.theme.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}
+.theme .chk{width:26px;height:26px;border-radius:50%;background:var(--acc);color:#16220e;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center}
+</style></head><body>
+<div id="top"><span id="tabs"></span><div class="flip"><div id="f0">Current</div><div id="f1">Round 5</div><div id="f2">Polished</div></div></div>
+<div id="hint">Click the screen or press <b>Space</b> to cycle Current → Round 5 → Polished; <b>←/→</b> switch screens. <code>?s=N&amp;bare=1</code> renders one proposed screen bare at 1920×1080.</div>
+<div id="stagewrap"><div id="stage"></div></div>
+<div id="notes"></div>
+<script>
+// Rail as shipped after PR #228 (no hint line, one-line status per section), with the status lines this
+// round proposes: the rail is where "needs attention" surfaces, exactly as Emulators already does.
+const SECT=[['Library','981 games'],['Emulators','PlayStation 2 needs attention','warn'],['RetroAchievements','Not signed in'],['Artwork & Metadata','ScreenScraper connected'],['Saves','6 saves skipped','warn'],['Themes','Abyss'],['About','1.7.8']];
+const SECT_DESKTOP=[['Library','981 games'],['Emulators',''],['RetroAchievements','Not signed in'],['Artwork & Metadata','ScreenScraper connected'],['Saves','Google Drive'],['Texture Packs','1 pack needs attention','warn'],['About','1.7.8']];
+const rail=(cur,over={},sect=SECT)=>`<div class="rail"><h1>Settings</h1><div class="div"></div>${sect.map(([l,s,w])=>{const o=over[l];if(o){s=o[0];w=o[1];}return `<div class="ri ${l===cur?'cur':''}"><div><div>${l}</div><div class="s ${w||''}">${s}</div></div></div>`;}).join('')}<div class="start"><span class="chip">START</span><div class="t">Save and close<small>Apply changes</small></div></div></div>`;
+const legend=items=>`<div class="legend">${items.map(([c,l])=>`<span class="k"><span class="chip ${c.length===1?c.toLowerCase():''}">${c}</span>${l}</span>`).join('')}</div>`;
+const LEG=(a='Select',y=null)=>[['D-pad','Navigate'],['LB/RB','Sections'],['A','Select']].concat(y?[['Y',y]]:[]).concat([['START','Save'],['B','Back']]);
+function row(o){
+  const well=o.sys?`<div class="well"><img src="assets/icons/${o.sys}.png"></div>`:'';
+  let v='';
+  if(o.toggle!==undefined) v=`<div class="tog ${o.toggle?'on':''}"><i></i></div>`;
+  else if(o.choice) v=`<span class="arr">‹</span><span class="choice">${o.choice}</span><span class="arr">›</span>`;
+  else if(o.act) v=`${o.txt?`<span class="txt">${o.txt}</span>`:''}<span class="chev ${o.dg?'dg':''}">›</span>`;
+  else if(o.txt) v=`<span class="txt">${o.txt}</span>`;
+  return `<div class="row ${o.f?'f':''} ${o.grp?'g':''} ${o.dg?'dg':''} ${o.info?'info':''} ${o.mut?'dis':''}">${well}<div class="lab"><div class="l">${o.l}</div>${o.d?`<div class="dd">${o.d}</div>`:''}</div><div class="val">${v}</div></div>`;
+}
+const sum=(sys,name,meta,o={})=>`<div class="sum ${o.f?'f':''}">${sys?`<div class="w"><img src="assets/icons/${sys}.png"></div>`:''}<div class="n">${name}</div><div class="m">${meta}</div><div class="chev">${o.open?'▾':'›'}</div></div>`;
+const page=(cur,title,desc,body,leg,over,sect)=>`<div class="bg"></div><div class="panel">${rail(cur,over,sect)}<div class="content"><h2>${title}</h2><div class="d">${desc}</div></div><div class="clip"><div class="rows">${body}</div></div><div class="fade"></div>${legend(leg)}</div>`;
+
+const S=[
+ {name:'Library',shot:'current/library.jpg',
+  html:()=>page('Library','Library','981 games on 14 platforms. Game files are never touched.',
+   row({l:'Show empty platforms',d:'Hidden · platforms with no games stay out of the top bar',toggle:false,on:'SHOW',off:'HIDE'})+
+   row({l:'Rescan all consoles',d:'Last scan today 22:14 · nothing changed',act:'↻',f:true})+
+   row({l:'Data folder',d:'Library, covers, settings and saves · choosing another restarts EmuShelf',act:'›',txt:'/storage/emulated/0/User/EmuShelf'})+
+   row({l:'Run setup again',d:'Second screen, closing games, games & emulators, saves',act:'›'}),
+   LEG('Rescan')),
+  notes:['<b>Polished pass — one control vocabulary for every section.</b> A row ends in one of four things: a chevron › (A does what the label says; red on destructive rows), a switch with no words (the description\'s first word states the value), ‹ value › for a choice, or a plain value for read-only rows. Gone: the seven glyph circles (↻ › ↓ ↑ ✎ × +) in three colours, SHOW/HIDE · AUTO/MANUAL · CLOSE/KEEP · ON/OFF switch captions, muted circles for disabled rows (the whole row dims instead), per-row A captions in the legend (A is always Select, as shipped; only Y varies), and the flat transparent "info" rows — every row is the same card now, read-only ones just end in a value. Icons are the app\'s own platform art (PlayStation, PlayStation 2 and PlayStation 3 are three different consoles again).','Same four rows (the fourth, Run setup again, arrives with PR #233); each is the compact Emulators row — 66 dip instead of 84+, one line of description instead of a paragraph.','Descriptions are state first: what is true now, then what A does. "EmuShelf never touches your game files" is said once, in the page line, not in two rows.','Data folder: the path becomes the row\'s value, where the Save-folder rows already put theirs, instead of being buried mid-sentence in a three-line description that the row clips ("Choose a different folder …").','Rescan all consoles reports its last run on the row (the MaintenanceStatusText the pill shows only while it runs).']},
+ {name:'RetroAchievements — signed out',shot:'current/retroachievements.jpg',
+  html:()=>page('RetroAchievements','RetroAchievements','Read achievement sets and your progress. Emulators still own unlocks.',
+   row({l:'Username',d:'Your RetroAchievements account name',act:'✎',txt:'Not entered',f:true})+
+   row({l:'Web API key',d:'RetroAchievements → Control Panel → Keys · kept on this device, never in settings.json',act:'✎',txt:'Not entered'})+
+   row({l:'Connect',d:'Enter both fields first · checks the account, then matches your 981 games',act:'›',mut:true}),
+   LEG('Edit')),
+  notes:['The "Sign in to RetroAchievements" header row goes: with three rows on the page, a header that repeats the section title is a fourth row of nothing.','Username shows "Not entered" as its value like the key row already does, so both fields read the same way.','Connect is dimmed until both fields are filled, which is what the command already does; the row says so.','The key row\'s description keeps only what you need at the couch: where to get the key and that it stays on the device.']},
+ {name:'RetroAchievements — signed in',shot:null,
+  html:()=>page('RetroAchievements','RetroAchievements','Read achievement sets and your progress. Emulators still own unlocks.',
+   row({l:'Account',d:'<span class="ok">Connected</span> · 612 of 981 games have achievement sets',txt:'andrew',f:true})+
+   row({l:'Refresh game matches',d:'Last refresh today 18:29 · retries known games without rehashing unchanged ROMs',act:'›'}),
+   LEG('Select','Disconnect'),{RetroAchievements:['andrew']}),
+  notes:['No screenshot of this state exists from the Thor (the account was never connected there); the Current side is blank.','Header row dropped here too; the Account row carries the connection state and the match count, which is the one number this section has to offer.','Disconnect is Y on the Account row (with today\'s confirmation), not a third row: the same rule as Google Drive and ScreenScraper. Your account and progress on RetroAchievements are untouched either way.','The rail status becomes the account name once signed in.']},
+ {name:'Artwork & Metadata',shot:'current/artwork.jpg',
+  html:()=>page('Artwork & Metadata','Artwork & Metadata','Titles and artwork from the built-in catalogue or ScreenScraper. Game files are never uploaded.',
+   row({l:'Fetch after import',d:'Manual · titles and covers from the bundled catalogue come only when you ask',toggle:false,on:'AUTO',off:'MANUAL'})+
+   row({l:'Fetch missing metadata',d:'Last run 30 Aug · 12 games still have no cover',act:'↓'})+
+   row({l:'Web image search',d:'On · "Set cover" can search DuckDuckGo · you always pick the image',toggle:true,on:'ON',off:'OFF'})+
+   row({l:'ScreenScraper',d:'<span class="ok">Connected</span> · titles and artwork are fetched per game, on demand',txt:'andrew',f:true}),
+   LEG('Select','Disconnect')),
+  notes:['Three green header rows ("Built-in catalogue", "Web image search", "ScreenScraper account") for six rows are gone. "Web image search" was a header above a row with the same name.','ScreenScraper is one account row: the account name is its value, the description says Connected, and Y disconnects (with the confirmation that exists today) — the same rule as the Google Drive row in Saves and the Account row in RetroAchievements: <b>Y on an account row disconnects it.</b> Signed out, the row reads "Not signed in" with a chevron, and A opens Username, Password and Connect beneath it, like a platform in Emulators.','The floating "Connected." pill at the top right goes: the same word is on the summary row and in the rail.','Fetch missing metadata says what is missing and when it last ran, so you know whether pressing it will do anything. The count needs one query the section does not run today.','Toggle descriptions start with the state ("Manual ·", "On ·") so the row reads without looking at the switch.']},
+ {name:'Saves',shot:'current/saves.jpg',
+  html:()=>page('Saves','Saves','Emulator saves backed up through your own Google Drive. Game files are never included.',
+   row({l:'Google Drive',d:'<span class="ok">Connected</span> · last sync 21 Aug 18:29 · <span class="w">6 PlayStation saves skipped</span>',act:'↻',f:true})+
+   sum('playstation','PlayStation','Beetle PSX HW · synced 21 Aug · <span class="wn">6 skipped</span>')+
+   sum('playstation2','PlayStation 2','PCSX2 memory cards · never synced')+
+   sum('playstation3','PlayStation 3','RPCS3 · never synced')+
+   sum('psp','PSP','PPSSPP · never synced')+
+   sum('nds','Nintendo DS','melonDS · never synced')+
+   sum('gamecube','GameCube','Dolphin · synced 21 Aug')+
+   sum('wii','Wii','Dolphin · synced 21 Aug')+
+   row({l:'Export saves',d:'A portable .zip of this device\'s saves · Y also includes cloud-only copies',act:'›'}),
+   LEG('Sync now','Disconnect')),
+  notes:['One Google Drive row instead of two: A syncs now, Y disconnects (behind the confirmation that exists today). "Disconnect Google Drive" is no longer the second row of the section, a red destructive action above every platform.','Platforms collapse to one summary row each, as in Emulators: artwork, name, what syncs and when it last did. Today each platform is a header plus four or five rows, so the Thor\'s list runs to ~40 rows.','Problems are stated in place, in the warning colour: the 6 skipped PlayStation saves that today only exist in settings.json show on the Drive row, on the platform row and in the rail.','Export becomes one row with Y for the cloud-inclusive variant; today it is two rows that differ by one clause.','Platform set and dates are from the Thor on 1 Sep; the per-platform "never synced" needs the last-result text the platform rows already have.']},
+ {name:'Saves — PlayStation opened',shot:'current/saves-scrolled.jpg',
+  html:()=>page('Saves','Saves','Emulator saves backed up through your own Google Drive. Game files are never included.',
+   row({l:'Google Drive',d:'<span class="ok">Connected</span> · last sync 21 Aug 18:29 · <span class="w">6 PlayStation saves skipped</span>',act:'↻'})+
+   sum('playstation','PlayStation','Beetle PSX HW · synced 21 Aug · <span class="wn">6 skipped</span>',{open:true})+
+   row({grp:true,sys:'playstation',l:'Save folder',d:'<span class="w">6 saves have no folder here</span>',act:'✎',txt:'/storage/emulated/0/RetroArch/saves/Beetle PSX HW',f:true})+
+   row({grp:true,sys:'playstation',l:'Save states',d:'Off · syncs only when emulator version and CPU match',toggle:false,on:'ON',off:'OFF'})+
+   row({grp:true,sys:'playstation',l:'Replace cloud saves',d:'Local copies win · replaced cloud copies are backed up first',act:'↑',dg:true})+
+   row({grp:true,sys:'playstation',l:'Replace local saves',d:'Cloud copies win · replaced local copies are backed up first',act:'↓',dg:true})+
+   sum('playstation2','PlayStation 2','PCSX2 memory cards · never synced'),
+   LEG('Change')),
+  notes:['A on a platform opens it beneath its row; one platform open at a time; the opened one scrolls to the top. Same rules as Emulators, nothing new to learn.','Child rows keep today\'s four (folder, states, replace ↑, replace ↓) but each is one line and says the state first. The save-state folder row appears under Save states only when that toggle is on, as today.','The folder row is where the skipped-saves warning lands, because the folder is the fix.','The two replace rows keep the red chevron and confirmations; the description is the one fact that matters — which side wins, and that a backup is made first.']},
+ {name:'Themes',shot:'current/themes.jpg',
+  html:()=>{const T=[['Retro','#f1e9dd','#e3857a'],['Abyss','#0c1512','#bfe04a'],['Cyberpunk','#f6f34a','#e0505a'],['Aqua','#1d3fc7','#5ec8ff'],['Palenight','#2a2d45','#7aa2ff'],['Horizon','#1c1e2b','#f36d7a']];
+   return page('Themes','Themes','Applies instantly and is shared with Desktop mode.',
+   row({l:'CRT screen effect',d:'Off · curved, scanned tube on the shelf · costs GPU time',toggle:false,on:'ON',off:'OFF'})+
+   row({l:'Match colours to game artwork',d:'Off · the theme below is used everywhere',toggle:false,on:'ON',off:'OFF'})+
+   `<div style="display:grid;grid-template-columns:repeat(3,395px);gap:21px 21px">${T.map(([n,b,a])=>`<div class="theme ${n==='Abyss'?'f':''}"><div class="pv" style="background:${b}"><b style="background:${a}"></b><i style="background:${a}"></i><u style="background:${a}"></u></div><div class="n"><span>${n}</span>${n==='Abyss'?'<span class="chk">✓</span>':''}</div></div>`).join('')}</div>`,
+   LEG('Apply'));},
+  notes:['The two toggles become compact rows. That alone frees the height the second row of themes needs: all six themes are on screen, no scrolling to find Palenight or Horizon.','Toggle descriptions state first ("Off · …"); the CRT row keeps its cost warning because on the Thor it is the one setting that shows on the fans.','Theme cards are unchanged — same size, same preview, same check.']},
+ {name:'About',shot:'current/about.jpg',
+  html:()=>page('About','About','Version, build and updates. Updating in place keeps gaming mode.',
+   row({l:'Version',d:'Built from 66e2c5273 · 1 September 2026',txt:'1.7.8'})+
+   row({l:'Check for updates',d:'Checked today · 1.7.8 is the latest release · only GitHub\'s releases page is contacted',act:'›',f:true}),
+   LEG('Check')),
+  notes:['Version, Last commit and Committed were three flat rows with three descriptions; the commit and its date are the description of the version, so they become one row.','Check for updates carries its result on the row ("Checked today · 1.7.8 is the latest") instead of in a pill.','When an update exists a third row appears: "Install 1.7.9 · Downloads and restarts · stays in gaming mode" as today.']},
+ {name:'Texture Packs (Desktop couch only)',shot:'current/textures-headless.png',
+  html:()=>page('Texture Packs','Texture Packs','Installed replacement textures, read only. Packs and emulator settings are never changed.',
+   row({l:'Rescan installed packs',d:'Last scan today · 12 packs · 9 matched · <span class="w">1 needs attention</span>',act:'↻',f:true})+
+   row({l:'Emulator filter',d:'Limit the list to one emulator',choice:'All'})+
+   row({l:'Status filter',d:'Matched · no game in your library · needs attention',choice:'All'})+
+   sum('gamecube','GameCube','Dolphin · 5 packs')+
+   sum('wii','Wii','Dolphin · 4 packs')+
+   sum('playstation2','PlayStation 2','PCSX2 · 3 packs · <span class="wn">1 needs attention</span>',{open:true})+
+   row({grp:true,sys:'playstation2',l:'Texture folder',d:'Override · Y returns to the folder detected from PCSX2',act:'✎',txt:'D:\\PCSX2\\textures'})+
+   row({grp:true,sys:'playstation2',l:'Final Fantasy X HD',d:'Matched · 2.1 GB'})+
+   row({grp:true,sys:'playstation2',l:'Shadow of the Colossus HD',d:'<span class="w">No game in your library</span> · 860 MB'}),
+   LEG('Select'),{},SECT_DESKTOP),
+  notes:['Hidden on Android; the Current side is the headless 1280×800 render with test data (no Thor screenshot exists), and the rail is the Desktop couch rail (Texture Packs in place of Themes, as that render shows). Kept in the round so the Desktop couch does not fall behind.','Per platform: one summary row (emulator · pack count · attention) that opens to the texture folder and the packs inside it, replacing header + folder + "Use detected folder" rows for every platform plus the separate 12-pack inventory toggle.','The folder row is the same as in Emulators: A picks, Y returns to the detected folder. "Use detected folder" as its own row goes.','The header pill\'s "0 matched · 0 with no game …" moves onto the Rescan row, where it is the result of the last scan.','Hotkeys (Desktop only, two rows) needs nothing beyond the compact row height; not drawn.']},
+];
+const Q=new URLSearchParams(location.search);let cur=+(Q.get('s')||0),show=+(Q.get('v')||2);
+const bare=Q.get('bare')==='1';
+if(bare){document.getElementById('top').style.display='none';document.getElementById('hint').style.display='none';document.getElementById('notes').style.display='none';}
+const stage=document.getElementById('stage');
+function render(){document.getElementById('tabs').innerHTML=S.map((s,i)=>`<span class="tab ${i===cur?'on':''}" onclick="go(${i})">${i+1}. ${s.name}</span>`).join('');
+ stage.innerHTML=show===0?(S[cur].shot?`<img class="shot" src="${S[cur].shot}">`:`<div class="noshot">No Thor screenshot of this state.<br>Press Space for the proposal.</div>`):show===1?`<img class="shot" src="round5/s${cur}.jpg">`:S[cur].html();
+ [0,1,2].forEach(i=>document.getElementById('f'+i).className=show===i?'on':'');
+ document.getElementById('notes').innerHTML=`<h3>${S[cur].name} — what changes</h3><ul>${S[cur].notes.map(n=>`<li>${n}</li>`).join('')}</ul>`;}
+function go(i){cur=(i+S.length)%S.length;render();}function flip(){show=(show+1)%3;render();}
+stage.onclick=flip;[0,1,2].forEach(i=>document.getElementById('f'+i).onclick=e=>{e.stopPropagation();show=i;render();});
+document.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();flip();}if(e.key==='ArrowRight')go(cur+1);if(e.key==='ArrowLeft')go(cur-1);});
+function fit(){const w=bare?1920:Math.min(window.innerWidth-32,1920);const s=w/1920;stage.style.transform=`scale(${s})`;const ww=document.getElementById('stagewrap');ww.style.width=w+'px';ww.style.height=(1080*s)+'px';}
+window.addEventListener('resize',fit);fit();render();
+</script></body></html>

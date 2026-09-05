@@ -2603,6 +2603,94 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
+    public async Task GamepadSettingsThemesAt1280x720_CompactTogglesLeaveAFullRowOfThemesInView()
+    {
+        // The two Themes toggles are compact caption-less rows like every other setting. The catalogue
+        // has thirty themes, so the gallery still scrolls; what the compact toggles buy on the Thor's
+        // 1280×720 canvas is that the first row of cards sits fully inside the viewport under them.
+        var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+        var desktopSettings = new EmulatorSettingsViewModel(
+            KnownSystems.All,
+            KnownEmulators.All,
+            KnownSystems.All.ToDictionary(
+                system => system.Id,
+                _ => (EmulatorConfiguration?)null,
+                StringComparer.Ordinal),
+            new NullEmulatorConfigurationStore(),
+            new NullDialogService(),
+            new LibraryMaintenanceActions(
+                (_, _) => Task.FromResult(string.Empty),
+                _ => Task.FromResult(string.Empty)));
+        var themes = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
+        var gamepadSettings = new GamepadSettingsViewModel(desktopSettings, themeChoices: themes)
+        {
+            IsThemesSection = true,
+        };
+        var viewModel = new MainViewModel
+        {
+            IsGamepadMode = true,
+            GamepadSettings = gamepadSettings,
+            GamepadOverlay = GamepadOverlayKind.Settings,
+        };
+        Application.Current!.RequestedThemeVariant = ThemeVariant.Dark;
+        var window = new MainWindow
+        {
+            DataContext = viewModel,
+            Width = 1280,
+            Height = 720,
+        };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            await SaveGamepadOverlaySnapshotAsync(
+                window,
+                outputDirectory,
+                "emushelf-gamepad-settings-themes-1280x720.png",
+                new PixelSize(1280, 720));
+
+            var toggles = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row"))
+                .ToArray();
+            Assert.Equal(2, toggles.Length);
+            Assert.All(toggles, toggle => Assert.Contains("compact", toggle.Classes));
+            Assert.All(toggles, toggle => Assert.InRange(toggle.Bounds.Height, 66, 80));
+            var switches = window.GetVisualDescendants()
+                .OfType<Border>()
+                .Where(border => border.IsVisible && border.Classes.Contains("gamepad-settings-switch"))
+                .ToArray();
+            Assert.Equal(2, switches.Length);
+            Assert.All(switches, toggle => Assert.InRange(toggle.Bounds.Width, 70, 74));
+
+            var scroller = window.FindNamed<ScrollViewer>("GamepadThemeScroller");
+            Assert.NotNull(scroller);
+            var cards = window.GetVisualDescendants()
+                .OfType<Button>()
+                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-theme-card"))
+                .ToArray();
+            Assert.Equal(themes.Length, cards.Length);
+            var firstRow = cards.Take(3).ToArray();
+            Assert.All(firstRow, card =>
+            {
+                var origin = card.TranslatePoint(default, scroller);
+                Assert.NotNull(origin);
+                Assert.True(origin.Value.Y >= -1, $"{card.DataContext} starts above the viewport");
+                Assert.True(
+                    origin.Value.Y + card.Bounds.Height <= scroller.Bounds.Height + 1,
+                    $"{card.DataContext} ends below the viewport ({origin.Value.Y + card.Bounds.Height:F0} > {scroller.Bounds.Height:F0})");
+            });
+            AssertGamepadOverlayFillsHost(window);
+        }
+        finally
+        {
+            gamepadSettings.Dispose();
+            window.Close();
+            Application.Current.RequestedThemeVariant = ThemeVariant.Default;
+        }
+    }
+
+    [AvaloniaFact]
     public async Task GamepadSettingsAt1280x800_KeepRowsFocusAndConfirmationInsideTheOverlay()
     {
         var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
@@ -2750,10 +2838,11 @@ public class MainWindowVisualSnapshotTests
             // General now has one toggle (empty-platforms); the metadata auto-fetch toggle moved into
             // the Artwork & Metadata section.
             Assert.Single(switches);
+            // The switch draws no caption (the description opens with the state), so it is knob-sized.
             Assert.All(switches, toggle =>
             {
-                Assert.InRange(toggle.Bounds.Width, 138, 142);
-                Assert.InRange(toggle.Bounds.Height, 46, 50);
+                Assert.InRange(toggle.Bounds.Width, 70, 74);
+                Assert.InRange(toggle.Bounds.Height, 38, 42);
             });
             AssertGamepadSettingsParity(SettingsSection.General, "general.");
             var navigationButtons = window.GetVisualDescendants()
@@ -2811,7 +2900,8 @@ public class MainWindowVisualSnapshotTests
             Assert.Single(
                 visibleRows,
                 button => button.DataContext is GamepadSettingsRowViewModel { IsFocused: true });
-            Assert.All(visibleRows, row => Assert.InRange(row.Bounds.Height, 84, 102));
+            // Compact rows (66) and platform summaries (56) are the only two heights in a section.
+            Assert.All(visibleRows, row => Assert.InRange(row.Bounds.Height, 56, 102));
             // Full-width rows fill the repeater; grouped rows under a platform header are indented.
             var fullRowWidth = scroller.Bounds.Width - 18;
             Assert.All(visibleRows, row => Assert.Equal(
@@ -2835,13 +2925,11 @@ public class MainWindowVisualSnapshotTests
             Assert.True(focusedOrigin.Value.Y >= -1);
             Assert.True(focusedOrigin.Value.Y + focused.Bounds.Height <= scroller.Bounds.Height + 1);
 
-            // Saves is grouped by platform: headers exist, focus never lands on one, and member rows
-            // carry their platform id so the leading artwork can render.
-            Assert.Contains(gamepadSettings.Rows, row => row.IsHeader);
-            Assert.False(gamepadSettings.FocusedRow!.IsHeader);
-            Assert.All(
-                gamepadSettings.Rows.Where(row => row.IsGrouped),
-                row => Assert.False(string.IsNullOrEmpty(row.SystemId)));
+            // Saves lists one summary per platform (no headers); a platform's member rows appear only
+            // once it is opened and carry their platform id so the leading artwork can render.
+            Assert.Contains(gamepadSettings.Rows, row => row.IsSummary);
+            Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsHeader);
+            Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsGrouped);
 
             window.Height = 720;
             await PumpAsync();
@@ -2878,6 +2966,15 @@ public class MainWindowVisualSnapshotTests
                 row.Bounds.Width,
                 1));
 
+            // Open the first platform: its member rows appear beneath it, carry its platform id so the
+            // leading artwork renders, and include the destructive replace actions checked next.
+            var firstPlatform = gamepadSettings.Rows.First(row => row.IsSummary);
+            await firstPlatform.SelectCommand.ExecuteAsync(null);
+            await PumpAsync();
+            Assert.Contains(gamepadSettings.Rows, row => row.IsGrouped);
+            Assert.All(
+                gamepadSettings.Rows.Where(row => row.IsGrouped),
+                row => Assert.Equal(firstPlatform.SystemId, row.SystemId));
             var replaceLocal = gamepadSettings.Rows.First(row =>
                 row.Key.EndsWith("replace-local", StringComparison.Ordinal));
             await replaceLocal.SelectCommand.ExecuteAsync(null);
@@ -2952,13 +3049,10 @@ public class MainWindowVisualSnapshotTests
                 // only the current viewport. Compare Desktop's visible controls with the complete
                 // controller projection, then separately verify that realized rows expose the same
                 // stable ids for accessibility and routing.
-                var gamepadIds = gamepadSettings.Rows
-                    .Select(row => row.ParityId)
-                    .Where(id => id?.StartsWith(prefix, StringComparison.Ordinal) == true)
-                    .Select(id => id!)
-                    .Distinct(StringComparer.Ordinal)
-                    .Order(StringComparer.Ordinal)
-                    .ToArray();
+                // Fields behind a collapsed platform summary or behind a row's Y action (disconnect,
+                // cloud export, detected texture folder) count as reachable: CollectParityIds opens
+                // every platform and includes each row's secondary key.
+                var gamepadIds = gamepadSettings.CollectParityIds(prefix);
                 Assert.Equal(desktopFieldIds[section], gamepadIds);
 
                 var realizedRows = window.GetVisualDescendants()
