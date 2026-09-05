@@ -905,6 +905,7 @@
                     Classes.settings="{Binding IsGamepadSettingsOpen}"
                     Classes.hotkeys="{Binding IsGamepadHotkeysOpen}"
                     Classes.confirmation="{Binding IsGamepadConfirmationOverlay}"
+                    Classes.launch-screen="{Binding IsGamepadLaunchScreenOpen}"
                     VerticalAlignment="Center"
                     MaxHeight="{Binding #GamepadOverlayHost.Bounds.Height}"
                     MaxWidth="{Binding #GamepadOverlayHost.Bounds.Width}"
@@ -2160,156 +2161,59 @@
                              (MainViewModel.DispatchLaunchScreenNavigation); each card is still one
                              GamepadOverlayOption, so A-routing is the shared machinery.
 
-                             Both cards draw the SAME device with the screen being chosen lit and the other
-                             dark — this feature only ever runs on a handheld that owns two panels of its
-                             own, never on a PC with a monitor plugged in, so a picture of the device beats
-                             any wording. The drawing is the Thor: a DS-style CLAMSHELL, 6" 16:9 screen in
-                             the lid, 3.92" near-square touch screen in the base between the D-pad, face
-                             buttons and sticks. Primitives, not an icon font, so every fill follows the
-                             palette. -->
+                             Both cards draw the SAME device (controls:ThorDeviceGlyph) with the screen being
+                             chosen lit and the other dark — this feature only ever runs on a handheld that
+                             owns two panels of its own, never on a PC with a monitor plugged in, so a
+                             picture of the device beats any wording. The card is a ROW (glyph beside the
+                             words, not above them) because the whole chooser has to fit the Thor's own
+                             overlay: at 833x468 the body under the title and above the hint legend is
+                             ~216 dip, and a stacked card pushed the remember row into the legend and the
+                             footer clean off the sheet (GamepadLaunchScreenChooserTests pins the fit). -->
                         <StackPanel Grid.RowSpan="3" IsVisible="{Binding IsGamepadLaunchScreenOpen}"
-                                    VerticalAlignment="Center" Spacing="16">
-                            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                                    VerticalAlignment="Center" Spacing="12">
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="14">
                                 <Button Grid.Column="0" Classes="gamepad-screen-card"
                                         Classes.focused="{Binding LaunchScreenBuiltInOption.IsFocused}"
                                         Command="{Binding LaunchScreenBuiltInOption.Command}">
-                                    <StackPanel Spacing="12" HorizontalAlignment="Center">
-                                        <Canvas Width="106" Height="120" HorizontalAlignment="Center">
-                                            <!-- Lid: the 6" 16:9 main screen. -->
-                                            <Rectangle Canvas.Left="5" Canvas.Top="0" Width="96" Height="56"
-                                                       RadiusX="7" RadiusY="7"
-                                                       Fill="{DynamicResource EmuCoverWellBrush}"
-                                                       Stroke="{DynamicResource EmuTextSecondaryBrush}"
-                                                       StrokeThickness="2.5" />
-                                            <Rectangle Canvas.Left="12" Canvas.Top="6" Width="82" Height="44"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuAccentBrush}" />
-                                            <!-- Hinge. -->
-                                            <Rectangle Canvas.Left="24" Canvas.Top="56" Width="58" Height="6"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Shoulder buttons, on the base's hinge edge. -->
-                                            <Rectangle Canvas.Left="2" Canvas.Top="56" Width="16" Height="7"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Rectangle Canvas.Left="88" Canvas.Top="56" Width="16" Height="7"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Base: the 3.92" touch screen between the controls. -->
-                                            <Rectangle Canvas.Left="0" Canvas.Top="62" Width="106" Height="58"
-                                                       RadiusX="8" RadiusY="8"
-                                                       Fill="{DynamicResource EmuCoverWellBrush}"
-                                                       Stroke="{DynamicResource EmuTextSecondaryBrush}"
-                                                       StrokeThickness="2.5" />
-                                            <Rectangle Canvas.Left="34" Canvas.Top="70" Width="38" Height="42"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuSegmentBrush}"
-                                                       Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="1.5" />
-                                            <!-- D-pad. -->
-                                            <Rectangle Canvas.Left="10" Canvas.Top="79" Width="16" Height="5"
-                                                       RadiusX="1" RadiusY="1"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Rectangle Canvas.Left="15.5" Canvas.Top="73.5" Width="5" Height="16"
-                                                       RadiusX="1" RadiusY="1"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Face buttons. -->
-                                            <Ellipse Canvas.Left="86" Canvas.Top="73" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="93" Canvas.Top="80" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="79" Canvas.Top="80" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="86" Canvas.Top="87" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Sticks. -->
-                                            <Ellipse Canvas.Left="12" Canvas.Top="96" Width="13" Height="13"
-                                                     Fill="{DynamicResource EmuSegmentBrush}"
-                                                     Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="2" />
-                                            <Ellipse Canvas.Left="81" Canvas.Top="96" Width="13" Height="13"
-                                                     Fill="{DynamicResource EmuSegmentBrush}"
-                                                     Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="2" />
-                                        </Canvas>
-                                        <TextBlock Text="Main screen" FontSize="19" FontWeight="SemiBold"
-                                                   HorizontalAlignment="Center" />
-                                        <TextBlock Text="Play on the top screen" FontSize="14"
-                                                   HorizontalAlignment="Center"
-                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                        <controls:ThorDeviceGlyph Grid.Column="0" Width="74" IsTopLit="True"
+                                                                  VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="Main screen" FontSize="19" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="Play on the top screen" FontSize="14"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
                                 </Button>
                                 <Button Grid.Column="1" Classes="gamepad-screen-card"
                                         Classes.focused="{Binding LaunchScreenExternalOption.IsFocused}"
                                         Command="{Binding LaunchScreenExternalOption.Command}">
-                                    <StackPanel Spacing="12" HorizontalAlignment="Center">
-                                        <Canvas Width="106" Height="120" HorizontalAlignment="Center">
-                                            <!-- Lid: the 6" 16:9 main screen. -->
-                                            <Rectangle Canvas.Left="5" Canvas.Top="0" Width="96" Height="56"
-                                                       RadiusX="7" RadiusY="7"
-                                                       Fill="{DynamicResource EmuCoverWellBrush}"
-                                                       Stroke="{DynamicResource EmuTextSecondaryBrush}"
-                                                       StrokeThickness="2.5" />
-                                            <Rectangle Canvas.Left="12" Canvas.Top="6" Width="82" Height="44"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuSegmentBrush}"
-                                                       Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="1.5" />
-                                            <!-- Hinge. -->
-                                            <Rectangle Canvas.Left="24" Canvas.Top="56" Width="58" Height="6"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Shoulder buttons, on the base's hinge edge. -->
-                                            <Rectangle Canvas.Left="2" Canvas.Top="56" Width="16" Height="7"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Rectangle Canvas.Left="88" Canvas.Top="56" Width="16" Height="7"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Base: the 3.92" touch screen between the controls. -->
-                                            <Rectangle Canvas.Left="0" Canvas.Top="62" Width="106" Height="58"
-                                                       RadiusX="8" RadiusY="8"
-                                                       Fill="{DynamicResource EmuCoverWellBrush}"
-                                                       Stroke="{DynamicResource EmuTextSecondaryBrush}"
-                                                       StrokeThickness="2.5" />
-                                            <Rectangle Canvas.Left="34" Canvas.Top="70" Width="38" Height="42"
-                                                       RadiusX="3" RadiusY="3"
-                                                       Fill="{DynamicResource EmuAccentBrush}" />
-                                            <!-- D-pad. -->
-                                            <Rectangle Canvas.Left="10" Canvas.Top="79" Width="16" Height="5"
-                                                       RadiusX="1" RadiusY="1"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Rectangle Canvas.Left="15.5" Canvas.Top="73.5" Width="5" Height="16"
-                                                       RadiusX="1" RadiusY="1"
-                                                       Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Face buttons. -->
-                                            <Ellipse Canvas.Left="86" Canvas.Top="73" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="93" Canvas.Top="80" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="79" Canvas.Top="80" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <Ellipse Canvas.Left="86" Canvas.Top="87" Width="6" Height="6"
-                                                     Fill="{DynamicResource EmuTextTertiaryBrush}" />
-                                            <!-- Sticks. -->
-                                            <Ellipse Canvas.Left="12" Canvas.Top="96" Width="13" Height="13"
-                                                     Fill="{DynamicResource EmuSegmentBrush}"
-                                                     Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="2" />
-                                            <Ellipse Canvas.Left="81" Canvas.Top="96" Width="13" Height="13"
-                                                     Fill="{DynamicResource EmuSegmentBrush}"
-                                                     Stroke="{DynamicResource EmuTextTertiaryBrush}" StrokeThickness="2" />
-                                        </Canvas>
-                                        <TextBlock Text="Second screen" FontSize="19" FontWeight="SemiBold"
-                                                   HorizontalAlignment="Center" />
-                                        <TextBlock Text="Play on the bottom screen" FontSize="14"
-                                                   HorizontalAlignment="Center" TextAlignment="Center"
-                                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                    </StackPanel>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16">
+                                        <controls:ThorDeviceGlyph Grid.Column="0" Width="74" IsBottomLit="True"
+                                                                  VerticalAlignment="Center" />
+                                        <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                                            <TextBlock Text="Second screen" FontSize="19" FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="Play on the bottom screen" FontSize="14"
+                                                       TextWrapping="Wrap"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </Grid>
                                 </Button>
                             </Grid>
                             <!-- Remember row: a checkbox the D-pad reaches and A flips, rather than a second
                                  pair of "Always use…" rows duplicating the cards above. Whichever card is
-                                 then chosen is pinned for the system. -->
+                                 then chosen is pinned for the system. The "change it later" reassurance is
+                                 the row's own second line, so it sits with the thing it qualifies instead of
+                                 floating under the sheet as a separate footer. -->
                             <Button Classes="gamepad-remember-row"
                                     Classes.focused="{Binding LaunchScreenRememberOption.IsFocused}"
                                     Command="{Binding LaunchScreenRememberOption.Command}">
-                                <Grid ColumnDefinitions="Auto,*">
+                                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="14">
                                     <Border Grid.Column="0" Width="26" Height="26" CornerRadius="7"
-                                            VerticalAlignment="Center" Margin="0,0,14,0"
+                                            VerticalAlignment="Center"
                                             Classes="gamepad-remember-box"
                                             Classes.checked="{Binding RememberLaunchScreenChoice}">
                                         <PathIcon Width="15" Height="15"
@@ -2317,14 +2221,15 @@
                                                   Data="{DynamicResource EmuCheckGeometry}"
                                                   Foreground="{DynamicResource EmuGamepadButtonTextBrush}" />
                                     </Border>
-                                    <TextBlock Grid.Column="1" Text="{Binding LaunchScreenRememberLabel}"
-                                               FontSize="16" VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis" />
+                                    <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding LaunchScreenRememberLabel}"
+                                                   FontSize="16" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Text="You can change this later in Settings → Emulators."
+                                                   FontSize="13" TextTrimming="CharacterEllipsis"
+                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                    </StackPanel>
                                 </Grid>
                             </Button>
-                            <TextBlock Text="You can change this later in Settings → Emulators."
-                                       FontSize="13" HorizontalAlignment="Center"
-                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                         </StackPanel>
                         <!-- Controller-native ScreenScraper scraper: the shared GameScraperViewModel
                              with a D-pad focus model layered on top; never hands off to Desktop. -->

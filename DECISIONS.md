@@ -11678,9 +11678,19 @@ two prefixed "Always use…" — which reads as a settings list at the moment th
 a game. It is now two cards that Left/Right walk, over a "remember" checkbox that Down reaches and A
 flips; whichever card is then chosen honours the flag. Both cards draw the SAME device with the screen
 being chosen lit and the other dark. The drawing is the actual hardware — the Thor is a DS-style
-clamshell (6" 16:9 in the lid, 3.92" near-square touch screen in the base between the D-pad, face
-buttons and sticks), which is worth knowing before drawing anything for this device: an abstract
-two-panel diagram was tried first and rejected as "just idiotic infographic". "External screen" is gone from every user-facing string, here and in
+clamshell: 6" 16:9 in the lid, 3.92" near-square (31:27) touch screen in the base, lid and base the
+same width, and the controls ASYMMETRIC — left column is stick over D-pad, right column is face
+buttons over stick, with a chin of speaker grilles and the AYN button under the bottom screen (AYN's
+product renders and the DroiX/Retro Dodo reviews). That asymmetry is what makes the glyph read as the
+Thor and not a generic DS, and the first drawing had it upside down (D-pad and face buttons above the
+sticks); it is worth checking against a photo before drawing anything for this device, because an
+abstract two-panel diagram was tried first and rejected as "just idiotic infographic". The drawing is
+one control, `ThorDeviceGlyph`, lit from two flags, so both cards share it. The card is a ROW — glyph
+beside the words — because the chooser has to fit the Thor's own overlay: at 833×468 the body between
+the title and the hint legend is ~216 dip, and the first stacked layout (drawing over caption, 168 dip
+cards) pushed the remember row into the legend and the footer off the sheet. The "change it later"
+line is the remember row's second line now, the sheet is 680 wide so neither caption wraps, and
+`GamepadLaunchScreenChooserTests` pins the whole thing inside the sheet at Thor size in both themes. "External screen" is gone from every user-facing string, here and in
 Settings → Emulators: this feature is gated behind `IExternalDisplayProbe`, which only the Android head
 implements, so the only hardware that ever sees it is a handheld that owns both screens — "external"
 described a monitor that is not there. The enum member stays `GameLaunchScreen.External`; it is a stored

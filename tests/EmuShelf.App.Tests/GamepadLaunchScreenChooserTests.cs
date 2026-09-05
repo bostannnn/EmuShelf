@@ -1,4 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Media.Imaging;
+using Avalonia.Styling;
+using EmuShelf.App.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -52,6 +57,90 @@ public class GamepadLaunchScreenChooserTests
         {
             window.Close();
         }
+    }
+
+
+    [AvaloniaTheory]
+    [InlineData("Light")]
+    [InlineData("Dark")]
+    public async Task Chooser_FitsInsideTheOverlayOnTheThor(string theme)
+    {
+        // The only device that ever shows this prompt is the AYN Thor at ~833x468 dip. The first cut
+        // stacked the drawing over its caption, which was fine at 1280x720 but on the Thor pushed the
+        // remember row into the hint legend and the footer clean off the sheet. Every chooser control
+        // must sit inside the overlay border, above the legend, and no two may overlap.
+        var variant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
+        var previous = Application.Current!.RequestedThemeVariant;
+        Application.Current.RequestedThemeVariant = variant;
+        var viewModel = CreateChooserViewModel(out var game);
+        await viewModel.LaunchGameCommand.ExecuteAsync(game);
+        var window = new MainWindow { DataContext = viewModel, Width = 833, Height = 468, MinHeight = 0, MinWidth = 0 };
+        window.Show();
+        try
+        {
+            await Pump();
+            var overlay = window.GetVisualDescendants().OfType<Border>()
+                .Single(border => border.Classes.Contains("gamepad-overlay") && border.IsVisible);
+            var legend = window.FindNamed<StackPanel>("GamepadOverlayHints");
+            Assert.NotNull(legend);
+            var cards = CardButtons(window);
+            var remember = window.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.Classes.Contains("gamepad-remember-row"));
+            var overlayRect = BoundsIn(window, overlay);
+            var legendRect = BoundsIn(window, legend);
+
+            foreach (var control in cards.Append(remember))
+            {
+                var rect = BoundsIn(window, control);
+                Assert.True(rect.Top >= overlayRect.Top && rect.Bottom <= overlayRect.Bottom,
+                    $"{control.Classes[0]} spans {rect.Top:F0}..{rect.Bottom:F0} but the sheet is {overlayRect.Top:F0}..{overlayRect.Bottom:F0}");
+                Assert.True(rect.Bottom <= legendRect.Top,
+                    $"{control.Classes[0]} bottom {rect.Bottom:F0} runs into the hint legend at {legendRect.Top:F0}");
+            }
+            Assert.True(BoundsIn(window, cards[0]).Bottom <= BoundsIn(window, remember).Top,
+                "the cards overlap the remember row");
+            Assert.True(BoundsIn(window, cards[0]).Right <= BoundsIn(window, cards[1]).Left,
+                "the two cards overlap each other");
+
+            // Every caption renders in full: nothing is trimmed to an ellipsis on the Thor's width, and
+            // nothing paints past its own slot (a NoWrap title clips silently rather than collapsing).
+            foreach (var text in overlay.GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsVisible))
+            {
+                Assert.False(text.TextLayout.TextLines.Any(line => line.HasCollapsed),
+                    $"\"{text.Text}\" was cut short with an ellipsis");
+                Assert.True(text.TextLayout.Width <= text.Bounds.Width + 0.5,
+                    $"\"{text.Text}\" needs {text.TextLayout.Width:F0}px but has {text.Bounds.Width:F0}px");
+            }
+
+            // Both device drawings are on screen, each lighting exactly one panel.
+            var glyphs = overlay.GetVisualDescendants().OfType<ThorDeviceGlyph>().ToList();
+            Assert.Equal(2, glyphs.Count);
+            Assert.True(glyphs[0].IsTopLit && !glyphs[0].IsBottomLit);
+            Assert.True(glyphs[1].IsBottomLit && !glyphs[1].IsTopLit);
+
+            var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
+            if (outputDirectory is not null)
+            {
+                await Task.Delay(50);
+                using (window.CaptureRenderedFrame()) { }
+                await Pump();
+                Directory.CreateDirectory(outputDirectory);
+                using var frame = window.CaptureRenderedFrame();
+                using var output = File.Create(Path.Combine(outputDirectory, $"chooser-thor-{theme.ToLowerInvariant()}.png"));
+                frame!.Save(output, PngBitmapEncoderOptions.Default);
+            }
+        }
+        finally
+        {
+            window.Close();
+            Application.Current.RequestedThemeVariant = previous;
+        }
+    }
+
+    private static Rect BoundsIn(Window window, Visual control)
+    {
+        var origin = control.TranslatePoint(default, window)!.Value;
+        return new Rect(origin, control.Bounds.Size);
     }
 
     private static IReadOnlyList<Button> CardButtons(Window window) => window.GetVisualDescendants()

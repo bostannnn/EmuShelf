@@ -2145,7 +2145,9 @@ breaks the whole-solution macOS build/test loop.
           covers next to a portrait platform's five. (4) **The companion's doubled logo is fixed** (the
           resting spotlight and the standby wash were both painting it, half a dock bar apart) and **a
           touch now wakes the dimmed companion** for 5 s so you can see what you are pressing. (5) **The
-          screen chooser is two cards drawing the Thor's clamshell** with the chosen screen lit, over a
-          "remember" checkbox;
+          screen chooser is two cards drawing the Thor's clamshell** (`ThorDeviceGlyph`: stick over D-pad
+          on the left, face buttons over stick on the right, like the real base) with the chosen screen
+          lit, over a "remember" checkbox, laid out as glyph-beside-caption so it fits inside the Thor's
+          own 833×468 overlay (pinned by test);
           "external screen" is gone from every string — the only hardware this reaches owns both screens.
           See DECISIONS 2026-09-05.

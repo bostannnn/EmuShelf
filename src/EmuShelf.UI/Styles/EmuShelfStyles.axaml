@@ -583,6 +583,13 @@
                  room for "Shelf" at the Thor's density instead of truncating to "Sh…". -->
             <Setter Property="Width" Value="500" />
         </Style>
+        <!-- The launch-screen chooser is two side-by-side device cards; 680 (not the 620 picker sheet)
+             is what keeps "Play on the bottom screen" on one line beside the drawing. It still sits
+             inside the Thor's 761 dip host, and the host MaxWidth clamps it anywhere narrower. -->
+        <Style Selector="Border.gamepad-overlay.launch-screen">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Width" Value="680" />
+        </Style>
         <!-- Confirmations are compact modals, not the 620px picker sheet: a tighter card centres its
              title/body/buttons as one group. -->
         <Style Selector="Border.gamepad-overlay.confirmation">
@@ -620,11 +627,11 @@
              target at couch distance, and room for the drawn screen glyph) and lit the way the couch
              lights everything else that is selected — an accent wash plus the accent border, no ring. -->
         <Style Selector="Button.gamepad-screen-card">
-            <Setter Property="MinHeight" Value="168" />
-            <Setter Property="Padding" Value="16,20" />
+            <Setter Property="MinHeight" Value="120" />
+            <Setter Property="Padding" Value="16,14" />
             <Setter Property="CornerRadius" Value="14" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
             <Setter Property="Background" Value="{DynamicResource EmuSegmentBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
@@ -643,8 +650,8 @@
         </Style>
         <!-- "Always use this screen for X": one focusable row under the cards, A flips it. -->
         <Style Selector="Button.gamepad-remember-row">
-            <Setter Property="MinHeight" Value="52" />
-            <Setter Property="Padding" Value="16,10" />
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="16,8" />
             <Setter Property="CornerRadius" Value="10" />
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Stretch" />
