@@ -25,28 +25,46 @@ public sealed class AndroidDataLocationBootstrap : IDataLocationBootstrap
     /// <summary>The subfolder created inside the user's pick so EmuShelf never scatters files into it.</summary>
     private const string DataFolderName = "EmuShelf";
 
+    // logcat tag for the resolve verdict. The pre-boot FileAppLogger lives in app-private storage, which a
+    // Release build (not debuggable) makes unreadable over adb, so the one line that explains "why did I get
+    // onboarding" is also written where `adb logcat -s EmuShelfBoot` can see it.
+    private const string BootLogTag = "EmuShelfBoot";
+
     private readonly IDataLocationStore _store;
     private readonly IStoragePermissionService _permission;
     private readonly Func<TopLevel?> _topLevel;
+    private readonly Func<DataLocationResolution> _resolve;
     private readonly IAppLogger _logger;
 
     public AndroidDataLocationBootstrap(
         IDataLocationStore store,
         IStoragePermissionService permission,
         Func<TopLevel?> topLevel,
-        DataLocationResolution resolution,
+        Func<DataLocationResolution> resolve,
         IAppLogger? logger = null)
     {
         _store = store;
         _permission = permission;
         _topLevel = topLevel;
+        _resolve = resolve;
         _logger = logger ?? NullAppLogger.Instance;
-        ResolvedBaseDirectory = resolution.BaseDirectory;
-        OnboardingReason = resolution.OnboardingReason ?? DataLocationOnboardingReason.FirstRun;
     }
 
-    public string? ResolvedBaseDirectory { get; }
-    public DataLocationOnboardingReason OnboardingReason { get; }
+    /// <summary>
+    /// Runs the resolver afresh (pointer, grant, write probe) and logs the verdict. Called by the shared
+    /// composition root when an Activity asks for its first view, and by onboarding on every foreground
+    /// return — never at process creation, where a headless start would freeze a stale verdict.
+    /// </summary>
+    public DataLocationResolution Resolve()
+    {
+        var resolution = _resolve();
+        var verdict = resolution.IsResolved
+            ? $"resolved '{resolution.BaseDirectory}'"
+            : $"onboarding ({resolution.OnboardingReason})";
+        _logger.Information($"Data location: {verdict}.");
+        global::Android.Util.Log.Info(BootLogTag, $"Data location: {verdict}");
+        return resolution;
+    }
     public bool RequiresStoragePermission => _permission.RequiresGrant;
     public bool IsStoragePermissionGranted => _permission.IsGranted;
 

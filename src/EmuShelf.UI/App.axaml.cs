@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
@@ -7,6 +8,7 @@ using EmuShelf.App.Startup;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Input;
 using EmuShelf.Core.Launching;
+using EmuShelf.Core.Storage;
 using EmuShelf.Core.Updates;
 using EmuShelf.Infrastructure.Achievements;
 using EmuShelf.Infrastructure.Input;
@@ -116,9 +118,10 @@ public partial class App : Application
     public static string? BaseDirectoryOverride { get; set; }
 
     /// <summary>
-    /// The Android head's first-run data-folder gate. When set and it reports no resolved folder yet, the
-    /// composition root shows the onboarding view instead of opening the database, and resumes composition
-    /// in-process once the user picks a folder. Desktop leaves this null and boots straight through — its
+    /// The Android head's first-run data-folder gate. When set, the composition root defers the whole
+    /// onboarding-vs-shell decision until an Activity asks for a view (see
+    /// <see cref="BuildInitialAndroidView"/>): it then resolves the data folder and either shows the
+    /// onboarding view or composes the shell. Desktop leaves this null and boots straight through — its
     /// data folder is resolved from the environment. Set before Avalonia starts.
     /// </summary>
     public static IDataLocationBootstrap? DataLocation { get; set; }
@@ -170,42 +173,77 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        // First-run data-folder gate (Android). When the head reports no resolved folder, show onboarding
-        // instead of opening the database against a folder that does not exist yet; composition resumes
-        // in-process from OnDataFolderChosen once the user picks one. Desktop leaves DataLocation null.
-        if (DataLocation is { ResolvedBaseDirectory: null } bootstrap
-            && ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        // Android: this runs from Application.OnCreate, i.e. at PROCESS creation — which the system does for
+        // reasons other than the user opening the app (re-binding the accessibility service after an
+        // install, a provider query from Shizuku). Nothing may be decided or composed here: a verdict taken
+        // in a headless process is what the user sees when they later tap the icon, and composing the
+        // shell there costs a database open, cover loads, and a Screen-2 Presentation nobody asked for.
+        // Instead hand the lifetime a factory the Activity invokes when it actually needs a view.
+        if (DataLocation is { } bootstrap && ApplicationLifetime is IActivityApplicationLifetime activityLifetime)
         {
-            StartDataFolderOnboarding(singleView, bootstrap);
+            activityLifetime.MainViewFactory = () => BuildInitialAndroidView(activityLifetime, bootstrap);
             base.OnFrameworkInitializationCompleted();
             return;
         }
 
-        // Resolved on Android (the head persisted a pointer previously) or desktop (null): a resolved
-        // base directory is the single source of truth for the portable root.
-        if (DataLocation?.ResolvedBaseDirectory is { } resolvedBaseDirectory)
-            BaseDirectoryOverride = resolvedBaseDirectory;
+        // Any other single-view host with a data-folder gate (none shipped; kept so the shared UI has a
+        // defined behaviour there): decide eagerly, since there is no Activity to defer to.
+        if (DataLocation is { } eagerBootstrap && ApplicationLifetime is ISingleViewApplicationLifetime singleView)
+        {
+            var resolution = eagerBootstrap.Resolve();
+            if (!resolution.IsResolved)
+            {
+                singleView.MainView = CreateOnboardingView(eagerBootstrap, resolution);
+                base.OnFrameworkInitializationCompleted();
+                return;
+            }
+            BaseDirectoryOverride = resolution.BaseDirectory;
+        }
 
         BuildAndRun();
         base.OnFrameworkInitializationCompleted();
     }
 
     /// <summary>
-    /// Shows the onboarding view as the initial single-view content. Its view-model completes by handing
-    /// back the chosen base directory, at which point <see cref="OnDataFolderChosen"/> resumes the normal
-    /// composition and swaps the real shell in over the onboarding view.
+    /// The Android head's deferred first view, invoked by the Activity on (re)creation. Resolves the data
+    /// folder <i>now</i> — device booted, storage mounted, the user actually opening the app — and either
+    /// returns the onboarding view or composes the shell and returns its first view. Composition happens
+    /// once per process: <see cref="BuildAndRun"/> makes the platform shell install its own factory, which
+    /// serves every later Activity recreation directly, so this method never runs again after it.
     /// </summary>
-    private void StartDataFolderOnboarding(
-        ISingleViewApplicationLifetime singleView,
-        IDataLocationBootstrap bootstrap)
+    private Control BuildInitialAndroidView(IActivityApplicationLifetime lifetime, IDataLocationBootstrap bootstrap)
+    {
+        var resolution = bootstrap.Resolve();
+        if (!resolution.IsResolved)
+            return CreateOnboardingView(bootstrap, resolution);
+
+        BaseDirectoryOverride = resolution.BaseDirectory;
+        var deferred = lifetime.MainViewFactory;
+        BuildAndRun();
+
+        var shellFactory = lifetime.MainViewFactory;
+        if (shellFactory is null || ReferenceEquals(shellFactory, deferred))
+        {
+            throw new InvalidOperationException(
+                "The platform shell did not install its main-view factory; there is no view to show.");
+        }
+        return shellFactory();
+    }
+
+    /// <summary>
+    /// Builds the onboarding view for an unresolved data folder. Its view-model completes by handing back
+    /// the chosen (or newly readable) base directory, at which point <see cref="OnDataFolderChosen"/>
+    /// hands off to the real shell.
+    /// </summary>
+    private Views.OnboardingView CreateOnboardingView(IDataLocationBootstrap bootstrap, DataLocationResolution resolution)
     {
         var onboarding = new OnboardingViewModel(
             bootstrap,
-            bootstrap.OnboardingReason,
+            resolution.OnboardingReason ?? DataLocationOnboardingReason.FirstRun,
             onCompleted: OnDataFolderChosen);
         // Route the Android key-event bridge into onboarding until the real shell takes over.
         OnboardingGamepadDispatch = onboarding.DispatchGamepadAction;
-        singleView.MainView = new Views.OnboardingView { DataContext = onboarding };
+        return new Views.OnboardingView { DataContext = onboarding };
     }
 
     private void OnDataFolderChosen(string baseDirectory)

@@ -342,10 +342,71 @@ public sealed class OnboardingViewModelTests
         Assert.False(vm.IsSecondScreenReturnFocused);
     }
 
+    [Fact]
+    public void ForegroundEvent_CompletesOnboarding_WhenThePointerNowResolves()
+    {
+        // The pointer became readable behind onboarding's back — the grant was just flipped on and the
+        // shared-storage mirror is now visible (a reinstall), or the folder's card was remounted. Nothing is
+        // left to choose, so the foreground return completes onboarding with the resolved folder.
+        var bootstrap = new FakeBootstrap { RequiresStoragePermission = true, IsStoragePermissionGranted = false };
+        string? chosen = null;
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.StoragePermissionMissing, dir => chosen = dir);
+
+        bootstrap.IsStoragePermissionGranted = true;
+        bootstrap.Resolution = DataLocationResolution.Resolved("/storage/emulated/0/User/EmuShelf");
+        bootstrap.RaisePermissionMaybeChanged();
+
+        Assert.Equal("/storage/emulated/0/User/EmuShelf", chosen);
+        Assert.Equal(1, bootstrap.ResolveCalls);
+    }
+
+    [Fact]
+    public void ForegroundEvent_LeavesOnboardingUp_WhileThePointerStillDoesNotResolve()
+    {
+        var bootstrap = new FakeBootstrap { RequiresStoragePermission = true, IsStoragePermissionGranted = false };
+        var completed = false;
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => completed = true);
+
+        bootstrap.IsStoragePermissionGranted = true;
+        bootstrap.RaisePermissionMaybeChanged();
+
+        Assert.False(completed);
+        Assert.True(vm.IsPermissionGranted);
+        Assert.True(vm.CanChooseFolder);
+    }
+
+    [Fact]
+    public async Task Completion_HappensExactlyOnce_WhenAPickAndAForegroundResolveRace()
+    {
+        // A pick lands (pointer written) and the picker closing raises the foreground return, which now
+        // resolves too. On Android completion restarts the process, so the second path must be a no-op.
+        var bootstrap = new FakeBootstrap
+        {
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            RecommendedResult = DataLocationPickResult.Success("/storage/emulated/0/EmuShelf"),
+        };
+        var completions = 0;
+        var vm = new OnboardingViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => completions++);
+
+        await vm.UseRecommendedCommand.ExecuteAsync(null);
+        bootstrap.Resolution = DataLocationResolution.Resolved("/storage/emulated/0/EmuShelf");
+        bootstrap.RaisePermissionMaybeChanged();
+
+        Assert.Equal(1, completions);
+    }
+
     private sealed class FakeBootstrap : IDataLocationBootstrap
     {
-        public string? ResolvedBaseDirectory => null;
-        public DataLocationOnboardingReason OnboardingReason => DataLocationOnboardingReason.FirstRun;
+        public DataLocationResolution Resolution { get; set; } =
+            DataLocationResolution.Onboarding(DataLocationOnboardingReason.FirstRun);
+        public int ResolveCalls { get; private set; }
+
+        public DataLocationResolution Resolve()
+        {
+            ResolveCalls++;
+            return Resolution;
+        }
+
         public bool RequiresStoragePermission { get; set; }
         public bool IsStoragePermissionGranted { get; set; }
         public string? RecommendedBaseDirectory { get; set; }

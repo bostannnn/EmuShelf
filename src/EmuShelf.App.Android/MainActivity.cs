@@ -234,12 +234,12 @@ public class MainActivity : AvaloniaMainActivity
         return base.DispatchKeyEvent(e);
     }
 
-    // The single-view head's live top level, reached through the app lifetime's MainView — the same
-    // route onboarding uses. Null before the view is shown.
+    // The head's live top level, reached through this Activity's content (the view the lifetime's
+    // MainViewFactory produced). Not ISingleViewApplicationLifetime.MainView: Avalonia's Android lifetime
+    // leaves that null on the factory path, which is why the overlay cycle used to report "(no top level)".
+    // Null before the view is shown.
     private static TopLevel? ResolveTopLevel() =>
-        (global::Avalonia.Application.Current?.ApplicationLifetime as ISingleViewApplicationLifetime)?.MainView is { } view
-            ? TopLevel.GetTopLevel(view)
-            : null;
+        Current?.Content is Control view ? TopLevel.GetTopLevel(view) : null;
 
     /// <summary>
     /// The head's analog-stick surface. Joystick stick movement arrives as generic <see cref="MotionEvent"/>s

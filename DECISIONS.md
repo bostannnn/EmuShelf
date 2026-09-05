@@ -11589,3 +11589,56 @@ both the per-platform rescan and a folder import are covered.
 Not changed: the folder row's A press rescans the platform without labelling itself as such. Andrew's
 call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
 quieter second path to the same action.
+
+## 2026-09-05 — Android decides onboarding-vs-shell when the Activity asks, and mirrors the data-folder pointer on shared storage
+
+Andrew reported first-run onboarding reappearing on the Thor after he had completed it. Two confirmed causes,
+both read off the device rather than reproduced.
+
+**The decision was made at process creation, not when the app was opened.** `EmuShelfAndroidApplication.
+CustomizeAppBuilder` runs from `Application.OnCreate`; Avalonia's `SetupWithLifetime` then calls
+`App.OnFrameworkInitializationCompleted` in the same pass, which ran `DataLocationResolver.Resolve()` and
+either assigned `MainView = OnboardingView` or composed the whole shell. But Android creates this process for
+reasons other than the launcher: `logcat -b events` showed `am_proc_start … service
+{SecondScreenReturnWatcher}` 0.4 s after every `installPackageLI` today (the system re-binding the
+accessibility service), and the Shizuku provider is another such trigger. The shell log confirmed the
+consequence — "EmuShelf startup began" and "Second-screen Presentation attached" at the same seconds as five
+headless starts — so a background process nobody opened was opening SQLite, loading covers, and putting the
+companion on Screen-2. And whatever the resolver said in that process (a write probe or grant read during
+early boot, or right after an install) was frozen in as the view the user later saw. Nothing re-checked on
+resume.
+
+Fix: `App.OnFrameworkInitializationCompleted` no longer decides anything on Android. It installs an
+`IActivityApplicationLifetime.MainViewFactory` (the seam `SingleViewShell` already uses) that resolves
+when an Activity actually asks for its first view — device booted, storage mounted, user opening the app —
+and returns either the onboarding view or, after composing once, the shell's view. A process with no
+Activity now composes nothing. `IDataLocationBootstrap` trades its captured `ResolvedBaseDirectory` /
+`OnboardingReason` for a `Resolve()` method, and the head's foreground/gamepad hooks are routed to
+onboarding unconditionally (the shell overwrites them when it composes), since whether onboarding will show
+is no longer known at wiring time. `OnboardingViewModel.RefreshPermissionState` — the foreground-return
+path — re-resolves first and completes onboarding on its own when the pointer now resolves, guarded so
+completion (a process restart on Android) fires once even if a pick and a foreground resolve race.
+
+**The pointer died with an uninstall while the data did not.** `data-location.json` lived only in app-private
+`FilesDir`. The full reinstall at 13:36 today wiped it; onboarding ran at 13:39 and Andrew re-picked the
+same `/storage/emulated/0/User/EmuShelf`. (An orphaned `/storage/emulated/0/EmuShelf` owned by an older
+uid shows the same cycle had happened before.) The onboarding copy promises data on shared storage
+"survives reinstalls" — the data did, the pointer did not.
+
+Fix: `JsonDataLocationStore` takes an optional mirror path; the head sets it to
+`<primary shared storage>/.emushelf-data-location.json`. Writes go to both (mirror best-effort — it is only
+reachable once the all-files grant is held), reads try the primary then the mirror, and a primary hit with
+no mirror heals it so existing installs pick the mirror up on their next resolve. After a reinstall the
+grant step still runs (the appop resets with the uid), and the moment it is granted the foreground-return
+re-resolve above reads the mirror and completes onboarding — no folder pick.
+
+Side fix found on the way: `ResolveShellTopLevel` (the SAF picker's TopLevel, also used by the Settings
+change-folder row) and `MainActivity.ResolveTopLevel` (the L3 overlay cycle) read
+`ISingleViewApplicationLifetime.MainView`, which Avalonia's Android lifetime leaves null on the
+`MainViewFactory` path — today's logcat had `Render overlays: (no top level)`. Both now read the live
+Activity's `Content`.
+
+Also observed, not changed: the Thor's second-screen return watcher is currently not in
+`enabled_accessibility_services` (only Odin's and NeoStation's are), so if onboarding does show, its
+mandatory second-screen gate blocks too. Pre-boot diagnostics were unreadable because the local Release
+build is not debuggable; the resolve verdict is therefore now also logged to logcat under `EmuShelfBoot`.
