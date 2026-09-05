@@ -168,8 +168,10 @@
              navigation and the focus ring are driven by the flat Games list.
              .controller-input here (not per tile) drives the hover-ring suppression style for every
              pooled tile through a descendant selector — one binding instead of one per tile. -->
-        <!-- Vertical margin is 26 MINUS GamepadGridPanel.EdgeInset (24): the panel now carries that
-             headroom inside its scrollable extent so edge-row focus rings aren't viewport-clipped. -->
+        <!-- Vertical margin is 26 MINUS the panel's original EdgeInsetTop of 24: the panel carries the
+             headroom inside its scrollable extent so edge-row focus rings aren't viewport-clipped.
+             EdgeInsetTop has since grown to 48 WITHOUT this margin moving, so the resting first row
+             sits 24 px lower than it did (see GamepadGridPanel.EdgeInsetTop). -->
         <ScrollViewer x:Name="GamepadRowList" Grid.Row="1" Margin="52,2,52,2"
                       Classes="library-surface" Classes.loading="{Binding IsLibraryLoading}"
                       Classes.controller-input="{Binding IsGamepadControllerInputActive}"

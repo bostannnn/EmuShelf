@@ -3528,7 +3528,6 @@ public partial class MainViewModel : ViewModelBase
     // vertical column and Left/Right would do nothing on a layout that visibly reads as two columns.
     private bool DispatchLaunchScreenNavigation(GamepadAction action)
     {
-        const int rememberIndex = LaunchScreenRememberIndex;
         switch (action)
         {
             case GamepadAction.NavigateLeft:
@@ -3540,14 +3539,14 @@ public partial class MainViewModel : ViewModelBase
                     GamepadOverlaySelectionIndex = 1;
                 return true;
             case GamepadAction.NavigateDown:
-                if (GamepadOverlaySelectionIndex < rememberIndex)
+                if (GamepadOverlaySelectionIndex < LaunchScreenRememberIndex)
                 {
                     _launchScreenReturnIndex = GamepadOverlaySelectionIndex;
-                    GamepadOverlaySelectionIndex = rememberIndex;
+                    GamepadOverlaySelectionIndex = LaunchScreenRememberIndex;
                 }
                 return true;
             case GamepadAction.NavigateUp:
-                if (GamepadOverlaySelectionIndex == rememberIndex)
+                if (GamepadOverlaySelectionIndex == LaunchScreenRememberIndex)
                     GamepadOverlaySelectionIndex = _launchScreenReturnIndex;
                 return true;
             default:

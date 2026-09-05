@@ -207,6 +207,63 @@ public class SecondScreenStandbyTests
         Assert.True(vm.IsStandby);
     }
 
+    [AvaloniaFact]
+    public void ATouchWhileAnOverlayIsOpen_DoesNotOutliveTheOverlay()
+    {
+        // The touch that closes achievements or the drawer also reaches the root wake handler. It must
+        // not buy a wake window, or the wash would stay off for five seconds after the sheet is gone —
+        // the overlay owns the dim while it is up and hands it straight back on close.
+        var vm = new SecondScreenViewModel { IsGameRunning = true };
+        vm.Overlay = SecondScreenOverlayKind.Achievements;
+
+        vm.NoteInteraction();
+        Assert.False(vm.IsAwake);
+
+        vm.Overlay = SecondScreenOverlayKind.None;
+        Assert.False(vm.IsAwake);
+        Assert.True(vm.IsStandby);
+    }
+
+    [AvaloniaFact]
+    public void AnOverlayOpening_EndsAWakeWindowInFlight()
+    {
+        // Tap (wake), then open the drawer from that lit panel, then close it: the dim comes back on
+        // close, not whenever the original tap's window happens to run out.
+        var vm = new SecondScreenViewModel { IsGameRunning = true };
+        vm.NoteInteraction();
+        Assert.True(vm.IsAwake);
+
+        vm.Overlay = SecondScreenOverlayKind.Drawer;
+        Assert.False(vm.IsAwake);
+
+        vm.Overlay = SecondScreenOverlayKind.None;
+        Assert.True(vm.IsStandby);
+    }
+
+    [AvaloniaFact]
+    public async Task ARealTouchWhileTheOverlayIsUp_LeavesTheDimToTheOverlay()
+    {
+        // Same as above, through the real tunnel handler with the achievements sheet mounted over the
+        // press point — the on-device path a view-model call cannot stand in for.
+        var model = new SecondScreenViewModel { IsGameRunning = true, Overlay = SecondScreenOverlayKind.Achievements };
+        var window = new Window { Content = new SecondScreenView { DataContext = model }, Width = 1240, Height = 1080 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            window.MouseDown(new Point(620, 400), MouseButton.Left, RawInputModifiers.None);
+            await PumpAsync();
+            Assert.False(model.IsAwake);
+
+            model.Overlay = SecondScreenOverlayKind.None;
+            Assert.True(model.IsStandby);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     // The whole wake path hangs off one root handler registered for the TUNNEL pass of PointerPressed.
     // Nothing else in the app routes that way, the companion screen cannot be screenshotted (Screen-2 is
     // capture-blocked), and a wrong routing strategy would fail silently — so drive a real press.

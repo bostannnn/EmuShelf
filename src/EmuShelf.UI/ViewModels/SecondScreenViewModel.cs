@@ -112,8 +112,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public void NoteInteraction()
     {
         // Nothing to wake from while the library is being browsed: the surface is already at full
-        // brightness, and starting a timer per touch would just churn.
-        if (!IsGameRunning)
+        // brightness, and starting a timer per touch would just churn. Same while an overlay is up —
+        // achievements / the drawer own the dim for as long as they are open, and the touch that
+        // closes one must hand the wash straight back rather than buy five more seconds of light.
+        if (!IsGameRunning || Overlay != SecondScreenOverlayKind.None)
             return;
 
         IsAwake = true;
@@ -495,6 +497,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     partial void OnOverlayChanged(SecondScreenOverlayKind value)
     {
+        // An overlay taking over ends any wake window in flight, so closing it restores the dim at
+        // once instead of whenever the touch that opened it happens to expire.
+        if (value != SecondScreenOverlayKind.None)
+            ReturnToStandby();
         OnPropertyChanged(nameof(IsDrawerOpen));
         OnPropertyChanged(nameof(IsAchievementsOpen));
         OnPropertyChanged(nameof(IsAchievementsGridRealized));

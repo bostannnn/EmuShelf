@@ -43,8 +43,9 @@ public static class JustifiedCoverLayout
     /// 1.43 boxes, arcade's 4:3 snaps) after two or three covers, which reads as an oversized,
     /// half-empty shelf next to the five portrait covers the same viewport fits. Raising this packs
     /// those rows denser — the covers are correspondingly shorter, which is the trade. Ignored when
-    /// the viewport is too narrow (see <see cref="MinimumColumnCoverWidth"/>) and for the leftover
-    /// last row, which is always short by definition.
+    /// the viewport is too narrow (see <see cref="MinimumColumnCoverWidth"/>). The leftover last row
+    /// is never padded up to it; it is left-packed at the row above's height, shrunk if it would
+    /// overflow the width.
     /// </param>
     public static IReadOnlyList<CoverPlacement> Pack(
         IReadOnlyList<double> aspectRatios,
@@ -101,15 +102,16 @@ public static class JustifiedCoverLayout
 
         // Leftover covers form a final, left-packed row. It matches the height of the row above it (a
         // partial last row must not render TALLER than the full rows — that reads as odd oversized
-        // covers); when it is the only row, it falls back to the target, shrunk to fit if a lone
-        // over-wide cover would overflow.
+        // covers); when it is the only row, it falls back to the target. Either way it is shrunk to
+        // fit the width: with a minimum per row the leftovers are no longer "too few to fill the
+        // width" by construction — three landscape covers held back by the count would fill it at the
+        // previous portrait row's height and run ~130 px past the gutter on the Thor.
         if (start < aspectRatios.Count)
         {
             var count = aspectRatios.Count - start;
             var gaps = spacing * (count - 1);
-            var rowHeight = lastRowHeight > 0
-                ? lastRowHeight
-                : Math.Min(targetRowHeight, (availableWidth - gaps) / ratioSum);
+            var matchedHeight = lastRowHeight > 0 ? lastRowHeight : targetRowHeight;
+            var rowHeight = Math.Min(matchedHeight, (availableWidth - gaps) / ratioSum);
             FinalizeRow(aspectRatios, placements, start, aspectRatios.Count, rowIndex, rowHeight, spacing);
         }
 

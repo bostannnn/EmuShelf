@@ -144,6 +144,26 @@ public class JustifiedCoverLayoutTests
     }
 
     [Fact]
+    public void Pack_MixedRatios_LeftoverRowHeldBackByTheMinimumStillFitsTheWidth()
+    {
+        // All Games / search on the couch: a portrait row commits at ~289 px, then three SNES covers
+        // remain. Without the minimum they could never have filled the width; with it they are held
+        // back by the count, and rendering them at the portrait row's height put ~130 px past the
+        // right gutter. The leftover row must shrink to fit, and stay no taller than the row above.
+        const double available = 1200;
+        var ratios = Enumerable.Repeat(0.708, 5).Concat(Enumerable.Repeat(1.434, 3)).ToList();
+
+        var placements = JustifiedCoverLayout.Pack(ratios, available, 44, 300, minCoversPerRow: 4);
+
+        Assert.Equal(5, placements.Count(placement => placement.RowIndex == 0));
+        Assert.Equal(3, placements.Count(placement => placement.RowIndex == 1));
+        Assert.True(RowSpan(placements, 1) <= available + 1.0,
+            $"leftover row spans {RowSpan(placements, 1):F0} in a {available:F0} viewport");
+        Assert.True(placements[5].Height <= placements[0].Height,
+            "a partial last row must not render taller than the full row above it");
+    }
+
+    [Fact]
     public void Pack_PortraitCovers_AreUnchangedByAMinimumTheyAlreadyExceed()
     {
         var ratios = Enumerable.Repeat(0.708, 12).ToList();

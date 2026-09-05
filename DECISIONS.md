@@ -11590,7 +11590,7 @@ Not changed: the folder row's A press rescans the platform without labelling its
 call — Y on the summary already rescans and the legend names it, so the folder row is an accepted
 quieter second path to the same action.
 
-## 2026-09-05 — Couch polish: the focus glow is the selector, and the packer takes a column floor
+## 2026-09-05 — Couch polish: an accent bar under the focused cover is the selector, and the packer takes a column floor
 
 Four fixes from a Thor pass, three of which are one story: the couch grid was retuned for the
 justified-row repack and never re-tuned for what that repack did to the *selection*.
@@ -11614,10 +11614,12 @@ what the no-marker option needed and is more dimming than a marked selection cal
 out from the centre over 0.22 s as focus lands, re-fired per tile, so browsing feels alive and a
 resting grid animates nothing.
 
-Removed with the halo: `EmuTileFocusGlowBrush` and the `AppThemeService.PublishDerivedTokens` seam that
-recomputed it per palette. Worth recording because the seam was the right shape for the problem — an
-accent-derived *gradient* cannot be authored in the ~30 palette files or in the generated artwork
-dictionary, so deriving it centrally at apply time is how any future accent gradient should be done.
+The halo never reached the tree: it was built and reverted on the same branch, so nothing of it —
+neither its glow brush nor the theme-service seam that recomputed that brush per palette — exists on
+`main` or here; the only thing this pass removes is `gamepad-focus-pool`. The seam is still worth
+recording as advice because it was the right shape for the problem — an accent-derived *gradient*
+cannot be authored in the ~30 palette files or in the generated artwork dictionary, so deriving it
+centrally at apply time is how any future accent gradient should be done.
 
 **A continuous animation on the couch costs half a core, whatever it animates.** The halo was first
 built breathing (2.8 s alternating opacity+scale), which is what was asked for. Measured on the Thor
@@ -11637,9 +11639,10 @@ nobody is touching the device is not affordable; make it one-shot and re-trigger
 
 **Couch gutters are their own constants now.** `CoverColumnSpacing` stays 28 for desktop (mirrored by
 MainWindow's row `Spacing`); the couch uses `GamepadCoverColumnSpacing` = 44 and row margins 20/32,
-because the focused tile scales to 1.09 and its halo spills past that — at 28 the lift alone nearly
-touched the neighbouring cover. `EdgeInsetTop` rises 24 → 48 so the top row's halo is not shaved by
-the scroller.
+because the focused tile scales to 1.09 and its drop shadow spills past that — at 28 the lift alone
+nearly touched the neighbouring cover. `EdgeInsetTop` rises 24 → 48 so the top row's lift and shadow
+(~40 px above the cover) are not shaved by the scroller; the host scroller's margin was NOT re-cut to
+match, so the resting first row sits 24 px lower than before — the headroom is the point.
 
 **The packer takes a minimum covers-per-row.** Justified packing commits a row as soon as filling the
 width brings its height down to the target, which for landscape art (SNES 1.434, arcade 1.333) happens
@@ -11647,7 +11650,11 @@ after three covers on the Thor — beside a portrait platform's five, that read 
 oversized boxes. `JustifiedCoverLayout.Pack` now takes `minCoversPerRow`, which the couch sets to 4 and
 desktop leaves at 1 (its window is wide enough already, and its pixels are snapshot-tested). The
 minimum lapses on a viewport too narrow to give each cover `MinimumColumnCoverWidth` (150 px), so a
-small window shows fewer, readable covers rather than slivers.
+small window shows fewer, readable covers rather than slivers. One consequence the first cut missed:
+the leftover last row used to be "too few to fill the width" by construction and could safely take
+the row above's height; with a count floor, three landscape covers held back by the count DO fill the
+width, and at a portrait row's height ran ~130 px past the gutter in All Games / search. The leftover
+row is now always shrunk to fit as well as capped at the row above.
 
 **The companion's logo was drawn twice.** `SecondScreenView` paints the running game's logo in the
 standby wash, and the resting spotlight underneath kept painting its own copy through the 95%-opaque
@@ -11669,7 +11676,9 @@ whatever sat under the finger in the dark. Every later touch lands there too, th
 on the view's root, and restarts a 5 s countdown, so the panel stays lit for as long as it is being
 used and goes dark again quickly when it is left alone (his call on the duration; it is one field). `IsStandby` gained one more term (`&& !IsAwake`); the overlay
 rule is untouched, so achievements and the app drawer still lift the dim on their own and restore it on
-close, gamepad-driven or not. The window is torn down on both edges of a play session, so a stale one
+close, gamepad-driven or not — which needs two guards: a touch while an overlay is up does not start a
+window (the tap that closes the sheet reaches the same root handler), and an overlay opening ends any
+window in flight, so close always hands the wash straight back. The window is torn down on both edges of a play session, so a stale one
 can never swallow the next game's dim.
 
 **The launch-screen chooser is a picture of the choice, and the choice is between two panels of one

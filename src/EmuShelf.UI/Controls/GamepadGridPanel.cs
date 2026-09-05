@@ -50,10 +50,12 @@ public sealed class GamepadGridPanel : Panel
 
     // Blank content above the first row and below the last, INSIDE the scrollable extent, so the
     // focused tile's shadow (which overflows the tile once the 1.09 focus scale is applied) is not
-    // hard-clipped by the scroll viewport on the edge rows. The host
-    // ScrollViewer's top margin is reduced by EdgeInsetTop, so the resting pixel layout is unchanged.
-    // The bottom inset additionally budgets for the overlay dock that floats over the grid's lower
-    // edge: it is what lets the last row scroll clear of the dock rather than resting under it.
+    // hard-clipped by the scroll viewport on the edge rows. The host ScrollViewer's top margin was
+    // cut by the ORIGINAL 24 to keep the resting layout where it was; the later rise to 48 was not
+    // compensated, so the resting first row now sits 24 px lower than it did — deliberately, that is
+    // the headroom the taller lift needed. The bottom inset additionally budgets for the overlay dock
+    // that floats over the grid's lower edge: it is what lets the last row scroll clear of the dock
+    // rather than resting under it.
     //
     // Both are extent-only (see _extentHeight). They are deliberately NOT part of any row's band:
     // the reveal centres a row on rowTop + rowHeight / 2, so an inset folded into the last row's
