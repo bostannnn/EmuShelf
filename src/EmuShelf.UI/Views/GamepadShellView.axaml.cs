@@ -1135,11 +1135,10 @@ public partial class GamepadShellView : UserControl
         UpdateRailIndicator(animate: false);
 
     // One selection pill sits behind the tabs and is moved to overlay the active tab, so a platform
-    // switch reads as the highlight travelling left/right rather than popping in place per tab. The
-    // active tab grows to show its name, so force layout before measuring, then size the pill to the
-    // tab and drive a translate transform to it. Only the translate eases (the composited transition on
-    // Border.gamepad-platform-indicator); Width/Height are applied instantly, because animating a layout
-    // property is a per-frame UI-thread layout pass that stutters under the platform-switch relayout.
+    // switch reads as the highlight travelling left/right rather than popping in place per tab. Every
+    // tab is the same fixed size and the pill matches it, so only the translate ever changes (the
+    // composited transition on Border.gamepad-platform-indicator); the strip's layout is untouched by a
+    // switch, which is what keeps the icons still while the pill moves.
     private void UpdateRailIndicator(bool animate)
     {
         if (_gamepadViewModel is not { IsGamepadMode: true })
@@ -1171,8 +1170,6 @@ public partial class GamepadShellView : UserControl
         {
             var transitions = indicator.Transitions;
             indicator.Transitions = null;
-            indicator.Width = active.Bounds.Width;
-            indicator.Height = active.Bounds.Height;
             indicator.RenderTransform = target;
             indicator.IsVisible = true;
             indicator.UpdateLayout();
@@ -1181,8 +1178,6 @@ public partial class GamepadShellView : UserControl
             return;
         }
 
-        indicator.Width = active.Bounds.Width;
-        indicator.Height = active.Bounds.Height;
         indicator.RenderTransform = target;
         indicator.IsVisible = true;
     }

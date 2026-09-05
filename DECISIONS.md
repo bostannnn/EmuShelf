@@ -11642,3 +11642,173 @@ Also observed, not changed: the Thor's second-screen return watcher is currently
 `enabled_accessibility_services` (only Odin's and NeoStation's are), so if onboarding does show, its
 mandatory second-screen gate blocks too. Pre-boot diagnostics were unreadable because the local Release
 build is not debuggable; the resolve verdict is therefore now also logged to logcat under `EmuShelfBoot`.
+## 2026-09-05 — Couch platform rail: fixed-size tabs, caption slot, reload off the press frame, staged shelf swap
+
+Andrew: the top-row platform selector on the Thor is "very janky and not smooth at all". Measured before
+changing anything (SurfaceFlinger BLAST frame timing + a 60fps `screenrecord` diffed frame by frame; the
+extractor recipe is in the project notes). Four separate things stacked up on every LB/RB press:
+
+1. The active tab grew to show its name. The label popped in at full width on the first frame, the icons
+   beside it jumped, and the pill — already resized to the wider tab — glided from the *old* tab for 220ms
+   under a label that was already sitting outside it. When the widened strip overflowed the viewport,
+   `BringIntoView` snapped the scroll offset as well.
+2. The reload ran inline in the press's dispatcher job (cache hit: swap + shelf rebuild; miss: clear + DB
+   read), so the pill's first glide frame waited on it.
+3. `BeginScopeChange` cleared `Games`, so the shelf cut to an empty stage, then the fresh cartridges flashed
+   grey "ARTWORK MISSING" labels for a frame or two before their decoded labels landed.
+4. Face textures (pixel swizzle + `glTexImage2D`) were built on the render thread in the first frame that
+   showed them; a switch or a landing decode put several full-size faces into one frame (50–70ms frames
+   ~0.7s after every move). Unvisited platforms additionally froze the UI thread ~200ms mid-glide.
+
+What changed:
+
+- **Rail (GamepadShellView.axaml, EmuShelfStyles.axaml, code-behind).** Icons only. Every tab is a fixed
+  58×54 icon square, the pill is the same fixed size and only ever translates (0.3s `ExponentialEaseOut`,
+  retargeting mid-glide so a held button reads as one sweep), so a switch changes nothing in the strip's
+  layout. The platform name is gone from the rail: a name slot beside the strip was tried first and was cut
+  to "Me…" on the Thor (the couch lays out at 1280 dip there; sixteen tabs leave ~60 dip), and Andrew's
+  verdict on seeing it was "remove it and keep only icons". A caption under the active tab was also
+  written and dropped for the same verdict. Sixteen icon tabs fit the Thor's width, so the strip no longer
+  scrolls there; the `ScrollViewer` stays for narrow windows.
+- **Reload deferral (MainViewModel).** `OnSelectedSystemChanged` and the direct All-Games path post
+  `RequestLibraryReload` at `DispatcherPriority.Background` (`DeferLibraryReloadAsync`), so the frame that
+  carries the pill's first step, the caption swap and the title is committed before the library work begins.
+  Background is the priority the existing debounce timers already run at on the Thor.
+- **Staged swap (MainViewModel + shelf markup).** `BeginScopeChange` no longer clears `Games`/`HasGames`/
+  `FocusedGame`; it only raises `IsLibraryLoading`, which now also drives the `library-surface.loading`
+  fade on the shelf stage grid and the grid's focused dock (the grid surface already had it). The outgoing
+  covers and title fade out over the build, the new list fades in when it lands; `FocusedGame` is nulled at
+  the swap itself. While the flag is up, `DispatchLibraryAction` drops every action except LB/RB/Menu/Cancel,
+  so A during the fade cannot launch the outgoing platform's focused game under the new platform's caption.
+- **Pending ≠ missing (MediaShelf3DControl).** A face whose scan path exists but has not decoded yet now
+  draws bare (platform tint) instead of the "artwork missing" label; only a face with no path, or one whose
+  decode failed, wears the placeholder. Failures are recorded per path in `_failedPhysicalArtwork`, which
+  also stops the visibility pass re-queuing a known-bad file on every publish.
+- **Rationed uploads (MediaShelf3DControl).** `SynchronizeArtworkTextures` uploads about one 1024² face's
+  worth of pixels per frame (`FaceUploadPixelBudgetPerFrame`, always at least one face), fronts for every
+  visible item before backs/spines/disc labels, and a frame that left faces behind requests the next one
+  (and cannot take the CRT's same-scene shortcut). A count-based ration was tried first: the cost is in the
+  pixel swizzle, so two large scraped covers still made one 78ms frame. A `PerfTrace` `UPLOAD` line (≥4ms
+  or deferred) makes the cost readable from logcat.
+
+Not changed: building an unvisited scope's view models still happens on the UI thread inside `Task.Run`'s
+continuation (`ApplyFilter`, `RestoreFocusedGame`, the shelf's `RebuildLayout`); the deferral moves it off
+the press frame and the fade covers it, but a large scope still costs one long frame when it lands.
+## 2026-09-05 — Couch polish: an accent bar under the focused cover is the selector, and the packer takes a column floor
+
+Four fixes from a Thor pass, three of which are one story: the couch grid was retuned for the
+justified-row repack and never re-tuned for what that repack did to the *selection*.
+
+**The couch grid's selection marker moved OFF the artwork.** The ringless focus (PR #226) leans on
+light, and its light was `gamepad-focus-pool`, a 26 px puddle spilling from the cover's bottom edge,
+sized back when covers shared one canonical frame. Against a full-bleed justified row it read as a
+smudge, so this pass replaced it with a proper accent halo behind the whole cover — brighter, bigger,
+breathing. The owner's verdict on device: "selection glow is terrible, it looks very bad". That is the
+THIRD coloured treatment this grid has rejected (the solid accent pad read as a sticker frame; the thin
+white ring + coloured glow fought the artwork's own colours), and the pattern across all three is the
+finding: **anything painted on or around a cover competes with the art instead of pointing at it.**
+
+Three replacements were built and shot on the Thor with his real library, and he picked from the
+photographs: no marker at all (lift + shadow + neighbours dimmed to 0.5), a colourless white rim-light,
+and a crisp accent bar in the gap under the cover. **The bar ships.** It works because it is the first
+treatment that does not touch the artwork at all: it lives in the 10 px lead-in between the cover and
+its title, drawn inside the cover stack (not the label row) so the 1.09 focus zoom scales it with the
+tile and no text ever moves. Neighbour covers sit at 0.6 — 0.78 was too polite to register, 0.5 was
+what the no-marker option needed and is more dimming than a marked selection calls for. The bar wipes
+out from the centre over 0.22 s as focus lands, re-fired per tile, so browsing feels alive and a
+resting grid animates nothing.
+
+The halo never reached the tree: it was built and reverted on the same branch, so nothing of it —
+neither its glow brush nor the theme-service seam that recomputed that brush per palette — exists on
+`main` or here; the only thing this pass removes is `gamepad-focus-pool`. The seam is still worth
+recording as advice because it was the right shape for the problem — an accent-derived *gradient*
+cannot be authored in the ~30 palette files or in the generated artwork dictionary, so deriving it
+centrally at apply time is how any future accent gradient should be done.
+
+**A continuous animation on the couch costs half a core, whatever it animates.** The halo was first
+built breathing (2.8 s alternating opacity+scale), which is what was asked for. Measured on the Thor
+(Release, full library, idle couch grid, 10 s windows of `/proc/<pid>/task/*/stat`):
+
+| couch grid at rest | render thread | UI thread |
+| --- | --- | --- |
+| 2.8 s breathing loop | 43.3% of a core | 8.2% |
+| no animation | 0.0% | 0.5% |
+
+The layer itself is not the cost — a small gradient rect, no offscreen. The cost is that ANY perpetual
+animation keeps the compositor awake every vsync, and each of those frames recomposites the ~40
+realized tiles; filtered to four games the same loop cost 19.7%, so it scales with what is on screen,
+not with the animation. Same fixed per-frame floor the shelf sway hit (2026-08-24), where dropping the
+animation's frame rate changed nothing. The rule for this shell: **a couch animation that runs while
+nobody is touching the device is not affordable; make it one-shot and re-trigger it on input.**
+
+**Couch gutters are their own constants now.** `CoverColumnSpacing` stays 28 for desktop (mirrored by
+MainWindow's row `Spacing`); the couch uses `GamepadCoverColumnSpacing` = 44 and row margins 20/32,
+because the focused tile scales to 1.09 and its drop shadow spills past that — at 28 the lift alone
+nearly touched the neighbouring cover. `EdgeInsetTop` rises 24 → 48 so the top row's lift and shadow
+(~40 px above the cover) are not shaved by the scroller; the host scroller's margin was NOT re-cut to
+match, so the resting first row sits 24 px lower than before — the headroom is the point.
+
+**The packer takes a minimum covers-per-row.** Justified packing commits a row as soon as filling the
+width brings its height down to the target, which for landscape art (SNES 1.434, arcade 1.333) happens
+after three covers on the Thor — beside a portrait platform's five, that read as a broken shelf of
+oversized boxes. `JustifiedCoverLayout.Pack` now takes `minCoversPerRow`, which the couch sets to 4 and
+desktop leaves at 1 (its window is wide enough already, and its pixels are snapshot-tested). The
+minimum lapses on a viewport too narrow to give each cover `MinimumColumnCoverWidth` (150 px), so a
+small window shows fewer, readable covers rather than slivers. One consequence the first cut missed:
+the leftover last row used to be "too few to fill the width" by construction and could safely take
+the row above's height; with a count floor, three landscape covers held back by the count DO fill the
+width, and at a portrait row's height ran ~130 px past the gutter in All Games / search. The leftover
+row is now always shrunk to fit as well as capped at the row above.
+
+**The companion's logo was drawn twice.** `SecondScreenView` paints the running game's logo in the
+standby wash, and the resting spotlight underneath kept painting its own copy through the 95%-opaque
+wash. The two were centred in different regions — the resting one in the spotlight row, the standby one
+across the whole surface including the 64 px dock bar — so they landed ~32 px apart and read as a
+doubled logo on Screen-2. Two changes, because the first alone was not enough: the resting copy (and
+the no-artwork wordmark) fade out for as long as standby is up (`SpotlightLogoOpacity` /
+`ShowRestingBranding`), AND the standby copy moved out of the wash into the spotlight row so both are
+centred on the same rect. Without the second, the 0.35 s wash fade and the 0.30 s logo fade overlapped
+and the two offset copies crossed over visibly for ~300 ms on every dim and every tap-to-wake — the
+same artefact, just briefer (caught in review). Headless tests assert exactly one of the two mounted
+images is ever painted, in standby and while browsing, and that their centres coincide.
+
+**A touch wakes the dimmed companion; it goes back to sleep on its own.** While a game runs, the idle
+companion sits under a near-black wash — good for a burn-in-prone panel, useless for finding the dock
+slot you want to press. The wash is now hit-testable *only while it is up*, so the first touch is
+swallowed and simply lifts the dim (`SecondScreenViewModel.NoteInteraction`) instead of launching
+whatever sat under the finger in the dark. Every later touch lands there too, through the tunnel handler
+on the view's root, and restarts a 5 s countdown, so the panel stays lit for as long as it is being
+used and goes dark again quickly when it is left alone (his call on the duration; it is one field). `IsStandby` gained one more term (`&& !IsAwake`); the overlay
+rule is untouched, so achievements and the app drawer still lift the dim on their own and restore it on
+close, gamepad-driven or not — which needs two guards: a touch while an overlay is up does not start a
+window (the tap that closes the sheet reaches the same root handler), and an overlay opening ends any
+window in flight, so close always hands the wash straight back. The window is torn down on both edges of a play session, so a stale one
+can never swallow the next game's dim.
+
+**The launch-screen chooser is a picture of the choice, and the choice is between two panels of one
+device.** It was four rows — "Play on the built-in screen", "Play on the external screen", then the same
+two prefixed "Always use…" — which reads as a settings list at the moment the player is trying to start
+a game. It is now two cards that Left/Right walk, over a "remember" checkbox that Down reaches and A
+flips; whichever card is then chosen honours the flag. Both cards draw the SAME device with the screen
+being chosen lit and the other dark. The drawing is the actual hardware — the Thor is a DS-style
+clamshell: 6" 16:9 in the lid, 3.92" near-square (31:27) touch screen in the base, lid and base the
+same width, and the controls ASYMMETRIC — left column is stick over D-pad, right column is face
+buttons over stick, with a chin of speaker grilles and the AYN button under the bottom screen (AYN's
+product renders and the DroiX/Retro Dodo reviews). That asymmetry is what makes the glyph read as the
+Thor and not a generic DS, and the first drawing had it upside down (D-pad and face buttons above the
+sticks); it is worth checking against a photo before drawing anything for this device, because an
+abstract two-panel diagram was tried first and rejected as "just idiotic infographic". The drawing is
+one control, `ThorDeviceGlyph`, lit from two flags, so both cards share it. The card is a ROW — glyph
+beside the words — because the chooser has to fit the Thor's own overlay: at 833×468 the body between
+the title and the hint legend is ~216 dip, and the first stacked layout (drawing over caption, 168 dip
+cards) pushed the remember row into the legend and the footer off the sheet. The "change it later"
+line is the remember row's second line now, the sheet is 680 wide so neither caption wraps, and
+`GamepadLaunchScreenChooserTests` pins the whole thing inside the sheet at Thor size in both themes. "External screen" is gone from every user-facing string, here and in
+Settings → Emulators: this feature is gated behind `IExternalDisplayProbe`, which only the Android head
+implements, so the only hardware that ever sees it is a handheld that owns both screens — "external"
+described a monitor that is not there. The enum member stays `GameLaunchScreen.External`; it is a stored
+value. Still three `GamepadOverlayOptionViewModel`s
+under the surface, so focus, A-routing and the existing tests keep working; the chooser only owns its
+four directions (`DispatchLaunchScreenNavigation`) because the layout is a row, not a column. The title
+carries the question and the eyebrow carries the game name, so a long game title no longer wraps the
+header onto two lines.

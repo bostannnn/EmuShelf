@@ -107,6 +107,22 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private readonly Dictionary<long, UploadedCover> _uploadedCovers = [];
     private readonly LinkedList<long> _coverLru = [];
     private readonly Dictionary<ArtworkKey, DecodedArtwork> _decodedPhysicalArtwork = [];
+
+    // Faces whose scan failed to decode, by the path that failed. A face with a path that is neither
+    // decoded nor known-bad is *pending* and draws bare; only a face with no path at all, or one in
+    // this set, wears the "artwork missing" placeholder. Without this record a failed decode would
+    // stay bare forever, and every visibility pass would retry the same bad file.
+    private readonly Dictionary<ArtworkKey, string> _failedPhysicalArtwork = [];
+
+    // Face textures are built (pixel swizzle + glTexImage2D) on the render thread, in the first frame
+    // that shows them. Measured on the Thor, a platform switch or a landing decode put several
+    // full-size faces into one frame, and that frame took 50–70ms; the cost scales with pixels (a
+    // 1024² support scan ≈ 5ms, a pair of large scraped covers ≈ 78ms), so the ration is a pixel
+    // budget per frame — roughly one 1024² face — not a face count. Fronts go first, a frame always
+    // uploads at least one face so nothing can starve, and a frame that had to leave faces behind
+    // asks for the next one, so the rest land over the following frames instead of in one hitch.
+    private const long FaceUploadPixelBudgetPerFrame = 1_200_000;
+    private bool _artworkUploadsPending;
     private readonly LinkedList<ArtworkKey> _physicalArtworkLru = [];
     private readonly Dictionary<ArtworkKey, PhysicalArtworkLoad> _physicalArtworkLoads = [];
     private readonly Queue<PhysicalArtworkLoad> _physicalArtworkQueue = [];
@@ -671,7 +687,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             && frame is not null
             && ReferenceEquals(frame, _lastRenderedSnapshot)
             && width == _lastRenderedWidth
-            && height == _lastRenderedHeight;
+            && height == _lastRenderedHeight
+            && !_artworkUploadsPending;
 
         // Per-frame render cost, for the log-based perf sampler (PerfTrace). Cheap timestamp pair; only
         // frames that actually draw reach here (the empty/no-op frames returned above).
@@ -729,6 +746,12 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 _lastRenderedSnapshot = frame;
                 _lastRenderedWidth = width;
                 _lastRenderedHeight = height;
+
+                // Faces left behind by this frame's upload ration land on the next one(s).
+                if (_artworkUploadsPending)
+                {
+                    RequestNextFrameRendering();
+                }
             }
 
             // A clean frame clears the transient-failure count that keeps a one-off from ever
@@ -1058,37 +1081,70 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             return;
         }
 
-        foreach (var item in frame.Items)
+        var uploads = 0;
+        long uploadedPixels = 0;
+        var deferred = false;
+        var uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
+        // Two passes: the front of every visible item first (the face the eye lands on), then the
+        // backs, spines and disc labels with whatever budget is left. Clearing a face (null artwork)
+        // is not an upload and is never deferred, so a cover that changed never shows a stale face.
+        foreach (var pass in FacePasses)
         {
-            if (!_uploadedCovers.TryGetValue(item.Key, out var uploaded))
+            foreach (var item in frame.Items)
             {
-                uploaded = new UploadedCover(_coverLru.AddFirst(item.Key));
-                _uploadedCovers[item.Key] = uploaded;
-            }
-            else
-            {
-                TouchCover(uploaded);
-            }
-
-            frame.Artwork.TryGetValue(item.Key, out var faces);
-            foreach (var face in Faces)
-            {
-                var artwork = faces?[(int)face];
-                if (ReferenceEquals(uploaded.Faces[(int)face], artwork))
+                if (!_uploadedCovers.TryGetValue(item.Key, out var uploaded))
                 {
-                    continue;
+                    uploaded = new UploadedCover(_coverLru.AddFirst(item.Key));
+                    _uploadedCovers[item.Key] = uploaded;
+                }
+                else if (ReferenceEquals(pass, FacePasses[0]))
+                {
+                    TouchCover(uploaded);
                 }
 
-                if (!TryBuildFaceTexture(artwork, out var texture))
+                frame.Artwork.TryGetValue(item.Key, out var faces);
+                foreach (var face in pass)
                 {
-                    // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
-                    // on the GPU for this face and do not record the upload, so a later clean frame
-                    // retries. A per-face skip, never the whole draw.
-                    continue;
-                }
+                    var artwork = faces?[(int)face];
+                    if (ReferenceEquals(uploaded.Faces[(int)face], artwork))
+                    {
+                        continue;
+                    }
 
-                _renderer.SetPanelArt(item.Key, (int)face, texture);
-                uploaded.Faces[(int)face] = artwork;
+                    if (artwork is not null && uploads > 0 && uploadedPixels >= FaceUploadPixelBudgetPerFrame)
+                    {
+                        deferred = true;
+                        continue;
+                    }
+
+                    if (!TryBuildFaceTexture(artwork, out var texture))
+                    {
+                        // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
+                        // on the GPU for this face and do not record the upload, so a later clean frame
+                        // retries. A per-face skip, never the whole draw.
+                        continue;
+                    }
+
+                    _renderer.SetPanelArt(item.Key, (int)face, texture);
+                    uploaded.Faces[(int)face] = artwork;
+                    if (texture is not null)
+                    {
+                        uploads++;
+                        uploadedPixels += (long)texture.Width * texture.Height;
+                    }
+                }
+            }
+        }
+
+        _artworkUploadsPending = deferred;
+        if (uploads > 0)
+        {
+            var uploadMs = (System.Diagnostics.Stopwatch.GetTimestamp() - uploadStart) * 1000.0 /
+                           System.Diagnostics.Stopwatch.Frequency;
+            if (uploadMs >= 4 || deferred)
+            {
+                EmuShelf.App.Diagnostics.PerfTrace.Event(
+                    $"UPLOAD faces={uploads} px={uploadedPixels} deferred={(deferred ? "yes" : "no")} ms={uploadMs:F1}");
             }
         }
 
@@ -1119,6 +1175,13 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         ShelfArtworkFace.DiscLabel,
     ];
 
+    // Upload order for SynchronizeArtworkTextures: fronts before everything else.
+    private static readonly ShelfArtworkFace[][] FacePasses =
+    [
+        [ShelfArtworkFace.Front],
+        [ShelfArtworkFace.Back, ShelfArtworkFace.Spine, ShelfArtworkFace.DiscLabel],
+    ];
+
     private IImage? ResolveArtwork(GameViewModel game, ShelfArtworkFace face)
     {
         var path = game.ShelfArtworkPath(face);
@@ -1139,10 +1202,20 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 return decoded.Image;
 
             case ShelfArtworkKind.PlaceholderLabel:
-                // A cartridge with no selected/decoded support texture wears the blank-label
-                // placeholder: platform medallion and "artwork missing", the same vocabulary the
-                // 2D grid uses. Portrait box art is packaging and is still never cropped onto a
-                // cartridge label.
+                // A face whose scan exists but has not decoded yet is pending, not missing: it keeps
+                // the bare platform tint until the decode lands, or fails and earns the placeholder.
+                // Drawing "artwork missing" for the frames between a platform switch and the decode
+                // was a visible grey flash on every LB/RB on the Thor.
+                if (!string.IsNullOrWhiteSpace(path) &&
+                    !(_failedPhysicalArtwork.TryGetValue(new ArtworkKey(game.Id, face), out var failedPath) &&
+                      string.Equals(failedPath, path, StringComparison.Ordinal)))
+                {
+                    return null;
+                }
+
+                // A cartridge with no support texture at all wears the blank-label placeholder:
+                // platform medallion and "artwork missing", the same vocabulary the 2D grid uses.
+                // Portrait box art is packaging and is still never cropped onto a cartridge label.
                 return CartridgeLabelPlaceholder.TryGet(game.SystemId);
 
             default:
@@ -1542,6 +1615,16 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
 
         var key = new ArtworkKey(game.Id, face);
+        if (_failedPhysicalArtwork.TryGetValue(key, out var failedPath))
+        {
+            if (string.Equals(failedPath, path, StringComparison.Ordinal))
+            {
+                return; // Known bad: the placeholder is drawn, and a retry would fail the same way.
+            }
+
+            _failedPhysicalArtwork.Remove(key); // A re-scrape replaced the file; try the new one.
+        }
+
         if (_decodedPhysicalArtwork.TryGetValue(key, out var decoded))
         {
             if (string.Equals(decoded.Path, path, StringComparison.Ordinal))
@@ -1611,6 +1694,15 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                 if (isCurrentLoad)
                 {
                     _physicalArtworkLoads.Remove(load.Key);
+                }
+
+                if (bitmap is null && isCurrentLoad && !load.IsCancelled && _isAttached)
+                {
+                    // The face was drawn bare while this decode was pending; now that it is known
+                    // bad, the next publish gives it the "artwork missing" placeholder instead.
+                    _failedPhysicalArtwork[load.Key] = load.Path;
+                    InvalidateArtwork();
+                    PublishFrame();
                 }
 
                 if (bitmap is null || load.IsCancelled || !isCurrentLoad || !_isAttached ||
@@ -1764,6 +1856,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         }
 
         _decodedPhysicalArtwork.Clear();
+        _failedPhysicalArtwork.Clear();
         _physicalArtworkLru.Clear();
         foreach (var load in _physicalArtworkLoads.Values)
         {
