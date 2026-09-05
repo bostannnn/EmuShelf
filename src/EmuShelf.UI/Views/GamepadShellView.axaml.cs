@@ -657,6 +657,9 @@ public partial class GamepadShellView : UserControl
     }
 
     // Visual focus/reveal is kept here; controller routing and modal state remain in the view model.
+    // The settings page the scroller was last revealed for; see RevealGamepadOverlayFocus.
+    private (SettingsSection Section, SetupStep Step, bool Setup)? _lastSettingsPage;
+
     private void RevealGamepadOverlayFocus() => RevealGamepadOverlayFocus(0);
 
     private void RevealGamepadOverlayFocus(int attempt)
@@ -746,12 +749,31 @@ public partial class GamepadShellView : UserControl
             if (index < 0)
                 return;
 
+            // A new page (section, or wizard step) starts at the top. Without this the scroller keeps the
+            // previous page's offset; a shorter page then sits entirely above the viewport, and because
+            // the repeater never realizes the off-screen focused row, nothing below scrolls it back — the
+            // wizard's Saves step came up blank after the long Games & emulators list.
+            var page = (viewModel.GamepadSettings.SelectedSection, viewModel.GamepadSettings.CurrentSetupStep, viewModel.GamepadSettings.IsSetupMode);
+            if (page != _lastSettingsPage)
+            {
+                _lastSettingsPage = page;
+                GamepadSettingsScroller.Offset = new Vector(0, 0);
+                // The repeater learns about the new viewport through EffectiveViewportChanged, which lands
+                // after this handler; looking for the row now would find the stale realization window
+                // (rows from the old offset drawn, everything above them blank). Come back one pass later.
+                Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
+                return;
+            }
+
             GamepadSettingsScroller.UpdateLayout();
             GamepadSettingsRows.UpdateLayout();
             var element = GamepadSettingsRows.TryGetElement(index) ?? GamepadSettingsRows.GetOrCreateElement(index);
             if (element is null)
             {
-                if (attempt < 5)
+                // Same recovery for a row that will not realize: the viewport is probably past the content.
+                if (attempt == 3)
+                    GamepadSettingsScroller.Offset = new Vector(0, 0);
+                if (attempt < 8)
                     Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
                 return;
             }

@@ -2163,3 +2163,10 @@ breaks the whole-solution macOS build/test loop.
           own 833×468 overlay (pinned by test);
           "external screen" is gone from every string — the only hardware this reaches owns both screens.
           See DECISIONS 2026-09-05.
+    - [x] **S6 — first-run onboarding rebuilt as a two-phase setup wizard** (2026-09-05; Thor pass pending).
+          The three-treatment onboarding card is gone. Phase A (pre-boot: storage access, data folder — with
+          "use your existing library" for a reinstall) and phase B (in-app, the Settings projection in setup
+          mode: second screen, closing games, games and emulators, saves) share one rail, one row control
+          and one legend with couch Settings. Plain wording throughout (no "second-screen return", "emulator
+          return", "watcher"). `SetupCompletedVersion` gates the auto-open; Settings → Library has "Run setup
+          again". See DECISIONS 2026-09-05 (second entry) and `docs/prototypes/android-setup-wizard/`.

@@ -53,6 +53,25 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // overlays. Mirrors MainActivity.DispatchKeyEvent, which is the same pattern for the couch on Screen 1.
     public override bool DispatchKeyEvent(KeyEvent? e)
     {
+        // While the main screen has Settings or the setup wizard open, the pad belongs to it even though
+        // this window is the focused one (the user touched Screen-2, or a settings page opened here).
+        // Forward instead of handling: buttons on key-down, Back on key-up as the shell's Back edge.
+        if (e is not null && AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true)
+        {
+            if (e.KeyCode == Keycode.Back)
+            {
+                if (e.Action == KeyEventActions.Up)
+                    AndroidGamepadInput.DispatchBack?.Invoke();
+                return true;
+            }
+            if (AndroidGamepadInput.Map(e.KeyCode) is { } forwarded)
+            {
+                if (e.Action == KeyEventActions.Down && (e.RepeatCount == 0 || AndroidGamepadInput.RepeatsWhileHeld(forwarded)))
+                    AndroidGamepadInput.Dispatch?.Invoke(forwarded);
+                return true;
+            }
+        }
+
         // Every controller key is consumed here (both edges) so Avalonia never runs focus nav on Screen-2;
         // the action is dispatched on key-down only (repeats included, so a held D-pad keeps walking the
         // grid). Back is deliberately NOT in the map, so it falls through to OnBackPressed below (close an

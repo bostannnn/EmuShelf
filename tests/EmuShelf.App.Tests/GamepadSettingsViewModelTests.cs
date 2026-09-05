@@ -529,7 +529,7 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal("Shizuku permission not granted · press Y to grant it", row.Description);
         Assert.Equal("Shizuku needs attention", viewModel.EmulatorsRailStatus);
         viewModel.FocusedRowIndex = viewModel.Rows.IndexOf(row);
-        Assert.Equal("Grant Shizuku", viewModel.ActionsHint);
+        Assert.Equal("Allow Shizuku", viewModel.ActionsHint);
         Assert.True(viewModel.Dispatch(GamepadAction.Actions));
         await Task.Delay(50);
         Assert.Equal(1, granted);
