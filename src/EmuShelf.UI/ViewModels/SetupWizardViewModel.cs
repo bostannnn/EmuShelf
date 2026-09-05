@@ -55,6 +55,16 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
     public bool HasStatus => !string.IsNullOrWhiteSpace(StatusMessage);
 
+    /// <summary>Left from a row moves the controller onto the step rail; Up/Down walk the steps there.</summary>
+    [ObservableProperty]
+    public partial bool IsRailFocused { get; set; }
+
+    partial void OnIsRailFocusedChanged(bool value)
+    {
+        Rail.IsRailFocused = value;
+        FocusRevision++;
+    }
+
     public GamepadSettingsRowViewModel? FocusedRow =>
         Rows.Count == 0 ? null : Rows[Math.Clamp(FocusedRowIndex, 0, Rows.Count - 1)];
 
@@ -172,6 +182,35 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
     /// </summary>
     public bool DispatchGamepadAction(GamepadAction action)
     {
+        if (IsRailFocused)
+        {
+            switch (action)
+            {
+                case GamepadAction.NavigateUp:
+                    Back();
+                    return true;
+                case GamepadAction.NavigateDown:
+                    Advance();
+                    return true;
+                case GamepadAction.NavigateRight:
+                case GamepadAction.Confirm:
+                    IsRailFocused = false;
+                    return true;
+                case GamepadAction.NavigateLeft:
+                case GamepadAction.PreviousPlatform:
+                case GamepadAction.NextPlatform:
+                    return true;
+                case GamepadAction.Menu:
+                    Advance();
+                    return true;
+                case GamepadAction.Cancel:
+                    Back();
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         switch (action)
         {
             case GamepadAction.NavigateUp:
@@ -181,6 +220,8 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
                 MoveFocus(1);
                 return true;
             case GamepadAction.NavigateLeft:
+                IsRailFocused = true;
+                return true;
             case GamepadAction.NavigateRight:
             case GamepadAction.PreviousPlatform:
             case GamepadAction.NextPlatform:

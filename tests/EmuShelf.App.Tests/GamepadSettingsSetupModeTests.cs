@@ -135,6 +135,41 @@ public sealed class GamepadSettingsSetupModeTests
     }
 
     [Fact]
+    public void LeftEntersTheRail_WhereUpDownWalkTheSteps_AndRightReturns()
+    {
+        var vm = Wizard(DesktopSettings());
+
+        Assert.True(vm.Dispatch(GamepadAction.NavigateLeft));
+        Assert.True(vm.IsRailFocused);
+        Assert.True(vm.SetupRail.IsRailFocused);
+
+        Assert.True(vm.Dispatch(GamepadAction.NavigateDown));
+        Assert.Equal(SetupStep.ClosingGames, vm.CurrentSetupStep);
+        Assert.True(vm.IsRailFocused);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateDown));
+        Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.Equal(SetupStep.ClosingGames, vm.CurrentSetupStep);
+
+        Assert.True(vm.Dispatch(GamepadAction.NavigateRight));
+        Assert.False(vm.IsRailFocused);
+        Assert.Equal("emulators.close-on-return", vm.FocusedRow!.Key);
+    }
+
+    [Fact]
+    public void EmptyLibrary_OpensTheFirstSystem_SoAddFolderIsOnScreen()
+    {
+        var vm = Wizard(DesktopSettings(closeOnReturn: false), hasSecondScreen: false);
+
+        Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
+        var first = vm.Rows.First(row => row.IsSummary);
+        Assert.True(first.IsExpanded);
+        // Its per-platform rows are on screen beneath it (the test settings expose rescan, a real
+        // Android library exposes the folder rows + "Add game folder").
+        Assert.Contains(vm.Rows, row => row.IsGrouped && row.SystemId == first.SystemId);
+    }
+
+    [Fact]
     public async Task FinishOnTheLastStep_SavesAndCloses()
     {
         var vm = Wizard(DesktopSettings(closeOnReturn: false), hasSecondScreen: false);

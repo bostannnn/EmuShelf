@@ -237,6 +237,25 @@ public sealed class SetupWizardViewModelTests
     }
 
     [Fact]
+    public void LeftEntersTheRail_AndUpDownWalkTheStepsThatAreOpen()
+    {
+        var bootstrap = new FakeBootstrap { RequiresStoragePermission = true, IsStoragePermissionGranted = true, RecommendedBaseDirectory = "/x" };
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.LocationUnavailable, _ => { });
+        Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
+        Assert.True(vm.IsRailFocused);
+        Assert.True(vm.Rail.IsRailFocused);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateUp));
+        Assert.Equal(SetupStep.StorageAccess, vm.CurrentStep);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
+        Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
+        Assert.False(vm.IsRailFocused);
+        Assert.Equal("setup.folder.recommended", vm.FocusedRow!.Key);
+    }
+
+    [Fact]
     public void DpadMovesFocus_AndUnmappedActionsAreNotConsumed()
     {
         var bootstrap = new FakeBootstrap { RequiresStoragePermission = false, RecommendedBaseDirectory = "/x" };

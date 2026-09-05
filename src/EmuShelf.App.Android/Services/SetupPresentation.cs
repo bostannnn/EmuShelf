@@ -32,6 +32,27 @@ internal sealed class SetupPresentation : Presentation
         return new SetupPresentation(activity, displays[0]);
     }
 
+    // If the user touches this screen it becomes the focused display and the pad lands here; hand every
+    // controller key to the setup page on the other screen (Back as B) so the page never goes dead.
+    public override bool DispatchKeyEvent(KeyEvent? e)
+    {
+        if (e is null)
+            return base.DispatchKeyEvent(e!);
+        if (e.KeyCode == Keycode.Back)
+        {
+            if (e.Action == KeyEventActions.Up)
+                AndroidGamepadInput.Dispatch?.Invoke(EmuShelf.App.Services.GamepadAction.Cancel);
+            return true;
+        }
+        if (AndroidGamepadInput.Map(e.KeyCode) is { } action)
+        {
+            if (e.Action == KeyEventActions.Down && e.RepeatCount == 0)
+                AndroidGamepadInput.Dispatch?.Invoke(action);
+            return true;
+        }
+        return base.DispatchKeyEvent(e);
+    }
+
     protected override void OnCreate(global::Android.OS.Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);

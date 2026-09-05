@@ -2441,17 +2441,6 @@ public partial class MainViewModel : ViewModelBase
     public const int SetupWizardVersion = 1;
 
     /// <summary>
-    /// Whether the in-app half of the setup wizard should open on this launch: Android couch mode, the
-    /// wizard not yet completed at its current version, nothing else on screen.
-    /// </summary>
-    private bool ShouldRunSetupWizard() =>
-        OperatingSystem.IsAndroid()
-        && IsGamepadMode
-        && GamepadOverlay == GamepadOverlayKind.None
-        && _settingsService is not null
-        && _settingsService.Load().SetupCompletedVersion < SetupWizardVersion;
-
-    /// <summary>
     /// Opens the Settings projection in setup-wizard mode: the steps that need the composed app (second
     /// screen, closing games, games and emulators, saves), walked in order with START. Runs once on first
     /// launch after the pre-boot page set the data folder, and again from Settings → "Run setup again".
@@ -6020,8 +6009,37 @@ public partial class MainViewModel : ViewModelBase
 
         // First launch on Android: the pre-boot page set the data folder and restarted into the shell;
         // the rest of setup runs here, over the library, once everything above has settled.
-        if (ShouldRunSetupWizard())
-            await OpenSetupWizardAsync();
+        await OfferSetupWizardAtStartupAsync();
+    }
+
+    /// <summary>
+    /// Opens the in-app setup wizard after startup when it has not been completed at the current version.
+    /// Waits out a busy shell (a scan or reload still running from the startup pass) rather than giving
+    /// up, and logs the decision either way so a wizard that did not appear can be explained from the log.
+    /// </summary>
+    private async Task OfferSetupWizardAtStartupAsync()
+    {
+        var completed = _settingsService?.Load().SetupCompletedVersion;
+        var wanted = OperatingSystem.IsAndroid() && IsGamepadMode && completed is { } version && version < SetupWizardVersion;
+        _logger.Information(
+            $"Setup wizard at startup: {(wanted ? "opening" : "not needed")} (android={OperatingSystem.IsAndroid()}, couch={IsGamepadMode}, completedVersion={completed?.ToString() ?? "n/a"}, current={SetupWizardVersion}).");
+        if (!wanted)
+            return;
+
+        // Up to 30 s for the shell to go idle; the open is skipped while it is busy or another open is in flight.
+        for (var attempt = 0; attempt < 60 && (IsBusy || _openingGamepadSettings || GamepadOverlay != GamepadOverlayKind.None); attempt++)
+            await Task.Delay(500);
+
+        if (GamepadOverlay != GamepadOverlayKind.None)
+        {
+            _logger.Warning($"Setup wizard not opened: the {GamepadOverlay} overlay is up.");
+            return;
+        }
+
+        await OpenSetupWizardAsync();
+        _logger.Information(GamepadSettings?.IsSetupMode == true
+            ? "Setup wizard opened."
+            : $"Setup wizard did not open (busy={IsBusy}, opening={_openingGamepadSettings}).");
     }
 
     /// <summary>

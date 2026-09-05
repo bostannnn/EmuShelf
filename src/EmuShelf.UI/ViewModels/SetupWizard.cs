@@ -91,6 +91,10 @@ public sealed partial class SetupWizardRailModel : ObservableObject
     [ObservableProperty]
     public partial ICommand? StartCommand { get; set; }
 
+    /// <summary>The rail owns the controller (Left from a row); Up/Down then walk the steps, Right/A return.</summary>
+    [ObservableProperty]
+    public partial bool IsRailFocused { get; set; }
+
     /// <summary>Marks <paramref name="current"/> as the shown step and every earlier listed step as done.</summary>
     public void SetCurrent(SetupStep current)
     {

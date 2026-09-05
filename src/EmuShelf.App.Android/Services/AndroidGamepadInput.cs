@@ -19,6 +19,16 @@ public static class AndroidGamepadInput
     public static Func<GamepadAction, bool>? Dispatch { get; set; }
 
     /// <summary>
+    /// True while the main screen has a surface that must own the controller — Settings, the setup
+    /// wizard — even if the companion display is the top-focused one (Android routes hardware keys to
+    /// the focused window of the top-focused display, and touching Screen-2 makes it that). The
+    /// Screen-2 presentations consult this and forward the pad to <see cref="Dispatch"/> instead of
+    /// handling it themselves, so a trip through a settings page that opened on the bottom screen does
+    /// not leave the wizard dead on the top one. Set by the shell; null (never claims) before it.
+    /// </summary>
+    public static Func<bool>? MainScreenClaimsPad { get; set; }
+
+    /// <summary>
     /// Handles the Android system Back button / gesture: returns true when a couch overlay was closed
     /// (Back is consumed), false at the root library so the Activity lets the platform exit. Distinct from
     /// <see cref="Dispatch"/> because the library-level Cancel swallows B, which would otherwise trap Back.

@@ -22,6 +22,7 @@
                     <Button Classes="gamepad-settings-nav"
                             Classes.selected="{Binding IsCurrent}"
                             Classes.dimmed="{Binding IsDimmed}"
+                            Classes.rail-active="{Binding $parent[ItemsControl].((vm:SetupWizardRailModel)DataContext).IsRailFocused}"
                             Focusable="False" IsHitTestVisible="False">
                         <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
                             <Border Width="5" CornerRadius="3"

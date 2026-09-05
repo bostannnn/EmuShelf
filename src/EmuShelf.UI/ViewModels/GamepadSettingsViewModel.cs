@@ -731,6 +731,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 SetupRail.Steps.Add(new SetupStepViewModel(step));
             SetupRail.StartCommand = new AsyncRelayCommand(AdvanceSetupAsync);
             SelectedSection = SectionForSetupStep(_liveSetupSteps[0]);
+            PrepareSetupStep();
         }
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
@@ -829,11 +830,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             {
                 case GamepadAction.NavigateUp:
                 case GamepadAction.PreviousPlatform:
-                    MoveSection(-1);
+                    if (IsSetupMode)
+                        SelectSetupStep(_setupIndex - 1);
+                    else
+                        MoveSection(-1);
                     return true;
                 case GamepadAction.NavigateDown:
                 case GamepadAction.NextPlatform:
-                    MoveSection(1);
+                    if (IsSetupMode)
+                        SelectSetupStep(_setupIndex + 1);
+                    else
+                        MoveSection(1);
                     return true;
                 case GamepadAction.NavigateRight:
                 case GamepadAction.Confirm:
@@ -842,10 +849,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 case GamepadAction.NavigateLeft:
                     return true;
                 case GamepadAction.Cancel:
-                    CloseRequested?.Invoke(false);
+                    if (IsSetupMode)
+                        BackSetup();
+                    else
+                        CloseRequested?.Invoke(false);
                     return true;
                 case GamepadAction.Menu:
-                    if (SaveRow is { } railSave)
+                    if (IsSetupMode)
+                        _ = AdvanceSetupAsync();
+                    else if (SaveRow is { } railSave)
                         _ = ActivateAsync(railSave);
                     return true;
                 default:
@@ -921,8 +933,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             {
                 case GamepadAction.PreviousPlatform:
                 case GamepadAction.NextPlatform:
-                    return true;
-                case GamepadAction.NavigateLeft when FocusedRow?.IsChoice != true:
                     return true;
                 case GamepadAction.Cancel:
                     BackSetup();
@@ -1012,7 +1022,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private void EnterRail()
     {
-        if (!IsNormal || IsSetupMode)
+        if (!IsNormal)
             return;
         IsRailFocused = true;
         FocusRevision++;
@@ -2676,6 +2686,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     // ----- Setup-wizard mode -------------------------------------------------------------------------
 
+    partial void OnIsRailFocusedChanged(bool value) => SetupRail.IsRailFocused = value;
+
     /// <summary>True when this projection is the in-app half of the Android setup wizard.</summary>
     public bool IsSetupMode => _setup is not null;
 
@@ -2780,19 +2792,36 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     yield return row;
                 break;
             case SetupStep.Saves:
+            {
                 // The step is for choices (connect, save folders, state sync); the one-off "sync all now",
-                // the disconnect and the per-platform replace actions stay in Settings.
+                // the disconnect and the per-platform replace actions stay in Settings. A platform whose
+                // save folder could not be detected is the one thing the user must act on here, so its
+                // folder row is painted as a warning and says so in plain words.
+                var needsFolder = SavePlatformsNeedingAFolder().Select(platform => $"saves.{platform.SystemId}.folder").ToHashSet(StringComparer.Ordinal);
                 foreach (var row in BuildSaveRows())
                 {
                     if (row.Key is "saves.sync" or "saves.disconnect"
                         || row.Key.EndsWith("replace-cloud", StringComparison.Ordinal)
                         || row.Key.EndsWith("replace-local", StringComparison.Ordinal))
                         continue;
-                    yield return row;
+                    yield return needsFolder.Contains(row.Key)
+                        ? row with
+                        {
+                            Description = "No save folder found for this emulator. A picks the folder it saves to.",
+                            Value = "Not set",
+                            IsWarning = true,
+                        }
+                        : row;
                 }
                 break;
+            }
         }
     }
+
+    /// <summary>Save platforms whose folder detection failed and that have no manual folder yet.</summary>
+    private IEnumerable<CloudSavePlatformRowViewModel> SavePlatformsNeedingAFolder() =>
+        _settings.CloudPlatforms.Where(platform =>
+            !string.IsNullOrEmpty(platform.DetectionErrorText) && string.IsNullOrEmpty(platform.NormalizedOverride));
 
     private void RefreshSetupRail()
     {
@@ -2815,9 +2844,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 SetupStep.GamesAndEmulators => _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null) is { } attention
                     ? ($"{attention.SystemName} needs attention", true, false)
                     : (LibraryRailStatus, false, LibraryRailStatus.Length > 0),
-                SetupStep.Saves => string.IsNullOrEmpty(SavesRailStatus)
-                    ? ("Not connected", false, false)
-                    : (SavesRailStatus, false, true),
+                SetupStep.Saves => SavePlatformsNeedingAFolder().Count() is > 0 and var needed
+                    ? (needed == 1 ? "1 folder needed" : $"{needed} folders needed", true, false)
+                    : string.IsNullOrEmpty(SavesRailStatus)
+                        ? ("Not connected", false, false)
+                        : (SavesRailStatus, false, true),
                 _ => (string.Empty, false, false),
             };
             entry.Status = status;
@@ -2845,12 +2876,32 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         var section = SectionForSetupStep(CurrentSetupStep);
         if (SelectedSection != section)
             SelectedSection = section;
-        RebuildRows();
+        PrepareSetupStep();
+        RebuildRows(preferredKey: PreferredSetupRowKey());
         OnPropertyChanged(nameof(CurrentSetupStep));
         OnPropertyChanged(nameof(SectionTitle));
         OnPropertyChanged(nameof(SectionDescription));
         FocusRevision++;
     }
+
+    // An empty library (the genuine first run) opens the first system so "Add game folder" is on screen
+    // without a press; a populated one keeps the list collapsed as Settings does.
+    private void PrepareSetupStep()
+    {
+        if (CurrentSetupStep == SetupStep.GamesAndEmulators
+            && _expandedSystemId is null
+            && _gameCountBySystem is not null
+            && _settings.Rows.Count > 0
+            && _settings.Rows.Sum(row => _gameCountBySystem(row.SystemId)) == 0)
+        {
+            _expandedSystemId = _settings.Rows[0].SystemId;
+        }
+    }
+
+    // The row to land on when a step opens: the first save folder that still needs picking, else the top.
+    private string? PreferredSetupRowKey() => CurrentSetupStep == SetupStep.Saves
+        ? SavePlatformsNeedingAFolder().Select(platform => $"saves.{platform.SystemId}.folder").FirstOrDefault()
+        : null;
 
     /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
     private async Task AdvanceSetupAsync()

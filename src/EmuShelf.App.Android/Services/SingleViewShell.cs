@@ -140,6 +140,9 @@ public sealed class SingleViewShell : IPlatformShell
         // Menu / D-pad / A-B reach the shared UI on device. View-model-level, not view-level, so it is
         // wired once here rather than rebuilt with each view the factory below produces.
         AndroidGamepadInput.Dispatch = viewModel.DispatchGamepadAction;
+        // Settings (and the setup wizard, which is Settings in setup mode) own the pad wherever Android
+        // thinks the focused display is; see AndroidGamepadInput.MainScreenClaimsPad.
+        AndroidGamepadInput.MainScreenClaimsPad = () => viewModel.IsGamepadSettingsOpen;
 
         // The Android system Back button / gesture: close an open couch overlay if one is open, otherwise
         // let the Activity fall through to the platform (exit). Kept off the Dispatch path because the
