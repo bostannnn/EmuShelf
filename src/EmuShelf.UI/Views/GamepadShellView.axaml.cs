@@ -758,6 +758,11 @@ public partial class GamepadShellView : UserControl
             {
                 _lastSettingsPage = page;
                 GamepadSettingsScroller.Offset = new Vector(0, 0);
+                // The repeater learns about the new viewport through EffectiveViewportChanged, which lands
+                // after this handler; looking for the row now would find the stale realization window
+                // (rows from the old offset drawn, everything above them blank). Come back one pass later.
+                Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
+                return;
             }
 
             GamepadSettingsScroller.UpdateLayout();
@@ -765,10 +770,11 @@ public partial class GamepadShellView : UserControl
             var element = GamepadSettingsRows.TryGetElement(index) ?? GamepadSettingsRows.GetOrCreateElement(index);
             if (element is null)
             {
-                if (attempt < 5)
-                    Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
-                else
+                // Same recovery for a row that will not realize: the viewport is probably past the content.
+                if (attempt == 3)
                     GamepadSettingsScroller.Offset = new Vector(0, 0);
+                if (attempt < 8)
+                    Dispatcher.UIThread.Post(() => RevealGamepadOverlayFocus(attempt + 1), DispatcherPriority.Loaded);
                 return;
             }
             element.BringIntoView();
