@@ -279,11 +279,37 @@
                  that dropped the per-tile cover shadows on Android. -->
             <Setter Property="BoxShadow" Value="0 18 40 0 #B3000000" />
         </Style>
-        <Style Selector="Border.gamepad-focus-pool">
+        <!-- The selection marker: an accent bar in the gap under the focused cover. It is the fourth
+             treatment tried on this grid and the first to survive, because it is the only one that does
+             not touch the artwork — the three rejected ones (accent pad, ring + glow, halo) all put
+             colour on or around the cover, where it competed with the art instead of pointing at it.
+
+             It WIPES OUT from the centre as the selection lands: a 0.22s one-shot, re-fired on every tile
+             the d-pad reaches, so browsing feels alive while a resting grid animates nothing at all. That
+             matters more than it sounds — any perpetual animation pins the Thor's compositor at ~43% of a
+             core (DECISIONS 2026-09-05), so "one-shot, re-triggered on input" is the rule for this shell.
+             FillMode is the default None, so the bar settles back onto the resting setters below. -->
+        <Style Selector="Border.gamepad-focus-bar">
             <Setter Property="Opacity" Value="0" />
+            <Setter Property="RenderTransformOrigin" Value="50%,50%" />
         </Style>
-        <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-pool">
-            <Setter Property="Opacity" Value="0.6" />
+        <Style Selector="Button.gamepad-game.focused Border.gamepad-focus-bar">
+            <Setter Property="Opacity" Value="1" />
+            <Style.Animations>
+                <Animation Duration="0:0:0.22" IterationCount="1" Easing="CubicEaseOut">
+                    <!-- ScaleTransform.ScaleX, not RenderTransform="scale(…)": keyframes have no animator
+                         for the RenderTransform property itself (that form is for Transitions), and
+                         Avalonia's TransformAnimator drives the sub-properties instead. -->
+                    <KeyFrame Cue="0%">
+                        <Setter Property="Opacity" Value="0.55" />
+                        <Setter Property="ScaleTransform.ScaleX" Value="0.35" />
+                    </KeyFrame>
+                    <KeyFrame Cue="100%">
+                        <Setter Property="Opacity" Value="1" />
+                        <Setter Property="ScaleTransform.ScaleX" Value="1" />
+                    </KeyFrame>
+                </Animation>
+            </Style.Animations>
         </Style>
         <!-- Spotlight hero actions (Play / Achievements) reuse the grid's accent focus pad. -->
         <Style Selector="Panel.spotlight-action.focused Border.gamepad-focus-tile-ring">
@@ -557,6 +583,13 @@
                  room for "Shelf" at the Thor's density instead of truncating to "Sh…". -->
             <Setter Property="Width" Value="500" />
         </Style>
+        <!-- The launch-screen chooser is two side-by-side device cards; 680 (not the 620 picker sheet)
+             is what keeps "Play on the bottom screen" on one line beside the drawing. It still sits
+             inside the Thor's 761 dip host, and the host MaxWidth clamps it anywhere narrower. -->
+        <Style Selector="Border.gamepad-overlay.launch-screen">
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="Width" Value="680" />
+        </Style>
         <!-- Confirmations are compact modals, not the 620px picker sheet: a tighter card centres its
              title/body/buttons as one group. -->
         <Style Selector="Border.gamepad-overlay.confirmation">
@@ -589,6 +622,60 @@
         </Style>
         <Style Selector="Button.gamepad-confirm-button.danger">
             <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
+        </Style>
+        <!-- Pre-launch screen chooser: the two destinations as equal cards. Sized generously (a real
+             target at couch distance, and room for the drawn screen glyph) and lit the way the couch
+             lights everything else that is selected — an accent wash plus the accent border, no ring. -->
+        <Style Selector="Button.gamepad-screen-card">
+            <Setter Property="MinHeight" Value="120" />
+            <Setter Property="Padding" Value="16,14" />
+            <Setter Property="CornerRadius" Value="14" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource EmuSegmentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.gamepad-screen-card.focused">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <!-- The button template repaints its presenter on pointer states, which would wash the card's
+             own fill; the chooser is controller-driven, so hover is neutralised the way the tiles do it. -->
+        <Style Selector="Button.gamepad-screen-card:pointerover /template/ ContentPresenter,
+                         Button.gamepad-screen-card:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <!-- "Always use this screen for X": one focusable row under the cards, A flips it. -->
+        <Style Selector="Button.gamepad-remember-row">
+            <Setter Property="MinHeight" Value="56" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+            <Setter Property="FocusAdorner" Value="{x:Null}" />
+        </Style>
+        <Style Selector="Button.gamepad-remember-row.focused">
+            <Setter Property="Background" Value="{DynamicResource EmuNavSelectionBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Button.gamepad-remember-row:pointerover /template/ ContentPresenter,
+                         Button.gamepad-remember-row:pressed /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.gamepad-remember-box">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Border.gamepad-remember-box.checked">
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
         </Style>
         <Style Selector="Border.gamepad-overlay.side-sheet">
             <Setter Property="HorizontalAlignment" Value="Right" />
@@ -1112,10 +1199,13 @@
             <Setter Property="BorderBrush" Value="#1FFFFFFF" />
             <Setter Property="BorderThickness" Value="1" />
         </Style>
-        <!-- Unfocused covers step back a notch so the focused tile owns the light. Rides the existing
-             0.2s cover-image opacity transition, so focus moves fade rather than pop. -->
+        <!-- Unfocused covers step back so the focused one reads as the subject. With the accent bar
+             marking the selection this only has to support it, not carry it alone, so it sits at 0.6 —
+             0.78 was too polite to register on a wall of bright cover art, and 0.5 (tried when the grid
+             briefly had no marker at all) dimmed the shelf more than it needed. Rides the existing 0.2s
+             cover-image opacity transition, so focus moves fade rather than pop. -->
         <Style Selector="Button.gamepad-game:not(.focused) Image.cover-image.loaded">
-            <Setter Property="Opacity" Value="0.78" />
+            <Setter Property="Opacity" Value="0.6" />
         </Style>
         <!-- Titles follow the same hierarchy: dimmed at rest, full strength under the focus ring. -->
         <Style Selector="TextBlock.gamepad-tile-title">

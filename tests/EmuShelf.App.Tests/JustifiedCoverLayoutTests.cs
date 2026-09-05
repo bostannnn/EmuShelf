@@ -124,4 +124,66 @@ public class JustifiedCoverLayoutTests
         Assert.All(placements, placement => Assert.Equal(0, placement.RowIndex));
         Assert.All(placements, placement => Assert.Equal(Target, placement.Height));
     }
+
+    [Fact]
+    public void Pack_LandscapeCovers_HonourTheMinimumPerRow()
+    {
+        // The couch case: SNES boxes (1.434) fill a Thor-width row after three covers, which reads as a
+        // sparse shelf of huge covers next to the five a portrait platform fits. The minimum packs them
+        // four to a row instead — shorter covers, denser shelf.
+        const double available = 1096; // the Thor's couch grid, gutters removed
+        var ratios = Enumerable.Repeat(1.434, 12).ToList();
+
+        var loose = JustifiedCoverLayout.Pack(ratios, available, Spacing, 300);
+        var packed = JustifiedCoverLayout.Pack(ratios, available, Spacing, 300, minCoversPerRow: 4);
+
+        Assert.Equal(3, loose.Count(placement => placement.RowIndex == 0));
+        Assert.Equal(4, packed.Count(placement => placement.RowIndex == 0));
+        // Still justified: the denser row fills the same width, edge to edge.
+        Assert.True(Math.Abs(available - RowSpan(packed, 0)) <= 4.0);
+    }
+
+    [Fact]
+    public void Pack_MixedRatios_LeftoverRowHeldBackByTheMinimumStillFitsTheWidth()
+    {
+        // All Games / search on the couch: a portrait row commits at ~289 px, then three SNES covers
+        // remain. Without the minimum they could never have filled the width; with it they are held
+        // back by the count, and rendering them at the portrait row's height put ~130 px past the
+        // right gutter. The leftover row must shrink to fit, and stay no taller than the row above.
+        const double available = 1200;
+        var ratios = Enumerable.Repeat(0.708, 5).Concat(Enumerable.Repeat(1.434, 3)).ToList();
+
+        var placements = JustifiedCoverLayout.Pack(ratios, available, 44, 300, minCoversPerRow: 4);
+
+        Assert.Equal(5, placements.Count(placement => placement.RowIndex == 0));
+        Assert.Equal(3, placements.Count(placement => placement.RowIndex == 1));
+        Assert.True(RowSpan(placements, 1) <= available + 1.0,
+            $"leftover row spans {RowSpan(placements, 1):F0} in a {available:F0} viewport");
+        Assert.True(placements[5].Height <= placements[0].Height,
+            "a partial last row must not render taller than the full row above it");
+    }
+
+    [Fact]
+    public void Pack_PortraitCovers_AreUnchangedByAMinimumTheyAlreadyExceed()
+    {
+        var ratios = Enumerable.Repeat(0.708, 12).ToList();
+
+        var loose = JustifiedCoverLayout.Pack(ratios, 1096, Spacing, 300);
+        var packed = JustifiedCoverLayout.Pack(ratios, 1096, Spacing, 300, minCoversPerRow: 4);
+
+        Assert.Equal(loose, packed);
+    }
+
+    [Fact]
+    public void Pack_NarrowViewport_DropsTheMinimumRatherThanPackingSlivers()
+    {
+        // Four covers cannot each reach MinimumColumnCoverWidth here, so the minimum lapses and the
+        // height rule packs the row alone — a small window shows fewer, readable covers.
+        var available = (2 * JustifiedCoverLayout.MinimumColumnCoverWidth) + Spacing;
+        var ratios = Enumerable.Repeat(1.434, 8).ToList();
+
+        var placements = JustifiedCoverLayout.Pack(ratios, available, Spacing, 300, minCoversPerRow: 4);
+
+        Assert.Equal(2, placements.Count(placement => placement.RowIndex == 0));
+    }
 }

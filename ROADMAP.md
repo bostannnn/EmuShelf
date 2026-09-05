@@ -2129,3 +2129,25 @@ breaks the whole-solution macOS build/test loop.
           API_V23` + `ShizukuProvider`. On-device: Dolphin force-stopped on return, log `Shizuku force-stop …
           exited with 0`. Requires the user to install + start Shizuku (once per boot on non-rooted devices).
           See DECISIONS 2026-08-25 and 2026-08-26.
+    - [x] **S5 — couch UI polish round: selection, row density, second-screen wake, screen chooser**
+          (2026-09-05, driven from a Thor pass and verified on it). (1) **The selection marker moved off
+          the artwork.** The focus puddle had become a smudge after the justified-row repack; a proper
+          accent halo was built to replace it and was rejected on sight ("terrible") — the third coloured
+          treatment this grid has thrown out — so three replacements were shot on device and he picked
+          the one that never touches a cover: a crisp accent bar in the gap between the cover and its
+          title, wiping out from the centre as focus lands, with neighbours at 0.6. A continuous
+          "breathing" version was measured first and cost 43% of a core on the render thread forever
+          (0.5% with no animation), which is its own finding: no perpetual couch animation.
+          (2) **Row/column gutters widened** for the couch only (44 px between covers, 20/32 above/below a
+          row): at the desktop's 28 px the focused tile's lift nearly closed the gap to its neighbour.
+          (3) **Landscape platforms pack four covers a row, not three** — the packer takes a
+          `minCoversPerRow` the couch sets to 4, so SNES/arcade shelves stop reading as three oversized
+          covers next to a portrait platform's five. (4) **The companion's doubled logo is fixed** (the
+          resting spotlight and the standby wash were both painting it, half a dock bar apart) and **a
+          touch now wakes the dimmed companion** for 5 s so you can see what you are pressing. (5) **The
+          screen chooser is two cards drawing the Thor's clamshell** (`ThorDeviceGlyph`: stick over D-pad
+          on the left, face buttons over stick on the right, like the real base) with the chosen screen
+          lit, over a "remember" checkbox, laid out as glyph-beside-caption so it fits inside the Thor's
+          own 833×468 overlay (pinned by test);
+          "external screen" is gone from every string — the only hardware this reaches owns both screens.
+          See DECISIONS 2026-09-05.
