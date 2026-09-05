@@ -7446,6 +7446,7 @@ public partial class MainViewModel : ViewModelBase
         if (e.PropertyName is nameof(GamepadSettingsViewModel.FocusRevision) or
             nameof(GamepadSettingsViewModel.FocusedRowIndex) or
             nameof(GamepadSettingsViewModel.SelectedSection) or
+            nameof(GamepadSettingsViewModel.CurrentSetupStep) or
             nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
             nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
             nameof(GamepadSettingsViewModel.IsChoicePickerOpen) or

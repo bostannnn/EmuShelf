@@ -2213,13 +2213,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             // name because the header already carries it; the stable ids (Keys) are unchanged.
             yield return HeaderRow(
                 $"saves.{platform.SystemId}.header", platform.DisplayName, platform.SystemId);
-            var location = platform.NormalizedOverride ?? platform.DetectedDirectory ?? "Use detected emulator location";
-            var detail = FirstNonEmpty(
-                platform.DetectionErrorText,
-                platform.CompatibilityWarning,
-                platform.LastNoticeText,
-                platform.LastResultText,
-                platform.SaveShapeDescription);
+            // No override, nothing detected: say so and ask for the folder, instead of the old "Use detected
+            // emulator location" that read as if something had been found.
+            var location = platform.NormalizedOverride ?? platform.DetectedDirectory
+                ?? (platform.NeedsFolder ? "No folder set" : platform.HasProbed ? "Not available" : "Looking…");
+            var detail = platform.NeedsFolder
+                ? "No save folder found for this emulator. A picks the folder it saves to; nothing syncs for this system until then."
+                : FirstNonEmpty(
+                    platform.DetectionErrorText,
+                    platform.CompatibilityWarning,
+                    platform.LastNoticeText,
+                    platform.LastResultText,
+                    platform.SaveShapeDescription);
             yield return ActionRow(
                 $"saves.{platform.SystemId}.folder",
                 "Save folder",
@@ -2818,6 +2823,24 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     "Close the emulator when I come back",
                     "The emulator stops running in the background, so it does not drain the battery.",
                     compact: false);
+                if (CloseEmulatorOnReturn && CloseOnReturnWarning is not null && _grantCloseOnReturnPrivilege is not null)
+                {
+                    // The permission gets a row of its own, like storage access and the second screen do,
+                    // rather than living only behind Y on the toggle.
+                    yield return new GamepadSettingsRowSpec(
+                        "setup.closing-games.allow-shizuku",
+                        "Allow Shizuku",
+                        "Shizuku's permission dialog opens. Start Shizuku first if it is not running.",
+                        "A ALLOW",
+                        GamepadSettingsRowKind.Action,
+                        Activate: async () =>
+                        {
+                            await _grantCloseOnReturnPrivilege();
+                            _closeOnReturnWarningRead = false;
+                        },
+                        IsWarning: true,
+                        ExcludeFromParity: true);
+                }
                 yield return InformationRow(
                     "setup.closing-games.why",
                     "Why Shizuku",
@@ -2841,24 +2864,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                         || row.Key.EndsWith("replace-cloud", StringComparison.Ordinal)
                         || row.Key.EndsWith("replace-local", StringComparison.Ordinal))
                         continue;
-                    yield return needsFolder.Contains(row.Key)
-                        ? row with
-                        {
-                            Description = "No save folder found for this emulator. A picks the folder it saves to.",
-                            Value = "Not set",
-                            IsWarning = true,
-                        }
-                        : row;
+                    yield return needsFolder.Contains(row.Key) ? row with { IsWarning = true } : row;
                 }
                 break;
             }
         }
     }
 
-    /// <summary>Save platforms whose folder detection failed and that have no manual folder yet.</summary>
+    /// <summary>Save platforms with nothing detected (or a detection error) and no manual folder yet.</summary>
     private IEnumerable<CloudSavePlatformRowViewModel> SavePlatformsNeedingAFolder() =>
         _settings.CloudPlatforms.Where(platform =>
-            !string.IsNullOrEmpty(platform.DetectionErrorText) && string.IsNullOrEmpty(platform.NormalizedOverride));
+            platform.NeedsFolder
+            || (!string.IsNullOrEmpty(platform.DetectionErrorText) && string.IsNullOrEmpty(platform.NormalizedOverride)));
 
     private void RefreshSetupRail()
     {
