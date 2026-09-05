@@ -2719,7 +2719,56 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(GamepadOverlayKind.LaunchScreen, vm.GamepadOverlay);
         Assert.Null(launcher.Game);
         Assert.False(vm.IsBusy);
-        Assert.Equal(4, vm.GamepadOverlayOptions.Count);
+        // Two screen cards plus the remember toggle — not the two screens written out twice.
+        Assert.Equal(3, vm.GamepadOverlayOptions.Count);
+        Assert.Same(vm.GamepadOverlayOptions[0], vm.LaunchScreenBuiltInOption);
+        Assert.Same(vm.GamepadOverlayOptions[1], vm.LaunchScreenExternalOption);
+        Assert.Same(vm.GamepadOverlayOptions[2], vm.LaunchScreenRememberOption);
+        Assert.False(vm.RememberLaunchScreenChoice);
+        // The chooser draws its own body, so the shared option list must stay out of its way.
+        Assert.False(vm.ShowsGamepadOverlayOptions);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_DpadWalksTheCardsAndTheRememberRow()
+    {
+        var (vm, _) = await AddAlphaAsync(externalDisplays: new StubExternalDisplayProbe(true));
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        // The pair is a ROW: Right steps onto the external card, Left back onto the built-in one.
+        Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
+        vm.DispatchGamepadAction(GamepadAction.NavigateRight);
+        Assert.Equal(1, vm.GamepadOverlaySelectionIndex);
+        vm.DispatchGamepadAction(GamepadAction.NavigateRight);
+        Assert.Equal(1, vm.GamepadOverlaySelectionIndex); // the row ends there
+        vm.DispatchGamepadAction(GamepadAction.NavigateLeft);
+        Assert.Equal(0, vm.GamepadOverlaySelectionIndex);
+
+        // Down drops to the remember row and Up returns to the card it was left on.
+        vm.DispatchGamepadAction(GamepadAction.NavigateRight);
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.Equal(2, vm.GamepadOverlaySelectionIndex);
+        Assert.True(vm.LaunchScreenRememberOption!.IsFocused);
+        vm.DispatchGamepadAction(GamepadAction.NavigateUp);
+        Assert.Equal(1, vm.GamepadOverlaySelectionIndex);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_HintNamesWhatAActuallyDoes()
+    {
+        var (vm, _) = await AddAlphaAsync(externalDisplays: new StubExternalDisplayProbe(true));
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+
+        // On a card A launches…
+        Assert.Equal("Play here", vm.LaunchScreenConfirmHint);
+
+        // …but on the remember row it only ticks the box, and the legend has to say so — a player who
+        // presses A there expecting a launch gets a checkbox and no game.
+        vm.DispatchGamepadAction(GamepadAction.NavigateDown);
+        Assert.Equal("Toggle", vm.LaunchScreenConfirmHint);
+
+        vm.DispatchGamepadAction(GamepadAction.NavigateUp);
+        Assert.Equal("Play here", vm.LaunchScreenConfirmHint);
     }
 
     [AvaloniaFact]
@@ -2777,7 +2826,7 @@ public class MainViewModelTests : IDisposable
         var (vm, launcher) = await AddAlphaAsync(externalDisplays: probe, configurations: configs);
 
         await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
-        // "Play on the external screen" is the second option (index 1).
+        // The external-screen card is the second option (index 1).
         await ActivateOverlayOptionAsync(vm, 1);
 
         Assert.Null(launcher.Game);
@@ -2794,7 +2843,7 @@ public class MainViewModelTests : IDisposable
             configurations: configs);
 
         await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
-        // "Play on the external screen" is the second option (index 1).
+        // The external-screen card is the second option (index 1).
         await ActivateOverlayOptionAsync(vm, 1);
 
         Assert.Equal(GameLaunchScreen.External, launcher.TargetScreen);
@@ -2812,11 +2861,35 @@ public class MainViewModelTests : IDisposable
             configurations: configs);
 
         await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
-        // "Always use the external screen for …" is the fourth option (index 3).
-        await ActivateOverlayOptionAsync(vm, 3);
+        // "Always" is now a state the pick carries: tick the remember row (index 2), then choose the
+        // external card (index 1). The one launch and the pinned preference come from that one pick.
+        await ActivateOverlayOptionAsync(vm, 2);
+        Assert.True(vm.RememberLaunchScreenChoice);
+        await ActivateOverlayOptionAsync(vm, 1);
 
         Assert.Equal(GameLaunchScreen.External, launcher.TargetScreen);
         Assert.Equal(GameLaunchScreen.External, configs.Saved(Ps1.Id));
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchScreenChooser_RememberResetsOnEveryOpen()
+    {
+        var configs = new FakeLaunchScreenStore(Ps1.Id, GameLaunchScreen.Ask);
+        var (vm, _) = await AddAlphaAsync(
+            externalDisplays: new StubExternalDisplayProbe(true),
+            configurations: configs);
+
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        await ActivateOverlayOptionAsync(vm, 2);
+        Assert.True(vm.RememberLaunchScreenChoice);
+        vm.BackFromGamepadOverlayCommand.Execute(null);
+
+        // A ticked box must never survive into the next prompt: pinning a system's screen is a
+        // deliberate act, and the second launch would otherwise silently pin whatever is picked.
+        await vm.LaunchGameCommand.ExecuteAsync(vm.Games.Single());
+        Assert.False(vm.RememberLaunchScreenChoice);
+        await ActivateOverlayOptionAsync(vm, 1);
+        Assert.Equal(GameLaunchScreen.Ask, configs.Saved(Ps1.Id));
     }
 
     [AvaloniaFact]
