@@ -12108,3 +12108,34 @@ precedence over section status, including the Saves step's cloud status, so retr
 The host also requires the successful-save signal before persisting the setup version. Accessibility,
 Shizuku and emulator refreshes preserve the current step; cloud sign-in and save-folder cancellation do
 not request wizard closure. Device-level activity recreation still requires Android testing.
+
+
+## 2026-09-06 — Shelf artwork stays resident and prepares pixels off the render thread
+
+The seven-game visible window can require 28 GPU face textures, exceeding the existing 24-texture
+retention budget. Visible games are now pinned; eviction walks past them to the oldest off-screen
+game. The budget remains the off-screen retention target, with the bounded visible working set allowed
+to exceed it, so a fully scraped row does not erase and re-upload its own faces while moving.
+
+Physical-art decoding and GPU uploads prioritize fronts before hidden faces, with the selected game
+first and nearby games next. Upload order is cached with the artwork snapshot. A separate two-worker
+preparation queue copies and converts bitmap pixels into owned RGBA buffers before publication; the GL
+callback only uploads those buffers under the existing per-frame pixel budget. Preparation retains only
+current visible source images, discards queued obsolete work and ignores obsolete in-flight completions.
+Published buffers remain valid after the original bitmap is disposed. A same-game replacement keeps its
+previous face while preparation is pending; removed or failed artwork clears it. This trades bounded CPU
+pixel-buffer residency for avoiding render-thread conversion stalls and bitmap-disposal races.
+
+Regression coverage includes visible-texture eviction selection, front/focus ordering, background
+conversion and pixel correctness, source deduplication, replacement, teardown and failure without retries.
+Hardware frame-time and GPU-memory measurements remain a separate validation step; no FPS gain is claimed.
+
+
+## 2026-09-06 — Thor shelf artwork device check
+
+Two 40-step GameCube shelf sweeps on the updated AOT Android build logged no expensive/deferred
+upload passes and worst sampled GL callbacks of 4.6 and 4.3 ms. The earlier installed build logged
+438 such upload passes and a 122.4 ms worst sampled callback in its sweep. Different build histories
+and storage pressure prevent attributing the whole numerical change to this patch. The original
+Steam experiment APK was restored after testing because this checkout does not include that separate
+feature. Full method, hashes, memory observations and limits: `docs/performance/shelf-2026-09-06/README.md`.

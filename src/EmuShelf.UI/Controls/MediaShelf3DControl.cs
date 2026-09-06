@@ -1,7 +1,6 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -9,7 +8,6 @@ using Avalonia.Media.Imaging;
 using Avalonia.Logging;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
-using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -42,12 +40,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// Uploaded face textures kept on the GPU, across all games.
     /// </summary>
     /// <remarks>
-    /// Counted in textures rather than games because a keep case uploads three — front, back and
-    /// spine — where a cartridge uploads one. The old game-based limit of 21 silently became a
-    /// ceiling of 63 textures the moment faces went independent, which at a 1024px decode is a
-    /// quarter of a gigabyte of GPU memory for something the design documents as a 21-entry cache.
-    /// The budget still comfortably exceeds the visible window, which is what keeps reversing
-    /// direction from repeating upload and mipmap work.
+    /// Counted in faces rather than games. Off-screen retention stops at this budget, but visible
+    /// games are pinned even when seven fully textured disc cases need 28 faces. Their bounded
+    /// working set must survive every frame without eviction and re-upload.
     /// </remarks>
     private const int CoverTextureBudget = 24;
     private const int PhysicalArtworkCacheCapacity = 21;
@@ -106,6 +101,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private readonly HashSet<GameViewModel> _observedGames = [];
     private readonly Dictionary<long, UploadedCover> _uploadedCovers = [];
     private readonly LinkedList<long> _coverLru = [];
+    private readonly HashSet<long> _visibleTextureKeys = [];
+    private ShelfTexturePreparation? _texturePreparation;
     private readonly Dictionary<ArtworkKey, DecodedArtwork> _decodedPhysicalArtwork = [];
 
     // Faces whose scan failed to decode, by the path that failed. A face with a path that is neither
@@ -114,7 +111,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     // stay bare forever, and every visibility pass would retry the same bad file.
     private readonly Dictionary<ArtworkKey, string> _failedPhysicalArtwork = [];
 
-    // Face textures are built (pixel swizzle + glTexImage2D) on the render thread, in the first frame
+    // Face pixels are prepared by workers; only GL uploads run on the render thread, in the first frame
     // that shows them. Measured on the Thor, a platform switch or a landing decode put several
     // full-size faces into one frame, and that frame took 50–70ms; the cost scales with pixels (a
     // 1024² support scan ≈ 5ms, a pair of large scraped covers ≈ 78ms), so the ration is a pixel
@@ -193,8 +190,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// exact same immutable map it had last frame. It is never mutated after it is put in a snapshot,
     /// so a rebuild allocates a new one and leaves any in-flight frame's copy untouched.
     /// </remarks>
-    private Dictionary<long, IImage?[]>? _artworkCache;
+    private Dictionary<long, TextureImage?[]>? _artworkCache;
     private long[] _artworkCacheKeys = [];
+    private long[] _artworkUploadKeys = [];
     private int _artworkCacheGeneration = -1;
 
     /// <summary>
@@ -425,6 +423,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         else if (change.Property == FocusedItemProperty)
         {
             _focusedIndex = FocusedItem is null || Items is null ? -1 : IndexOf(Items, FocusedItem);
+            PrioritizePhysicalArtworkQueue(_focusedIndex);
+            InvalidateArtwork();
         }
         else if (change.Property == ShelfPositionProperty)
         {
@@ -505,6 +505,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     {
         _isAttached = false;
         StopObserving();
+        _texturePreparation?.Clear();
+        _artworkCache = null;
+        _frameSnapshot = null;
         ClearDecodedPhysicalArtwork();
         _preparationGeneration++;
         _chromeSnapshot?.Dispose();
@@ -866,6 +869,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _sceneMediaWidth,
             accent,
             ResolveArtworkMap(items),
+            _artworkUploadKeys,
             crt,
             // Only the tube consumes the backdrop, and resolving it means a theme-brush lookup up the
             // visual tree; a shelf with the effect off has no use for it.
@@ -884,7 +888,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// <see cref="_artworkGeneration"/> is bumped by a decode, an eviction, a cover, or a warmed
     /// placeholder.
     /// </remarks>
-    private IReadOnlyDictionary<long, IImage?[]> ResolveArtworkMap(IReadOnlyList<MediaShelfRenderItem> items)
+    private IReadOnlyDictionary<long, TextureImage?[]> ResolveArtworkMap(IReadOnlyList<MediaShelfRenderItem> items)
     {
         // Fast path: on a glide's position-only publishes the visible keys and generation are unchanged,
         // so compare in place against the cached keys rather than allocating a probe array every 16 ms
@@ -902,21 +906,44 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             keys[index] = items[index].Key;
         }
 
-        var artwork = new Dictionary<long, IImage?[]>(items.Count);
+        var sources = new Dictionary<long, IImage?[]>();
         foreach (var item in items)
         {
-            if (artwork.ContainsKey(item.Key) || !_gamesByKey.TryGetValue(item.Key, out var game))
+            if (!sources.ContainsKey(item.Key) && _gamesByKey.TryGetValue(item.Key, out var game))
             {
-                continue;
+                var faces = new IImage?[MediaShellRenderer.MaxArtworkFaces];
+                foreach (var face in Faces)
+                    faces[(int)face] = ResolveArtwork(game, face);
+                sources[item.Key] = faces;
             }
+        }
 
-            var faces = new IImage?[MediaShellRenderer.MaxArtworkFaces];
-            foreach (var face in Faces)
-            {
-                faces[(int)face] = ResolveArtwork(game, face);
-            }
+        _texturePreparation ??= new ShelfTexturePreparation(() =>
+        {
+            InvalidateArtwork();
+            if (_isAttached) PublishFrame();
+        });
+        var ordered = OrderArtworkItems(items, FocusedItem?.Id);
+        _artworkUploadKeys = ordered.Select(item => item.Key).ToArray();
+        // Queue every front before any secondary face, nearest selection first within each pass.
+        var pending = new List<IImage>();
+        foreach (var pass in FacePasses)
+            foreach (var item in ordered)
+                if (sources.TryGetValue(item.Key, out var faces))
+                    foreach (var face in pass)
+                        if (faces[(int)face] is { } source)
+                            pending.Add(source);
+        _texturePreparation.Update(pending);
 
-            artwork[item.Key] = faces;
+        var artwork = new Dictionary<long, TextureImage?[]>();
+        foreach (var (key, sourcesForGame) in sources)
+        {
+            var faces = new TextureImage?[MediaShellRenderer.MaxArtworkFaces];
+            TextureImage?[]? previous = null;
+            _artworkCache?.TryGetValue(key, out previous);
+            for (var index = 0; index < faces.Length; index++)
+                faces[index] = _texturePreparation.Get(sourcesForGame[index], previous?[index]);
+            artwork[key] = faces;
         }
 
         _artworkCache = artwork;
@@ -1087,22 +1114,22 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         var uploadStart = System.Diagnostics.Stopwatch.GetTimestamp();
         // Two passes: the front of every visible item first (the face the eye lands on), then the
         // backs, spines and disc labels with whatever budget is left. Clearing a face (null artwork)
-        // is not an upload and is never deferred, so a cover that changed never shows a stale face.
+        // is not an upload and is never deferred, so explicitly removed artwork clears immediately.
         foreach (var pass in FacePasses)
         {
-            foreach (var item in frame.Items)
+            foreach (var key in frame.ArtworkOrder)
             {
-                if (!_uploadedCovers.TryGetValue(item.Key, out var uploaded))
+                if (!_uploadedCovers.TryGetValue(key, out var uploaded))
                 {
-                    uploaded = new UploadedCover(_coverLru.AddFirst(item.Key));
-                    _uploadedCovers[item.Key] = uploaded;
+                    uploaded = new UploadedCover(_coverLru.AddFirst(key));
+                    _uploadedCovers[key] = uploaded;
                 }
                 else if (ReferenceEquals(pass, FacePasses[0]))
                 {
                     TouchCover(uploaded);
                 }
 
-                frame.Artwork.TryGetValue(item.Key, out var faces);
+                frame.Artwork.TryGetValue(key, out var faces);
                 foreach (var face in pass)
                 {
                     var artwork = faces?[(int)face];
@@ -1117,15 +1144,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
                         continue;
                     }
 
-                    if (!TryBuildFaceTexture(artwork, out var texture))
-                    {
-                        // The artwork raced disposal — see TryBuildFaceTexture. Keep whatever is already
-                        // on the GPU for this face and do not record the upload, so a later clean frame
-                        // retries. A per-face skip, never the whole draw.
-                        continue;
-                    }
-
-                    _renderer.SetPanelArt(item.Key, (int)face, texture);
+                    var texture = artwork; // Immutable RGBA bytes prepared by a worker.
+                    _renderer.SetPanelArt(key, (int)face, texture);
                     uploaded.Faces[(int)face] = artwork;
                     if (texture is not null)
                     {
@@ -1148,24 +1168,41 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
         }
 
-        // Evict whole games, but measure the budget in textures: one game can be holding three. Summed
+        // Evict whole games, but measure the budget in textures: a disc case can hold four. Summed
         // with a manual loop rather than LINQ so this per-frame accounting allocates nothing.
         var uploadedTextures = 0;
         foreach (var cover in _uploadedCovers.Values)
         {
             uploadedTextures += cover.UploadedFaceCount;
         }
-        while (uploadedTextures > CoverTextureBudget && _coverLru.Last is { } oldest)
+        _visibleTextureKeys.Clear();
+        foreach (var item in frame.Items)
+            _visibleTextureKeys.Add(item.Key);
+        // The visible working set may exceed the off-screen retention budget (7 x 4 faces).
+        // Never evict it: doing so erases a face immediately before drawing and reuploads it later.
+        while (uploadedTextures > CoverTextureBudget &&
+               FindEvictableCover(_coverLru, _visibleTextureKeys) is { } oldest)
         {
             if (_uploadedCovers.Remove(oldest.Value, out var evicted))
-            {
                 uploadedTextures -= evicted.UploadedFaceCount;
-            }
-
             _renderer.RemoveCoverArt(oldest.Value);
-            _coverLru.RemoveLast();
+            _coverLru.Remove(oldest);
         }
     }
+
+    internal static LinkedListNode<long>? FindEvictableCover(
+        LinkedList<long> lru, IReadOnlySet<long> visible)
+    {
+        for (var node = lru.Last; node is not null; node = node.Previous)
+            if (!visible.Contains(node.Value))
+                return node;
+        return null;
+    }
+
+    internal static MediaShelfRenderItem[] OrderArtworkItems(
+        IReadOnlyList<MediaShelfRenderItem> items, long? focusedKey) =>
+        items.OrderBy(item => item.Key == focusedKey ? 0 : 1)
+            .ThenBy(item => Math.Abs(item.CentreX)).ToArray();
 
     private static readonly ShelfArtworkFace[] Faces =
     [
@@ -1565,7 +1602,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             }
         }
 
-        PrioritizePhysicalArtworkQueue(centre);
+        PrioritizePhysicalArtworkQueue(_focusedIndex >= 0 ? _focusedIndex : centre);
         PumpPhysicalArtworkQueue();
     }
 
@@ -1606,6 +1643,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         if (pumpImmediately)
         {
+            PrioritizePhysicalArtworkQueue(_focusedIndex);
             PumpPhysicalArtworkQueue();
         }
     }
@@ -1768,7 +1806,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
         var pending = _physicalArtworkQueue
             .Where(load => !load.IsCancelled)
-            .OrderBy(load => DistanceFromFocusedGame(load.Key.GameId, centre))
+            .OrderBy(load => ArtworkDecodePriority(load.Key.Face))
+            .ThenBy(load => DistanceFromFocusedGame(load.Key.GameId, centre))
             .ToArray();
         _physicalArtworkQueue.Clear();
         foreach (var load in pending)
@@ -1776,6 +1815,9 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             _physicalArtworkQueue.Enqueue(load);
         }
     }
+
+    internal static int ArtworkDecodePriority(ShelfArtworkFace face) =>
+        face == ShelfArtworkFace.Front ? 0 : 1;
 
     private int DistanceFromFocusedGame(long gameId, int centre)
     {
@@ -1885,78 +1927,6 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     private static Vector3 ToLinear(Color colour) =>
         MediaShellRenderer.ToLinear(colour.R / 255f, colour.G / 255f, colour.B / 255f);
 
-    /// <summary>
-    /// Builds one shell face's GPU texture from its artwork, or reports that the artwork raced
-    /// disposal and the face should be skipped.
-    /// </summary>
-    /// <remarks>
-    /// The frame snapshot holds a live reference to the bitmap, but the UI thread can still dispose it
-    /// — an eviction, a path change, a detach, or (the reported case) a scrape swapping the cover —
-    /// between the frame being published and this upload reading its pixels. Reading a disposed bitmap
-    /// throws, and this contains that throw to the single face: it returns <c>false</c> so the caller
-    /// keeps whatever is on the GPU and retries on a later clean frame, rather than letting the
-    /// exception escape into <see cref="OnOpenGlRender"/> and march the whole shelf toward the
-    /// flat-cover fallback via the consecutive-failure counter — which is exactly how a scrape could
-    /// blank the CRT and every model. Extracted so this invariant can be tested without a GL context;
-    /// a returned <c>true</c> with a null texture is the normal no-artwork face.
-    /// </remarks>
-    internal static bool TryBuildFaceTexture(object? artwork, out TextureImage? texture)
-    {
-        try
-        {
-            texture = artwork is Bitmap bitmap ? ToTextureImage(bitmap) : null;
-            return true;
-        }
-        catch (Exception)
-        {
-            texture = null;
-            return false;
-        }
-    }
-
-    private static TextureImage? ToTextureImage(Bitmap bitmap)
-    {
-        var size = bitmap.PixelSize;
-        if (size.Width <= 0 || size.Height <= 0)
-        {
-            return null;
-        }
-
-        var stride = size.Width * 4;
-        var pixels = new byte[stride * size.Height];
-        var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
-        try
-        {
-            bitmap.CopyPixels(
-                new PixelRect(0, 0, size.Width, size.Height),
-                handle.AddrOfPinnedObject(), pixels.Length, stride);
-        }
-        finally
-        {
-            handle.Free();
-        }
-
-        var swapRedAndBlue = bitmap.Format != PixelFormat.Rgba8888;
-        var premultiplied = bitmap.AlphaFormat != AlphaFormat.Unpremul;
-        for (var index = 0; index < pixels.Length; index += 4)
-        {
-            if (swapRedAndBlue)
-            {
-                (pixels[index], pixels[index + 2]) = (pixels[index + 2], pixels[index]);
-            }
-
-            var alpha = pixels[index + 3];
-            if (premultiplied && alpha is > 0 and < 255)
-            {
-                pixels[index] = (byte)Math.Min(255, pixels[index] * 255 / alpha);
-                pixels[index + 1] = (byte)Math.Min(255, pixels[index + 1] * 255 / alpha);
-                pixels[index + 2] = (byte)Math.Min(255, pixels[index + 2] * 255 / alpha);
-            }
-        }
-
-        return new TextureImage { Width = size.Width, Height = size.Height, Rgba = pixels };
-    }
-
     private sealed record LayoutEntry(GameViewModel Game, float Centre);
 
     /// <summary>
@@ -1966,7 +1936,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
     /// Every field is either an immutable value or a collection that is built once and never
     /// mutated after publication, so the render thread can read it with no lock while the UI thread
     /// goes on rebuilding this control's live lists for the next one. <see cref="Artwork"/> maps a
-    /// game's key to its resolved face images, indexed by <see cref="ShelfArtworkFace"/>, so the
+    /// game's key to its owned RGBA textures, indexed by <see cref="ShelfArtworkFace"/>, so the
     /// render thread decides what to upload without touching the decoded-artwork caches.
     /// <see cref="Crt"/>, <see cref="Backdrop"/> and <see cref="RenderScaling"/> are captured here as
     /// well because their live reads walked the visual tree — the backdrop resolves a theme brush and
@@ -1977,7 +1947,8 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         float SceneMediaHeight,
         float SceneMediaWidth,
         Color FocusedAccent,
-        IReadOnlyDictionary<long, IImage?[]> Artwork,
+        IReadOnlyDictionary<long, TextureImage?[]> Artwork,
+        IReadOnlyList<long> ArtworkOrder,
         CrtPresentation Crt,
         Vector3 Backdrop,
         double RenderScaling,
@@ -1990,7 +1961,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         /// Sized from the renderer's own panel count rather than a second literal three, so the two
         /// cannot drift apart across the assembly boundary.
         /// </remarks>
-        public IImage?[] Faces { get; } = new IImage?[MediaShellRenderer.MaxArtworkFaces];
+        public TextureImage?[] Faces { get; } = new TextureImage?[MediaShellRenderer.MaxArtworkFaces];
 
         /// <summary>How many of this game's faces are actually uploaded, for the texture budget. A manual
         /// loop, not LINQ: this is read once per cover on every scene frame, so a delegate + enumerator

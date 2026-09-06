@@ -1,0 +1,11 @@
+09-06 23:03:00.781  5306  5306 I EmuShelfPerf: BENCH_updated_repeat_start
+09-06 23:03:01.444  4286  4871 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=42 glRenderMaxMs=4.3 allocMB/s=0.0 gen0/s=0
+09-06 23:03:02.444  4286  5328 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=56 glRenderMaxMs=3.0 allocMB/s=-90.0 gen0/s=1
+09-06 23:03:03.444  4286  5328 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=59 glRenderMaxMs=4.2 allocMB/s=0.0 gen0/s=0
+09-06 23:03:04.445  4286  4572 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=60 glRenderMaxMs=3.9 allocMB/s=0.0 gen0/s=0
+09-06 23:03:05.445  4286  4572 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=60 glRenderMaxMs=3.9 allocMB/s=0.0 gen0/s=0
+09-06 23:03:06.445  4286  5313 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=59 glRenderMaxMs=4.1 allocMB/s=0.0 gen0/s=0
+09-06 23:03:07.446  4286  5313 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=60 glRenderMaxMs=4.1 allocMB/s=0.0 gen0/s=0
+09-06 23:03:08.446  4286  5328 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=60 glRenderMaxMs=3.8 allocMB/s=0.0 gen0/s=0
+09-06 23:03:09.448  4286  4572 I EmuShelfPerf: PERF layout=Shelf crt=off path=shelf-inline-gl sys=GameCube games=26 coverMiB=25.9 covers=61 evictions=0 decodes=65 coverSkipped=0 glfps=43 glRenderMaxMs=1.0 allocMB/s=0.0 gen0/s=0
+09-06 23:03:09.622  5541  5541 I EmuShelfPerf: BENCH_updated_repeat_end
