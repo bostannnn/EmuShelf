@@ -109,12 +109,21 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public bool CanActivate => IsEnabled &&
         Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header);
     public string ParityId =>
-        Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header)
-            && !IsSaveRow && !ExcludeFromParity
-            ? Key
-            : string.Empty;
-    /// <summary>Every Desktop field id this row covers: its own (A) and the one behind Y, if any.</summary>
-    public IReadOnlyList<string> ParityIds { get; private set; } = [];
+        GamepadSettingsRowSpec.CoversOwnKey(Kind, Key, ExcludeFromParity) ? Key : string.Empty;
+    /// <summary>Every Desktop field id this row covers: its own (A) and the one behind Y, if any. Derived
+    /// rather than stored so it cannot drift from the row it describes.</summary>
+    public IEnumerable<string> ParityIds
+    {
+        get
+        {
+            if (ParityId.Length > 0)
+                yield return ParityId;
+            // A Y key only counts once the action behind it is wired; a key with no handler names a
+            // field no press can reach, however the row is worded.
+            if (SecondaryKey.Length > 0 && SecondaryActivate is not null)
+                yield return SecondaryKey;
+        }
+    }
     public bool IsSaveRow => Key == "common.save";
     public bool IsToggle => Kind == GamepadSettingsRowKind.Toggle;
     public bool IsToggleOn => ToggleValue == true;
@@ -166,7 +175,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         IsCompact = spec.IsCompact;
         SecondaryLabel = spec.SecondaryLabel ?? string.Empty;
         SecondaryKey = spec.SecondaryKey ?? string.Empty;
-        ParityIds = GamepadSettingsRowSpec.ParityIdsOf(spec).ToArray();
         SecondaryActivate = spec.SecondaryActivate;
         SecondaryIsDestructive = spec.SecondaryIsDestructive;
         SecondaryConfirmationTitle = spec.SecondaryConfirmationTitle;
@@ -201,7 +209,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(HasActionText));
         OnPropertyChanged(nameof(ActionText));
         OnPropertyChanged(nameof(SecondaryKey));
-        OnPropertyChanged(nameof(ParityIds));
     }
 }
 
@@ -229,16 +236,26 @@ internal sealed record GamepadSettingsRowSpec(
     bool SecondaryIsDestructive = false,
     string? SecondaryConfirmationTitle = null,
     string? SecondaryConfirmationText = null,
-    string? SecondaryKey = null)
+    string? SecondaryKey = null,
+    bool SettingsOnly = false)
 {
-    /// <summary>The Desktop field ids this row makes reachable: its own key unless it is read-only, a
-    /// header, the Save row or couch-only, plus the field folded into its Y action.</summary>
+    /// <summary>True when a row's own key names a Desktop field. Read-only rows, group headings, the Save
+    /// row and couch-only view state do not. The one place this rule lives: both the AutomationId the
+    /// snapshot test reads off a realized row and the parity sweep ask it, so they cannot disagree.</summary>
+    public static bool CoversOwnKey(GamepadSettingsRowKind kind, string key, bool excludeFromParity) =>
+        kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header)
+        && key != "common.save" && !excludeFromParity;
+
+    /// <summary>The Desktop field ids this row makes reachable: its own key, plus the field folded into
+    /// its Y action once that action is wired.</summary>
     public static IEnumerable<string> ParityIdsOf(GamepadSettingsRowSpec spec)
     {
-        if (spec.Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header)
-            && spec.Key != "common.save" && !spec.ExcludeFromParity)
+        if (CoversOwnKey(spec.Kind, spec.Key, spec.ExcludeFromParity))
             yield return spec.Key;
-        if (!string.IsNullOrEmpty(spec.SecondaryKey))
+        // Only a Y that has a handler counts. The label may come and go with a busy flag — Desktop's own
+        // button is visible-but-disabled in the same states — but a SecondaryKey with nothing behind it
+        // names a field no press can reach, and the parity sweep must not paper over that.
+        if (!string.IsNullOrEmpty(spec.SecondaryKey) && spec.SecondaryActivate is not null)
             yield return spec.SecondaryKey;
     }
 }
@@ -287,14 +304,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     // to re-read them. Tracks the falling edge of IsMaintainingLibrary, which every rescan and folder
     // import raises, rather than guessing from status text.
     private bool _maintainingLibrary;
-    // The one platform whose rows are shown beneath its summary in the Emulators section; null = all
-    // collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable.
-    private string? _expandedSystemId;
-    /// <summary>The Saves / Texture Packs platform whose rows are open beneath its summary (one at a time,
-    /// like Emulators). Kept apart from <see cref="_expandedSystemId"/> so opening PS2 in Emulators does
-    /// not also open it in Saves.</summary>
-    private string? _expandedSavesSystemId;
-    private string? _expandedTextureSystemId;
+    /// <summary>The one platform whose rows are shown beneath its summary, per section; absent = all
+    /// collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable,
+    /// and keying it by section means opening PS2 in Emulators does not also open it in Saves.</summary>
+    private readonly Dictionary<SettingsSection, string> _expandedBySection = [];
     /// <summary>While set, every platform summary projects its rows, so a parity sweep sees every field a
     /// user can reach by opening a platform, not just the one platform currently open.</summary>
     private bool _projectEveryPlatform;
@@ -556,18 +569,31 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private void ComputeSavesRailStatus()
     {
+        // Save folders exist for cloud sync, so a user who never connected hears nothing about them. The
+        // probe that fills NeedsFolder runs on any visit to the Saves section, connected or not, so
+        // without this gate the rail would warn about a feature that was never switched on.
+        if (!_settings.IsCloudConnected)
+        {
+            _savesRailWarning = false;
+            _savesRailStatus = string.Empty;
+            return;
+        }
+
         var attention = _settings.CloudPlatforms.FirstOrDefault(platform =>
             platform.NeedsFolder || platform.HasDetectionError || platform.HasLastNotice);
         if (attention is not null)
         {
             _savesRailWarning = true;
-            _savesRailStatus = attention.NeedsFolder || attention.HasDetectionError
+            // A detection error on a platform whose folder was picked by hand is not a missing folder;
+            // the same guard SavePlatformsNeedingAFolder applies, so the rail and the wizard chip agree.
+            _savesRailStatus = attention.NeedsFolder
+                || (attention.HasDetectionError && attention.NormalizedOverride is null)
                 ? $"{attention.DisplayName} needs a save folder"
                 : $"{attention.DisplayName} needs attention";
             return;
         }
         _savesRailWarning = false;
-        _savesRailStatus = _settings.IsCloudConnected ? "Google Drive" : string.Empty;
+        _savesRailStatus = "Google Drive";
     }
     public string TexturePacksRailStatus => string.Empty;
     public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
@@ -1812,8 +1838,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         foreach (var row in _settings.Rows)
         {
             var missing = EmulatorMissingFor(row);
-            var expanded = string.Equals(row.SystemId, _expandedSystemId, StringComparison.Ordinal);
-            yield return SummaryRow(row, missing, expanded);
+            var expanded = IsPlatformExpanded(SettingsSection.Emulators, row.SystemId);
+            yield return SummaryRow(row, missing);
             if (!expanded)
                 continue;
 
@@ -1884,7 +1910,76 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
     }
 
-    private GamepadSettingsRowSpec SummaryRow(EmulatorSettingsRowViewModel row, string? missing, bool expanded)
+    /// <summary>True while the given section shows this platform's rows beneath its summary. A parity
+    /// sweep sees every platform open, since a collapsed platform's rows are still one A press away.</summary>
+    private bool IsPlatformExpanded(SettingsSection section, string systemId) =>
+        _projectEveryPlatform
+        || (_expandedBySection.TryGetValue(section, out var open)
+            && string.Equals(open, systemId, StringComparison.Ordinal));
+
+    /// <summary>Opens this platform and closes whichever one the section had open. Reads the live state
+    /// rather than a flag captured when the row was built, so a row cannot act on a stale reading.</summary>
+    private void ToggleExpandedPlatform(SettingsSection section, string systemId)
+    {
+        if (_expandedBySection.TryGetValue(section, out var open)
+            && string.Equals(open, systemId, StringComparison.Ordinal))
+            _expandedBySection.Remove(section);
+        else
+            _expandedBySection[section] = systemId;
+    }
+
+    /// <summary>The one shape every section's platform summary takes: artwork and name on the left, that
+    /// section's own one-line detail on the right, A opening its rows beneath it one platform at a time.
+    /// Where a step shows every platform already open (the wizard's Saves step) the row is a plain heading
+    /// instead — a control that cannot do anything should not take focus or offer a chevron.</summary>
+    private GamepadSettingsRowSpec PlatformSummaryRow(
+        SettingsSection section,
+        string key,
+        string label,
+        string systemId,
+        string detail,
+        bool forcedOpen = false,
+        bool warning = false,
+        string? secondaryLabel = null,
+        Func<Task>? secondaryActivate = null)
+    {
+        if (forcedOpen)
+        {
+            return new GamepadSettingsRowSpec(
+                key,
+                label,
+                string.Empty,
+                detail,
+                GamepadSettingsRowKind.Header,
+                IsEnabled: false,
+                SystemId: systemId,
+                ExcludeFromParity: true,
+                IsWarning: warning,
+                IsCompact: true);
+        }
+
+        return new GamepadSettingsRowSpec(
+            key,
+            label,
+            string.Empty,
+            detail,
+            GamepadSettingsRowKind.Summary,
+            IsEnabled: true,
+            Activate: () =>
+            {
+                ToggleExpandedPlatform(section, systemId);
+                return Task.CompletedTask;
+            },
+            SystemId: systemId,
+            ExcludeFromParity: true,
+            IsExpanded: IsPlatformExpanded(section, systemId),
+            IsWarning: warning,
+            IsCompact: true,
+            SecondaryLabel: secondaryLabel,
+            SecondaryActivate: secondaryActivate);
+    }
+
+    private GamepadSettingsRowSpec SummaryRow(EmulatorSettingsRowViewModel row, string? missing)
     {
         var parts = new List<string>();
         if (missing is not null)
@@ -1898,26 +1993,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         if (!string.IsNullOrWhiteSpace(row.MaintenanceStatusText))
             parts.Add(row.MaintenanceStatusText);
 
-        var key = $"emulators.{row.SystemId}.summary";
-        return new GamepadSettingsRowSpec(
-            key,
+        return PlatformSummaryRow(
+            SettingsSection.Emulators,
+            $"emulators.{row.SystemId}.summary",
             row.SystemName,
-            string.Empty,
+            row.SystemId,
             string.Join(" · ", parts),
-            GamepadSettingsRowKind.Summary,
-            IsEnabled: true,
-            Activate: () =>
-            {
-                _expandedSystemId = expanded ? null : row.SystemId;
-                return Task.CompletedTask;
-            },
-            SystemId: row.SystemId,
-            ExcludeFromParity: true,
-            IsExpanded: expanded,
-            IsWarning: missing is not null,
-            IsCompact: true,
-            SecondaryLabel: row.CanRescan ? "Rescan" : null,
-            SecondaryActivate: row.CanRescan ? () => ExecuteAsync(row.RescanLibraryCommand) : null);
+            warning: missing is not null,
+            secondaryLabel: row.CanRescan ? "Rescan" : null,
+            secondaryActivate: row.CanRescan ? () => ExecuteAsync(row.RescanLibraryCommand) : null);
     }
 
     private static string FolderDescription(EmulatorSettingsRowViewModel row, LibraryFolderRowViewModel folder)
@@ -2206,6 +2290,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 busy ? _settings.CancelCloudSyncCommand : _settings.SyncCloudNowCommand,
                 !busy || _settings.CancelCloudSyncCommand.CanExecute(null)) with
             {
+                // The one-off sync and the disconnect behind its Y both stay in Settings; the wizard's
+                // Saves step is for choices. Flagged rather than named by key, because this row's key
+                // flips to saves.stop mid-sync and a key list silently stops matching.
+                SettingsOnly = true,
                 SecondaryKey = "saves.disconnect",
                 SecondaryLabel = busy ? null : "Disconnect",
                 SecondaryActivate = () => ExecuteAsync(_settings.DisconnectCloudCommand),
@@ -2218,29 +2306,20 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         foreach (var platform in _settings.CloudPlatforms)
         {
             // One summary row per platform (artwork, name, what synced and when); A opens its rows beneath
-            // it, one platform at a time, exactly as Emulators does. The wizard's Saves step and the parity
-            // sweep see every platform open.
-            var expanded = _projectEveryPlatform || IsSetupMode
-                || string.Equals(platform.SystemId, _expandedSavesSystemId, StringComparison.Ordinal);
+            // it, one platform at a time, exactly as Emulators does. The wizard's Saves step is a checklist
+            // of folders to set, so it shows every platform open and the row is a heading there instead.
+            var forcedOpen = IsSetupMode;
+            var expanded = forcedOpen || IsPlatformExpanded(SettingsSection.Saves, platform.SystemId);
             var (summary, attention) = SaveSummary(platform);
             var systemId = platform.SystemId;
-            yield return new GamepadSettingsRowSpec(
+            yield return PlatformSummaryRow(
+                SettingsSection.Saves,
                 $"saves.{systemId}.summary",
                 platform.DisplayName,
-                string.Empty,
+                systemId,
                 summary,
-                GamepadSettingsRowKind.Summary,
-                IsEnabled: true,
-                Activate: () =>
-                {
-                    _expandedSavesSystemId = expanded ? null : systemId;
-                    return Task.CompletedTask;
-                },
-                SystemId: systemId,
-                ExcludeFromParity: true,
-                IsExpanded: expanded,
-                IsWarning: attention,
-                IsCompact: true);
+                forcedOpen,
+                attention);
             if (!expanded)
                 continue;
 
@@ -2257,7 +2336,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     platform.LastResultText,
                     platform.SaveShapeDescription);
             yield return ActionRow(
-                $"saves.{systemId}.folder",
+                platform.FolderFieldId,
                 "Save folder",
                 detail,
                 location,
@@ -2272,7 +2351,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             if (platform.SupportsSaveStates)
             {
                 yield return ToggleRow(
-                    $"saves.{systemId}.states",
+                    platform.SaveStatesFieldId,
                     "Save states",
                     "syncs manual states before launch and after exit · only when emulator version and CPU match",
                     platform.SyncSaveStates,
@@ -2285,7 +2364,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 if (platform.SyncSaveStates)
                 {
                     yield return ActionRow(
-                        $"saves.{systemId}.states-folder",
+                        platform.StateFolderFieldId,
                         "Save-state folder",
                         "Leave it detected to follow the emulator · A picks another",
                         string.IsNullOrEmpty(platform.NormalizedStateOverride)
@@ -2301,7 +2380,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             if (_settings.IsCloudConnected)
             {
                 yield return ActionRow(
-                    $"saves.{systemId}.replace-cloud",
+                    platform.ReplaceCloudFieldId,
                     "Replace cloud saves",
                     "Local copies win · replaced cloud copies are backed up first",
                     "A REPLACE CLOUD",
@@ -2311,9 +2390,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     confirmationTitle: $"Replace {platform.DisplayName} cloud saves?",
                     confirmationText: "Local saves become authoritative for this platform. Replaced cloud copies are backed up before the upload.",
                     isGrouped: true,
-                    systemId: systemId);
+                    systemId: systemId) with { SettingsOnly = true };
                 yield return ActionRow(
-                    $"saves.{systemId}.replace-local",
+                    platform.ReplaceLocalFieldId,
                     "Replace local saves",
                     "Cloud copies win · replaced local copies are backed up first",
                     "A REPLACE LOCAL",
@@ -2323,7 +2402,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     confirmationTitle: $"Replace {platform.DisplayName} local saves?",
                     confirmationText: "Cloud saves become authoritative for this platform. Replaced local copies are backed up before the download.",
                     isGrouped: true,
-                    systemId: systemId);
+                    systemId: systemId) with { SettingsOnly = true };
             }
         }
 
@@ -2410,31 +2489,20 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             // folder row is A = pick, Y = back to the folder detected from the emulator; "Use detected folder"
             // no longer needs a row of its own.
             var systemId = platform.SystemId;
-            var expanded = _projectEveryPlatform
-                || string.Equals(systemId, _expandedTextureSystemId, StringComparison.Ordinal);
+            var expanded = IsPlatformExpanded(SettingsSection.TexturePacks, systemId);
             var hasOverride = platform.DirectoryOverride.Length > 0;
             var folder = hasOverride ? platform.DirectoryOverride : platform.DetectedRoot ?? "No folder detected";
             var status = FirstNonEmpty(platform.StatusText, platform.LoadingText);
-            yield return new GamepadSettingsRowSpec(
+            yield return PlatformSummaryRow(
+                SettingsSection.TexturePacks,
                 $"textures.{systemId}.summary",
                 platform.DisplayName,
-                string.Empty,
-                FirstNonEmpty(status, folder),
-                GamepadSettingsRowKind.Summary,
-                IsEnabled: true,
-                Activate: () =>
-                {
-                    _expandedTextureSystemId = expanded ? null : systemId;
-                    return Task.CompletedTask;
-                },
-                SystemId: systemId,
-                ExcludeFromParity: true,
-                IsExpanded: expanded,
-                IsCompact: true);
+                systemId,
+                FirstNonEmpty(status, folder));
             if (!expanded)
                 continue;
             yield return ActionRow(
-                $"textures.{systemId}.folder",
+                platform.FolderFieldId,
                 "Texture folder",
                 hasOverride
                     ? FirstNonEmpty(status, "Your folder") + " · Y returns to the folder detected from the emulator"
@@ -2446,7 +2514,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 isGrouped: true,
                 systemId: systemId) with
             {
-                SecondaryKey = $"textures.{systemId}.detected",
+                SecondaryKey = platform.DetectedFieldId,
                 SecondaryLabel = hasOverride && !_settings.IsTexturePackBusy ? "Use detected" : null,
                 SecondaryActivate = () => ExecuteAsync(_settings.ClearTextureOverrideCommand, platform),
             };
@@ -2672,14 +2740,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private void NotifyRailStatuses()
     {
+        // Both cached statuses are computed before RefreshSetupRail, which reads them: the wizard chip
+        // would otherwise render the previous rebuild's reading.
         _emulatorsRailStatus = ComputeEmulatorsRailStatus();
+        ComputeSavesRailStatus();
         RefreshSetupRail();
         OnPropertyChanged(nameof(LibraryRailStatus));
         OnPropertyChanged(nameof(EmulatorsRailStatus));
         OnPropertyChanged(nameof(IsEmulatorsRailWarning));
         OnPropertyChanged(nameof(RetroAchievementsRailStatus));
         OnPropertyChanged(nameof(ArtworkRailStatus));
-        ComputeSavesRailStatus();
         OnPropertyChanged(nameof(SavesRailStatus));
         OnPropertyChanged(nameof(IsSavesRailWarning));
         OnPropertyChanged(nameof(ThemesRailStatus));
@@ -2922,15 +2992,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             case SetupStep.Saves:
             {
                 // The step is for choices (connect, save folders, state sync); the one-off "sync all now",
-                // the disconnect and the per-platform replace actions stay in Settings. A platform whose
-                // save folder could not be detected is the one thing the user must act on here, so its
-                // folder row is painted as a warning and says so in plain words.
-                var needsFolder = SavePlatformsNeedingAFolder().Select(platform => $"saves.{platform.SystemId}.folder").ToHashSet(StringComparer.Ordinal);
+                // the disconnect behind its Y and the per-platform replace actions stay in Settings, and
+                // say so on the spec itself. A platform whose save folder could not be detected is the one
+                // thing the user must act on here, so its folder row is painted as a warning and says so.
+                var needsFolder = SavePlatformsNeedingAFolder().Select(platform => platform.FolderFieldId).ToHashSet(StringComparer.Ordinal);
                 foreach (var row in BuildSaveRows())
                 {
-                    if (row.Key is "saves.sync" or "saves.disconnect"
-                        || row.Key.EndsWith("replace-cloud", StringComparison.Ordinal)
-                        || row.Key.EndsWith("replace-local", StringComparison.Ordinal))
+                    if (row.SettingsOnly)
                         continue;
                     yield return (needsFolder.Contains(row.Key) ? row with { IsWarning = true } : row) with { IsCompact = true };
                 }
@@ -2966,11 +3034,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 SetupStep.GamesAndEmulators => _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null) is { } attention
                     ? ($"{attention.SystemName} needs attention", true, false)
                     : (LibraryRailStatus, false, LibraryRailStatus.Length > 0),
+                // A folder still to pick is the step's own business and names itself; anything else the
+                // rail is warning about (a detection error, a sync notice) carries its warning through
+                // rather than being painted as a finished step.
                 SetupStep.Saves => SavePlatformsNeedingAFolder().Count() is > 0 and var needed
                     ? (needed == 1 ? "1 folder needed" : $"{needed} folders needed", true, false)
-                    : string.IsNullOrEmpty(SavesRailStatus)
-                        ? ("Not connected", false, false)
-                        : (SavesRailStatus, false, true),
+                    : IsSavesRailWarning
+                        ? (SavesRailStatus, true, false)
+                        : string.IsNullOrEmpty(SavesRailStatus)
+                            ? ("Not connected", false, false)
+                            : (SavesRailStatus, false, true),
                 _ => (string.Empty, false, false),
             };
             entry.Status = status;
@@ -3011,12 +3084,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     private void PrepareSetupStep()
     {
         if (CurrentSetupStep == SetupStep.GamesAndEmulators
-            && _expandedSystemId is null
+            && !_expandedBySection.ContainsKey(SettingsSection.Emulators)
             && _gameCountBySystem is not null
             && _settings.Rows.Count > 0
             && _settings.Rows.Sum(row => _gameCountBySystem(row.SystemId)) == 0)
         {
-            _expandedSystemId = _settings.Rows[0].SystemId;
+            _expandedBySection[SettingsSection.Emulators] = _settings.Rows[0].SystemId;
         }
     }
 

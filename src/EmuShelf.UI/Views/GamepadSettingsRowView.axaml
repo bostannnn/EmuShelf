@@ -44,6 +44,7 @@
                 Classes.grouped="{Binding IsGrouped}"
                 Classes.compact="{Binding IsCompact}"
                 Classes.summary="{Binding IsSummary}"
+                Classes.info="{Binding IsInformation}"
                 Classes.controller-input="{Binding #RowRoot.IsControllerInputActive}"
                 IsVisible="{Binding IsNormalRow}"
                 IsEnabled="{Binding IsEnabled}"

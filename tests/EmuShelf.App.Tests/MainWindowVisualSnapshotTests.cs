@@ -2900,8 +2900,13 @@ public class MainWindowVisualSnapshotTests
             Assert.Single(
                 visibleRows,
                 button => button.DataContext is GamepadSettingsRowViewModel { IsFocused: true });
-            // Compact rows (66) and platform summaries (56) are the only two heights in a section.
-            Assert.All(visibleRows, row => Assert.InRange(row.Bounds.Height, 56, 102));
+            // Compact rows (66) and platform summaries (56) are the only two heights in a section. Assert
+            // the rule that produces them as well as the pixels: a row that loses its class renders at the
+            // old two-line height, and a range wide enough to admit that catches nothing.
+            Assert.All(visibleRows, row => Assert.True(
+                row.Classes.Contains("compact") || row.Classes.Contains("summary"),
+                $"{row.DataContext} is neither compact nor a summary"));
+            Assert.All(visibleRows, row => Assert.InRange(row.Bounds.Height, 56, 66));
             // Full-width rows fill the repeater; grouped rows under a platform header are indented.
             var fullRowWidth = scroller.Bounds.Width - 18;
             Assert.All(visibleRows, row => Assert.Equal(

@@ -972,7 +972,8 @@ public sealed class GamepadSettingsViewModelTests
         Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
         Func<string?>? closeOnReturnWarning = null,
         Func<Task>? grantCloseOnReturnPrivilege = null,
-        Func<Task>? refreshGameCounts = null) => new(
+        Func<Task>? refreshGameCounts = null,
+        SetupWizardOptions? setup = null) => new(
             CreateSettings(
                 maintenance,
                 metadataPreferences,
@@ -989,7 +990,8 @@ public sealed class GamepadSettingsViewModelTests
             isEmulatorChoiceInstalled: isEmulatorChoiceInstalled,
             closeOnReturnWarning: closeOnReturnWarning,
             grantCloseOnReturnPrivilege: grantCloseOnReturnPrivilege,
-            refreshGameCounts: refreshGameCounts);
+            refreshGameCounts: refreshGameCounts,
+            setup: setup);
 
     /// <summary>Emulators lists one summary row per platform; A on it reveals that platform's rows.</summary>
     private static async Task ExpandPlatformAsync(GamepadSettingsViewModel viewModel, string systemId)
@@ -1149,6 +1151,157 @@ public sealed class GamepadSettingsViewModelTests
         // No override yet, so there is nothing for Y to return to; the field still counts for parity.
         Assert.Equal(string.Empty, folder.SecondaryLabel);
         Assert.Contains("textures.gamecube.detected", folder.ParityIds);
+    }
+
+    [AvaloniaFact]
+    public void SavesRail_StaysSilentUntilCloudSyncIsConnected()
+    {
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(connected: false));
+        viewModel.SelectedSection = SettingsSection.Saves;
+
+        // Entering the section probes for save folders whether or not the user ever connected Drive, so
+        // NeedsFolder alone must not make the rail speak: these folders exist for cloud sync.
+        var platform = viewModel.Settings.CloudPlatforms.Single();
+        platform.DetectedDirectory = null;
+        platform.HasProbed = true;
+
+        Assert.True(platform.NeedsFolder);
+        Assert.Equal(string.Empty, viewModel.SavesRailStatus);
+        Assert.False(viewModel.IsSavesRailWarning);
+    }
+
+    [AvaloniaFact]
+    public void SavesRail_NamesThePlatformNeedingAFolder_OnceConnected()
+    {
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(connected: true));
+        viewModel.SelectedSection = SettingsSection.Saves;
+        var platform = viewModel.Settings.CloudPlatforms.Single();
+
+        Assert.Equal("Google Drive", viewModel.SavesRailStatus);
+        Assert.False(viewModel.IsSavesRailWarning);
+
+        platform.DetectedDirectory = null;
+        platform.HasProbed = true;
+
+        Assert.Equal("PlayStation 2 needs a save folder", viewModel.SavesRailStatus);
+        Assert.True(viewModel.IsSavesRailWarning);
+    }
+
+    [AvaloniaFact]
+    public void SavesRail_CallsADetectionErrorAttention_NotAMissingFolder_WhenAFolderWasPicked()
+    {
+        using var viewModel = CreateGamepadSettings(cloudSaves: CreateCloudContext(connected: true));
+        viewModel.SelectedSection = SettingsSection.Saves;
+        var platform = viewModel.Settings.CloudPlatforms.Single();
+
+        platform.HasProbed = true;
+        platform.OverrideDirectory = "/sdcard/PCSX2/memcards";
+        platform.DetectionErrorText = "Cannot sync: the folder is unreadable";
+
+        Assert.False(platform.NeedsFolder);
+        Assert.True(viewModel.IsSavesRailWarning);
+        Assert.Equal("PlayStation 2 needs attention", viewModel.SavesRailStatus);
+    }
+
+    [AvaloniaFact]
+    public async Task CollectParityIds_OpensEveryEmulatorsPlatformToo()
+    {
+        var maintenance = new LibraryMaintenanceActions(
+            (_, _) => Task.FromResult(string.Empty),
+            _ => Task.FromResult(string.Empty),
+            SyncRpcs3Library: () => Task.FromResult(string.Empty));
+        using var viewModel = CreateGamepadSettings(maintenance);
+        viewModel.SelectedSection = SettingsSection.Emulators;
+
+        // Nothing is open on screen, yet a collapsed platform's rows are one A press away, so they count.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+        var collapsed = viewModel.CollectParityIds("emulators.");
+        Assert.Contains("emulators.playstation3.sync", collapsed);
+        Assert.DoesNotContain("emulators.playstation3.summary", collapsed);
+        // Collecting must not leave the section opened up.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+
+        // Whatever opening a platform reveals must already be in the collapsed sweep.
+        await ExpandPlatformAsync(viewModel, "playstation3");
+        var opened = viewModel.Rows
+            .SelectMany(row => row.ParityIds)
+            .Where(id => id.StartsWith("emulators.", StringComparison.Ordinal))
+            .ToArray();
+        Assert.NotEmpty(opened);
+        Assert.All(opened, id => Assert.Contains(id, collapsed));
+    }
+
+    [Fact]
+    public void ParityIdsOf_DropsAYKeyWithNoActionBehindIt()
+    {
+        var wired = new GamepadSettingsRowSpec(
+            "saves.sync",
+            "Google Drive",
+            string.Empty,
+            "Sync now",
+            GamepadSettingsRowKind.Action,
+            SecondaryKey: "saves.disconnect",
+            SecondaryActivate: () => Task.CompletedTask);
+
+        Assert.Equal(["saves.sync", "saves.disconnect"], GamepadSettingsRowSpec.ParityIdsOf(wired).ToArray());
+
+        // The Y label comes and goes with a busy flag — Desktop's own button is visible-but-disabled in
+        // the same states — but a key with nothing behind it names a field no press can ever reach, and
+        // the parity sweep must not report it as covered.
+        Assert.Equal(
+            ["saves.sync"],
+            GamepadSettingsRowSpec.ParityIdsOf(wired with { SecondaryActivate = null }).ToArray());
+    }
+
+    [AvaloniaFact]
+    public void SetupWizardSavesStep_ShowsPlatformsAsHeadings_AndLeavesSettingsOnlyRowsOut()
+    {
+        using var viewModel = CreateGamepadSettings(
+            cloudSaves: CreateCloudContext(connected: true),
+            setup: new SetupWizardOptions(
+                HasSecondScreen: false,
+                IsSecondScreenReturnReady: () => true,
+                RequestSecondScreenReturn: () => { },
+                DataFolderStatus: "User/EmuShelf"));
+
+        while (viewModel.CurrentSetupStep != SetupStep.Saves)
+            Assert.True(viewModel.Dispatch(GamepadAction.Menu));
+
+        // Every platform is already open here, so its row is a heading: a summary would offer a chevron
+        // and take focus for an A press that cannot open or close anything.
+        var platform = viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary");
+        Assert.True(platform.IsHeader);
+        Assert.False(platform.IsEnabled);
+        Assert.False(platform.CanActivate);
+        Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
+
+        // The step is for choices; syncing, disconnecting and the replace actions stay in Settings.
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key is "saves.sync" or "saves.stop");
+        Assert.DoesNotContain(viewModel.Rows, row => row.SecondaryKey == "saves.disconnect");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith("replace-cloud", StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public void SetupWizardSavesStep_KeepsDisconnectOut_WhileASyncIsRunning()
+    {
+        var cloud = CreateCloudContext(connected: true);
+        using var viewModel = CreateGamepadSettings(
+            cloudSaves: cloud,
+            setup: new SetupWizardOptions(
+                HasSecondScreen: false,
+                IsSecondScreenReturnReady: () => true,
+                RequestSecondScreenReturn: () => { },
+                DataFolderStatus: "User/EmuShelf"));
+
+        while (viewModel.CurrentSetupStep != SetupStep.Saves)
+            Assert.True(viewModel.Dispatch(GamepadAction.Menu));
+
+        // Mid-sync the Google Drive row is keyed saves.stop rather than saves.sync. A wizard filter that
+        // named keys stopped matching here and let Disconnect Google Drive into the wizard.
+        viewModel.Settings.IsCloudBusy = true;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key is "saves.sync" or "saves.stop");
+        Assert.DoesNotContain(viewModel.Rows, row => row.SecondaryKey == "saves.disconnect");
     }
 
     private static RetroAchievementsSettingsContext CreateRetroAchievementsContext() => new(

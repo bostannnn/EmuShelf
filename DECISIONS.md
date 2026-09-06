@@ -11899,3 +11899,34 @@ Decided:
 
 Not done here: the counts some state-first lines want (games without a cover, per-platform last sync as a
 date) — the rows fall back to the status texts the sections already have.
+
+## 2026-09-06 — Review fixes on the couch Settings redesign
+
+Ten findings from the review of the settings redesign, and three choices in fixing them that were not
+forced:
+
+- **The wizard omits rows by intent, not by key.** `GamepadSettingsRowSpec.SettingsOnly` marks the rows the
+  Android setup wizard's Saves step leaves out (sync now, the disconnect behind its Y, the per-platform
+  replace actions). The previous list named `saves.sync` and `saves.disconnect`; the redesign had turned
+  `saves.disconnect` into a `SecondaryKey` and made the Google Drive row key flip to `saves.stop` mid-sync,
+  so the list silently stopped matching and let Disconnect Google Drive into the wizard. A flag on the spec
+  cannot drift when another builder renames or conditions a key.
+- **A step that shows every platform open gets headings, not summaries.** The wizard's Saves step forces
+  every platform expanded, which left its summary rows focusable with a chevron and an A press that could
+  not open or close anything. They are `Kind.Header` there — non-focusable, no chevron — which is what the
+  rows they replaced were. `GamepadSettingsRowKind.Header` therefore stays: the redesign retired it from
+  Settings, not from the wizard.
+- **Parity counts a wired Y, not a labelled one.** `ParityIdsOf` yields a `SecondaryKey` only when
+  `SecondaryActivate` is set. Gating on the *label* would have been wrong — it comes and goes with a busy
+  flag, and Desktop's own button is visible-but-disabled in the same states — but a key with no handler
+  names a field no press can reach, and the sweep used to report it as covered anyway.
+
+The rest were straight fixes: the Saves rail no longer warns about save folders when cloud sync was never
+connected (the probe that fills `NeedsFolder` runs on any visit to the section); a detection error on a
+platform whose folder was picked by hand reads "needs attention", not "needs a save folder";
+`ComputeSavesRailStatus` runs before `RefreshSetupRail` reads it, so the wizard chip stops showing the
+previous rebuild's status; that chip carries `IsSavesRailWarning` instead of painting a warning as a done
+step; read-only rows get their flat `.info` treatment back, so a 24-row texture inventory stops looking
+like pressable cards A ignores; and the three per-section expansion fields become one
+`Dictionary<SettingsSection, string>`, which is what let Emulators quietly opt out of
+`CollectParityIds`'s "every platform open" contract.

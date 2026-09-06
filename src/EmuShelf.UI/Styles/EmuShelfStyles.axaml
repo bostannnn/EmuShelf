@@ -844,6 +844,18 @@
         <Style Selector="Button.gamepad-settings-row.destructive TextBlock.gamepad-settings-chevron">
             <Setter Property="Foreground" Value="{DynamicResource EmuDangerBrush}" />
         </Style>
+        <!-- Read-only rows (inventory, logs, connected account) are a flat list, not solid cards, so a
+             long texture-pack inventory reads as reference data rather than dead action buttons: they
+             have no chevron and A does nothing, so they must not look pressable. -->
+        <Style Selector="Button.gamepad-settings-row.info">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+        </Style>
+        <Style Selector="Button.gamepad-settings-row.info.focused, Button.gamepad-settings-row.info:focus">
+            <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
         <!-- Grouped rows are indented beneath their platform header so the section reads as a tree. -->
         <Style Selector="Button.gamepad-settings-row.grouped">
             <Setter Property="Margin" Value="24,0,0,10" />
