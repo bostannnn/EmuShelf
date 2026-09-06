@@ -633,7 +633,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         RebuildRows();
     }
 
-    public string StatusText => IsThemesSection ? string.Empty : SelectedSection switch
+    public string StatusText => IsSetupMode && !string.IsNullOrEmpty(_settings.StatusText)
+        ? _settings.StatusText
+        : IsThemesSection ? string.Empty : SelectedSection switch
     {
         SettingsSection.Emulators => EmulatorsSectionStatus(),
         SettingsSection.Hotkeys => FirstNonEmpty(
@@ -2419,6 +2421,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             _settings.ExportDeviceSavesCommand,
             _settings.ExportDeviceSavesCommand.CanExecute(null)) with
         {
+            SettingsOnly = true,
             SecondaryKey = "saves.export.cloud",
             SecondaryLabel = _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null) ? "Include cloud" : null,
             SecondaryActivate = () => ExecuteAsync(_settings.ExportDeviceAndCloudSavesCommand),
@@ -2797,7 +2800,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
     }
 
-    private void OnSettingsCloseRequested(bool saved) => CloseRequested?.Invoke(saved);
+    private void OnSettingsCloseRequested(bool saved)
+    {
+        SetupCompleted = _finishingSetup && saved;
+        CloseRequested?.Invoke(saved);
+    }
 
     private void HookCollection<T>(ObservableCollection<T> collection) where T : class
     {
@@ -3108,12 +3115,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SetupRail.StartDetail = IsLastSetupStep
             ? "Open the library"
             : $"Next: {SetupStepLabels.For(_liveSetupSteps[_setupIndex + 1])}";
-        SetupRail.IsStartEnabled = !_settings.IsWorking;
+        SetupRail.IsStartEnabled = !_settings.IsBusy;
     }
 
     private void SelectSetupStep(int index)
     {
-        if (_setup is null || index < 0 || index >= _liveSetupSteps.Count)
+        if (_setup is null || _settings.IsBusy || index < 0 || index >= _liveSetupSteps.Count)
             return;
 
         RememberFocusedRow();
@@ -3156,11 +3163,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// leaving early also saves — it just does not count as having walked the wizard.
     /// </summary>
     public bool SetupCompleted { get; private set; }
+    private bool _finishingSetup;
 
     /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
     private async Task AdvanceSetupAsync()
     {
-        if (_setup is null || !IsNormal)
+        if (_setup is null || !IsNormal || _settings.IsBusy)
             return;
 
         if (!IsLastSetupStep)
@@ -3171,14 +3179,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
         // Finish = the ordinary Save: it persists every edit and raises CloseRequested, and the flag above
         // is what tells the host this was the end of the wizard rather than a save on the way out.
-        SetupCompleted = true;
-        await ExecuteAsync(_settings.SaveCommand);
+        _finishingSetup = true;
+        try
+        {
+            await ExecuteAsync(_settings.SaveCommand);
+        }
+        finally
+        {
+            _finishingSetup = false;
+        }
     }
 
     /// <summary>B: the previous step, or on the first step leave the wizard without finishing it.</summary>
     private void BackSetup()
     {
-        if (_setup is null)
+        if (_setup is null || _settings.IsBusy)
             return;
 
         if (_setupIndex > 0)
@@ -3196,11 +3211,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// </summary>
     private async Task LeaveSetupAsync()
     {
+        if (_settings.IsBusy)
+            return;
+        // Only a successful save closes the wizard. Keep failed saves visible for retry.
         await ExecuteAsync(_settings.SaveCommand);
-        // A successful save raises CloseRequested itself (and this projection is disposed with it). If it
-        // failed it did not, and B still has to get the user out.
-        if (!_disposed)
-            CloseRequested?.Invoke(false);
     }
 
     public void Dispose()

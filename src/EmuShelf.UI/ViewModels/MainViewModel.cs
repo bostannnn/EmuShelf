@@ -7571,7 +7571,7 @@ public partial class MainViewModel : ViewModelBase
         var wasSetupWizard = GamepadSettings?.IsSetupMode == true;
         // Not `saved`: leaving the wizard early saves too, so that the answers already given survive. Only
         // reaching the last step and pressing Finish counts as having walked it.
-        var setupFinished = GamepadSettings?.SetupCompleted == true;
+        var setupFinished = saved && GamepadSettings?.SetupCompleted == true;
         CloseGamepadSettingsProjection();
         if (!IsGamepadMode)
             return;

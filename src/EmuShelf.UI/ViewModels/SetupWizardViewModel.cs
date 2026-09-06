@@ -18,7 +18,6 @@ namespace EmuShelf.App.ViewModels;
 public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettingsRowHost
 {
     private readonly IDataLocationBootstrap _bootstrap;
-    private readonly DataLocationOnboardingReason _reason;
     private readonly Action<string> _onCompleted;
     private readonly IAppLogger _logger;
     private readonly List<SetupStep> _liveSteps = [];
@@ -26,7 +25,6 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
     private bool _completed;
     private string? _existingDataFolder;
     private bool _existingProbed;
-    private bool _existingAdoptAttempted;
 
     public ObservableCollection<GamepadSettingsRowViewModel> Rows { get; } = [];
 
@@ -91,7 +89,6 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
         IAppLogger? logger = null)
     {
         _bootstrap = bootstrap;
-        _reason = reason;
         _onCompleted = onCompleted;
         _logger = logger ?? NullAppLogger.Instance;
         IsPermissionGranted = bootstrap.IsStoragePermissionGranted;
@@ -135,10 +132,8 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
     /// <summary>
     /// Re-reads the platform state. The Android head calls this when EmuShelf returns to the foreground —
-    /// after the user flips the all-files switch in Android settings and comes back. If the pointer now
-    /// resolves (the grant restored a known folder, the mirror is readable after a reinstall, the card is
-    /// back) nothing is left to ask and the wizard completes on its own; otherwise a freshly held grant
-    /// advances to the folder step.
+    /// after the user flips the all-files switch in Android settings and comes back. A restored or
+    /// discovered folder is offered for confirmation; granting permission never completes setup.
     /// </summary>
     public void RefreshPermissionState()
     {
@@ -148,9 +143,8 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
         var resolution = _bootstrap.Resolve();
         if (resolution.IsResolved)
         {
-            _logger.Information($"Data folder resolved on foreground return: '{resolution.BaseDirectory}'.");
-            Complete(resolution.BaseDirectory!);
-            return;
+            _existingDataFolder = resolution.BaseDirectory;
+            _existingProbed = true;
         }
 
         var wasGranted = IsPermissionGranted;
@@ -158,28 +152,12 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
         if (IsPermissionGranted && !wasGranted && CurrentStep == SetupStep.StorageAccess)
         {
             StatusMessage = string.Empty;
-            _existingProbed = false;
+            _existingProbed = resolution.IsResolved;
             SelectStep(_index + 1);
         }
         else
         {
             Rebuild();
-        }
-
-        // A library from a previous install is adopted without asking, but only on a genuine first run:
-        // there the pointer is the only thing that was lost, so there is nothing to overwrite. On the
-        // other two reasons the user already has a chosen folder — it is merely unreadable (the grant
-        // lapsed) or unreachable (the card is out) — and adopting a different library would silently
-        // replace that choice with a folder they never picked, over a "most recently written" tie-break.
-        // Those runs keep the "Use your existing library" row and wait for a press. Runs from the
-        // foreground signal (which also fires once on a cold start) rather than the constructor, so the
-        // restart it triggers never happens inside the view factory.
-        if (_reason == DataLocationOnboardingReason.FirstRun
-            && CurrentStep == SetupStep.DataFolder && !_existingAdoptAttempted && _existingDataFolder is { } existing && !IsBusy)
-        {
-            _existingAdoptAttempted = true;
-            _logger.Information($"Adopting the existing library at '{existing}'.");
-            _ = CompleteWithAsync(() => _bootstrap.UseExistingFolderAsync(existing));
         }
     }
 
@@ -355,8 +333,7 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
         if (_existingDataFolder is { } existing)
         {
-            // Normally adopted without a press (see RefreshPermissionState); the row exists for the moment
-            // before that runs, and as the fallback when adopting it failed.
+            // Restoring access does not imply confirmation of this folder.
             yield return new GamepadSettingsRowSpec(
                 "setup.folder.existing",
                 "Use your existing library",
