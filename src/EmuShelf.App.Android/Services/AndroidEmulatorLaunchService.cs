@@ -82,7 +82,7 @@ internal sealed class AndroidEmulatorLaunchService(
 
         // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
         // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.
-        if (beforeStart is not null)
+        if (game.SystemId != "steam" && beforeStart is not null)
             await beforeStart(cancellationToken);
 
         logger.Information(

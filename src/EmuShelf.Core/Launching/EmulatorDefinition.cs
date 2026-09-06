@@ -12,7 +12,8 @@ public sealed record EmulatorDefinition(
     string DefaultLaunchArguments,
     bool RequiresCorePath = false,
     bool SharesDefaultInstallation = false,
-    bool RequiresContentFile = false)
+    bool RequiresContentFile = false,
+    bool AndroidOnly = false)
 {
     public bool Supports(string systemId) =>
         SupportedSystemIds.Contains(systemId, StringComparer.Ordinal);

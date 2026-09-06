@@ -119,7 +119,7 @@ public class LibretroDatCatalogTests
         Assert.Equal(DatFormat.LogiqxXml, arcade.CatalogFormat);
         // The XML twin ("… (ClrMame Pro XML, Arcade only).dat") keys by set id; the text
         // "FBNeo - Arcade Games.dat" does not contain "ClrMame" and would make XmlReader throw.
-        Assert.Contains("ClrMame", arcade.CatalogUri.AbsoluteUri);
+        Assert.Contains("ClrMame", Assert.IsType<Uri>(arcade.CatalogUri).AbsoluteUri);
     }
 
     [Fact]

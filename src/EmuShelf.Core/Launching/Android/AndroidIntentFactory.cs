@@ -56,9 +56,18 @@ public static class AndroidIntentFactory
         var stringExtras = new Dictionary<string, string>(StringComparer.Ordinal);
         var boolExtras = new Dictionary<string, bool>(StringComparer.Ordinal);
         string? dataUri = null;
+        var intExtras = new Dictionary<string, int>(StringComparer.Ordinal);
 
         switch (profile.PayloadSlot)
         {
+            case AndroidRomPayloadSlot.SteamAppId:
+                if (!int.TryParse(romReference, System.Globalization.NumberStyles.None,
+                        System.Globalization.CultureInfo.InvariantCulture, out var appId) || appId <= 0)
+                    throw new ArgumentException("A positive Steam app id is required.", nameof(romReference));
+                intExtras["app_id"] = appId;
+                stringExtras["game_source"] = "STEAM";
+                break;
+
             case AndroidRomPayloadSlot.DataUri:
                 dataUri = romReference;
                 break;
@@ -116,6 +125,7 @@ public static class AndroidIntentFactory
             // Launches target an explicit component, which bypasses intent-filter matching, so no
             // category is needed even for the action-carrying (VIEW) shapes.
             [],
-            profile.ClearTaskOnLaunch);
+            profile.ClearTaskOnLaunch,
+            intExtras);
     }
 }

@@ -76,6 +76,7 @@ public sealed class FileImportRules : IGameImportRules
             // claims .zip, so it routes straight to Arcade; the archive itself is never opened at
             // import — the zip basename is the identity, resolved to a title later from the DAT.
             // .7z is deliberately omitted: the framework has no 7z reader and v1 does not add one.
+            ["steam"] = new(StringComparer.OrdinalIgnoreCase) { ".steam" },
             [ArcadeId] = new(StringComparer.OrdinalIgnoreCase) { ".zip" },
         };
 
@@ -179,6 +180,7 @@ public sealed class FileImportRules : IGameImportRules
 
             var match = system.Id switch
             {
+                "steam" => SteamShortcutReader.TryRead(path) is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible,
                 PspId => pspEvidence is null ? GameFileMatch.Incompatible : GameFileMatch.Compatible,
                 MegaDriveId => megaDriveLayout is null
                     ? GameFileMatch.Incompatible
@@ -255,6 +257,8 @@ public sealed class FileImportRules : IGameImportRules
     public bool IsFolderCandidate(string path, GameSystem system)
     {
         var extension = Path.GetExtension(path);
+        if (system.Id == "steam")
+            return SteamShortcutReader.TryRead(path) is not null;
         if (system.Id == MegaDriveId)
             return MegaDriveRomReader.TryRecognize(path) is not null;
         if (system.Id == NintendoDsId)
@@ -357,6 +361,8 @@ public sealed class FileImportRules : IGameImportRules
 
     public GameImportMetadata ReadImportMetadata(string path, GameSystem system)
     {
+        if (system.Id == "steam")
+            return new GameImportMetadata(null, SteamShortcutReader.Identifiers(path));
         if (system.Id == MegaDriveId && MegaDriveRomReader.TryRead(path) is { } megaDriveEvidence)
         {
             return new GameImportMetadata(

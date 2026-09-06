@@ -45,6 +45,7 @@
        new emulator is therefore a manifest change, not just data — the regression against the desktop
        model the plan calls out (Milestone B). -->
   <queries>
+    <package android:name="app.gamenative" />
     <!-- The companion screen's all-apps drawer. This narrow launcher-intent query exposes only apps
          with user-launchable activities and avoids the Play-policy-sensitive QUERY_ALL_PACKAGES. -->
     <intent>

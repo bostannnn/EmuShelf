@@ -2202,3 +2202,15 @@ breaks the whole-solution macOS build/test loop.
           unchanged (summary cards; the platform still missing a folder opens itself) — the heading row kind
           it used to fall back on is gone. See DECISIONS 2026-09-05 (the Settings-language entry), 2026-09-06
           and `docs/prototypes/couch-settings-v5/`.
+
+
+### 2026-09-06 — Steam through GameNative
+
+- [x] Steam platform, validated `.steam` folder import, persisted app-id evidence and typed Android launch.
+- [x] Steam hardware sprite, portrait capsules, dedicated shelf profile/material and launch animation.
+- [x] Steam artwork provider and ScreenScraper PC mapping, conservative batch title matching and manual search.
+- [x] Preserve GameNative's achievements/cloud saves; skip EmuShelf save hooks and force-stop on return.
+- [x] Desktop compatibility, full solution tests and Android Release/AOT build; local shelf rendering.
+- [x] Thor game discovery and launch confirmed by the user.
+- [ ] Thor return behavior validation and separate test-app cleanup after user testing.
+- [ ] Live authenticated ScreenScraper verification with a credential-provisioned build.

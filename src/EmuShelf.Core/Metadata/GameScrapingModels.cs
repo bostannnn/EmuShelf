@@ -178,6 +178,7 @@ public enum GameProviderMatchMethod
     // file name is the canonical game identity rather than an arbitrary, hack-prone label.
     // Persisted as an ordinal, so this must stay last.
     FileName,
+    ExactTitleSearch,
 }
 
 public sealed record GameProviderMatch(

@@ -12108,3 +12108,59 @@ precedence over section status, including the Saves step's cloud status, so retr
 The host also requires the successful-save signal before persisting the setup version. Accessibility,
 Shizuku and emulator refreshes preserve the current step; cloud sign-in and save-folder cancellation do
 not request wizard closure. Device-level activity recreation still requires Android testing.
+
+
+## 2026-09-06 — Steam library through GameNative
+
+Steam is a stable `steam` system, grouped under Valve. GameNative owns installations,
+Steam achievements and cloud saves. Import its read-only `.steam` frontend exports through
+the normal folder scanner; never scan Wine prefixes or execute descriptor contents. Each
+export contains one positive decimal 32-bit app id. Validate the extension, size and value
+at import and again at launch. Persist that evidence as an appended `SteamAppId` identifier
+kind. Missing exports follow normal availability/rescan behavior; removing library entries
+never deletes exports or installed games. No implicit full scan at startup.
+
+The Android profile targets `app.gamenative/app.gamenative.MainActivity` with action
+`app.gamenative.LAUNCH_GAME`, integer `app_id`, and string `game_source=STEAM`.
+`AndroidIntentRequest` gains typed integer extras. This contract was checked against
+GameNative's upstream IntentLaunchManager and the installed Thor version 1.2.0; 23 exports
+were found in `/storage/emulated/0/User/Gamenative`. Package visibility is explicit. Existing
+session/play-time and screen-selection machinery is reused. GameNative bypasses EmuShelf's
+pre-launch save hook and force-stop-on-return behavior so its Steam uploads can finish.
+No save provider or RetroAchievements mapping is registered; the achievements viewer stays
+unchanged. Desktop can organize these entries but explains that GameNative launches on Android.
+
+Steam's publisher-provided 600×900 library capsule is resolved by app id without a DAT download
+or authentication. A null metadata catalogue URI explicitly means identifier-only artwork
+support. ScreenScraper maps Steam to PC Windows (138), verified on its official platform page.
+Shortcut bytes are never hashed as ROM evidence. Batch lookup accepts only a unique exact title
+match (ignoring punctuation/case); fuzzy or ambiguous matches require the existing manual picker.
+Provenance distinguishes this route from a user-selected search result.
+
+Shelf mode uses a virtual dark-blue PC keep case sized to the 2:3 capsule, with front/back/spine
+slots and the case-downward launch animation; it does not invent a physical Steam disc. This
+reuses the licensed case geometry with an explicit Steam profile and material, mirrored in the
+renderer preview. The platform row uses an original vector PC/controller glyph, with no new
+third-party logo or game artwork bundled.
+
+Validation: 2,442 tests passed (1,332 infrastructure, 1,110 app), Android Release/AOT build passed,
+Steam cover HTTP retrieval and local production-renderer shelf review passed. On-device launch
+and authenticated ScreenScraper verification remain pending: the Thor has an active GameNative
+session, and the installed EmuShelf signing certificate differs from the local development key.
+
+
+### 2026-09-06 — Steam platform artwork correction
+
+User testing confirmed discovery and launch, but the flat PC/controller glyph did
+not match the other platforms. Replace it with original shaded pixel-art PC
+hardware on transparent PNG, resolved through the same cached bitmap path as the
+custom console sprites. Keep the user's control of Thor during manual testing.
+
+### 2026-09-06 — Steam review and navigation order
+
+Steam follows Arcade at the end of the shared navigation catalog, as requested.
+The cached Steam navigation bitmap is decoded at 256 pixels wide instead of the
+1207-pixel source width. The desktop Android-only guard applies to the resolved
+emulator, preserving desktop alternatives for any future shared platform. Export
+reads remain bounded even if GameNative rewrites the shortcut during inspection.
+The preview catalog keeps its previous default case ordering.

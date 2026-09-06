@@ -64,6 +64,15 @@ public static class AndroidLaunchResolver
             profile = candidates[0];
         }
 
+        if (profile.PayloadSlot == AndroidRomPayloadSlot.SteamAppId)
+        {
+            var appId = Importing.SteamShortcutReader.TryRead(absoluteGamePath);
+            return appId is null
+                ? AndroidLaunchResolution.Failed("The Steam shortcut is missing or invalid. Refresh GameNative's frontend exports.")
+                : new AndroidLaunchResolution(AndroidIntentFactory.Build(profile,
+                    appId.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)), profile, null);
+        }
+
         // RetroArch is the plain-path exception: it holds all-files, takes the raw path, and needs a core.
         if (profile.PayloadSlot == AndroidRomPayloadSlot.RetroArchCore)
         {

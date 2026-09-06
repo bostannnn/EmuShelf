@@ -40,6 +40,30 @@ public class ScreenScraperPreviewServiceTests : TempAppDirectoryTestBase
             KnownScreenScraperProfiles.All);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Steam_UsesUniqueExactPcTitle_WithoutHashingTheShortcut(bool ambiguous)
+    {
+        var game = AddGame("80 Days.steam", "381780"u8.ToArray(), "steam");
+        _credentials.SaveCredentials(new ScreenScraperUserCredentials("player", "password"));
+        var matches = new List<ScreenScraperGameMatch> { new("pc-80days", "80 Days", "PC Windows") };
+        if (ambiguous) matches.Add(new("another", "80 Days", "PC Windows"));
+        _client.SearchResult = new(ScreenScraperRequestStatus.Success, matches, null, null);
+        var result = await _preview.PreviewAsync(game.Id, new ScreenScraperSettings { Enabled = true }, false);
+        Assert.Equal(!ambiguous, result.IsSuccess);
+        if (ambiguous)
+            Assert.Equal(0, _client.GameRequestCount);
+        else
+        {
+            Assert.Equal(138, _client.LastRequest!.SystemId);
+            Assert.Equal("pc-80days", _client.LastRequest.ProviderGameId);
+            Assert.Null(_client.LastRequest.Sha1);
+            Assert.Null(result.Preview!.FingerprintStatus);
+            Assert.Equal(GameProviderMatchMethod.ExactTitleSearch, result.Preview.Match.MatchMethod);
+        }
+    }
+
     [Fact]
     public async Task Preview_ComputesEvidenceAndBuildsCandidatesWithoutApplyingAnything()
     {

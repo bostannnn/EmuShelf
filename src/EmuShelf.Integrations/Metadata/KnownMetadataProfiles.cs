@@ -36,6 +36,8 @@ public static class KnownMetadataProfiles
     // covers trips in a burst (HTTP 429), whereas jsDelivr is built to serve those files in bulk.
     public static IReadOnlyList<MetadataSystemProfile> All { get; } =
     [
+        new("steam", GameIdentifierKind.SteamAppId, null,
+            new Importing.SteamShortcutReader(), [new SteamArtworkProvider()]),
         new(
             "playstation",
             GameIdentifierKind.Serial,

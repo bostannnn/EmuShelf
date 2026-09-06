@@ -22,7 +22,8 @@ public sealed record AndroidIntentRequest(
     IReadOnlyDictionary<string, string> StringExtras,
     IReadOnlyDictionary<string, bool> BoolExtras,
     IReadOnlyList<string> Categories,
-    bool ClearTask = false)
+    bool ClearTask = false,
+    IReadOnlyDictionary<string, int>? IntExtras = null)
 {
     /// <summary>The explicit <c>package/activity</c> component this intent targets.</summary>
     public string Component => $"{PackageName}/{ActivityName}";
