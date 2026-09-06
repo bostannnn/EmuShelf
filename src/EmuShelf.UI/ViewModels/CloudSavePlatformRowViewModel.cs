@@ -196,6 +196,10 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         CompatibilityWarning = null;
         OptionalContentSummary = null;
         DetectionErrorText = null;
+        // Detection has to run again for the newly chosen emulator, so this row is back to "not looked
+        // yet". Without this NeedsFolder would read the cleared state as "looked, found nothing" and the
+        // settings row would announce a missing save folder the user has not actually been asked about.
+        HasProbed = false;
     }
 
     /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>

@@ -2169,7 +2169,7 @@ breaks the whole-solution macOS build/test loop.
           mode: second screen, closing games, games and emulators, saves) share one rail, one row control
           and one legend with couch Settings. Plain wording throughout (no "second-screen return", "emulator
           return", "watcher"). `SetupCompletedVersion` gates the auto-open; Settings → Library has "Run setup
-          again". See DECISIONS 2026-09-05 (second entry) and `docs/prototypes/android-setup-wizard/`.
+          again". See DECISIONS 2026-09-05 (the setup-wizard entry) and `docs/prototypes/android-setup-wizard/`.
     - [x] **S7 — every couch Settings section in the Emulators language, one control vocabulary**
           (2026-09-05; Thor pass pending). Library, RetroAchievements, Artwork & Metadata, Saves, Themes,
           About and Texture Packs now use the compact one-line rows PR #228 gave Emulators. A row ends in
@@ -2178,5 +2178,5 @@ breaks the whole-solution macOS build/test loop.
           Saves and Texture Packs platforms are summary rows that open one at a time; Y on an account row
           (Google Drive, RetroAchievements, ScreenScraper) disconnects it, Y on Export includes cloud
           copies, Y on a texture folder returns to the detected one. Parity is compared against
-          `CollectParityIds` (every platform open, Y keys included). See DECISIONS 2026-09-05 (third
+          `CollectParityIds` (every platform open, Y keys included). See DECISIONS 2026-09-05 (the Settings-language
           entry) and `docs/prototypes/couch-settings-v5/`.

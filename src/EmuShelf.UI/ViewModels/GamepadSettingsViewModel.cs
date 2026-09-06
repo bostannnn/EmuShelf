@@ -293,6 +293,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     private int _setupIndex;
     private bool _secondScreenReadyRead;
     private bool _cachedSecondScreenReady;
+    private bool _storageGrantedRead;
+    private bool _cachedStorageGranted;
     // Ordinary Settings only: the Library row that re-runs the wizard on demand (Android).
     private readonly IAsyncRelayCommand? _runSetupCommand;
     // Device probes held for the life of this screen, keyed by choice id; see EmulatorMissingFor.
@@ -633,6 +635,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _emulatorChoiceInstalled.Clear();
         _closeOnReturnWarningRead = false;
         _secondScreenReadyRead = false;
+        _storageGrantedRead = false;
         RebuildRows();
     }
 
@@ -878,6 +881,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         // to the content, and LB/RB still work as a shortcut.
         if (IsRailFocused)
         {
+            // Except in the wizard, whose legend offers no shoulders: swallow them here too, so the rail
+            // cannot do what the content column refuses to (see the setup block further down).
+            if (IsSetupMode && action is GamepadAction.PreviousPlatform or GamepadAction.NextPlatform)
+                return true;
+
             switch (action)
             {
                 case GamepadAction.NavigateUp:
@@ -960,7 +968,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
         if (IsSetupMode)
         {
-            // Steps are walked with START/B only; LB/RB and Left-to-rail are swallowed so nothing jumps.
+            // Steps are walked with START/B (and Up/Down once Left has put focus on the rail); LB/RB are
+            // swallowed in both columns so nothing jumps to a step the legend never offered.
             switch (action)
             {
                 case GamepadAction.PreviousPlatform:
@@ -2913,16 +2922,55 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
     }
 
+    // Same treatment for the all-files grant: the pre-boot page answered it, but Android can take it away
+    // afterwards, so the step reports the live reading rather than asserting it is held. Cached per screen
+    // and re-read on a foreground return, which is when the user comes back from flipping the switch.
+    private bool IsStoragePermissionGranted
+    {
+        get
+        {
+            if (_setup?.IsStoragePermissionGranted is not { } probe)
+                return true;
+            if (!_storageGrantedRead)
+            {
+                _cachedStorageGranted = probe();
+                _storageGrantedRead = true;
+            }
+            return _cachedStorageGranted;
+        }
+    }
+
     private IEnumerable<GamepadSettingsRowSpec> BuildSetupRows()
     {
         switch (CurrentSetupStep)
         {
             case SetupStep.StorageAccess:
-                yield return InformationRow(
-                    "setup.storage.grant",
-                    "Allow access to all files",
-                    "Allowed. Android remembers this until you turn it off in its settings.",
-                    "Allowed");
+                yield return IsStoragePermissionGranted
+                    ? InformationRow(
+                        "setup.storage.grant",
+                        "Allow access to all files",
+                        "Allowed. Android remembers this until you turn it off in its settings.",
+                        "Allowed")
+                    : new GamepadSettingsRowSpec(
+                        "setup.storage.grant",
+                        "Allow access to all files",
+                        "Not allowed. EmuShelf can't read your games or its own folder until it is. A opens Android's permission page.",
+                        _setup?.RequestStoragePermission is null ? string.Empty : "A OPEN",
+                        _setup?.RequestStoragePermission is null
+                            ? GamepadSettingsRowKind.Information
+                            : GamepadSettingsRowKind.Action,
+                        Activate: _setup?.RequestStoragePermission is null
+                            ? null
+                            : () =>
+                            {
+                                _setup.RequestStoragePermission();
+                                // The answer lands on foreground return; drop the cached reading so the
+                                // rebuild that follows re-asks.
+                                _storageGrantedRead = false;
+                                return Task.CompletedTask;
+                            },
+                        IsWarning: true,
+                        ExcludeFromParity: true);
                 yield return InformationRow(
                     "setup.storage.why",
                     "What this is used for",
@@ -2935,17 +2983,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     "Data folder",
                     _settings.HasDataDirectory ? _settings.DataDirectory ?? string.Empty : "Not set",
                     string.Empty);
-                if (_settings.CanChangeDataFolder)
-                {
-                    yield return ActionRow(
-                        "general.change-data-folder",
-                        "Choose a different folder",
-                        "Android's folder picker. EmuShelf restarts into the new folder; your existing data stays where it is.",
-                        "A CHOOSE",
-                        _settings.ChangeDataFolderCommand,
-                        enabled: !_settings.IsBusy,
-                        excludeFromParity: true);
-                }
+                // Deliberately read-only here, unlike the Library section's row: changing the data folder
+                // restarts the process, which would take every answer given so far with it (they are only
+                // written by Save, at Finish or on the way out). The step reports the folder; moving it is
+                // Settings → Library, where there is nothing in flight to lose.
+                yield return InformationRow(
+                    "setup.folder.change",
+                    "Want it somewhere else?",
+                    "Settings → Library → \"Data folder\" moves it. EmuShelf restarts into the new folder and your existing data stays where it is.",
+                    string.Empty);
                 break;
             case SetupStep.SecondScreen:
             {
@@ -3043,7 +3089,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         {
             var (status, warning, done) = entry.Step switch
             {
-                SetupStep.StorageAccess => ("Allowed", false, true),
+                SetupStep.StorageAccess => IsStoragePermissionGranted
+                    ? ("Allowed", false, true)
+                    : ("Not allowed", true, false),
                 SetupStep.DataFolder => (_setup.DataFolderStatus, false, true),
                 SetupStep.SecondScreen => IsSecondScreenReturnReady ? ("On", false, true) : ("Off", true, false),
                 SetupStep.ClosingGames => !CloseEmulatorOnReturn
@@ -3119,6 +3167,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         ? SavePlatformsNeedingAFolder().Select(platform => $"saves.{platform.SystemId}.folder").FirstOrDefault()
         : null;
 
+    /// <summary>
+    /// True once the wizard's last step was finished with Save. The host records
+    /// <c>SetupCompletedVersion</c> against this rather than against "the settings were saved", because
+    /// leaving early also saves — it just does not count as having walked the wizard.
+    /// </summary>
+    public bool SetupCompleted { get; private set; }
+
     /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
     private async Task AdvanceSetupAsync()
     {
@@ -3131,8 +3186,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             return;
         }
 
-        // Finish = the ordinary Save: it persists every edit and raises CloseRequested(saved: true), which
-        // the host treats as wizard completion.
+        // Finish = the ordinary Save: it persists every edit and raises CloseRequested, and the flag above
+        // is what tells the host this was the end of the wizard rather than a save on the way out.
+        SetupCompleted = true;
         await ExecuteAsync(_settings.SaveCommand);
     }
 
@@ -3145,6 +3201,22 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         if (_setupIndex > 0)
             SelectSetupStep(_setupIndex - 1);
         else
+            _ = LeaveSetupAsync();
+    }
+
+    /// <summary>
+    /// B on the first step: out of the wizard, keeping what was answered. Close-on-return and the
+    /// per-platform save folders are written only by Save, so simply closing would silently discard every
+    /// choice made on the way here — after which the wizard would open again next launch and ask for them
+    /// a second time. The wizard is still not recorded as completed (<see cref="SetupCompleted"/> stays
+    /// false), so it is offered again; the answers are just already in place when it is.
+    /// </summary>
+    private async Task LeaveSetupAsync()
+    {
+        await ExecuteAsync(_settings.SaveCommand);
+        // A successful save raises CloseRequested itself (and this projection is disposed with it). If it
+        // failed it did not, and B still has to get the user out.
+        if (!_disposed)
             CloseRequested?.Invoke(false);
     }
 

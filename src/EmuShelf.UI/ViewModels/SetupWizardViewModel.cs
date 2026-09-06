@@ -18,6 +18,7 @@ namespace EmuShelf.App.ViewModels;
 public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettingsRowHost
 {
     private readonly IDataLocationBootstrap _bootstrap;
+    private readonly DataLocationOnboardingReason _reason;
     private readonly Action<string> _onCompleted;
     private readonly IAppLogger _logger;
     private readonly List<SetupStep> _liveSteps = [];
@@ -90,6 +91,7 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
         IAppLogger? logger = null)
     {
         _bootstrap = bootstrap;
+        _reason = reason;
         _onCompleted = onCompleted;
         _logger = logger ?? NullAppLogger.Instance;
         IsPermissionGranted = bootstrap.IsStoragePermissionGranted;
@@ -164,11 +166,16 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
             Rebuild();
         }
 
-        // A library from a previous install is adopted without asking: the pointer is the only thing that
-        // was lost, and Settings can still move the data folder later. Runs from the foreground signal
-        // (which also fires once on a cold start) rather than the constructor, so the restart it triggers
-        // never happens inside the view factory.
-        if (CurrentStep == SetupStep.DataFolder && !_existingAdoptAttempted && _existingDataFolder is { } existing && !IsBusy)
+        // A library from a previous install is adopted without asking, but only on a genuine first run:
+        // there the pointer is the only thing that was lost, so there is nothing to overwrite. On the
+        // other two reasons the user already has a chosen folder — it is merely unreadable (the grant
+        // lapsed) or unreachable (the card is out) — and adopting a different library would silently
+        // replace that choice with a folder they never picked, over a "most recently written" tie-break.
+        // Those runs keep the "Use your existing library" row and wait for a press. Runs from the
+        // foreground signal (which also fires once on a cold start) rather than the constructor, so the
+        // restart it triggers never happens inside the view factory.
+        if (_reason == DataLocationOnboardingReason.FirstRun
+            && CurrentStep == SetupStep.DataFolder && !_existingAdoptAttempted && _existingDataFolder is { } existing && !IsBusy)
         {
             _existingAdoptAttempted = true;
             _logger.Information($"Adopting the existing library at '{existing}'.");
@@ -291,11 +298,18 @@ public sealed partial class SetupWizardViewModel : ViewModelBase, IGamepadSettin
 
     private void Rebuild()
     {
+        // Keep the controller on the row it was already on, the way the in-app half's RebuildRows does.
+        // A rebuild runs on every foreground return and twice per folder action, so resetting to the top
+        // would move the cursor between the A that opened the system picker and the A that follows a
+        // cancellation — landing the second press on "Keep EmuShelf's data here" instead.
+        var focusedKey = FocusedRow?.Key;
         var specs = (CurrentStep == SetupStep.StorageAccess ? StorageRows() : DataFolderRows()).ToList();
         Rows.Clear();
         foreach (var spec in specs)
             Rows.Add(new GamepadSettingsRowViewModel(this, spec));
-        SetFocus(0);
+        // A step change replaces every key, so this falls back to the first row on its own.
+        var restored = focusedKey is null ? -1 : Rows.ToList().FindIndex(row => row.Key == focusedKey);
+        SetFocus(restored >= 0 ? restored : 0);
         RefreshRail();
     }
 

@@ -11,7 +11,9 @@
 #stagewrap{position:relative;margin:0 auto}#stage{width:1920px;height:1080px;position:relative;transform-origin:0 0;overflow:hidden;background:#070707;cursor:pointer}
 #stage img.shot{position:absolute;inset:0;width:100%;height:100%}
 #notes{max-width:1100px;margin:16px auto 40px;padding:0 16px;color:#cdd;font-size:14px;line-height:1.5}#notes h3{margin:0 0 6px;font-size:15px;color:#fff}#notes ul{margin:0;padding-left:18px}
-.bg{position:absolute;inset:0;background:url(assets/shelf-bg.jpg) center/cover;filter:brightness(.22)}
+/* The ambient stage behind the wizard. Deliberately a gradient, not a shelf screenshot: a real capture
+   carries publisher label art we have no licence to redistribute (see CLAUDE.md / THIRD-PARTY-NOTICES). */
+.bg{position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 28%,#16261f 0%,#0b1411 55%,#060a09 100%)}
 .panel{position:absolute;left:57px;top:57px;width:1806px;height:967px;border-radius:30px;background:var(--panel);border:2px solid rgba(255,255,255,.07)}
 .rail{position:absolute;left:46px;top:75px;width:412px;height:756px;border-radius:22px;background:var(--rail);padding:26px 22px 0}
 .rail h1{margin:0;font-size:44px;font-weight:600;color:var(--txt);line-height:1.1}

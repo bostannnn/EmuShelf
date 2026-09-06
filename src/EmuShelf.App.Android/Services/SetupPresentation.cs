@@ -46,12 +46,24 @@ internal sealed class SetupPresentation : Presentation
         }
         if (AndroidGamepadInput.Map(e.KeyCode) is { } action)
         {
-            if (e.Action == KeyEventActions.Down && e.RepeatCount == 0)
+            // Directional actions keep their key-repeats so a held D-pad walks the rows, exactly as the
+            // Activity and the shell's companion do; every other action is edge-triggered.
+            if (e.Action == KeyEventActions.Down &&
+                (e.RepeatCount == 0 || AndroidGamepadInput.RepeatsWhileHeld(action)))
+            {
                 AndroidGamepadInput.Dispatch?.Invoke(action);
+            }
             return true;
         }
         return base.DispatchKeyEvent(e);
     }
+
+    // The setup page's D-pad is a hat axis on the Thor, and Android delivers motion to the focused
+    // display's window — this one, the moment the user touches Screen-2. Without this the page keeps
+    // A/B/START and stops moving, which is the whole failure PreShellNavigate exists to prevent.
+    // The binding types the base parameter non-null, but Android may pass null; forward as-is.
+    public override bool DispatchGenericMotionEvent(MotionEvent? e) =>
+        AndroidGamepadInput.TryFeedMotion(e) || base.DispatchGenericMotionEvent(e!);
 
     protected override void OnCreate(global::Android.OS.Bundle? savedInstanceState)
     {

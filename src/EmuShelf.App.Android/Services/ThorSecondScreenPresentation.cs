@@ -87,6 +87,19 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         return base.DispatchKeyEvent(e!);
     }
 
+    // The motion half of the same hand-off. Sticks and hat-axis D-pads arrive as generic motion, which
+    // Android also delivers to the focused display's window — so while the main screen claims the pad,
+    // this window has to feed the shared reader or Settings/the wizard keeps its buttons and loses every
+    // direction. Otherwise motion belongs to nobody here: the companion is driven by key events.
+    public override bool DispatchGenericMotionEvent(MotionEvent? e)
+    {
+        if (AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true && AndroidGamepadInput.TryFeedMotion(e))
+            return true;
+
+        // The binding types the base parameter non-null, but Android may pass null; forward as-is.
+        return base.DispatchGenericMotionEvent(e!);
+    }
+
     // Back on Screen-2 must behave like a launcher's Back, not a dialog's: close an open overlay
     // (all-apps drawer / achievements), otherwise swallow. Never call base.OnBackPressed — that cancels
     // the Presentation and reveals the stock app drawer underneath (the reported "press Back → app
