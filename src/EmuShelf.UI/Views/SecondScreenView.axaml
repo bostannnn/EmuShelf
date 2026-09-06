@@ -135,10 +135,10 @@
       <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
       <Setter Property="BorderBrush" Value="{DynamicResource EmuStrongBorderBrush}" />
     </Style>
-    <!-- Borderless bar icons (☰ / trophy): no resting chrome, just a rounded hover wash. -->
+    <!-- Large, visibly bounded end controls for touch on the companion display. -->
     <Style Selector="Button.ss-bar-icon">
-      <Setter Property="CornerRadius" Value="23" />
-      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="Transitions">
         <Transitions>
@@ -148,6 +148,9 @@
     </Style>
     <Style Selector="Button.ss-bar-icon:pointerover /template/ ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource EmuHoverBrush}" />
+    </Style>
+    <Style Selector="Button.ss-bar-icon:pressed /template/ ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource EmuStrongBorderBrush}" />
     </Style>
     <!-- Dock slots and drawer app tiles: rounded cards with a hover wash. -->
     <Style Selector="Button.ss-slot, Button.ss-app-tile">
@@ -168,17 +171,14 @@
        palette, Inter font, and controls. The resting surface shows the focused/running game's fan art
        with its logo staggered in on top (Cocoon-style); the bottom bar carries the app dock plus the
        drawer and achievements toggles. -->
-  <Grid RowDefinitions="*,Auto">
+  <Grid RowDefinitions="*,Auto" ClipToBounds="True">
+
+    <!-- Art continues behind the floating dock, including its rounded corners and outer gutter. -->
+    <Image Grid.RowSpan="2" Source="{Binding FanartImage}" Stretch="UniformToFill"
+           Opacity="{Binding FanartOpacity}" IsVisible="{Binding HasFanart}" />
+    <Border Grid.RowSpan="2" Background="#40000000" IsVisible="{Binding HasFanart}" />
 
     <Panel Grid.Row="0" ClipToBounds="True">
-
-      <!-- Resting spotlight: fan art. Swapped instantly (no opacity transition) so scrolling the library
-           does not blink the panel between games. -->
-      <Image Source="{Binding FanartImage}" Stretch="UniformToFill" Opacity="{Binding FanartOpacity}"
-             IsVisible="{Binding HasFanart}" />
-
-      <!-- Scrim so the logo and dock read over busy art -->
-      <Border Background="#40000000" IsVisible="{Binding HasFanart}" />
 
       <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink).
            SpotlightLogoOpacity, not LogoOpacity: it drops to zero while the standby wash is up, because
@@ -390,15 +390,16 @@
 
     <!-- Bottom bar:  ☰  |  five dock slots  |  trophy. Hidden while the achievements overlay is open so the
          badge grid + detail strip own the full square panel; Close (or Back) returns to it. -->
-    <Border Grid.Row="1" Height="64" Background="{DynamicResource EmuToolbarBrush}"
+    <Border Grid.Row="1" Height="80" Margin="12,0,12,12" Background="{DynamicResource EmuToolbarBrush}"
             IsVisible="{Binding !IsAchievementsOpen}"
-            CornerRadius="18,18,0,0" BoxShadow="0 -6 18 0 #33000000">
-      <Grid ColumnDefinitions="Auto,*,Auto" Margin="14,0">
+            CornerRadius="24" BoxShadow="0 4 16 0 #33000000">
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0">
 
-        <Button Grid.Column="0" Classes="ss-bar-icon" Width="46" Height="46" Padding="0"
+        <Button Grid.Column="0" Classes="ss-bar-icon" Width="64" Height="64" Padding="0"
+                AutomationProperties.Name="All apps"
                 VerticalAlignment="Center" ToolTip.Tip="All apps"
                 Command="{Binding ToggleDrawerCommand}">
-          <TextBlock Text="&#x2630;" FontSize="23" HorizontalAlignment="Center" VerticalAlignment="Center"
+          <TextBlock Text="&#x2630;" FontSize="28" HorizontalAlignment="Center" VerticalAlignment="Center"
                      Foreground="{DynamicResource EmuTextPrimaryBrush}" />
         </Button>
 
@@ -433,10 +434,11 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
-        <Button Grid.Column="2" Classes="ss-bar-icon" Width="46" Height="46" Padding="0"
+        <Button Grid.Column="2" Classes="ss-bar-icon" Width="64" Height="64" Padding="0"
+                AutomationProperties.Name="Achievements"
                 VerticalAlignment="Center" ToolTip.Tip="Achievements"
                 Command="{Binding ToggleAchievementsCommand}">
-          <PathIcon Width="24" Height="24"
+          <PathIcon Width="28" Height="28"
                     Data="{DynamicResource AchievementTrophyGeometry}"
                     Foreground="{DynamicResource EmuAchievementBrush}" />
         </Button>
