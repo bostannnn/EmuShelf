@@ -12036,3 +12036,27 @@ Decided:
   restore, the `forcedOpen` branch of `ExpandableSummaryRow`, and the heading template in
   `GamepadSettingsRowView`. Nothing produced it any more; a row kind the redesign retired from Settings should
   not survive as the wizard's private fallback.
+
+
+## 2026-09-06 — Returning from storage permission keeps the setup wizard open
+
+Granting Android all-files access now advances to Data folder and waits for an explicit folder choice.
+Previously a newly readable pointer completed pre-boot setup immediately, and first-run discovery could
+also adopt a library automatically. Either path could restart into a library whose saved setup version
+already suppressed the remaining wizard, making Back from Android Settings appear to dismiss onboarding.
+Both restored and discovered libraries now use the existing confirmation row. This supersedes the
+first-run auto-adoption exception above; normal startup with an already readable folder is unchanged.
+Regression tests cover discovery, restored pointers for all onboarding reasons, repeated foreground
+notifications, explicit confirmation, and a failed adoption.
+
+
+## 2026-09-06 — Setup exits only after a successful save
+
+Reviewing the remaining onboarding steps found that Finish set its completion flag before Save succeeded,
+and Back forcibly closed after a failed or busy-skipped save. Completion now comes from the successful
+save event while Finish is in progress; Back keeps the wizard and draft answers open on failure. Busy
+operations block step navigation and exit through both content and rail controls. Setup save errors take
+precedence over section status, including the Saves step's cloud status, so retry failures remain visible.
+The host also requires the successful-save signal before persisting the setup version. Accessibility,
+Shizuku and emulator refreshes preserve the current step; cloud sign-in and save-folder cancellation do
+not request wizard closure. Device-level activity recreation still requires Android testing.

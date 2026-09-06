@@ -60,7 +60,7 @@ public sealed class SetupWizardViewModelTests
     }
 
     [Fact]
-    public async Task GrantLanding_AdvancesToTheFolderStep_AndAdoptsTheExistingLibraryByItself()
+    public async Task GrantLanding_OffersExistingLibrary_AndWaitsForConfirmation()
     {
         var bootstrap = new FakeBootstrap
         {
@@ -78,6 +78,12 @@ public sealed class SetupWizardViewModelTests
 
         Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
         Assert.Equal("Allowed", vm.Rail.Steps[0].Status);
+        Assert.Null(chosen);
+        Assert.Null(bootstrap.AdoptedFolder);
+        bootstrap.RaisePermissionMaybeChanged();
+        Assert.Null(chosen);
+
+        await vm.FocusAndActivateAsync(vm.Rows.Single(row => row.Key == "setup.folder.existing"));
         Assert.Equal("/storage/emulated/0/User/EmuShelf", chosen);
         Assert.Equal("/storage/emulated/0/User/EmuShelf", bootstrap.AdoptedFolder);
     }
@@ -107,7 +113,7 @@ public sealed class SetupWizardViewModelTests
         var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => completed = true);
 
         vm.RefreshPermissionState();
-        await Task.Yield();
+        await vm.FocusAndActivateAsync(vm.Rows.Single(row => row.Key == "setup.folder.existing"));
 
         Assert.False(completed);
         Assert.Equal("EmuShelf can't write to that folder.", vm.StatusMessage);
@@ -245,17 +251,25 @@ public sealed class SetupWizardViewModelTests
         Assert.Contains("can't be reached", vm.StatusMessage);
     }
 
-    [Fact]
-    public void ForegroundEvent_CompletesTheWizard_WhenThePointerNowResolves()
+    [Theory]
+    [InlineData(DataLocationOnboardingReason.FirstRun)]
+    [InlineData(DataLocationOnboardingReason.StoragePermissionMissing)]
+    [InlineData(DataLocationOnboardingReason.LocationUnavailable)]
+    public async Task ForegroundEvent_OffersResolvedFolder_WithoutCompletingTheWizard(DataLocationOnboardingReason reason)
     {
         var bootstrap = new FakeBootstrap { RequiresStoragePermission = true, IsStoragePermissionGranted = false };
         string? chosen = null;
-        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.StoragePermissionMissing, dir => chosen = dir);
+        var vm = new SetupWizardViewModel(bootstrap, reason, dir => chosen = dir);
 
         bootstrap.IsStoragePermissionGranted = true;
         bootstrap.Resolution = DataLocationResolution.Resolved("/storage/emulated/0/User/EmuShelf");
         bootstrap.RaisePermissionMaybeChanged();
 
+        Assert.Null(chosen);
+        Assert.Equal(SetupStep.DataFolder, vm.CurrentStep);
+        bootstrap.RaisePermissionMaybeChanged();
+        Assert.Null(chosen);
+        await vm.FocusAndActivateAsync(vm.Rows.Single(row => row.Key == "setup.folder.existing"));
         Assert.Equal("/storage/emulated/0/User/EmuShelf", chosen);
     }
 

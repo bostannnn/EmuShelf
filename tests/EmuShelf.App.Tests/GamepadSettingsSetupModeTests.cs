@@ -11,7 +11,7 @@ namespace EmuShelf.App.Tests;
 /// <summary>The couch Settings projection walked as the in-app half of the Android setup wizard.</summary>
 public sealed class GamepadSettingsSetupModeTests
 {
-    private static EmulatorSettingsViewModel DesktopSettings(bool closeOnReturn = true)
+    private static EmulatorSettingsViewModel DesktopSettings(bool closeOnReturn = true, IEmulatorConfigurationStore? store = null)
     {
         var maintenance = new LibraryMaintenanceActions(
             (_, _) => Task.FromResult(string.Empty),
@@ -22,7 +22,7 @@ public sealed class GamepadSettingsSetupModeTests
             KnownSystems.All,
             KnownEmulators.All,
             KnownSystems.All.ToDictionary(system => system.Id, _ => (EmulatorConfiguration?)null, StringComparer.Ordinal),
-            new NullEmulatorConfigurationStore(),
+            store ?? new NullEmulatorConfigurationStore(),
             new NullDialogService(),
             maintenance,
             fixedEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
@@ -272,4 +272,117 @@ public sealed class GamepadSettingsSetupModeTests
         await withSetup.FocusAndActivateAsync(run);
         Assert.Equal(1, opened);
     }
+    [Fact]
+    public async Task FailedFinish_StaysOpenAndDoesNotMarkSetupComplete_ThenCanRetry()
+    {
+        var store = new FailingStore();
+        var settings = DesktopSettings(closeOnReturn: false, store: store);
+        var vm = Wizard(settings, hasSecondScreen: false);
+        var closes = new List<bool>();
+        vm.CloseRequested += closes.Add;
+
+        vm.Dispatch(GamepadAction.Menu);
+        await settings.SaveCommand.ExecutionTask!;
+
+        Assert.Empty(closes);
+        Assert.False(vm.SetupCompleted);
+        Assert.Contains("Could not save settings", vm.StatusText);
+
+        store.Fail = false;
+        vm.Dispatch(GamepadAction.Menu);
+        await settings.SaveCommand.ExecutionTask!;
+        Assert.Equal([true], closes);
+        Assert.True(vm.SetupCompleted);
+    }
+
+    [Fact]
+    public async Task FailedBackSave_StaysOpenAndKeepsAnswers()
+    {
+        var settings = DesktopSettings(store: new FailingStore());
+        var vm = Wizard(settings);
+        var closes = new List<bool>();
+        vm.CloseRequested += closes.Add;
+        settings.CloseEmulatorOnReturn = false;
+        vm.Dispatch(GamepadAction.Cancel);
+        vm.Dispatch(GamepadAction.Cancel);
+        Assert.Equal(SetupStep.StorageAccess, vm.CurrentSetupStep);
+        vm.Dispatch(GamepadAction.Cancel);
+        await settings.SaveCommand.ExecutionTask!;
+
+        Assert.Empty(closes);
+        Assert.False(vm.SetupCompleted);
+        Assert.False(settings.CloseEmulatorOnReturn);
+        Assert.Contains("Could not save settings", vm.StatusText);
+    }
+
+    [Fact]
+    public void BusyWizard_CannotAdvanceFinishOrExit_FromContentOrRail()
+    {
+        var settings = DesktopSettings(closeOnReturn: false);
+        var vm = Wizard(settings, hasSecondScreen: false);
+        var closed = false;
+        vm.CloseRequested += _ => closed = true;
+        settings.IsSaving = true;
+
+        vm.Dispatch(GamepadAction.Menu);
+        vm.Dispatch(GamepadAction.Cancel);
+        vm.Dispatch(GamepadAction.NavigateLeft);
+        vm.Dispatch(GamepadAction.NavigateUp);
+        vm.Dispatch(GamepadAction.Menu);
+
+        Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
+        Assert.False(vm.SetupRail.IsStartEnabled);
+        Assert.False(vm.SetupCompleted);
+        Assert.False(closed);
+        Assert.Null(settings.SaveCommand.ExecutionTask);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ForegroundRefresh_PreservesStepAndUnsavedAnswers(int advances)
+    {
+        var settings = DesktopSettings();
+        var vm = Wizard(settings);
+        for (var i = 0; i < advances; i++)
+            vm.Dispatch(GamepadAction.Menu);
+        var step = vm.CurrentSetupStep;
+        settings.CloseEmulatorOnReturn = false;
+        var closed = false;
+        vm.CloseRequested += _ => closed = true;
+
+        vm.RefreshDeviceState();
+        vm.RefreshDeviceState();
+
+        Assert.Equal(step, vm.CurrentSetupStep);
+        Assert.False(settings.CloseEmulatorOnReturn);
+        Assert.False(closed);
+        Assert.False(vm.SetupCompleted);
+    }
+
+    [Fact]
+    public void SetupSaveFailure_IsVisibleEvenInTheSavesSection()
+    {
+        var settings = DesktopSettings();
+        var vm = Wizard(settings);
+        vm.SelectedSection = SettingsSection.Saves;
+        settings.CloudStatusText = "Connected";
+        settings.StatusText = "Could not save settings: disk full";
+
+        Assert.Equal(settings.StatusText, vm.StatusText);
+    }
+
+    private sealed class FailingStore : IEmulatorConfigurationStore
+    {
+        public bool Fail { get; set; } = true;
+        public EmulatorConfiguration? Get(string systemId) => null;
+        public void Save(EmulatorConfiguration configuration) { }
+        public void SaveAll(IReadOnlyList<EmulatorConfiguration> configurations)
+        {
+            if (Fail)
+                throw new IOException("Test save failure");
+        }
+    }
+
 }

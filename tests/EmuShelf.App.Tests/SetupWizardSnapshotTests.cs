@@ -126,6 +126,46 @@ public class SetupWizardSnapshotTests
         }
     }
 
+    [AvaloniaFact]
+    public async Task CrowdedRail_KeepsSavesVisibleAboveFinish_AndScrollsBackToStorage()
+    {
+        var model = new SetupWizardRailModel { StartLabel = "Finish", StartDetail = "Open the library" };
+        foreach (var step in Enum.GetValues<SetupStep>())
+            model.Steps.Add(new SetupStepViewModel(step) { Status = "Needs attention" });
+        model.SetCurrent(SetupStep.StorageAccess);
+        var rail = new SetupWizardRailView { DataContext = model };
+        var window = new Window { Content = rail, Width = 300, Height = 420 };
+        window.Show();
+        try
+        {
+            await PumpAsync();
+            model.SetCurrent(SetupStep.Saves);
+            await PumpAsync();
+            rail.UpdateLayout();
+            var scroller = rail.FindControl<ScrollViewer>("StepsScroller")!;
+            var saves = rail.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.DataContext is SetupStepViewModel { Step: SetupStep.Saves });
+            var finish = rail.GetVisualDescendants().OfType<Button>()
+                .Single(button => button.Classes.Contains("gamepad-settings-save"));
+            var savesTop = saves.TranslatePoint(default, rail)!.Value.Y;
+            var viewportTop = scroller.TranslatePoint(default, rail)!.Value.Y;
+            var finishTop = finish.TranslatePoint(default, rail)!.Value.Y;
+            Assert.True(scroller.Offset.Y > 0);
+            Assert.True(savesTop >= viewportTop - 1);
+            Assert.True(savesTop + saves.Bounds.Height <= viewportTop + scroller.Bounds.Height + 1);
+            Assert.True(savesTop + saves.Bounds.Height < finishTop);
+
+            model.SetCurrent(SetupStep.StorageAccess);
+            await PumpAsync();
+            rail.UpdateLayout();
+            Assert.Equal(0, scroller.Offset.Y);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static async Task PumpAsync()
     {
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);

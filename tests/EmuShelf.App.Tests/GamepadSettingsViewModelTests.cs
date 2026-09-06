@@ -1410,7 +1410,9 @@ public sealed class GamepadSettingsViewModelTests
         Assert.True(viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").IsExpanded);
         Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
 
-        // The step is for choices; syncing, disconnecting and the replace actions stay in Settings.
+        // The step is for choices; exporting, syncing, disconnecting and replacing stay in Settings.
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.export.device");
+        Assert.DoesNotContain(viewModel.Rows, row => row.SecondaryKey == "saves.export.cloud");
         Assert.DoesNotContain(viewModel.Rows, row => row.Key is "saves.sync" or "saves.stop");
         Assert.DoesNotContain(viewModel.Rows, row => row.SecondaryKey == "saves.disconnect");
         Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith("replace-cloud", StringComparison.Ordinal));
