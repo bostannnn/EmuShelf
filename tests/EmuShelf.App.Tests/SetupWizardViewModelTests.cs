@@ -204,6 +204,48 @@ public sealed class SetupWizardViewModelTests
     }
 
     [Fact]
+    public async Task CancelledPick_LeavesTheControllerOnTheRowItWasOn()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+        };
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.FirstRun, _ => { });
+        Assert.Equal(["setup.folder.recommended", "setup.folder.pick"], vm.Rows.Select(row => row.Key).ToArray());
+
+        // A on "Choose a different folder", then back out of the system picker. If the rebuilds that
+        // bracket the pick reset focus to the top, the next A commits the recommended folder instead.
+        await vm.FocusAndActivateAsync(vm.Rows.Single(row => row.Key == "setup.folder.pick"));
+
+        Assert.Equal("setup.folder.pick", vm.FocusedRow!.Key);
+        Assert.True(vm.Rows.Single(row => row.Key == "setup.folder.pick").IsFocused);
+    }
+
+    [Fact]
+    public async Task ExistingLibrary_IsNotAdoptedByItself_WhenAChosenFolderIsMerelyUnreachable()
+    {
+        var bootstrap = new FakeBootstrap
+        {
+            RequiresStoragePermission = false,
+            RecommendedBaseDirectory = "/storage/emulated/0/EmuShelf",
+            ExistingDataFolder = "/storage/emulated/0/EmuShelf",
+        };
+        var completed = false;
+        // The user already has a data folder; it is the card that is out, not the pointer that is lost.
+        // Adopting the newest library found on internal storage would overwrite that choice for good.
+        var vm = new SetupWizardViewModel(bootstrap, DataLocationOnboardingReason.LocationUnavailable, _ => completed = true);
+
+        vm.RefreshPermissionState();
+        await Task.Yield();
+
+        Assert.False(completed);
+        Assert.Null(bootstrap.AdoptedFolder);
+        Assert.Contains(vm.Rows, row => row.Key == "setup.folder.existing");
+        Assert.Contains("can't be reached", vm.StatusMessage);
+    }
+
+    [Fact]
     public void ForegroundEvent_CompletesTheWizard_WhenThePointerNowResolves()
     {
         var bootstrap = new FakeBootstrap { RequiresStoragePermission = true, IsStoragePermissionGranted = false };

@@ -290,19 +290,8 @@ public class MainActivity : AvaloniaMainActivity
     /// the same logic desktop uses. Only joystick-source move events are taken; mouse, touchpad and hover
     /// events fall through to Avalonia and the system unchanged.
     /// </summary>
-    public override bool DispatchGenericMotionEvent(MotionEvent? e)
-    {
-        if (e is { } motion &&
-            motion.ActionMasked == MotionEventActions.Move &&
-            motion.Source.HasFlag(InputSourceType.Joystick) &&
-            AndroidGamepadReader.Current is { } reader)
-        {
-            reader.Update(motion);
-            return true;
-        }
-
-        return base.DispatchGenericMotionEvent(e);
-    }
+    public override bool DispatchGenericMotionEvent(MotionEvent? e) =>
+        AndroidGamepadInput.TryFeedMotion(e) || base.DispatchGenericMotionEvent(e);
 
     /// <summary>
     /// The head's return signal. Fires when EmuShelf gains (or loses) the single top-resumed activity

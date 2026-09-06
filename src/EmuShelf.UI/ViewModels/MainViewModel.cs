@@ -2451,13 +2451,20 @@ public partial class MainViewModel : ViewModelBase
     {
         // The rail's Data folder line: the last two path segments ("User/EmuShelf"), enough to recognise.
         var folder = _dataDirectory ?? string.Empty;
-        var parts = folder.TrimEnd('/', '\\').Split('/', '\\', StringSplitOptions.RemoveEmptyEntries);
+        // Both separators, as an array: Split(char, char, options) does not exist — the second char would
+        // bind to the `count` overload and never split on it.
+        var parts = folder.TrimEnd('/', '\\').Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
         var folderStatus = parts.Length >= 2 ? $"{parts[^2]}/{parts[^1]}" : parts.LastOrDefault() ?? string.Empty;
+        // The same bootstrap the pre-boot page used, so the Storage access step reports the live grant
+        // instead of asserting the answer it was given before the restart. Null off Android.
+        var bootstrap = EmuShelf.App.App.DataLocation;
         return new SetupWizardOptions(
             HasSecondScreen: _externalDisplays?.HasExternalDisplay == true,
             IsSecondScreenReturnReady: () => _externalDisplays?.IsSecondScreenReturnReady != false,
             RequestSecondScreenReturn: () => _externalDisplays?.RequestSecondScreenReturn(),
-            DataFolderStatus: folderStatus);
+            DataFolderStatus: folderStatus,
+            IsStoragePermissionGranted: bootstrap is null ? null : () => bootstrap.IsStoragePermissionGranted,
+            RequestStoragePermission: bootstrap is null ? null : bootstrap.RequestStoragePermission);
     }
 
     private async Task OpenGamepadSettingsCoreAsync(SetupWizardOptions? setup)
@@ -7415,16 +7422,19 @@ public partial class MainViewModel : ViewModelBase
             return;
 
         var wasSetupWizard = GamepadSettings?.IsSetupMode == true;
+        // Not `saved`: leaving the wizard early saves too, so that the answers already given survive. Only
+        // reaching the last step and pressing Finish counts as having walked it.
+        var setupFinished = GamepadSettings?.SetupCompleted == true;
         CloseGamepadSettingsProjection();
         if (!IsGamepadMode)
             return;
 
         if (wasSetupWizard)
         {
-            // Finish (saved) records the wizard as done at this version; backing out of the first step
-            // leaves it unrecorded so it is offered again next launch. Either way the library is what
-            // comes next, not the system menu Settings returns to.
-            if (saved)
+            // Finish records the wizard as done at this version; backing out of the first step leaves it
+            // unrecorded so it is offered again next launch. Either way the library is what comes next,
+            // not the system menu Settings returns to.
+            if (setupFinished)
             {
                 _settingsService?.Update(settings => settings with { SetupCompletedVersion = SetupWizardVersion });
                 SetStatus("Setup complete.");

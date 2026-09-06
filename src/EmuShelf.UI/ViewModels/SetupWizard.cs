@@ -112,10 +112,15 @@ public sealed partial class SetupWizardRailModel : ObservableObject
 
 /// <summary>
 /// What the in-app half of the wizard needs from the host beyond the settings model: the second-screen
-/// facts (Android's external-display probe) and how the data-folder step should read in the rail.
+/// facts (Android's external-display probe), how the data-folder step should read in the rail, and the
+/// live all-files grant — the Storage access step has to report what the platform says right now, since
+/// the grant can be turned off in Android's settings at any point after the pre-boot page answered it.
+/// The grant pair is optional so the desktop and design-time paths can leave it out (treated as held).
 /// </summary>
 public sealed record SetupWizardOptions(
     bool HasSecondScreen,
     Func<bool> IsSecondScreenReturnReady,
     Action RequestSecondScreenReturn,
-    string DataFolderStatus);
+    string DataFolderStatus,
+    Func<bool>? IsStoragePermissionGranted = null,
+    Action? RequestStoragePermission = null);

@@ -32,18 +32,22 @@ public sealed class GamepadSettingsSetupModeTests
         EmulatorSettingsViewModel settings,
         bool hasSecondScreen = true,
         bool secondScreenReady = false,
-        Action? requestSecondScreen = null) =>
+        Action? requestSecondScreen = null,
+        Func<bool>? storageGranted = null,
+        Action? requestStorage = null) =>
         new(
             settings,
             androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
             gameCountBySystem: _ => 0,
-            closeOnReturnWarning: () => "Shizuku permission not granted · press Y to grant it",
+            closeOnReturnWarning: () => "Shizuku permission not allowed yet · press Y to allow it",
             grantCloseOnReturnPrivilege: () => Task.CompletedTask,
             setup: new SetupWizardOptions(
                 HasSecondScreen: hasSecondScreen,
                 IsSecondScreenReturnReady: () => secondScreenReady,
                 RequestSecondScreenReturn: requestSecondScreen ?? (() => { }),
-                DataFolderStatus: "User/EmuShelf"));
+                DataFolderStatus: "User/EmuShelf",
+                IsStoragePermissionGranted: storageGranted,
+                RequestStoragePermission: requestStorage));
 
     [Fact]
     public void ListsEveryStepForThisDevice_StartingOnTheFirstLiveOne()
@@ -103,7 +107,7 @@ public sealed class GamepadSettingsSetupModeTests
     }
 
     [Fact]
-    public void StartAndBackWalkTheSteps_AndBackOnTheFirstStepLeavesUnfinished()
+    public async Task StartAndBackWalkTheSteps_AndBackOnTheFirstStepLeavesUnfinished()
     {
         var vm = Wizard(DesktopSettings());
         bool? closed = null;
@@ -122,22 +126,37 @@ public sealed class GamepadSettingsSetupModeTests
         Assert.Contains(vm.Rows, row => row.IsSummary);
         Assert.Equal("Finish", vm.SetupRail.StartLabel);
 
-        // LB/RB never jump sections in the wizard.
+        // LB/RB never jump steps in the wizard — in either column. The rail is the one the legend does
+        // not cover, so a shoulder press there used to walk the steps anyway.
         Assert.True(vm.Dispatch(GamepadAction.NextPlatform));
         Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateLeft));
+        Assert.True(vm.IsRailFocused);
+        Assert.True(vm.Dispatch(GamepadAction.NextPlatform));
+        Assert.True(vm.Dispatch(GamepadAction.PreviousPlatform));
+        Assert.Equal(SetupStep.GamesAndEmulators, vm.CurrentSetupStep);
+        Assert.True(vm.Dispatch(GamepadAction.NavigateRight));
 
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.Equal(SetupStep.SecondScreen, vm.CurrentSetupStep);
-        // The two pre-boot steps stay reachable: their answers are shown, and the folder can be moved.
+        // The two pre-boot steps stay reachable so their answers can be seen. Neither offers an action:
+        // changing the data folder from here would restart the process and lose the wizard's answers.
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.Equal(SetupStep.DataFolder, vm.CurrentSetupStep);
         Assert.Contains(vm.Rows, row => row.Key == "setup.folder.current");
+        Assert.DoesNotContain(vm.Rows, row => row.Key == "general.change-data-folder");
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         Assert.Equal(SetupStep.StorageAccess, vm.CurrentSetupStep);
         Assert.Null(closed);
+
+        // B on the first step leaves the wizard. It saves on the way out, so the answers already given
+        // survive, but SetupCompleted stays false so the host offers the wizard again next launch.
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
-        Assert.False(closed);
+        for (var attempt = 0; attempt < 100 && closed is null; attempt++)
+            await Task.Delay(20);
+        Assert.NotNull(closed);
+        Assert.False(vm.SetupCompleted);
     }
 
     [Fact]
@@ -197,10 +216,48 @@ public sealed class GamepadSettingsSetupModeTests
             await Task.Delay(20);
 
         Assert.True(closed);
+        // Only this path records the wizard as walked; leaving early also saves but must not.
+        Assert.True(vm.SetupCompleted);
     }
 
     [Fact]
-    public void OrdinarySettings_OfferRunSetupAgain_OnlyWhenTheHostProvidesIt()
+    public async Task StorageAccessStep_ReportsTheLiveGrant_AndCanReopenAndroidsPage()
+    {
+        var granted = false;
+        var requests = 0;
+        var vm = Wizard(
+            DesktopSettings(closeOnReturn: false),
+            hasSecondScreen: false,
+            storageGranted: () => granted,
+            requestStorage: () => requests++);
+
+        Assert.True(vm.Dispatch(GamepadAction.NavigateLeft));
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.True(vm.Dispatch(GamepadAction.NavigateUp));
+        Assert.Equal(SetupStep.StorageAccess, vm.CurrentSetupStep);
+
+        // Revoked while the app was running: the step says so and offers the way back, instead of
+        // asserting the answer the pre-boot page was given before the restart.
+        var row = vm.Rows.Single(rowspec => rowspec.Key == "setup.storage.grant");
+        Assert.True(row.IsAction);
+        Assert.True(row.IsWarning);
+        Assert.Equal("Not allowed", vm.SetupRail.Steps[0].Status);
+        Assert.True(vm.SetupRail.Steps[0].IsWarning);
+        Assert.False(vm.SetupRail.Steps[0].IsDone);
+
+        await vm.FocusAndActivateAsync(row);
+        Assert.Equal(1, requests);
+
+        granted = true;
+        vm.RefreshDeviceState();
+
+        Assert.True(vm.Rows.Single(rowspec => rowspec.Key == "setup.storage.grant").IsInformation);
+        Assert.Equal("Allowed", vm.SetupRail.Steps[0].Status);
+        Assert.True(vm.SetupRail.Steps[0].IsDone);
+    }
+
+    [Fact]
+    public async Task OrdinarySettings_OfferRunSetupAgain_OnlyWhenTheHostProvidesIt()
     {
         var settings = DesktopSettings();
         var plain = new GamepadSettingsViewModel(settings);
@@ -209,6 +266,10 @@ public sealed class GamepadSettingsSetupModeTests
         var opened = 0;
         var withSetup = new GamepadSettingsViewModel(settings, runSetup: () => { opened++; return Task.CompletedTask; });
         Assert.False(withSetup.IsSetupMode);
-        Assert.Contains(withSetup.Rows, row => row.Key == "general.run-setup");
+        var run = Assert.Single(withSetup.Rows, row => row.Key == "general.run-setup");
+
+        // Activating it has to reach the host's delegate; the row existing proves nothing on its own.
+        await withSetup.FocusAndActivateAsync(run);
+        Assert.Equal(1, opened);
     }
 }

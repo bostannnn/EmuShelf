@@ -11680,3 +11680,52 @@ and legend, which he approved in the round-4 Settings pass.
   while the permission is off, and the row says what continuing without it means.
 
 Prototype and per-screen notes: `docs/prototypes/android-setup-wizard/`.
+
+## 2026-09-06 — Setup wizard review fixes: nothing the wizard collects is thrown away, and no folder is adopted behind the user's back
+
+Review of the two-phase wizard (same-day entry above) found several paths where the wizard either destroyed
+something the user had chosen or reported state it had not actually read. The fixes, and why each landed the
+way it did:
+
+- **Adopting a previous install's library is a first-run-only move.** `SetupWizardViewModel` auto-adopted
+  `FindExistingDataFolder()`'s answer on any onboarding reason. On `LocationUnavailable` (the microSD is out)
+  and `StoragePermissionMissing` the user *has* a chosen folder — it is merely unreadable — so adopting the
+  newest library found elsewhere overwrote that choice with `_store.Write(...)`, permanently, over a
+  "most recently written" tie-break between two folders that both exist on the Thor. The press-free path is
+  now gated on `DataLocationOnboardingReason.FirstRun`; the other reasons keep the "Use your existing
+  library" row and wait for A.
+- **Leaving the wizard early saves; only Finish records it as walked.** Close-on-return and the per-platform
+  save folders are written solely by `EmulatorSettingsViewModel.SaveAsync`, so B on the first step used to
+  discard every answer given on the way there — and, since `SetupCompletedVersion` stayed 0, ask for them all
+  again next launch. B now saves on the way out. Completion is a separate signal
+  (`GamepadSettingsViewModel.SetupCompleted`, set only by Finish) rather than the save's `saved` flag, so the
+  wizard is still offered again; the answers are simply already in place when it is.
+- **The wizard's Data folder step is read-only.** It offered `general.change-data-folder`, whose success path
+  restarts the process — taking every unsaved wizard answer with it. Moving the folder stays in
+  Settings → Library, where nothing is in flight; the step reports the folder and says where to change it.
+- **Storage access reports the live grant.** Both the row and the rail entry hard-coded "Allowed", so the one
+  step whose subject is that permission could never say it was off and offered no way back to Android's page —
+  reachable any time through "Run setup again". `SetupWizardOptions` now carries an optional grant probe and
+  request delegate (optional so desktop and design-time paths can omit them), cached and re-read on foreground
+  return like the Shizuku and second-screen probes.
+- **Focus survives a rebuild on the pre-boot page.** `Rebuild()` reset to row 0, and a folder action rebuilds
+  twice, so cancelling the system picker silently moved the cursor from "Choose a different folder" onto
+  "Keep EmuShelf's data here" — the next A committed the wrong folder and restarted. It now restores by row
+  key, the way the in-app half's `RebuildRows` already did.
+- **Screen-2 forwards motion, not just keys.** `MainScreenClaimsPad` closed the key half of the
+  focused-display hand-off; sticks and hat-axis D-pads arrive as generic motion, which Android routes the same
+  way. `SetupPresentation` and `ThorSecondScreenPresentation` now override `DispatchGenericMotionEvent` and
+  feed the shared reader through `AndroidGamepadInput.TryFeedMotion` (one helper, so the Activity and both
+  Presentations cannot drift). Without it, touching the Thor's base screen left the wizard with A/B/START and
+  no way to move — the exact failure `PreShellNavigate` was added to prevent.
+- **Smaller ones in the same pass.** `saves.stop` joins `saves.sync` in the setup-mode Saves filter (it is
+  what `BuildSaveRows` yields while a sync runs, so the excluded control walked straight back in);
+  `ApplyEmulatorSwitch` clears `HasProbed` so `NeedsFolder` cannot report "looked, found nothing" for a row
+  that has not been re-probed; LB/RB are swallowed in the rail as well as the content column, matching the
+  legend; `Split('/', '\\', options)` became `Split(['/', '\\'], options)` (the two-char form binds the
+  `count` overload and never splits on the backslash); and the last "grant" in a user-facing Shizuku string
+  became "allow".
+- **The prototype's stage is a gradient.** `docs/prototypes/android-setup-wizard/assets/shelf-bg.jpg` was a
+  shelf capture carrying publisher label art (DS trade dress, Taito/Square Enix, the Nintendo seal, ESRB),
+  which CLAUDE.md forbids shipping unlicensed and uncredited. Removed; `.bg` is a radial gradient in the
+  couch palette.

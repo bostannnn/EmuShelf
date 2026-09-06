@@ -105,7 +105,9 @@ public class SetupWizardSnapshotTests
             await PumpAsync();
             Assert.True(viewModel.IsGamepadSetupLegendVisible);
             Assert.False(viewModel.IsGamepadSettingsLegendVisible);
-            Assert.Single(window.GetVisualDescendants().OfType<SetupWizardRailView>(), rail => rail.IsVisible);
+            // IsEffectivelyVisible, not IsVisible: the mode gate is on the wrapping Panel, and the rail
+            // view's own IsVisible is never assigned — so asserting it would pass with setup mode off.
+            Assert.Single(window.GetVisualDescendants().OfType<SetupWizardRailView>(), rail => rail.IsEffectivelyVisible);
             await SaveAsync(window, "setup-wizard-b1-second-screen.png");
 
             wizard.Dispatch(GamepadAction.Menu);

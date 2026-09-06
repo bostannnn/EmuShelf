@@ -14,6 +14,7 @@ Phase B (inside the composed app, reusing the Settings logic): Second screen (Th
 return (Shizuku), Game folders, Emulators (only systems with games; missing emulator caught up front),
 Saves (Drive + per-system save folders). Completion is versioned so a later new step shows once alone.
 
-Assets: `assets/shelf-bg.jpg` + `assets/icons/*` copied from the couch-settings prototypes; the font is
-the repo's bundled Exo 2. `current/onboarding.jpg` is the Thor at 1920×1080 with the all-files grant
-revoked (the way to make today's card appear on a completed install).
+Assets: `assets/icons/*` copied from the couch-settings prototypes; the font is the repo's bundled
+Exo 2. The stage behind the wizard is a gradient rather than a shelf capture — a real one carries
+publisher label art EmuShelf has no licence to redistribute. `current/onboarding.jpg` is the Thor at
+1920×1080 with the all-files grant revoked (the way to make today's card appear on a completed install).

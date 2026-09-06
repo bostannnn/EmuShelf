@@ -29,6 +29,28 @@ public static class AndroidGamepadInput
     public static Func<bool>? MainScreenClaimsPad { get; set; }
 
     /// <summary>
+    /// Feeds a joystick motion event to the shared reader — the only source of stick and hat-axis input
+    /// for both the poll loop and the pre-boot setup page. Returns true when the event was consumed.
+    /// Every window that can become the top-focused one has to call this: Android delivers motion to the
+    /// focused display's window just as it does keys, so a Presentation that forwards keys but not motion
+    /// leaves the D-pad dead on the other screen wherever the pad reports it as a hat axis (the Thor).
+    /// Mouse, touchpad and hover events are left alone so they fall through to Avalonia.
+    /// </summary>
+    public static bool TryFeedMotion(MotionEvent? e)
+    {
+        if (e is not { } motion ||
+            motion.ActionMasked != MotionEventActions.Move ||
+            !motion.Source.HasFlag(InputSourceType.Joystick) ||
+            AndroidGamepadReader.Current is not { } reader)
+        {
+            return false;
+        }
+
+        reader.Update(motion);
+        return true;
+    }
+
+    /// <summary>
     /// Handles the Android system Back button / gesture: returns true when a couch overlay was closed
     /// (Back is consumed), false at the root library so the Activity lets the platform exit. Distinct from
     /// <see cref="Dispatch"/> because the library-level Cancel swallows B, which would otherwise trap Back.
