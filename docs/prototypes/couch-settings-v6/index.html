@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>EmuShelf couch Settings — round 6: ScreenScraper and Themes, regrouped</title>
+<style>
+@font-face{font-family:"Exo 2";src:url(../../../src/EmuShelf.UI/Assets/Fonts/Exo2.ttf)}
+:root{--panel:#2b3f39;--rail:#0c1512;--row:#1e332c;--rowf:#425834;--well:#3d544c;--acc:#a8cd40;--acc2:#c3e04c;--txt:#dff2e6;--sec:#afcabc;--ter:#86a294;--warn:#f0ae54;--bad:#ff6673;--ok:#70d3a4}
+*{box-sizing:border-box}html,body{margin:0;background:#070b09;color:#ddd;font-family:"Exo 2",system-ui,sans-serif}
+#top{display:flex;gap:8px;align-items:center;padding:10px 16px;background:#101714;border-bottom:1px solid #1f2b27;flex-wrap:wrap}
+#top .tab{padding:8px 14px;border-radius:8px;background:#1d2925;color:#cfd;cursor:pointer;font-size:14px}#top .tab.on{background:var(--acc2);color:#16220e;font-weight:700}
+#top .flip{margin-left:auto;display:flex;border-radius:8px;overflow:hidden;border:1px solid #345}#top .flip div{padding:8px 14px;cursor:pointer;font-size:14px;color:#bcc}#top .flip div.on{background:#e8f0ea;color:#111;font-weight:700}
+#hint{font-size:12px;color:#8a9;padding:6px 16px}
+#stagewrap{position:relative;margin:0 auto}#stage{width:1920px;height:1080px;position:relative;transform-origin:0 0;overflow:hidden;background:#070707;cursor:pointer}
+#notes{max-width:1100px;margin:16px auto 40px;padding:0 16px;color:#cdd;font-size:14px;line-height:1.55}#notes h3{margin:0 0 6px;font-size:15px;color:#fff}#notes ul{margin:0;padding-left:18px}#notes li{margin-bottom:5px}#notes .cost{color:#f0ae54}
+.bg{position:absolute;inset:0;background:url(../couch-settings-v5/assets/shelf-bg.jpg) center/cover;filter:brightness(.22)}
+.panel{position:absolute;left:57px;top:57px;width:1806px;height:967px;border-radius:30px;background:var(--panel);border:2px solid rgba(255,255,255,.07)}
+.rail{position:absolute;left:46px;top:75px;width:412px;height:756px;border-radius:22px;background:var(--rail);padding:26px 22px 0}
+.rail h1{margin:0;font-size:44px;font-weight:600;color:var(--txt);line-height:1.1}
+.rail .div{height:2px;background:#263f38;margin:18px 0 16px}
+.ri{height:66px;margin:0 0 8px;border-radius:14px;display:flex;align-items:center;padding:0 22px 0 26px;color:var(--txt);font-size:24px;font-weight:600;position:relative}
+.ri .s{font-size:16.5px;font-weight:500;color:var(--ter);margin-top:1px}
+.ri.cur{border:3px solid var(--acc);color:var(--acc2);padding-left:44px}
+.ri.cur::before{content:"";position:absolute;left:24px;top:50%;width:5px;height:26px;margin-top:-13px;border-radius:3px;background:var(--acc)}
+.ri.cur .s{color:var(--sec)}
+.ri.new{outline:2px dashed #7fb3ff;outline-offset:-2px}
+.start{position:absolute;left:24px;bottom:24px;width:364px;height:76px;border-radius:16px;background:var(--row);border:2px solid #3a5a4e;display:flex;align-items:center;gap:16px;padding:0 22px}
+.start .chip{background:#1f3640;border:2px solid #3f6a7a;color:#dff2e6;font-size:17px;font-weight:700;padding:7px 12px;border-radius:9px;letter-spacing:.04em}
+.start .t{font-size:24px;font-weight:600;color:var(--txt);line-height:1.05}.start .t small{display:block;font-size:19px;font-weight:500;color:var(--sec)}
+.content{position:absolute;left:505px;top:75px;width:1228px}
+.content h2{margin:0;font-size:44px;font-weight:600;color:var(--txt);line-height:1.05}
+.content .d{font-size:23px;color:var(--sec);margin:6px 0 0}
+.clip{position:absolute;left:505px;top:175px;width:1228px;height:660px;overflow:hidden}
+.clip.short{height:545px}
+.rows{display:flex;flex-direction:column;gap:14px}
+.row{min-height:100px;border-radius:18px;background:var(--row);display:flex;align-items:center;padding:0 28px 0 30px;color:var(--txt);position:relative}
+.row.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}
+.row .lab{flex:1;min-width:0}
+.row .lab .l{font-size:26px;font-weight:600;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .lab .dd{font-size:20.5px;color:var(--ter);margin-top:5px;line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.f .lab .dd{color:#c9d6bf}
+.row .lab .dd .w{color:var(--warn);font-weight:600}.row .lab .dd .ok{color:var(--ok);font-weight:600}
+.row .val{display:flex;align-items:center;gap:26px;margin-left:24px;flex:none}
+.row .val .txt{font-size:22px;font-weight:500;color:var(--ter);max-width:560px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row.f .val .txt{color:#c9d6bf}
+.chev{font-size:30px;color:var(--acc);width:26px;text-align:center;margin-left:4px;flex:none;line-height:1}
+.row.dis{opacity:.45}
+.tog{width:104px;height:56px;border-radius:28px;background:#3a566d;display:flex;align-items:center;padding:4px;flex:none}
+.tog i{width:48px;height:48px;border-radius:50%;background:#86a294;display:block}
+.tog.on{background:#4f6d33}.tog.on i{background:var(--acc);margin-left:auto}
+.row.g{margin-left:35px}
+.sum{height:84px;border-radius:18px;background:var(--row);display:flex;align-items:center;gap:20px;padding:0 28px 0 27px;color:var(--txt);font-size:25px;font-weight:600;flex:none}
+.sum .n{flex:1;white-space:nowrap}
+.sum .m{font-size:20.5px;font-weight:500;color:var(--ter);white-space:nowrap}
+.sum.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}.sum.f .m{color:#c9d6bf}
+.legend{position:absolute;left:43px;top:887px;display:flex;gap:26px;align-items:center;font-size:24px;color:#aac9bd}
+.legend .k{display:inline-flex;align-items:center;gap:12px}
+.chip{display:inline-flex;align-items:center;justify-content:center;height:36px;min-width:36px;padding:0 12px;border-radius:10px;background:#435550;color:#e8f2ec;font-weight:700;font-size:19px}
+.chip.a{background:#5da379;color:#0c2312;border-radius:50%;width:36px;padding:0}.chip.y{background:#e6c650;color:#3a2f06;border-radius:50%;width:36px;padding:0}
+.fade{position:absolute;left:505px;width:1228px;top:790px;height:44px;background:linear-gradient(transparent,var(--panel))}
+/* ---- theme cards (shipped size: 3 across the 1228 content column) ---- */
+.tgrid{display:grid;grid-template-columns:repeat(3,395px);gap:21px}
+.tgrid.two{grid-template-columns:repeat(2,400px);gap:20px}
+.theme{width:395px;height:200px;border-radius:16px;background:var(--row);padding:14px;color:var(--txt)}
+.tgrid.two .theme{width:400px}
+.theme .pv{height:136px;border-radius:10px;position:relative;overflow:hidden}
+.theme .pv b{position:absolute;left:14px;top:12px;width:56px;height:8px;border-radius:4px;opacity:.55}
+.theme .pv i{position:absolute;left:50%;top:50%;width:40px;height:40px;margin:-20px;border-radius:50%}
+.theme .pv u{position:absolute;left:14px;bottom:12px;width:90px;height:8px;border-radius:4px}
+.theme .pv s{position:absolute;right:14px;bottom:12px;width:44px;height:8px;border-radius:4px;opacity:.35}
+.theme .n{font-size:22px;font-weight:600;margin-top:10px;display:flex;justify-content:space-between;align-items:center}
+.theme.f{background:var(--rowf);outline:3px solid var(--acc);outline-offset:-3px}
+.theme .chk{width:26px;height:26px;border-radius:50%;background:var(--acc);color:#16220e;font-size:16px;font-weight:800;display:flex;align-items:center;justify-content:center}
+/* ---- D2: the effects strip under the gallery ---- */
+.strip{position:absolute;left:505px;top:730px;width:1228px;height:92px;background:var(--panel);border-top:2px solid #3a5a4e;display:flex;align-items:center;gap:0;padding-top:14px;z-index:3}
+.strip .cell{flex:1;display:flex;align-items:center;gap:18px}
+.strip .cell .t{font-size:23px;font-weight:600;color:var(--sec)}
+.strip .cell .sub{font-size:18px;color:var(--ter);margin-top:2px}
+.strip .tog{width:82px;height:44px;border-radius:22px}.strip .tog i{width:36px;height:36px}
+.strip .cell.f{outline:3px solid var(--acc);outline-offset:6px;border-radius:12px}
+/* ---- D3: preview panel that owns the effects ---- */
+.pcol{position:absolute;left:1345px;top:175px;width:388px}
+.pcard{border-radius:18px;background:var(--row);padding:18px}
+.pcard .ph{font-size:19px;font-weight:700;letter-spacing:.08em;color:var(--ter);text-transform:uppercase;margin-bottom:14px}
+.mini{height:236px;border-radius:12px;position:relative;overflow:hidden}
+.mini .bar{position:absolute;left:0;right:0;top:0;height:34px;display:flex;align-items:center;gap:7px;padding:0 12px}
+.mini .bar em{width:22px;height:14px;border-radius:3px;display:block;opacity:.5}
+.mini .cov{position:absolute;border-radius:5px;top:56px;height:96px;width:70px}
+.mini .ttl{position:absolute;left:12px;bottom:34px;height:11px;border-radius:5px;width:150px}
+.mini .sub2{position:absolute;left:12px;bottom:16px;height:8px;border-radius:4px;width:96px;opacity:.45}
+.mini.crt::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(transparent 0 3px,rgba(0,0,0,.45) 3px 6px);pointer-events:none}
+.mini.crt::before{content:"";position:absolute;inset:-14%;border-radius:50%/16%;box-shadow:inset 0 0 70px 26px rgba(0,0,0,.75);pointer-events:none;z-index:2}
+.erow{display:flex;align-items:center;gap:16px;margin-top:16px;padding:12px 4px 0;border-top:2px solid rgba(255,255,255,.08)}
+.erow .t{flex:1;font-size:22px;font-weight:600;color:var(--txt);line-height:1.15}
+.erow .t small{display:block;font-size:18px;font-weight:500;color:var(--ter);margin-top:3px}
+.erow.f{outline:3px solid var(--acc);outline-offset:4px;border-radius:12px}
+.pclip{position:absolute;left:505px;top:175px;width:824px;height:660px;overflow:hidden}
+/* ---- D1 (scraper): the sign-in panel A opens ---- */
+.scrim{position:absolute;inset:0;background:rgba(6,10,8,.66);border-radius:30px}
+.sheet{position:absolute;left:531px;top:214px;width:1176px;border-radius:22px;background:#22362f;border:2px solid #4a6a5c;padding:34px 38px 30px;color:var(--txt)}
+.sheet h3{margin:0;font-size:36px;font-weight:600}
+.sheet .why{font-size:22px;color:var(--sec);margin:8px 0 26px;line-height:1.35}
+.fld{height:92px;border-radius:16px;background:#182822;display:flex;align-items:center;padding:0 26px;margin-bottom:14px;border:2px solid transparent}
+.fld.f{border-color:var(--acc);background:#2c4232}
+.fld .fl{font-size:24px;font-weight:600;flex:none;width:236px;color:var(--sec)}
+.fld .fv{font-size:24px;color:var(--ter);flex:1}
+.fld.f .fv{color:#c9d6bf}
+.fld .cur{display:inline-block;width:3px;height:28px;background:var(--acc);vertical-align:-5px;margin-left:1px}
+.sbtn{height:88px;border-radius:16px;background:#2f4a37;border:3px solid var(--acc);display:flex;align-items:center;justify-content:center;gap:16px;margin-top:22px;font-size:27px;font-weight:700;color:var(--acc2)}
+.sbtn.dis{opacity:.4;border-color:#4a6a5c;color:var(--sec)}
+.note{font-size:19px;color:var(--ter);margin-top:18px;text-align:center}
+.tag{position:absolute;right:70px;top:70px;background:#7fb3ff;color:#06131f;font-size:20px;font-weight:800;padding:8px 16px;border-radius:10px;letter-spacing:.04em}
+</style></head><body>
+<div id="top"><span id="tabs"></span><div class="flip"><div id="f0">Today</div><div id="f1">A</div><div id="f2">B</div><div id="f3">C</div></div></div>
+<div id="hint">Click the screen or press <b>Space</b> to cycle Today → A → B → C; <b>←/→</b> switch screens. <code>?s=N&amp;v=K&amp;bare=1</code> renders one variant bare at 1920×1080. Drawn at the shipped geometry (rows 66 dip, summaries 56, cards 3-across) — the Thor's panel is 833×468 dip, so what fits here fits there.</div>
+<div id="stagewrap"><div id="stage"></div></div>
+<div id="notes"></div>
+<script src="themes.js"></script>
+<script>
+const SECT=[['Library','981 games'],['Emulators',''],['RetroAchievements','Not signed in'],['Artwork & Metadata','Not signed in'],['Saves',''],['Themes','Abyss'],['About','1.7.8']];
+const rail=(cur,over={},extra=null)=>{let s=SECT.map(x=>x.slice());if(extra)s.splice(6,0,extra);
+ return `<div class="rail"><h1>Settings</h1><div class="div"></div>${s.map(([l,st])=>{const o=over[l];if(o)st=o;
+ return `<div class="ri ${l===cur?'cur':''} ${extra&&l===extra[0]?'new':''}"><div><div>${l}</div><div class="s">${st}</div></div></div>`;}).join('')}<div class="start"><span class="chip">START</span><div class="t">Save and close<small>Apply changes</small></div></div></div>`;};
+const legend=items=>`<div class="legend">${items.map(([c,l])=>`<span class="k"><span class="chip ${c.length===1?c.toLowerCase():''}">${c}</span>${l}</span>`).join('')}</div>`;
+const LEG=(y=null)=>[['D-pad','Navigate'],['LB/RB','Sections'],['A','Select']].concat(y?[['Y',y]]:[]).concat([['START','Save'],['B','Back']]);
+function row(o){let v='';
+ if(o.toggle!==undefined) v=`<div class="tog ${o.toggle?'on':''}"><i></i></div>`;
+ else if(o.act) v=`${o.txt?`<span class="txt">${o.txt}</span>`:''}<span class="chev">›</span>`;
+ else if(o.txt) v=`<span class="txt">${o.txt}</span>`;
+ return `<div class="row ${o.f?'f':''} ${o.grp?'g':''} ${o.mut?'dis':''}"><div class="lab"><div class="l">${o.l}</div>${o.d?`<div class="dd">${o.d}</div>`:''}</div><div class="val">${v}</div></div>`;}
+const sum=(name,meta,o={})=>`<div class="sum ${o.f?'f':''}"><div class="n">${name}</div><div class="m">${meta}</div><div class="chev">${o.open?'▾':'›'}</div></div>`;
+const page=(cur,title,desc,body,leg,over,extra)=>`<div class="bg"></div><div class="panel">${rail(cur,over||{},extra)}<div class="content"><h2>${title}</h2><div class="d">${desc}</div></div><div class="clip"><div class="rows">${body}</div></div><div class="fade"></div>${legend(leg)}</div>`;
+const AD='Titles and artwork from the built-in catalogue or ScreenScraper. Game files are never uploaded.';
+const TD='Applies instantly and is shared with Desktop mode.';
+// The three rows every Artwork screen keeps, in the shipped wording.
+const BASE=()=>row({l:'Fetch after import',d:'Manual · titles and covers from the bundled catalogue come only when you ask',toggle:false})+
+ row({l:'Fetch missing metadata',d:'Last run 30 Aug · 12 games still have no cover',act:1})+
+ row({l:'Web image search',d:'On · "Set cover" can search DuckDuckGo · you always pick the image',toggle:true});
+// Theme card, drawn from the real palette in ThemeCatalog.cs.
+const card=(t,o={})=>`<div class="theme ${o.f?'f':''}"><div class="pv" style="background:${t.bg}">
+ <b style="background:${t.text}"></b><i style="background:${t.accent}"></i><u style="background:${t.accent}"></u><s style="background:${t.text}"></s></div>
+ <div class="n"><span>${t.name}</span>${o.sel?'<span class="chk">✓</span>':''}</div></div>`;
+const T=n=>THEMES.find(t=>t.name===n);
+const ORDER=['Abyss','Retro','Cyberpunk','Aqua','Palenight','Horizon','Nord','Dracula','Tokyo Night','Matrix','Synthwave','Sunset'];
+const gallery=(cols,n)=>`<div class="tgrid ${cols===2?'two':''}">${ORDER.slice(0,n).map(x=>card(T(x),{f:x==='Abyss',sel:x==='Abyss'})).join('')}</div>`;
+const mini=(t,crt)=>`<div class="mini ${crt?'crt':''}" style="background:${t.bg}">
+ <div class="bar">${[0,1,2,3,4].map(i=>`<em style="background:${i===1?t.accent:t.text}"></em>`).join('')}</div>
+ ${[0,1,2].map(i=>`<div class="cov" style="left:${12+i*80}px;background:${t.surface};box-shadow:inset 0 0 0 2px ${t.text}44"></div>`).join('')}
+ <div class="ttl" style="background:${t.text}"></div><div class="sub2" style="background:${t.text}"></div></div>`;
+
+const S=[
+/* ============================ 1. ScreenScraper ============================ */
+{name:'ScreenScraper — signed out',
+ today:()=>page('Artwork & Metadata','Artwork & Metadata',AD,
+  BASE()+
+  row({l:'ScreenScraper username',d:'Your ScreenScraper account name',act:1,txt:'Not entered',f:true})+
+  row({l:'ScreenScraper password',d:'Sent to ScreenScraper to sign in · masked, never logged, never written to settings.json',act:1,txt:'Not entered'})+
+  row({l:'Connect ScreenScraper',d:'Checks the account so per-game scraping can fetch titles and artwork',act:1}),
+  LEG()),
+ A:()=>page('Artwork & Metadata','Artwork & Metadata',AD,
+  BASE()+row({l:'ScreenScraper',d:'Not signed in · sign in to fetch titles and artwork per game, on demand',act:1,txt:'Not signed in',f:true}),
+  LEG())+
+  `<div class="scrim"></div><div class="sheet"><h3>Sign in to ScreenScraper</h3>
+   <div class="why">A free ScreenScraper account raises the per-game fetch limit and unlocks the larger artwork sets. EmuShelf never uploads your game files.</div>
+   <div class="fld f"><span class="fl">Username</span><span class="fv">andrew<span class="cur"></span></span></div>
+   <div class="fld"><span class="fl">Password</span><span class="fv">Not entered</span></div>
+   <div class="sbtn dis">Sign in</div>
+   <div class="note">Kept on this device · never written to settings.json</div></div><div class="tag">A opens this</div>`,
+ B:()=>page('Artwork & Metadata','Artwork & Metadata',AD,
+  BASE()+
+  sum('ScreenScraper','Not signed in',{open:true,f:true})+
+  row({grp:true,l:'Username',d:'Your ScreenScraper account name',act:1,txt:'Not entered'})+
+  row({grp:true,l:'Password',d:'Kept on this device · never written to settings.json',act:1,txt:'Not entered'})+
+  row({grp:true,l:'Sign in',d:'Enter both fields first · checks the account, then artwork is fetched per game',act:1,mut:true}),
+  LEG()),
+ C:()=>page('Artwork & Metadata','Artwork & Metadata','Where titles and artwork come from, and when EmuShelf goes looking. Game files are never uploaded.',
+  row({l:'Built-in catalogue',d:'Always on · offline, no account, bundled with EmuShelf',txt:'On'})+
+  row({l:'ScreenScraper',d:'Not signed in · a free account fetches per game, on demand',act:1,txt:'Not signed in',f:true})+
+  row({l:'Web image search',d:'On · "Set cover" can search DuckDuckGo · you always pick the image',toggle:true})+
+  row({l:'Fetch after import',d:'Manual · new games get titles and covers only when you ask',toggle:false})+
+  row({l:'Fetch missing metadata',d:'Last run 30 Aug · 12 games still have no cover',act:1}),
+  LEG()),
+ notes:{
+  today:['What you have now: <b>ScreenScraper username</b>, <b>ScreenScraper password</b>, <b>Connect ScreenScraper</b> — three full-weight rows, each ending in a chevron, sitting under three unrelated rows. Nothing binds them, the word "ScreenScraper" is said three times, and the section gives a sign-in form the same weight as a setting.','The connected state is already <i>one</i> row (name as value, Y disconnects), so the section changes shape completely depending on whether you are signed in.'],
+  A:['<b>A — one row, one task.</b> Signing in is a task, not three settings, so it gets a panel instead of rows. Artwork settles at four rows; ScreenScraper is one of them in both states.','Both fields and the button are in one place, so you can see what you are filling in. A on a field opens the keyboard you already have; A on <b>Sign in</b> commits.','The empty state now says <i>why</i> you would sign in at all — today nothing on the screen tells you.','<span class="cost">Cost:</span> a new overlay to build and to navigate. The text-entry overlay already models it, so it is not new ground, but it is the most code of the three.'],
+  B:['<b>B — expand in place.</b> ScreenScraper becomes a summary row that opens beneath itself, exactly like a platform in Emulators or Saves. The indent is what binds the three rows.','Zero new vocabulary: this is the accordion the whole redesign already runs on, so it needs no new controls and no new focus rules.','"ScreenScraper" is said once, on the summary; the children are just <b>Username</b>, <b>Password</b>, <b>Sign in</b>.','Signed in, the row collapses to the account row that already exists — same shape in both states, which is what today gets wrong.','<span class="cost">Cost:</span> still three rows once open. It binds them rather than removing them.'],
+  C:['<b>C — regroup the section.</b> The real muddle is that the section interleaves <i>where artwork comes from</i> with <i>when EmuShelf fetches it</i>. Ordered as three sources then two timing rows, ScreenScraper stops being a stray form and becomes one source among peers — which is what actually makes it feel connected.','It also surfaces the built-in catalogue, which today is invisible: nothing on screen says artwork works offline with no account.','Sign-in itself still needs A or B underneath (drawn here with A\'s panel).','<span class="cost">Cost:</span> the biggest rewrite of the three, and it reopens a question you already settled — grouping without headers relies on order alone, which is weaker than a header would be.']}},
+/* ============================ 2. Themes ============================ */
+{name:'Themes',
+ today:()=>page('Themes','Themes',TD,
+  row({l:'CRT screen effect',d:'Off · curved, scanned tube on the shelf · costs GPU time',toggle:false})+
+  row({l:'Match colours to game artwork',d:'Off · the theme below is used everywhere',toggle:false})+
+  gallery(3,6),
+  LEG()),
+ A:()=>page('Themes','Themes','Thirty themes. Applies instantly and is shared with Desktop mode.',
+  gallery(3,12),
+  LEG(),{Themes:'Abyss'},['Display','CRT off · artwork colours off']),
+ B:()=>page('Themes','Themes',TD,gallery(3,9),LEG(),{Themes:'Abyss'})
+  .replace('<div class="clip">','<div class="clip short">')
+  .replace('<div class="fade">','<div class="fade" style="top:686px;height:34px">')+
+  `<div class="strip">
+    <div class="cell"><div><div class="t">CRT screen effect</div><div class="sub">Off · curved, scanned tube · costs GPU time</div></div><div class="tog"><i></i></div></div>
+    <div class="cell"><div><div class="t">Match colours to game artwork</div><div class="sub">Off · the theme is used everywhere</div></div><div class="tog"><i></i></div></div>
+   </div>`,
+ C:()=>`<div class="bg"></div><div class="panel">${rail('Themes',{Themes:'Abyss'})}
+  <div class="content"><h2>Themes</h2><div class="d">${TD}</div></div>
+  <div class="pclip"><div class="tgrid two">${['Abyss','Retro','Cyberpunk','Aqua','Palenight','Horizon'].map(x=>card(T(x),{f:x==='Abyss',sel:x==='Abyss'})).join('')}</div></div>
+  <div class="pcol"><div class="pcard"><div class="ph">Abyss · on your shelf</div>${mini(T('Abyss'),false)}
+    <div class="erow"><div class="t">CRT screen effect<small>Off · costs GPU time</small></div><div class="tog"><i></i></div></div>
+    <div class="erow"><div class="t">Match colours to game artwork<small>Off · Abyss is used everywhere</small></div><div class="tog"><i></i></div></div>
+  </div></div>
+  <div class="fade" style="left:505px;width:824px"></div>${legend(LEG())}</div>`,
+ notes:{
+  today:['What you have now: the two switches sit at the <b>top</b> of the page in full-weight rows, and the theme cards start below them. Two different jobs — flip a screen effect, browse thirty themes — at the same weight, and the switches take the position the eye lands on first.','They also push the gallery down: one full row of cards is in view instead of two and a bit.'],
+  A:['<b>A — Themes is only themes.</b> The two switches leave the page entirely, into their own <b>Display</b> rail entry (drawn dashed) alongside anything else that changes how the shelf is drawn. The gallery starts at the top and gets a full extra row of cards in view.','Each page then does one job, which is the cleanest answer to "they fight for attention": they stop sharing a page.','The rail line carries their state ("CRT off · artwork colours off") so you can see it without opening the page.','<span class="cost">Cost:</span> an eighth rail entry, and the rail already scrolls on the Thor. Putting them in General instead avoids that but buries them.'],
+  B:['<b>B — gallery leads, switches become a footer.</b> Nothing moves sections; the hierarchy is just made honest. Cards take the top and most of the page; the two switches drop to a slim strip below a divider, two-up on one line, in secondary type with a smaller switch.','This is the smallest change of the three and the one most likely to just be right: the page still holds everything, but the gallery is clearly the subject and the switches are clearly chrome.','D-pad down from the last card row reaches the strip, then Left/Right between the two.','<span class="cost">Cost:</span> a control position that exists nowhere else in Settings, and the strip stays put while the gallery scrolls behind it.'],
+  C:['<b>C — the preview owns the effects.</b> CRT and "match colours to artwork" are not siblings of the theme list — they are <i>effects layered on the theme</i>. So they move into a preview panel on the right that shows the selected theme as a miniature shelf, with the two switches attached beneath it. Flipping CRT changes the preview.','That kills the competition by making the relationship true: the switches are subordinate to the thing they modify, and you can finally see what they do before committing.','It also answers a question the gallery has never answered — what a theme actually looks like on your shelf, rather than as four swatches.','<span class="cost">Cost:</span> the widest change, and the gallery drops to two columns — six themes in view instead of nine, over a thirty-theme catalogue.']}},
+];
+const Q=new URLSearchParams(location.search);let cur=+(Q.get('s')||0),show=+(Q.get('v')||0);
+const bare=Q.get('bare')==='1';
+if(bare){['top','hint','notes'].forEach(i=>document.getElementById(i).style.display='none');}
+const stage=document.getElementById('stage');
+const KEYS=['today','A','B','C'],LBL=['Today','A','B','C'];
+function render(){
+ document.getElementById('tabs').innerHTML=S.map((s,i)=>`<span class="tab ${i===cur?'on':''}" onclick="go(${i})">${i+1}. ${s.name}</span>`).join('');
+ stage.innerHTML=S[cur][KEYS[show]]();
+ [0,1,2,3].forEach(i=>document.getElementById('f'+i).className=show===i?'on':'');
+ document.getElementById('notes').innerHTML=`<h3>${S[cur].name} — ${LBL[show]}</h3><ul>${S[cur].notes[KEYS[show]].map(n=>`<li>${n}</li>`).join('')}</ul>`;}
+function go(i){cur=(i+S.length)%S.length;render();}function flip(){show=(show+1)%4;render();}
+stage.onclick=flip;[0,1,2,3].forEach(i=>document.getElementById('f'+i).onclick=e=>{e.stopPropagation();show=i;render();});
+document.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();flip();}if(e.key==='ArrowRight')go(cur+1);if(e.key==='ArrowLeft')go(cur-1);});
+function fit(){const w=bare?1920:Math.min(window.innerWidth-32,1920);const s=w/1920;stage.style.transform=`scale(${s})`;const ww=document.getElementById('stagewrap');ww.style.width=w+'px';ww.style.height=(1080*s)+'px';}
+window.addEventListener('resize',fit);fit();render();
+</script></body></html>
