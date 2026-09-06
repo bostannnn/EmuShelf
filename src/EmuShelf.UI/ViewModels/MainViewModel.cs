@@ -113,6 +113,7 @@ public partial class MainViewModel : ViewModelBase
     // dual-core box is not over-subscribed and a Deck (or bigger) still fills quickly.
     private readonly SemaphoreSlim _coverDecodeGate =
         new(Math.Clamp(Environment.ProcessorCount / 2, 2, 4));
+    private readonly DecodedCoverCache _decodedCovers = new(64L * 1024 * 1024);
     private readonly IAppLogger _logger;
     private readonly IReadOnlyDictionary<string, GameSystem> _systemsById;
 
@@ -163,8 +164,29 @@ public partial class MainViewModel : ViewModelBase
     // hundreds of view models, which is what made fast LB/RB cycling thrash. The cache owns these view
     // models; it is dropped wholesale (forceRebuild) whenever the underlying library data changes
     // (add/remove/rename/rescan, availability and achievements passes), so a rebuild always reflects
-    // the DB. Covers stay warm across switches because the same view models are reused.
+    // the DB. Decoded covers stay warm only within _decodedCovers' pixel budget.
     private readonly Dictionary<string, List<GameViewModel>> _scopeCache = new(StringComparer.Ordinal);
+    private readonly HashSet<GameViewModel> _retiredGames = [];
+
+    // A background projection leaves the old collection visible until publication. Delay disposal
+    // of invalidated VMs until neither that collection nor a source/cache owns them anymore.
+    private void ReleaseRetiredGames()
+    {
+        if (_retiredGames.Count == 0)
+            return;
+        var retained = new HashSet<GameViewModel>(Games);
+        retained.UnionWith(_systemGames);
+        foreach (var scope in _scopeCache.Values)
+            retained.UnionWith(scope);
+        foreach (var game in _retiredGames.ToArray())
+        {
+            if (retained.Contains(game))
+                continue;
+            _retiredGames.Remove(game);
+            game.Dispose();
+        }
+    }
+
 
     // Scope keys whose displayed view models have had their scraped-metadata projection loaded. The
     // bulk read only runs for the Desktop list view (M40 item 2), so grid/gamepad scopes skip it and
@@ -175,6 +197,17 @@ public partial class MainViewModel : ViewModelBase
     // Bumped on every reload so a slow load that finishes after a newer one is discarded,
     // keeping the shown games in sync with the current selection.
     private int _loadGeneration;
+    private CancellationTokenSource _coverLoadCancellation = new();
+
+    private int AdvanceLoadGeneration()
+    {
+        _filterCancellation?.Cancel();
+        _layoutCancellation?.Cancel();
+        _coverLoadCancellation.Cancel();
+        _coverLoadCancellation.Dispose();
+        _coverLoadCancellation = new();
+        return ++_loadGeneration;
+    }
     private Task _selectedSystemLoad = Task.CompletedTask;
 
     public ObservableCollection<GameSystem> Systems { get; }
@@ -976,6 +1009,8 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>The library size, cached on the UI thread from <see cref="Games"/>'s CollectionChanged so
     /// the pool-thread perf sampler never reads the UI-owned collection. Volatile for cross-thread reads.</summary>
     private volatile int _perfGamesCount;
+    private int _perfCoverDecodes;
+    private int _perfCoverSkipped;
 
     /// <summary>
     /// A one-line snapshot of the couch state for the log-based perf sampler (<see cref="PerfTrace"/>):
@@ -985,7 +1020,10 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public string PerfStateSnapshot =>
         $"layout={GamepadLayout} crt={(CrtScreenEffect ? "on" : "off")} path={PerfRenderPath} " +
-        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={_perfGamesCount}";
+        $"sys={SelectedSystem?.Name ?? CurrentLibraryScope.ToString()} games={_perfGamesCount} " +
+        $"coverMiB={_decodedCovers.RetainedBytes / 1048576.0:F1} covers={_decodedCovers.Count} " +
+        $"evictions={_decodedCovers.Evictions} decodes={Volatile.Read(ref _perfCoverDecodes)} " +
+        $"coverSkipped={Volatile.Read(ref _perfCoverSkipped)}";
 
     private string PerfRenderPath => GamepadLayout switch
     {
@@ -1242,7 +1280,6 @@ public partial class MainViewModel : ViewModelBase
     // systems the case shape, …), so a platform's covers are standardized to one size and pack into a
     // consistent number per row. Off-ratio artwork is cropped to fill that frame (UniformToFill in the
     // tile templates) rather than each scan setting its own shape. See DECISIONS 2026-08-27.
-    private static double CoverAspectRatioFor(GameViewModel game) => game.CoverAspectRatio;
 
     // Bumped every time the grid is re-packed (load, filter, resize, mode switch). The gamepad view
     // watches it to re-centre the focused row after a relayout moves it, the role the old GridCoverWidth
@@ -1259,61 +1296,51 @@ public partial class MainViewModel : ViewModelBase
     // geometry. The active mode's row list (CoverRows on desktop, GamepadRows on the couch) is rebuilt.
     private void RepackActiveGrid()
     {
-        var available = ActiveViewportWidth - ActiveGridHorizontalPadding;
-
-        // Before the first real width measurement the packer's availableWidth<=0 branch would place
-        // EVERY game on one degenerate row, and publishing that row once realized a tile per game in
-        // the couch grid (968 tiles built for a layout thrown away at the first SizeChanged — see
-        // DECISIONS 2026-08-31). Publish NO rows instead: the first SizeChanged always delivers a
-        // real width and repacks, and an empty row list renders the same as the loading state.
-        if (available <= 0 && Games.Count > 0)
-        {
-            if (GamepadRows.Count > 0)
-                GamepadRows.Clear();
-            if (CoverRows.Count > 0)
-                CoverRows.Clear();
+        if (_publishingProjection)
             return;
-        }
+        var token = RestartProjection(ref _layoutCancellation);
+        _layoutTask = RepackAndPublishAsync(token);
+    }
 
-        var ratios = new double[Games.Count];
-        for (var i = 0; i < Games.Count; i++)
-            ratios[i] = CoverAspectRatioFor(Games[i]);
-
-        var placements = Layout.JustifiedCoverLayout.Pack(
-            ratios, available, ActiveCoverColumnSpacing, ActiveTargetRowHeight, ActiveMinCoversPerRow);
-
-        for (var i = 0; i < Games.Count; i++)
+    private async Task RepackAndPublishAsync(CancellationToken token)
+    {
+        try
         {
-            var placement = placements[i];
-            var game = Games[i];
+            // Coalesce resize bursts BEFORE snapshot allocation or scheduling a packing worker.
+            if (Games.Count > BackgroundProjectionThreshold)
+                await Task.Delay(50, token);
+            var spec = CurrentGridSpec;
+            var source = Games.Select(game => LibraryViewEntry.Capture(game, LibrarySortColumn.Title)).ToArray();
+            var projection = source.Length > BackgroundProjectionThreshold
+                ? await Task.Run(() => LibraryViewProjection.Build(source, "", false, true, spec, token), token)
+                : LibraryViewProjection.Build(source, "", false, true, spec, token);
+            token.ThrowIfCancellationRequested();
+            if (spec != CurrentGridSpec)
+                return;
+            StampCoverGeometry(projection);
+            PublishGridRows(projection.Rows);
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not prepare the library grid layout.", ex);
+        }
+    }
+
+    private static void StampCoverGeometry(LibraryViewProjection projection)
+    {
+        for (var i = 0; i < projection.Placements.Count; i++)
+        {
+            var placement = projection.Placements[i];
+            var game = projection.Entries[i].Game;
             game.ApplyCoverLayout(placement.Width, placement.Height);
             game.GridRowIndex = placement.RowIndex;
             game.GridCenterX = placement.CenterX;
         }
-
-        RebuildGridRows();
-        GamepadGridLayoutRevision++;
-        OnPropertyChanged(nameof(GamepadGridLayoutRevision));
     }
 
-    // Group the packed games into their rows (Games are in packing order, so a row is a run of equal
-    // GridRowIndex) for whichever virtualized row list is on screen.
-    private void RebuildGridRows()
+    private void PublishGridRows(IReadOnlyList<GameViewModel>[] rows)
     {
-        var rows = new List<IReadOnlyList<GameViewModel>>();
-        List<GameViewModel>? current = null;
-        var currentRow = -1;
-        foreach (var game in Games)
-        {
-            if (current is null || game.GridRowIndex != currentRow)
-            {
-                current = [];
-                rows.Add(current);
-                currentRow = game.GridRowIndex;
-            }
-            current.Add(game);
-        }
-
         if (IsGamepadMode)
         {
             if (CoverRows.Count > 0)
@@ -1326,6 +1353,8 @@ public partial class MainViewModel : ViewModelBase
                 GamepadRows.Clear();
             CoverRows.ReplaceAll(rows);
         }
+        GamepadGridLayoutRevision++;
+        OnPropertyChanged(nameof(GamepadGridLayoutRevision));
     }
     private int _gamepadAchievementColumnCount = 1;
     // Derived purely by width arithmetic (UpdateGamepadAchievementColumnCount) using the same tile
@@ -2047,6 +2076,8 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSelectedSystemChanged(GameSystem? value)
     {
+        _filterCancellation?.Cancel();
+        _layoutCancellation?.Cancel();
         PerfTrace.Event($"EVENT platform->{value?.Name ?? "(scope)"}");
         if (value is not null)
             CurrentLibraryScope = LibraryScope.System;
@@ -2076,6 +2107,8 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnCurrentLibraryScopeChanged(LibraryScope value)
     {
+        _filterCancellation?.Cancel();
+        _layoutCancellation?.Cancel();
         OnPropertyChanged(nameof(IsAllGamesSelected));
         OnPropertyChanged(nameof(IsRecentlyAddedSelected));
         OnPropertyChanged(nameof(IsRecentlyPlayedSelected));
@@ -2086,6 +2119,7 @@ public partial class MainViewModel : ViewModelBase
 
     partial void OnSearchTextChanged(string value)
     {
+        _filterCancellation?.Cancel();
         _searchDebounce.Stop();
         _searchDebounce.Start();
     }
@@ -4075,6 +4109,7 @@ public partial class MainViewModel : ViewModelBase
             for (var shelfIndex = shelfStart; shelfIndex <= shelfEnd; shelfIndex++)
             {
                 var shelfGame = Games[shelfIndex];
+                _decodedCovers.Touch(shelfGame);
                 if (shelfGame.NeedsCoverLoad && shelfGame.LoadCoverCommand.CanExecute(shelfGame))
                     shelfGame.LoadCoverCommand.Execute(shelfGame);
             }
@@ -4095,6 +4130,7 @@ public partial class MainViewModel : ViewModelBase
             for (var column = 0; column < row.Count; column++)
             {
                 var game = row[column];
+                _decodedCovers.Touch(game);
                 if (game.NeedsCoverLoad && game.LoadCoverCommand.CanExecute(game))
                     game.LoadCoverCommand.Execute(game);
             }
@@ -4672,14 +4708,14 @@ public partial class MainViewModel : ViewModelBase
             {
                 if (!string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
                     foreach (var vm in list)
-                        vm.Dispose();
+                        _retiredGames.Add(vm);
             }
             _scopeCache.Clear();
+            ReleaseRetiredGames();
         }
 
-        // Fast path: this scope has been built before and nothing has invalidated it. Reuse its view
-        // models instantly — no DB read, no rebuild, no dispose, covers already loaded. Synchronous, so
-        // it cannot be pre-empted by a competing reload.
+        // Cache hits reuse the built VMs without a DB read. Large scopes still prepare their
+        // presentation on a worker; the generation guard protects that await from later navigation.
         if (useCache && _scopeCache.TryGetValue(scopeKey, out var cachedGames))
         {
             // A cache hit reuses the very same GameViewModel instances, so any leftover IsSelected
@@ -4695,13 +4731,15 @@ public partial class MainViewModel : ViewModelBase
 
             // Cancel any slow reload still in flight so it cannot land after us and overwrite the
             // scope we just switched to.
-            ++_loadGeneration;
+            var cachedGeneration = AdvanceLoadGeneration();
             _systemGames.Clear();
             _systemGames.AddRange(cachedGames);
-            // ApplyFilter replaces Games, whose CollectionChanged re-packs the grid — no separate pack
-            // of the outgoing list is needed here.
+            // Filter preparation includes layout, so publication needs no second grid pack.
             ApplyFilter();
             _displayedScopeKey = scopeKey;
+            await WaitForPresentationAsync();
+            if (cachedGeneration != _loadGeneration)
+                return;
             IsLibraryLoading = false;
             // Cached view models keep any projection they were built with; load it now only if this
             // scope has never had one and the list view is showing.
@@ -4709,7 +4747,7 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
-        var generation = ++_loadGeneration;
+        var generation = AdvanceLoadGeneration();
 
         // The scraped-metadata columns only show in the Desktop list view, so build their projection
         // during the load only when that view is active; grid/gamepad scopes skip the read and load
@@ -4836,22 +4874,22 @@ public partial class MainViewModel : ViewModelBase
             // clean null-to-new rather than a departure pose from a game the new scope does not hold.
             FocusedGame = null;
 
-            // Dispose the outgoing on-screen view models only if the cache is not keeping them. On a
-            // scope switch the previous scope stays cached, so its tiles must survive; on a forced
-            // rebuild its cache entry was dropped above, so now that the replacement is built they can
-            // be released here.
+            // Retire uncached outgoing VMs now, but dispose only after their replacement has
+            // published: the background projection leaves their old tiles visible in the meantime.
             var outgoingRetained = _displayedScopeKey is { } outgoingKey && _scopeCache.ContainsKey(outgoingKey);
             if (!outgoingRetained)
                 foreach (var existingGame in _systemGames)
-                    existingGame.Dispose();
+                    _retiredGames.Add(existingGame);
 
             _systemGames.Clear();
             _systemGames.AddRange(games);
             _scopeCache[scopeKey] = games;
-            // ApplyFilter replaces Games (still the previous scope here); its CollectionChanged runs the
-            // authoritative pack for the new scope, so no pre-pack of the outgoing list is needed.
+            // Keep the old presentation until filtering and layout of the new source are ready.
             ApplyFilter();
             _displayedScopeKey = scopeKey;
+            await WaitForPresentationAsync();
+            if (generation != _loadGeneration)
+                return;
             IsLibraryLoading = false;
             // These are freshly built view models: they carry a projection only if it was applied in
             // the worker above (list view active). Track that so a later switch to the list can tell
@@ -5214,7 +5252,10 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task LoadGameCoverAsync(GameViewModel? game)
     {
-        if (game is null || !game.NeedsCoverLoad)
+        if (game is null)
+            return;
+        _decodedCovers.Touch(game);
+        if (!game.NeedsCoverLoad || !_systemGames.Contains(game))
             return;
 
         if (_isFrontendSuspended)
@@ -5224,17 +5265,33 @@ public partial class MainViewModel : ViewModelBase
         }
 
         var generation = _loadGeneration;
+        var cancellationToken = _coverLoadCancellation.Token;
         var coverPath = game.CoverPath!; // non-null: NeedsCoverLoad (checked above) requires it
         var coverRevision = game.CoverRevision;
         game.IsCoverLoading = true;
         // Bound how many covers decode at once. Acquired after the cheap guards above so queued tiles
         // still show their loading state while they wait their turn.
-        await _coverDecodeGate.WaitAsync();
+        var acquired = false;
+        bool IsCurrent() => !cancellationToken.IsCancellationRequested &&
+            generation == _loadGeneration && coverRevision == game.CoverRevision &&
+            !_isFrontendSuspended && _systemGames.Contains(game);
         try
         {
-            var thumbnailPath = await _covers.GetThumbnailAsync(game.Id, coverPath);
+            await _coverDecodeGate.WaitAsync(cancellationToken);
+            acquired = true;
+            if (!IsCurrent())
+            {
+                Interlocked.Increment(ref _perfCoverSkipped);
+                return;
+            }
+            var thumbnailPath = await _covers.GetThumbnailAsync(game.Id, coverPath, cancellationToken);
             if (thumbnailPath is null)
                 return;
+            if (!IsCurrent())
+            {
+                Interlocked.Increment(ref _perfCoverSkipped);
+                return;
+            }
 
             // Decode to the tile's displayed pixel size rather than the full thumbnail: decoding to the
             // packed cover width (× render scale, capped at the source thumbnail width so it is never
@@ -5247,15 +5304,17 @@ public partial class MainViewModel : ViewModelBase
                 CoverThumbnailNativeWidth);
             var image = await Task.Run(() =>
             {
+                cancellationToken.ThrowIfCancellationRequested();
+                Interlocked.Increment(ref _perfCoverDecodes);
                 using var stream = File.OpenRead(thumbnailPath);
                 return Bitmap.DecodeToWidth(stream, decodeWidth, BitmapInterpolationMode.HighQuality);
-            });
+            }, cancellationToken);
             if (generation == _loadGeneration &&
                 coverRevision == game.CoverRevision &&
                 _systemGames.Contains(game) &&
                 !_isFrontendSuspended)
             {
-                game.CoverImage = image;
+                _decodedCovers.Set(game, image);
             }
             else
             {
@@ -5263,6 +5322,11 @@ public partial class MainViewModel : ViewModelBase
                 if (_isFrontendSuspended)
                     _deferredCoverLoads.Add(game.Id);
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Navigation superseded this work; cancellation is not a cover failure.
+            Interlocked.Increment(ref _perfCoverSkipped);
         }
         catch (Exception ex)
         {
@@ -5281,8 +5345,14 @@ public partial class MainViewModel : ViewModelBase
         }
         finally
         {
-            _coverDecodeGate.Release();
+            if (acquired)
+                _coverDecodeGate.Release();
             game.IsCoverLoading = false;
+            if (_isFrontendSuspended)
+                _deferredCoverLoads.Add(game.Id);
+            else if (generation != _loadGeneration && game.CoverConsumerCount > 0 &&
+                     game.NeedsCoverLoad && _systemGames.Contains(game))
+                _ = LoadGameCoverAsync(game); // a rapid return may have reused this still-loading VM
         }
     }
 
@@ -5306,74 +5376,101 @@ public partial class MainViewModel : ViewModelBase
     private bool IsRecencyOrderedScope =>
         CurrentLibraryScope is LibraryScope.RecentlyAdded or LibraryScope.RecentlyPlayed;
 
-    private IEnumerable<GameViewModel> SortGames(IEnumerable<GameViewModel> games)
+    // Small lists avoid scheduling overhead; large lists do comparison, sorting, packing and row
+    // construction on a worker. Only snapshot capture and observable publication run on the UI thread.
+    private const int BackgroundProjectionThreshold = 256;
+    private CancellationTokenSource? _filterCancellation;
+    private CancellationTokenSource? _layoutCancellation;
+    private Task _filterTask = Task.CompletedTask;
+    private Task _layoutTask = Task.CompletedTask;
+    private bool _publishingProjection;
+
+    private LibraryGridSpec CurrentGridSpec => new(
+        ActiveViewportWidth - ActiveGridHorizontalPadding, ActiveCoverColumnSpacing,
+        ActiveTargetRowHeight, ActiveMinCoversPerRow, IsGamepadMode);
+
+    private static CancellationToken RestartProjection(ref CancellationTokenSource? source)
     {
-        if (IsRecencyOrderedScope)
-            return games;
+        source?.Cancel();
+        source?.Dispose();
+        source = new();
+        return source.Token;
+    }
 
-        var text = StringComparer.OrdinalIgnoreCase;
-        IOrderedEnumerable<GameViewModel> By<TKey>(
-            Func<GameViewModel, TKey> key, IComparer<TKey>? comparer = null) =>
-            SortDescending ? games.OrderByDescending(key, comparer) : games.OrderBy(key, comparer);
-
-        var ordered = SortColumn switch
+    internal async Task WaitForPresentationAsync()
+    {
+        Task filter, layout;
+        do
         {
-            LibrarySortColumn.Console => By(g => g.SystemName, text),
-            LibrarySortColumn.Format => By(g => g.FormatLabel, text),
-            LibrarySortColumn.Achievements => By(g => g.AchievementSortKey),
-            LibrarySortColumn.HardcoreAchievements => By(g => g.HardcoreSortKey),
-            LibrarySortColumn.Textures => By(g => g.TextureSortKey),
-            LibrarySortColumn.Status => By(g => g.AvailabilityText, text),
-            LibrarySortColumn.LastPlayed => By(g => g.LastPlayedSortKey),
-            LibrarySortColumn.Playtime => By(g => g.PlaytimeSortKey),
-            LibrarySortColumn.PlayCount => By(g => g.PlayCountSortKey),
-            LibrarySortColumn.DateAdded => By(g => g.DateAddedSortKey),
-            LibrarySortColumn.MetadataCompleteness => By(g => g.MetadataCompletenessSortKey),
-            LibrarySortColumn.ArtworkCover => By(g => g.HasScrapedCover),
-            LibrarySortColumn.Screenshot => By(g => g.HasScrapedScreenshot),
-            LibrarySortColumn.Fanart => By(g => g.HasScrapedFanart),
-            LibrarySortColumn.Logo => By(g => g.HasScrapedLogo),
-            LibrarySortColumn.Description => By(g => g.HasScrapedDescription),
-            LibrarySortColumn.TitleScreen => By(g => g.HasScrapedTitleScreen),
-            LibrarySortColumn.BoxBack => By(g => g.HasScrapedBoxBack),
-            LibrarySortColumn.BoxSpine => By(g => g.HasScrapedBoxSpine),
-            LibrarySortColumn.PhysicalMedia => By(g => g.HasScrapedPhysicalMedia),
-            LibrarySortColumn.PhysicalMediaTexture => By(g => g.HasScrapedPhysicalMediaTexture),
-            LibrarySortColumn.Rating => By(g => g.RatingSortKey),
-            LibrarySortColumn.Genre => By(g => g.GenreColumnText, text),
-            LibrarySortColumn.Year => By(g => g.YearSortKey),
-            LibrarySortColumn.Players => By(g => g.PlayersColumnText, text),
-            LibrarySortColumn.Developer => By(g => g.DeveloperColumnText, text),
-            LibrarySortColumn.Publisher => By(g => g.PublisherColumnText, text),
-            _ => By(g => g.DisplayTitle, text),
-        };
-        // The displayed title is the stable secondary key so equal rows keep a deterministic order.
-        return ordered.ThenBy(g => g.DisplayTitle, text);
+            filter = _filterTask;
+            layout = _layoutTask;
+            await Task.WhenAll(filter, layout);
+        } while (filter != _filterTask || layout != _layoutTask);
     }
 
     internal void ApplyFilter()
+    {
+        _searchDebounce?.Stop();
+        var token = RestartProjection(ref _filterCancellation);
+        _filterTask = FilterAndPublishAsync(token);
+    }
+
+    private async Task FilterAndPublishAsync(CancellationToken token)
     {
         var query = SearchText.Trim();
         if (!string.Equals(query, _appliedSearchText, StringComparison.Ordinal))
             ClearSelection();
         _appliedSearchText = query;
-        IEnumerable<GameViewModel> filtered = _systemGames;
-        if (query.Length > 0)
-            filtered = _systemGames.Where(g =>
-                g.DisplayTitle.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-                g.Title.Contains(query, StringComparison.OrdinalIgnoreCase));
+        var generation = _loadGeneration;
+        var source = _systemGames.Select(game => LibraryViewEntry.Capture(game, SortColumn)).ToArray();
+        var descending = SortDescending;
+        var preserveOrder = IsRecencyOrderedScope;
+        var prepareStarted = Stopwatch.GetTimestamp();
+        try
+        {
+            LibraryViewProjection projection;
+            LibraryGridSpec spec;
+            do
+            {
+                spec = CurrentGridSpec;
+                projection = source.Length > BackgroundProjectionThreshold
+                    ? await Task.Run(() => LibraryViewProjection.Build(
+                        source, query, descending, preserveOrder, spec, token), token)
+                    : LibraryViewProjection.Build(source, query, descending, preserveOrder, spec, token);
+                token.ThrowIfCancellationRequested();
+                if (generation != _loadGeneration)
+                    return;
+                // A resize/mode change during the worker pass must not publish old geometry.
+            } while (spec != CurrentGridSpec);
 
-        // ReplaceAll raises CollectionChanged, which re-packs the justified grid (RepackActiveGrid) for
-        // the new visible set, so covers and rows are sized here without a separate shelf pass.
-        Games.ReplaceAll(SortGames(filtered));
-        ApplyShelfHeroSupport(Games);
-
-        HasGames = Games.Count > 0;
-        IsLibraryEmpty = _systemGames.Count == 0;
-        IsSearchEmpty = _systemGames.Count > 0 && Games.Count == 0;
-        LibraryCountText = _systemGames.Count == 1 ? "1 game" : $"{_systemGames.Count} games";
-        NotifyLibraryPresentationChanged();
-        RestoreFocusedGame();
+            var prepareMs = Stopwatch.GetElapsedTime(prepareStarted).TotalMilliseconds;
+            var publishStarted = Stopwatch.GetTimestamp();
+            _layoutCancellation?.Cancel();
+            _publishingProjection = true;
+            try
+            {
+                StampCoverGeometry(projection);
+                Games.ReplaceAll(projection.Entries.Select(entry => entry.Game));
+                PublishGridRows(projection.Rows);
+            }
+            finally { _publishingProjection = false; }
+            ReleaseRetiredGames();
+            ApplyShelfHeroSupport(Games);
+            HasGames = Games.Count > 0;
+            IsLibraryEmpty = _systemGames.Count == 0;
+            IsSearchEmpty = _systemGames.Count > 0 && Games.Count == 0;
+            LibraryCountText = _systemGames.Count == 1 ? "1 game" : $"{_systemGames.Count} games";
+            NotifyLibraryPresentationChanged();
+            RestoreFocusedGame();
+            PerfTrace.Event($"PROJECTION source={source.Length} visible={Games.Count} " +
+                $"background={source.Length > BackgroundProjectionThreshold} prepareMs={prepareMs:F1} " +
+                $"publishMs={Stopwatch.GetElapsedTime(publishStarted).TotalMilliseconds:F1}");
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not prepare the library presentation.", ex);
+        }
     }
 
     [RelayCommand]
@@ -6697,7 +6794,8 @@ public partial class MainViewModel : ViewModelBase
             !string.Equals(key, _displayedScopeKey, StringComparison.Ordinal))
         {
             foreach (var viewModel in evicted)
-                viewModel.Dispose();
+                _retiredGames.Add(viewModel);
+            ReleaseRetiredGames();
         }
     }
 
@@ -7171,7 +7269,7 @@ public partial class MainViewModel : ViewModelBase
                     if (latestGame is not null &&
                         string.Equals(latestGame.CoverPath, imported.CoverPath, StringComparison.Ordinal))
                     {
-                        latestGame.CoverImage = image;
+                        _decodedCovers.Set(latestGame, image);
                     }
                     else
                     {

@@ -692,6 +692,51 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LargeLibrary_LatestSearchSortAndResizePublishMatchingRows()
+    {
+        _library.AddGames(Enumerable.Range(0, 1000).Select(index => new Game
+        {
+            SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, $"large-{index}.chd"),
+            Title = $"{(index % 2 == 0 ? "Alpha" : "Beta")} {index:D4}",
+            DateAdded = DateTimeOffset.UtcNow,
+        }).ToArray());
+        var vm = CreateViewModel();
+        vm.LibraryViewportWidth = 1200;
+        await vm.ReloadGamesAsync();
+        Assert.Equal(1000, vm.Games.Count);
+
+        vm.SearchText = "Alpha";
+        vm.ApplyFilter();
+        vm.SearchText = "Beta";
+        vm.SortDescending = true;
+        vm.ApplyFilter();
+        vm.LibraryViewportWidth = 720;
+        vm.LibraryViewportWidth = 960;
+        await vm.WaitForPresentationAsync();
+
+        Assert.Equal(500, vm.Games.Count);
+        Assert.All(vm.Games, game => Assert.StartsWith("Beta", game.DisplayTitle));
+        Assert.Equal(vm.Games.OrderByDescending(g => g.DisplayTitle, StringComparer.OrdinalIgnoreCase), vm.Games);
+        Assert.Equal(vm.Games, vm.CoverRows.SelectMany(row => row));
+        Assert.All(vm.CoverRows, row => Assert.Single(row.Select(game => game.GridRowIndex).Distinct()));
+        var settled = vm.Games.Select(game => (game.CoverWidth, game.CoverHeight)).ToArray();
+        vm.LibraryViewportWidth = 800;
+        vm.LibraryViewportWidth = 960;
+        await vm.WaitForPresentationAsync();
+        Assert.Equal(settled, vm.Games.Select(game => (game.CoverWidth, game.CoverHeight)));
+
+        // A late large-scope worker must not restore games after switching to an empty platform.
+        vm.ShowEmptyPlatforms = true;
+        vm.SearchText = "Alpha";
+        vm.ApplyFilter();
+        vm.SelectedSystem = Psp;
+        await vm.SelectedSystemLoad;
+        await vm.WaitForPresentationAsync();
+        Assert.Empty(vm.Games);
+        Assert.Empty(vm.CoverRows);
+    }
+
+    [AvaloniaFact]
     public async Task RefreshAvailability_MarksMissingFileUnavailable()
     {
         var folder = MakeRomsFolder();
@@ -3777,6 +3822,77 @@ public class MainViewModelTests : IDisposable
 
         Assert.Empty(vm.Games);
         Assert.True(vm.IsSearchEmpty);
+    }
+
+    [AvaloniaFact]
+    public async Task LoadGameCover_ReloadCancelsQueuedRequestsBeforeThumbnailIo()
+    {
+        var thumbnail = WriteTinyPng("queued-cover.png");
+        _library.AddGames(Enumerable.Range(0, 12).Select(index => new Game
+        {
+            SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, $"queued-{index}.chd"),
+            Title = $"Queued {index:D2}", CoverPath = thumbnail, DateAdded = DateTimeOffset.UtcNow,
+        }).ToArray());
+        var covers = new CancelableCoverService(thumbnail);
+        var vm = CreateViewModel(covers: covers);
+        await vm.ReloadGamesAsync();
+        var oldGames = vm.Games.ToArray();
+        var requests = oldGames.Select(game => vm.LoadGameCoverCommand.ExecuteAsync(game)).ToArray();
+        var capacity = Math.Clamp(Environment.ProcessorCount / 2, 2, 4);
+        Assert.Equal(capacity, covers.Requests.Count);
+        await vm.ReloadGamesAsync();
+        await Task.WhenAll(requests).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(capacity, covers.Requests.Count); // the other 8–10 never reached disk I/O
+        Assert.All(covers.Requests, token => Assert.True(token.IsCancellationRequested));
+        Assert.All(oldGames, game => Assert.False(game.IsCoverLoading));
+        Assert.All(oldGames, game => Assert.Null(game.CoverImage));
+
+        covers.Block = false;
+        await vm.LoadGameCoverCommand.ExecuteAsync(vm.Games[0]);
+        Assert.True(vm.Games[0].HasCoverImage); // canceled waiters did not leak semaphore permits
+    }
+
+    [AvaloniaFact]
+    public async Task LoadGameCover_QueuedCoverRevisionIsCheckedBeforeThumbnailIo()
+    {
+        var thumbnail = WriteTinyPng("revision-cover.png");
+        _library.AddGames(Enumerable.Range(0, 12).Select(index => new Game
+        {
+            SystemId = Ps1.Id, Path = Path.Combine(_baseDirectory, $"revision-{index}.chd"),
+            Title = $"Revision {index:D2}", CoverPath = thumbnail, DateAdded = DateTimeOffset.UtcNow,
+        }).ToArray());
+        var covers = new CancelableCoverService(thumbnail);
+        var vm = CreateViewModel(covers: covers);
+        await vm.ReloadGamesAsync();
+        var requests = vm.Games.Select(game => vm.LoadGameCoverCommand.ExecuteAsync(game)).ToArray();
+        var queued = vm.Games[^1];
+        queued.ApplyCoverPath(WriteTinyPng("replacement-cover.png"));
+        covers.Release();
+        await Task.WhenAll(requests).WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(11, covers.Requests.Count);
+        Assert.Null(queued.CoverImage);
+        Assert.False(queued.IsCoverLoading);
+        await vm.LoadGameCoverCommand.ExecuteAsync(queued);
+        Assert.True(queued.HasCoverImage);
+    }
+
+    private sealed class CancelableCoverService(string thumbnail) : IGameCoverService
+    {
+        public List<CancellationToken> Requests { get; } = [];
+        public bool Block { get; set; } = true;
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => _release.TrySetResult();
+        public async Task<string?> GetThumbnailAsync(long gameId, string coverPath, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(cancellationToken);
+            if (Block)
+                await _release.Task.WaitAsync(cancellationToken);
+            return thumbnail;
+        }
+        public Task<ImportedGameCover> ImportAsync(long gameId, string sourcePath, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+        public Task DeleteOwnedCoverAsync(long gameId, string coverPath, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     [AvaloniaFact]

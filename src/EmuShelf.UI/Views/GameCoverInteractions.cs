@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
@@ -78,8 +79,36 @@ internal static class GameCoverInteractions
         }
     }
 
+    private static readonly ConditionalWeakTable<Control, CoverLease> CoverLeases = new();
+
+    // One lease per actual cover host, reused across attachment and DataContext notifications.
+    // The host owns the subscription, so the cache never keeps detached controls alive.
+    private sealed class CoverLease
+    {
+        private GameViewModel? _game;
+
+        public CoverLease(Control control)
+        {
+            control.DetachedFromVisualTree += (_, _) => Update(null);
+        }
+
+        public void Update(GameViewModel? game)
+        {
+            if (ReferenceEquals(game, _game))
+                return;
+            var previous = _game;
+            _game = game;
+            game?.RetainCover();
+            previous?.ReleaseCover();
+        }
+    }
+
     private static void RequestCover(object? sender)
     {
+        if (sender is Control host)
+            CoverLeases.GetValue(host, static control => new CoverLease(control))
+                .Update(host.IsAttachedToVisualTree() ? host.DataContext as GameViewModel : null);
+
         if (sender is Control { DataContext: GameViewModel game } control &&
             control.IsAttachedToVisualTree() &&
             game.LoadCoverCommand.CanExecute(game))
