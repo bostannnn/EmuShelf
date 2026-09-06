@@ -63,4 +63,11 @@ public sealed record AppSettings
 
     /// <summary>In-app auto-update preferences (GitHub release checks).</summary>
     public UpdateSettings Updates { get; init; } = new();
+
+    /// <summary>
+    /// The version of the Android setup wizard the user has walked through (0 = never). The couch shell
+    /// opens the in-app half of the wizard on launch while this is below the current wizard version, so
+    /// a step added in a later release is offered once instead of the whole wizard again.
+    /// </summary>
+    public int SetupCompletedVersion { get; init; }
 }

@@ -2163,3 +2163,22 @@ breaks the whole-solution macOS build/test loop.
           own 833×468 overlay (pinned by test);
           "external screen" is gone from every string — the only hardware this reaches owns both screens.
           See DECISIONS 2026-09-05.
+    - [x] **S6 — first-run onboarding rebuilt as a two-phase setup wizard** (2026-09-05; Thor pass pending).
+          The three-treatment onboarding card is gone. Phase A (pre-boot: storage access, data folder — with
+          "use your existing library" for a reinstall) and phase B (in-app, the Settings projection in setup
+          mode: second screen, closing games, games and emulators, saves) share one rail, one row control
+          and one legend with couch Settings. Plain wording throughout (no "second-screen return", "emulator
+          return", "watcher"). `SetupCompletedVersion` gates the auto-open; Settings → Library has "Run setup
+          again". See DECISIONS 2026-09-05 (the setup-wizard entry) and `docs/prototypes/android-setup-wizard/`.
+    - [x] **S7 — every couch Settings section in the Emulators language, one control vocabulary**
+          (2026-09-05; Thor pass pending). Library, RetroAchievements, Artwork & Metadata, Saves, Themes,
+          About and Texture Packs now use the compact one-line rows PR #228 gave Emulators. A row ends in
+          one of four things — chevron (red when destructive), caption-less switch, ‹ value ›, or a plain
+          value; the glyph circles, switch captions, leading glyph wells and flat "info" rows are gone.
+          Saves and Texture Packs platforms are summary rows that open one at a time; Y on an account row
+          (Google Drive, RetroAchievements, ScreenScraper) disconnects it, Y on Export includes cloud
+          copies, Y on a texture folder returns to the detected one. Parity is compared against
+          `CollectParityIds` (every platform open, Y keys included). The wizard's Saves step is this section
+          unchanged (summary cards; the platform still missing a folder opens itself) — the heading row kind
+          it used to fall back on is gone. See DECISIONS 2026-09-05 (the Settings-language entry), 2026-09-06
+          and `docs/prototypes/couch-settings-v5/`.

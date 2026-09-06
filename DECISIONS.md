@@ -11812,3 +11812,227 @@ under the surface, so focus, A-routing and the existing tests keep working; the 
 four directions (`DispatchLaunchScreenNavigation`) because the layout is a row, not a column. The title
 carries the question and the eyebrow carries the game name, so a long game title no longer wraps the
 header onto two lines.
+
+## 2026-09-05 — Android first-run onboarding becomes a two-phase setup wizard in the Settings language
+
+Andrew's verdict on the onboarding card: badly structured (three steps in three different treatments, the
+mandatory second-screen gate drawn below the folder buttons it disabled, one status line carrying three
+meanings, a hand-rolled focus ring) and confusingly worded ("second-screen return", "emulator return",
+"watcher"). He asked for a redesign that also asks up front for the things a user has to pick by hand.
+
+Decided: one wizard, two phases, one visual language — the couch Settings overlay's rail, rows, toggles
+and legend, which he approved in the round-4 Settings pass.
+
+- **Phase A, before the app can boot** (`SetupWizardViewModel` + `SetupWizardView`, replacing
+  `OnboardingViewModel`/`OnboardingView`): Storage access, then Data folder. The rail lists the whole wizard
+  with the in-app steps dimmed. The Data folder step offers "Use your existing library" first when
+  `IDataLocationBootstrap.FindExistingDataFolder` finds `Data/library.db` under `EmuShelf` at the root or one
+  level down of primary storage or any mounted volume — the reinstall case the pointer mirror (same day)
+  only half covers, since the grant resets with the uid and the pointer is unreadable until it is allowed
+  again. A grant landing on foreground return advances to the folder step by itself; a pointer that resolves
+  completes the page by itself. Completion still restarts the process (the known-good handoff); the shell
+  then opens phase B on its own.
+- **Phase B, inside the composed app**: the existing `GamepadSettingsViewModel` in setup mode
+  (`SetupWizardOptions`), so every row, picker, confirmation and text entry is the one Settings already has.
+  Steps, each only where it applies: Second screen (a device with a companion display), Closing games
+  (the close-on-return setting), Games & emulators (the Emulators section, minus the close-on-return row),
+  Saves (the Saves section). START continues, Finish is the ordinary Save, B goes back and on the first step
+  leaves the wizard unfinished. LB/RB and the rail are inert. `AppSettings.SetupCompletedVersion` records
+  completion against `MainViewModel.SetupWizardVersion`, so a later step is offered once, not the whole
+  wizard; Settings → Library gains "Run setup again" on Android.
+- **Shared pieces**: the settings row template moved out of `GamepadShellView` into
+  `GamepadSettingsRowView`, rows take an `IGamepadSettingsRowHost` instead of the settings projection, and
+  `SetupWizardRailView`/`SetupWizardRailModel` draw the step rail for both phases. The wizard cannot drift
+  into a second row design because there is only one.
+- **Words**: "second-screen return" → "Bring EmuShelf back when a game closes"; "emulator return" → "Closing
+  games" / "Close the emulator when I come back"; "grant" → "allow"; "watcher" is gone from every user-facing
+  line. The second-screen step is no longer a hard gate: the launch path already refuses an external launch
+  while the permission is off, and the row says what continuing without it means.
+
+Prototype and per-screen notes: `docs/prototypes/android-setup-wizard/`.
+
+## 2026-09-05 — Every couch Settings section speaks the Emulators language, with one control vocabulary
+
+PR #228 gave the Emulators section compact one-line rows, one summary row per platform that opens in place,
+problems stated on the row in the warning colour and Y as the row's secondary action. Andrew asked for the
+other sections to follow ("more usable, readable and smaller"), then for a polishing pass because there were
+"too many different toggles/buttons". Prototype and per-screen notes: `docs/prototypes/couch-settings-v5/`
+(three-way flip: today's Thor screenshot → first pass → polished).
+
+Decided:
+
+- **One trailing control per row, four kinds in total.** A row ends in a chevron `›` (A does what the label
+  says; red on destructive rows), a switch with no caption, `‹ value ›` for a choice, or a plain value for a
+  read-only row. Gone: the seven glyph circles (↻ › ↓ ↑ ✎ × +) in three colours, the SHOW/HIDE · AUTO/MANUAL
+  · CLOSE/KEEP · ON/OFF switch captions, the muted circle on disabled rows (the whole row dims), the leading
+  glyph well on non-platform rows, and the flat transparent "info" rows (every row is the same card). An
+  action row's Value is either an "A …" prompt (hidden — the chevron is the prompt) or a word shown before
+  the chevron: what A does when the label alone does not say ("Sync now"), or that it is running ("Working…").
+- **State first.** `ToggleRow` prefixes its description with the state word ("Off · …", "Hidden · …",
+  "Manual · …") because the switch no longer carries it; a warning that replaces the description is left alone.
+  Action rows say what is true now before what A does (last scan result, last sync, "12 games still have no
+  cover" where the section knows it).
+- **Every section row is compact** (66 dip; summaries 56). Only the wizard's own explanatory pages keep the
+  two-line height; the Settings sections it reuses render compact there too.
+- **Y on an account row disconnects it.** The Google Drive, RetroAchievements Account and ScreenScraper rows
+  carry the account name as their value and disconnect through Y behind the existing confirmation. The three
+  separate red "Disconnect …" rows are gone. Likewise Export saves is one row (A = this device, Y = include
+  cloud-only copies) and a texture folder row is A = pick, Y = back to the detected folder, replacing the
+  "Use detected folder" rows.
+- **Header rows are gone.** Saves and Texture Packs platforms become summary rows that open one at a time
+  (`_expandedSavesSystemId`, `_expandedTextureSystemId`; kept apart from Emulators' so opening PS2 in one
+  section does not open it in another). Headers that only repeated the section title ("Sign in to
+  RetroAchievements", "Built-in catalogue", "Web image search" above a row of the same name) are dropped;
+  signed-out ScreenScraper is three plainly named rows. About's commit and date fold into the Version row's
+  description. Library puts the data folder path in the row's value, where the save-folder rows put theirs.
+- **Parity keeps its meaning.** A Desktop field folded into Y still has to be reachable on the couch, so a
+  row spec carries a `SecondaryKey` and `GamepadSettingsRowSpec.ParityIdsOf` yields it alongside the row's
+  own key. Fields behind a collapsed platform are one A press away, so the parity test now compares Desktop
+  against `GamepadSettingsViewModel.CollectParityIds(prefix)`, which projects every platform open. The
+  realized-row automation-id check is unchanged.
+- **Rail statuses carry warnings** the way Emulators' does: Saves names the platform with no save folder, a
+  detection error or a sync notice; Artwork says "ScreenScraper connected".
+- **Themes**: the two toggles are the same compact caption-less row (their state-first line comes from
+  `CrtToggleDescription` / `AmbientToggleDescription`). The prototype promised "all six themes on screen";
+  the catalogue has thirty, so the gallery still scrolls — the compact toggles buy a full first row of
+  cards inside the viewport on the Thor (pinned by `GamepadSettingsThemesAt1280x720…`).
+
+Not done here: the counts some state-first lines want (games without a cover, per-platform last sync as a
+date) — the rows fall back to the status texts the sections already have.
+
+## 2026-09-06 — Review fixes on the couch Settings redesign
+
+Ten findings from the review of the settings redesign, and three choices in fixing them that were not
+forced:
+
+- **The wizard omits rows by intent, not by key.** `GamepadSettingsRowSpec.SettingsOnly` marks the rows the
+  Android setup wizard's Saves step leaves out (sync now, the disconnect behind its Y, the per-platform
+  replace actions). The previous list named `saves.sync` and `saves.disconnect`; the redesign had turned
+  `saves.disconnect` into a `SecondaryKey` and made the Google Drive row key flip to `saves.stop` mid-sync,
+  so the list silently stopped matching and let Disconnect Google Drive into the wizard. A flag on the spec
+  cannot drift when another builder renames or conditions a key.
+- **A step that shows every platform open gets headings, not summaries.** The wizard's Saves step forces
+  every platform expanded, which left its summary rows focusable with a chevron and an A press that could
+  not open or close anything. They are `Kind.Header` there — non-focusable, no chevron — which is what the
+  rows they replaced were. `GamepadSettingsRowKind.Header` therefore stays: the redesign retired it from
+  Settings, not from the wizard.
+- **Parity counts a wired Y, not a labelled one.** `ParityIdsOf` yields a `SecondaryKey` only when
+  `SecondaryActivate` is set. Gating on the *label* would have been wrong — it comes and goes with a busy
+  flag, and Desktop's own button is visible-but-disabled in the same states — but a key with no handler
+  names a field no press can reach, and the sweep used to report it as covered anyway.
+
+The rest were straight fixes: the Saves rail no longer warns about save folders when cloud sync was never
+connected (the probe that fills `NeedsFolder` runs on any visit to the section); a detection error on a
+platform whose folder was picked by hand reads "needs attention", not "needs a save folder";
+`ComputeSavesRailStatus` runs before `RefreshSetupRail` reads it, so the wizard chip stops showing the
+previous rebuild's status; that chip carries `IsSavesRailWarning` instead of painting a warning as a done
+step; read-only rows get their flat `.info` treatment back, so a 24-row texture inventory stops looking
+like pressable cards A ignores; and the three per-section expansion fields become one
+`Dictionary<SettingsSection, string>`, which is what let Emulators quietly opt out of
+`CollectParityIds`'s "every platform open" contract.
+
+## 2026-09-06 — Couch Settings: a Display section, and ScreenScraper sign-in as a group
+
+Andrew, after running the round-5 build on the Thor: ScreenScraper is *"just 3 rows not connected in
+any meaningful way"*, and on Themes the gallery and the two screen switches *"are fighting for
+attention."* Three directions each went into `docs/prototypes/couch-settings-v6/`; his verdicts were
+**A for Themes** and **B for ScreenScraper**.
+
+- **Themes is only themes; the two switches get their own Display section.** The CRT tube and
+  artwork-matched colours used to sit above the gallery in full-weight rows, holding the position the
+  eye lands on first and pushing the cards down to one visible row. They are ordinary `ToggleRow`
+  projections in a new `SettingsSection.Display` now, and the gallery starts at the top — two full rows
+  of thirty cards in view on the Thor, pinned by the renamed snapshot test.
+- **Display is couch-only, spliced in rather than taken from the settings model.** Desktop deliberately
+  offers neither switch (its Themes card says why: a toggle whose effect is invisible from its own
+  window is worse than no toggle), so `EmulatorSettingsViewModel.Sections` never lists Display and the
+  couch inserts it beside Themes. Both rows are `ExcludeFromParity` because there is no Desktop field to
+  be in parity with. Desktop builds a fresh settings view model per open, so a couch session left on
+  Display cannot leave a Desktop window on a section it cannot render.
+- **The Themes gallery lost its two negative focus sentinels.** `FocusedThemeIndex` was -2 for CRT and
+  -1 for ambient, with Up/Down walking on and off the grid; the gallery is the whole page now, so
+  navigation is plain grid movement and the sentinels, their focus flags, the two `[RelayCommand]`
+  toggles and the two hand-written description properties are gone — along with two more copies of the
+  switch markup, which the row template already owns.
+- **ScreenScraper signs in through the accordion the rest of Settings already uses.** Signed out it is
+  one summary row that opens to `Username`, `Password` and `Sign in` beneath it, indented like a
+  platform's rows in Emulators or Saves. That binds the three rows without inventing a control, says
+  "ScreenScraper" once instead of three times, and makes the signed-out shape match the signed-in one
+  (a single account row whose Y disconnects). `Sign in` is dimmed until both fields are filled, as the
+  RetroAchievements Connect row already is.
+- **The accordion is no longer platform-shaped.** `PlatformSummaryRow` now delegates to
+  `ExpandableSummaryRow`, which separates the id that expands from the id that draws artwork — the
+  latter is null for ScreenScraper. The collapsed rows stay reachable for the Desktop↔couch sweep
+  because `CollectParityIds` already projects every group open.
+
+## 2026-09-06 — Setup wizard review fixes: nothing the wizard collects is thrown away, and no folder is adopted behind the user's back
+
+Review of the two-phase wizard (same-day entry above) found several paths where the wizard either destroyed
+something the user had chosen or reported state it had not actually read. The fixes, and why each landed the
+way it did:
+
+- **Adopting a previous install's library is a first-run-only move.** `SetupWizardViewModel` auto-adopted
+  `FindExistingDataFolder()`'s answer on any onboarding reason. On `LocationUnavailable` (the microSD is out)
+  and `StoragePermissionMissing` the user *has* a chosen folder — it is merely unreadable — so adopting the
+  newest library found elsewhere overwrote that choice with `_store.Write(...)`, permanently, over a
+  "most recently written" tie-break between two folders that both exist on the Thor. The press-free path is
+  now gated on `DataLocationOnboardingReason.FirstRun`; the other reasons keep the "Use your existing
+  library" row and wait for A.
+- **Leaving the wizard early saves; only Finish records it as walked.** Close-on-return and the per-platform
+  save folders are written solely by `EmulatorSettingsViewModel.SaveAsync`, so B on the first step used to
+  discard every answer given on the way there — and, since `SetupCompletedVersion` stayed 0, ask for them all
+  again next launch. B now saves on the way out. Completion is a separate signal
+  (`GamepadSettingsViewModel.SetupCompleted`, set only by Finish) rather than the save's `saved` flag, so the
+  wizard is still offered again; the answers are simply already in place when it is.
+- **The wizard's Data folder step is read-only.** It offered `general.change-data-folder`, whose success path
+  restarts the process — taking every unsaved wizard answer with it. Moving the folder stays in
+  Settings → Library, where nothing is in flight; the step reports the folder and says where to change it.
+- **Storage access reports the live grant.** Both the row and the rail entry hard-coded "Allowed", so the one
+  step whose subject is that permission could never say it was off and offered no way back to Android's page —
+  reachable any time through "Run setup again". `SetupWizardOptions` now carries an optional grant probe and
+  request delegate (optional so desktop and design-time paths can omit them), cached and re-read on foreground
+  return like the Shizuku and second-screen probes.
+- **Focus survives a rebuild on the pre-boot page.** `Rebuild()` reset to row 0, and a folder action rebuilds
+  twice, so cancelling the system picker silently moved the cursor from "Choose a different folder" onto
+  "Keep EmuShelf's data here" — the next A committed the wrong folder and restarted. It now restores by row
+  key, the way the in-app half's `RebuildRows` already did.
+- **Screen-2 forwards motion, not just keys.** `MainScreenClaimsPad` closed the key half of the
+  focused-display hand-off; sticks and hat-axis D-pads arrive as generic motion, which Android routes the same
+  way. `SetupPresentation` and `ThorSecondScreenPresentation` now override `DispatchGenericMotionEvent` and
+  feed the shared reader through `AndroidGamepadInput.TryFeedMotion` (one helper, so the Activity and both
+  Presentations cannot drift). Without it, touching the Thor's base screen left the wizard with A/B/START and
+  no way to move — the exact failure `PreShellNavigate` was added to prevent.
+- **Smaller ones in the same pass.** `saves.stop` joins `saves.sync` in the setup-mode Saves filter (it is
+  what `BuildSaveRows` yields while a sync runs, so the excluded control walked straight back in);
+  `ApplyEmulatorSwitch` clears `HasProbed` so `NeedsFolder` cannot report "looked, found nothing" for a row
+  that has not been re-probed; LB/RB are swallowed in the rail as well as the content column, matching the
+  legend; `Split('/', '\\', options)` became `Split(['/', '\\'], options)` (the two-char form binds the
+  `count` overload and never splits on the backslash); and the last "grant" in a user-facing Shizuku string
+  became "allow".
+- **The prototype's stage is a gradient.** `docs/prototypes/android-setup-wizard/assets/shelf-bg.jpg` was a
+  shelf capture carrying publisher label art (DS trade dress, Taito/Square Enix, the Nintendo seal, ESRB),
+  which CLAUDE.md forbids shipping unlicensed and uncredited. Removed; `.bg` is a radial gradient in the
+  couch palette.
+
+## 2026-09-06 — The wizard's Saves step is Settings' Saves section, cards and all; the heading row kind is retired
+
+Andrew, on the Thor with #233+#234 installed: "saves menu in onboarding uses old design, not the one from
+234". It did: the step forced every platform open and drew each as `Kind.Header` — the pre-redesign group
+heading (medallion, bold grey label, no card, no detail, no chevron) — because a summary card that is always
+open would have offered a chevron that cannot do anything (see the entry above). That reasoning kept a second
+row design alive in the one place the wizard was meant to share Settings' look.
+
+Decided:
+
+- **One design.** The Saves step yields exactly what Settings' Saves section yields: one compact summary card
+  per platform (artwork, name, what synced and when — or "No save folder" in the warning colour), collapsed,
+  A opening one at a time. The step-only differences stay what they were: the Settings-only rows (sync now,
+  Y-disconnect, replace) are left out, and a folder row still needing a pick is painted as a warning.
+- **The platform still missing its folder opens itself, once.** So the row the user must act on is on screen
+  without a press. It runs in the Saves case of `BuildSetupRows` rather than in `PrepareSetupStep`, because the
+  folder probe can land after the step is entered (it does on a first run); it never overrides a platform the
+  user opened, and it does not reopen one the user closed.
+- **`GamepadSettingsRowKind.Header` is gone**, with `IsHeader`, the header-skipping in row navigation and focus
+  restore, the `forcedOpen` branch of `ExpandableSummaryRow`, and the heading template in
+  `GamepadSettingsRowView`. Nothing produced it any more; a row kind the redesign retired from Settings should
+  not survive as the wizard's private fallback.

@@ -22,9 +22,6 @@ public enum GamepadSettingsRowKind
     Folder,
     File,
     Information,
-    /// <summary>A non-focusable platform group heading (artwork + name) that gives the section a
-    /// visible hierarchy instead of a flat list of equal-weight rows.</summary>
-    Header,
     /// <summary>A focusable one-line platform summary (artwork, name, "emulator · N games") that expands
     /// its per-platform rows in place when activated, so a 15-platform section reads as 15 rows, not 90.</summary>
     Summary,
@@ -63,9 +60,9 @@ public partial class GamepadChoiceOptionViewModel : ObservableObject
 /// <summary>A single controller-sized row projected from the existing Desktop settings model.</summary>
 public partial class GamepadSettingsRowViewModel : ObservableObject
 {
-    private readonly GamepadSettingsViewModel _owner;
+    private readonly IGamepadSettingsRowHost _owner;
 
-    internal GamepadSettingsRowViewModel(GamepadSettingsViewModel owner, GamepadSettingsRowSpec spec)
+    internal GamepadSettingsRowViewModel(IGamepadSettingsRowHost owner, GamepadSettingsRowSpec spec)
     {
         _owner = owner;
         Apply(spec);
@@ -83,7 +80,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public string? SystemId { get; private set; }
     /// <summary>True for a member row under a platform header; indents it beneath its group.</summary>
     public bool IsGrouped { get; private set; }
-    public bool IsHeader => Kind == GamepadSettingsRowKind.Header;
     public bool IsSummary => Kind == GamepadSettingsRowKind.Summary;
     /// <summary>True while a summary row's platform rows are shown beneath it.</summary>
     public bool IsExpanded { get; private set; }
@@ -98,26 +94,31 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     /// <summary>Legend text for the Y action this row offers ("Rescan", "Forget folder"), or empty.</summary>
     public string SecondaryLabel { get; private set; } = string.Empty;
     public bool HasSecondary => !string.IsNullOrEmpty(SecondaryLabel) && IsEnabled;
-    public bool IsNormalRow => !IsHeader && !IsSaveRow;
+    /// <summary>Parity id of the Desktop field the Y action stands in for ("saves.disconnect" on the Google
+    /// Drive row), so a field folded into Y still counts as reachable on the couch.</summary>
+    public string SecondaryKey { get; private set; } = string.Empty;
+    public bool IsNormalRow => !IsSaveRow;
     public bool HasPlatformIcon => !string.IsNullOrEmpty(SystemId);
     /// <summary>True for gamepad-only view-state controls (e.g. expand inventory) that have no Desktop
     /// settings field and must not participate in the executable parity comparison.</summary>
     public bool ExcludeFromParity { get; private set; }
-    public bool CanActivate => IsEnabled &&
-        Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header);
+    public bool CanActivate => IsEnabled && Kind is not GamepadSettingsRowKind.Information;
     public string ParityId =>
-        Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header)
-            && !IsSaveRow && !ExcludeFromParity
-            ? Key
-            : string.Empty;
-    /// <summary>A leading glyph shown for generic rows without platform artwork, categorising the row.</summary>
-    public string LeadingGlyph => Kind switch
+        GamepadSettingsRowSpec.CoversOwnKey(Kind, Key, ExcludeFromParity) ? Key : string.Empty;
+    /// <summary>Every Desktop field id this row covers: its own (A) and the one behind Y, if any. Derived
+    /// rather than stored so it cannot drift from the row it describes.</summary>
+    public IEnumerable<string> ParityIds
     {
-        GamepadSettingsRowKind.Toggle => "◑",
-        GamepadSettingsRowKind.Choice => "⇅",
-        GamepadSettingsRowKind.Information => "ℹ",
-        _ => ActionGlyph,
-    };
+        get
+        {
+            if (ParityId.Length > 0)
+                yield return ParityId;
+            // A Y key only counts once the action behind it is wired; a key with no handler names a
+            // field no press can reach, however the row is worded.
+            if (SecondaryKey.Length > 0 && SecondaryActivate is not null)
+                yield return SecondaryKey;
+        }
+    }
     public bool IsSaveRow => Key == "common.save";
     public bool IsToggle => Kind == GamepadSettingsRowKind.Toggle;
     public bool IsToggleOn => ToggleValue == true;
@@ -126,37 +127,15 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public bool IsEditableValue => Kind is GamepadSettingsRowKind.Text or
         GamepadSettingsRowKind.Secret or GamepadSettingsRowKind.Folder or GamepadSettingsRowKind.File;
     public bool IsInformation => Kind == GamepadSettingsRowKind.Information;
-    public bool ShowsActionButton => Kind is GamepadSettingsRowKind.Action or
+    /// <summary>Every action, edit and pick ends in the same chevron; A does what the label says. An action
+    /// row's Value is either an "A …" prompt (hidden — the chevron is the prompt) or a word to show before the
+    /// chevron: what A does when the label alone does not say ("Sync now"), or that it is running ("Working…").</summary>
+    public bool ShowsChevron => Kind is GamepadSettingsRowKind.Action or
         GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret or
         GamepadSettingsRowKind.Folder or GamepadSettingsRowKind.File;
-    /// <summary>True only while an action is actually running: its Value is a status word ("WORKING",
-    /// "CONNECTING…") rather than an "A …" prompt. Lets the row show that label in place of the idle
-    /// affordance without also labelling merely-disabled rows.</summary>
-    public bool ShowsWorkingLabel =>
-        IsAction && !Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase);
-    public string ActionButtonText => Kind switch
-    {
-        GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret => "EDIT",
-        GamepadSettingsRowKind.Folder => "CHOOSE",
-        GamepadSettingsRowKind.File => "CHOOSE FILE",
-        _ when Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase) => Value[2..],
-        _ => Value,
-    };
-    public string ActionGlyph => Kind switch
-    {
-        GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret or
-            GamepadSettingsRowKind.Folder or GamepadSettingsRowKind.File => "✎",
-        _ when Key.EndsWith("replace-cloud", StringComparison.Ordinal) => "↑",
-        _ when Key.EndsWith("replace-local", StringComparison.Ordinal) => "↓",
-        _ when Key.Contains("disconnect", StringComparison.Ordinal) => "×",
-        _ when Key.Contains("connect", StringComparison.Ordinal) => "+",
-        _ when Key.Contains("rescan", StringComparison.Ordinal) ||
-            Key.Contains("refresh", StringComparison.Ordinal) ||
-            Key.Contains("sync", StringComparison.Ordinal) => "↻",
-        _ when Key.Contains("fetch", StringComparison.Ordinal) => "↓",
-        _ when Key.Contains("detected", StringComparison.Ordinal) => "↶",
-        _ => "›",
-    };
+    public bool HasActionText =>
+        IsAction && Value.Length > 0 && !Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase);
+    public string ActionText => HasActionText ? Value : string.Empty;
     internal Func<Task>? Activate { get; private set; }
     internal Func<Task>? SecondaryActivate { get; private set; }
     internal bool SecondaryIsDestructive { get; private set; }
@@ -190,6 +169,7 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         IsWarning = spec.IsWarning;
         IsCompact = spec.IsCompact;
         SecondaryLabel = spec.SecondaryLabel ?? string.Empty;
+        SecondaryKey = spec.SecondaryKey ?? string.Empty;
         SecondaryActivate = spec.SecondaryActivate;
         SecondaryIsDestructive = spec.SecondaryIsDestructive;
         SecondaryConfirmationTitle = spec.SecondaryConfirmationTitle;
@@ -200,7 +180,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
         OnPropertyChanged(nameof(CanActivate));
         OnPropertyChanged(nameof(ParityId));
-        OnPropertyChanged(nameof(IsHeader));
         OnPropertyChanged(nameof(IsSummary));
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsWarning));
@@ -213,7 +192,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsNormalRow));
         OnPropertyChanged(nameof(HasPlatformIcon));
         OnPropertyChanged(nameof(IsGrouped));
-        OnPropertyChanged(nameof(LeadingGlyph));
         OnPropertyChanged(nameof(IsSaveRow));
         OnPropertyChanged(nameof(IsToggle));
         OnPropertyChanged(nameof(IsToggleOn));
@@ -221,10 +199,10 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsAction));
         OnPropertyChanged(nameof(IsEditableValue));
         OnPropertyChanged(nameof(IsInformation));
-        OnPropertyChanged(nameof(ShowsActionButton));
-        OnPropertyChanged(nameof(ShowsWorkingLabel));
-        OnPropertyChanged(nameof(ActionButtonText));
-        OnPropertyChanged(nameof(ActionGlyph));
+        OnPropertyChanged(nameof(ShowsChevron));
+        OnPropertyChanged(nameof(HasActionText));
+        OnPropertyChanged(nameof(ActionText));
+        OnPropertyChanged(nameof(SecondaryKey));
     }
 }
 
@@ -251,14 +229,36 @@ internal sealed record GamepadSettingsRowSpec(
     Func<Task>? SecondaryActivate = null,
     bool SecondaryIsDestructive = false,
     string? SecondaryConfirmationTitle = null,
-    string? SecondaryConfirmationText = null);
+    string? SecondaryConfirmationText = null,
+    string? SecondaryKey = null,
+    bool SettingsOnly = false)
+{
+    /// <summary>True when a row's own key names a Desktop field. Read-only rows, the Save row and
+    /// couch-only view state do not. The one place this rule lives: both the AutomationId the
+    /// snapshot test reads off a realized row and the parity sweep ask it, so they cannot disagree.</summary>
+    public static bool CoversOwnKey(GamepadSettingsRowKind kind, string key, bool excludeFromParity) =>
+        kind is not GamepadSettingsRowKind.Information && key != "common.save" && !excludeFromParity;
+
+    /// <summary>The Desktop field ids this row makes reachable: its own key, plus the field folded into
+    /// its Y action once that action is wired.</summary>
+    public static IEnumerable<string> ParityIdsOf(GamepadSettingsRowSpec spec)
+    {
+        if (CoversOwnKey(spec.Kind, spec.Key, spec.ExcludeFromParity))
+            yield return spec.Key;
+        // Only a Y that has a handler counts. The label may come and go with a busy flag — Desktop's own
+        // button is visible-but-disabled in the same states — but a SecondaryKey with nothing behind it
+        // names a field no press can reach, and the parity sweep must not paper over that.
+        if (!string.IsNullOrEmpty(spec.SecondaryKey) && spec.SecondaryActivate is not null)
+            yield return spec.SecondaryKey;
+    }
+}
 
 /// <summary>
 /// Controller projection over <see cref="EmulatorSettingsViewModel"/>. It owns only navigation,
 /// draft entry, and confirmation state; all values, validation, operations, and persistence remain
 /// in the existing settings view model and services.
 /// </summary>
-public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
+public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGamepadSettingsRowHost
 {
     private const int ThemeColumns = 3;
 
@@ -279,6 +279,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     private readonly Func<EmulatorChoice, bool>? _isEmulatorChoiceInstalled;
     private readonly Func<string?>? _closeOnReturnWarning;
     private readonly Func<Task>? _grantCloseOnReturnPrivilege;
+    // Setup-wizard mode (the in-app half of Android first-run setup): the same projection walked as a
+    // sequence of steps instead of a rail of sections. Null in ordinary Settings.
+    private readonly SetupWizardOptions? _setup;
+    private readonly List<SetupStep> _liveSetupSteps = [];
+    private int _setupIndex;
+    private bool _secondScreenReadyRead;
+    private bool _cachedSecondScreenReady;
+    private bool _storageGrantedRead;
+    private bool _cachedStorageGranted;
+    // Ordinary Settings only: the Library row that re-runs the wizard on demand (Android).
+    private readonly IAsyncRelayCommand? _runSetupCommand;
     // Device probes held for the life of this screen, keyed by choice id; see EmulatorMissingFor.
     private readonly Dictionary<string, bool> _emulatorChoiceInstalled = new(StringComparer.Ordinal);
     private string? _cachedCloseOnReturnWarning;
@@ -288,9 +299,14 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     // to re-read them. Tracks the falling edge of IsMaintainingLibrary, which every rescan and folder
     // import raises, rather than guessing from status text.
     private bool _maintainingLibrary;
-    // The one platform whose rows are shown beneath its summary in the Emulators section; null = all
-    // collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable.
-    private string? _expandedSystemId;
+    /// <summary>The one platform whose rows are shown beneath its summary, per section; absent = all
+    /// collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable,
+    /// and keying it by section means opening PS2 in Emulators does not also open it in Saves.</summary>
+    private readonly Dictionary<SettingsSection, string> _expandedBySection = [];
+    private bool _savesStepOpenedMissingFolder;
+    /// <summary>While set, every platform summary projects its rows, so a parity sweep sees every field a
+    /// user can reach by opening a platform, not just the one platform currently open.</summary>
+    private bool _projectEveryPlatform;
     private Func<Task>? _pendingConfirmation;
     private Action<string>? _commitText;
     private Action<string>? _commitChoice;
@@ -404,6 +420,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 return;
             _settings.AmbientThemeFromArtwork = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayRailStatus));
         }
     }
 
@@ -417,6 +434,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 return;
             _settings.CrtScreenEffect = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(DisplayRailStatus));
         }
     }
 
@@ -434,26 +452,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    /// <summary>
-    /// True when the ambient toggle owns focus, marked by the -1 sentinel of
-    /// <see cref="FocusedThemeIndex"/>.
-    /// </summary>
-    /// <remarks>
-    /// Two negative sentinels now sit above the grid rather than one, so this is an equality test
-    /// rather than the old "any negative". A stray &lt; 0 here would light both toggles at once.
-    /// </remarks>
-    public bool IsAmbientToggleFocused => IsThemesSection && FocusedThemeIndex == AmbientToggleIndex;
-
-    /// <summary>True when the CRT toggle, the topmost focus target in the Themes view, owns focus.</summary>
-    public bool IsCrtToggleFocused => IsThemesSection && FocusedThemeIndex == CrtToggleIndex;
-
-    /// <summary>Focus sentinels for the two toggles stacked above the theme grid.</summary>
-    private const int AmbientToggleIndex = -1;
-
-    /// <inheritdoc cref="AmbientToggleIndex"/>
-    private const int CrtToggleIndex = -2;
-
-    /// <summary>The row list is shown for the four model sections; the gallery replaces it on Themes.</summary>
+    /// <summary>The row list is shown for the model sections; the gallery replaces it on Themes.</summary>
     public bool IsRowsVisible => IsNormal && !IsThemesSection;
 
     public bool IsThemesVisible => IsNormal && IsThemesSection;
@@ -470,7 +469,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     public GamepadSettingsRowViewModel? SaveRow => Rows.FirstOrDefault(row => row.IsSaveRow);
 
-    public string SectionTitle => IsThemesSection ? "Themes" : SelectedSection switch
+    public string SectionTitle => IsSetupMode ? SetupTitle : IsThemesSection ? "Themes" : SelectedSection switch
     {
         SettingsSection.Emulators => "Emulators",
         SettingsSection.Hotkeys => "Hotkeys",
@@ -478,11 +477,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
+        SettingsSection.Display => "Display",
         SettingsSection.About => "About",
         _ => "Library",
     };
 
-    public string SectionDescription => IsThemesSection
+    public string SectionDescription => IsSetupMode ? SetupDescription : IsThemesSection
         ? "Personalize EmuShelf's colors. A theme applies instantly and is shared with Desktop mode."
         : SelectedSection switch
     {
@@ -500,6 +500,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             "Reconcile emulator saves through your own Google Drive. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
+        SettingsSection.Display =>
+            "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them.",
         SettingsSection.About =>
             "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
@@ -530,9 +532,53 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public string RetroAchievementsRailStatus => _settings.IsRetroAchievementsConnected
         ? _settings.ConnectedAccountName ?? "Signed in"
         : "Not signed in";
-    public string ArtworkRailStatus => _settings.IsScreenScraperConnected ? "Connected" : string.Empty;
-    public string SavesRailStatus => _settings.IsCloudConnected ? "Google Drive" : string.Empty;
+    public string ArtworkRailStatus => _settings.IsScreenScraperConnected ? "ScreenScraper connected" : string.Empty;
+    /// <summary>Like Emulators: the rail names the platform that needs a look (no save folder, a detection
+    /// error, a sync notice) before it says anything routine.</summary>
+    public string SavesRailStatus => _savesRailStatus;
+    public bool IsSavesRailWarning => _savesRailWarning;
+    private string _savesRailStatus = string.Empty;
+    private bool _savesRailWarning;
+
+    private void ComputeSavesRailStatus()
+    {
+        // Save folders exist for cloud sync, so a user who never connected hears nothing about them. The
+        // probe that fills NeedsFolder runs on any visit to the Saves section, connected or not, so
+        // without this gate the rail would warn about a feature that was never switched on.
+        if (!_settings.IsCloudConnected)
+        {
+            _savesRailWarning = false;
+            _savesRailStatus = string.Empty;
+            return;
+        }
+
+        var attention = _settings.CloudPlatforms.FirstOrDefault(platform =>
+            platform.NeedsFolder || platform.HasDetectionError || platform.HasLastNotice);
+        if (attention is not null)
+        {
+            _savesRailWarning = true;
+            // A detection error on a platform whose folder was picked by hand is not a missing folder;
+            // the same guard SavePlatformsNeedingAFolder applies, so the rail and the wizard chip agree.
+            _savesRailStatus = attention.NeedsFolder
+                || (attention.HasDetectionError && attention.NormalizedOverride is null)
+                ? $"{attention.DisplayName} needs a save folder"
+                : $"{attention.DisplayName} needs attention";
+            return;
+        }
+        _savesRailWarning = false;
+        _savesRailStatus = "Google Drive";
+    }
     public string TexturePacksRailStatus => string.Empty;
+    /// <summary>What is switched on, so the rail answers "is the tube on?" without opening the page.
+    /// Silent when neither is, like the Artwork rail line — and short enough to survive the rail's
+    /// ~98px status column, which cut the longer wording mid-word.</summary>
+    public string DisplayRailStatus => (CrtScreenEffect, AmbientThemeFromArtwork) switch
+    {
+        (true, true) => "Both on",
+        (true, false) => "CRT on",
+        (false, true) => "Artwork colours on",
+        _ => string.Empty,
+    };
     public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
     public string AboutRailStatus => _settings.AppVersionDisplay;
 
@@ -582,6 +628,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             return;
         _emulatorChoiceInstalled.Clear();
         _closeOnReturnWarningRead = false;
+        _secondScreenReadyRead = false;
+        _storageGrantedRead = false;
         RebuildRows();
     }
 
@@ -654,6 +702,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     public bool IsArtworkMetadataSection => !IsThemesSection && SelectedSection == SettingsSection.ArtworkMetadata;
     public bool IsSavesSection => !IsThemesSection && SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => !IsThemesSection && SelectedSection == SettingsSection.TexturePacks;
+    public bool IsDisplaySection => !IsThemesSection && SelectedSection == SettingsSection.Display;
     public bool IsAboutSection => !IsThemesSection && SelectedSection == SettingsSection.About;
 
     public event Action<bool>? CloseRequested;
@@ -669,9 +718,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         Func<EmulatorChoice, bool>? isEmulatorChoiceInstalled = null,
         Func<string?>? closeOnReturnWarning = null,
         Func<Task>? grantCloseOnReturnPrivilege = null,
-        Func<Task>? refreshGameCounts = null)
+        Func<Task>? refreshGameCounts = null,
+        SetupWizardOptions? setup = null,
+        Func<Task>? runSetup = null)
     {
         _settings = settings;
+        _setup = setup;
+        _runSetupCommand = runSetup is null || setup is not null ? null : new AsyncRelayCommand(runSetup);
         _gameCountBySystem = gameCountBySystem;
         _refreshGameCounts = refreshGameCounts;
         _maintainingLibrary = settings.IsMaintainingLibrary;
@@ -694,9 +747,41 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         // per-emulator × per-action matrix that a controller can't navigate as a flat list, so its
         // section row opens the controller-native GamepadHotkeysViewModel overlay; About projects
         // read-only build info plus the in-place update actions.
-        Sections = settings.Sections
+        var sections = settings.Sections
             .Where(section => section is not SettingsSection.Themes)
-            .ToArray();
+            .ToList();
+        // Display is couch-only, so it is spliced in here rather than coming from the settings model:
+        // the CRT tube and artwork-matched colours change how the shelf behind this panel is drawn, and
+        // Desktop deliberately offers neither (a toggle whose effect is invisible from its own window is
+        // worse than no toggle). It sits next to Themes so appearance is two neighbouring pages.
+        var beforeAbout = sections.IndexOf(SettingsSection.About);
+        sections.Insert(beforeAbout >= 0 ? beforeAbout : sections.Count, SettingsSection.Display);
+        Sections = sections;
+
+        if (_setup is not null)
+        {
+            // The steps this device gets, in order. Storage access and the data folder were answered by the
+            // pre-boot page; they stay reachable here (to see the answer, and to move the folder) so the
+            // rail is one wizard the user can walk up and down. The rest are live only when the feature
+            // exists here (a second screen, the close-on-return setting, cloud saves), so a phone with none
+            // of them sees a short wizard, not a list of dead ends.
+            _liveSetupSteps.Add(SetupStep.StorageAccess);
+            _liveSetupSteps.Add(SetupStep.DataFolder);
+            if (_setup.HasSecondScreen)
+                _liveSetupSteps.Add(SetupStep.SecondScreen);
+            if (_settings.HasCloseEmulatorOnReturn)
+                _liveSetupSteps.Add(SetupStep.ClosingGames);
+            _liveSetupSteps.Add(SetupStep.GamesAndEmulators);
+            if (_settings.HasCloudSaves && Sections.Contains(SettingsSection.Saves))
+                _liveSetupSteps.Add(SetupStep.Saves);
+            foreach (var step in _liveSetupSteps)
+                SetupRail.Steps.Add(new SetupStepViewModel(step));
+            SetupRail.StartCommand = new AsyncRelayCommand(AdvanceSetupAsync);
+            // Open on the first step that still has something to decide: the two pre-boot steps are done.
+            _setupIndex = Math.Min(2, _liveSetupSteps.Count - 1);
+            SelectedSection = SectionForSetupStep(CurrentSetupStep);
+            PrepareSetupStep();
+        }
 
         _settings.PropertyChanged += OnSettingsPropertyChanged;
         // The update-download coordinator is a separate ObservableObject, so its per-percent progress
@@ -790,15 +875,26 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         // to the content, and LB/RB still work as a shortcut.
         if (IsRailFocused)
         {
+            // Except in the wizard, whose legend offers no shoulders: swallow them here too, so the rail
+            // cannot do what the content column refuses to (see the setup block further down).
+            if (IsSetupMode && action is GamepadAction.PreviousPlatform or GamepadAction.NextPlatform)
+                return true;
+
             switch (action)
             {
                 case GamepadAction.NavigateUp:
                 case GamepadAction.PreviousPlatform:
-                    MoveSection(-1);
+                    if (IsSetupMode)
+                        SelectSetupStep(_setupIndex - 1);
+                    else
+                        MoveSection(-1);
                     return true;
                 case GamepadAction.NavigateDown:
                 case GamepadAction.NextPlatform:
-                    MoveSection(1);
+                    if (IsSetupMode)
+                        SelectSetupStep(_setupIndex + 1);
+                    else
+                        MoveSection(1);
                     return true;
                 case GamepadAction.NavigateRight:
                 case GamepadAction.Confirm:
@@ -807,10 +903,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 case GamepadAction.NavigateLeft:
                     return true;
                 case GamepadAction.Cancel:
-                    CloseRequested?.Invoke(false);
+                    if (IsSetupMode)
+                        BackSetup();
+                    else
+                        CloseRequested?.Invoke(false);
                     return true;
                 case GamepadAction.Menu:
-                    if (SaveRow is { } railSave)
+                    if (IsSetupMode)
+                        _ = AdvanceSetupAsync();
+                    else if (SaveRow is { } railSave)
                         _ = ActivateAsync(railSave);
                     return true;
                 default:
@@ -829,43 +930,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     MoveSection(1);
                     return true;
                 case GamepadAction.NavigateLeft:
-                    // The ambient toggle (-1) and the first grid column step out to the section rail.
-                    if (FocusedThemeIndex < 0 || FocusedThemeIndex % ThemeColumns == 0)
+                    // The gallery is the whole page now, so the first column is what steps out to the rail.
+                    if (FocusedThemeIndex % ThemeColumns == 0)
                         EnterRail();
                     else
                         MoveThemeFocus(-1, 0);
                     return true;
                 case GamepadAction.NavigateRight:
-                    if (FocusedThemeIndex >= 0)
-                        MoveThemeFocus(1, 0);
+                    MoveThemeFocus(1, 0);
                     return true;
                 case GamepadAction.NavigateUp:
-                    // Up walks the stack above the grid: top grid row -> ambient -> CRT, and stops.
-                    if (FocusedThemeIndex == AmbientToggleIndex)
-                        FocusedThemeIndex = CrtToggleIndex;
-                    else if (FocusedThemeIndex == CrtToggleIndex)
-                        return true;
-                    else if (FocusedThemeIndex < ThemeColumns)
-                        FocusedThemeIndex = AmbientToggleIndex;
-                    else
-                        MoveThemeFocus(0, -1);
+                    MoveThemeFocus(0, -1);
                     return true;
                 case GamepadAction.NavigateDown:
-                    // Down reverses it, dropping off the ambient toggle into the selected theme.
-                    if (FocusedThemeIndex == CrtToggleIndex)
-                        FocusedThemeIndex = AmbientToggleIndex;
-                    else if (FocusedThemeIndex == AmbientToggleIndex)
-                        FocusedThemeIndex = Math.Max(0, IndexOfSelectedTheme());
-                    else
-                        MoveThemeFocus(0, 1);
+                    MoveThemeFocus(0, 1);
                     return true;
                 case GamepadAction.Confirm:
-                    if (FocusedThemeIndex == CrtToggleIndex)
-                        ToggleCrt();
-                    else if (FocusedThemeIndex == AmbientToggleIndex)
-                        ToggleAmbient();
-                    else
-                        _ = ApplyFocusedThemeAsync();
+                    _ = ApplyFocusedThemeAsync();
                     return true;
                 case GamepadAction.Cancel:
                     CloseRequested?.Invoke(false);
@@ -876,6 +957,24 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     return true;
                 default:
                     return false;
+            }
+        }
+
+        if (IsSetupMode)
+        {
+            // Steps are walked with START/B (and Up/Down once Left has put focus on the rail); LB/RB are
+            // swallowed in both columns so nothing jumps to a step the legend never offered.
+            switch (action)
+            {
+                case GamepadAction.PreviousPlatform:
+                case GamepadAction.NextPlatform:
+                    return true;
+                case GamepadAction.Cancel:
+                    BackSetup();
+                    return true;
+                case GamepadAction.Menu:
+                    _ = AdvanceSetupAsync();
+                    return true;
             }
         }
 
@@ -996,9 +1095,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             if (!ShowThemes)
                 return Sections;
             var pages = Sections.ToList();
-            // Desktop places Themes right before About; match that slot instead of appending at the end.
-            var about = pages.IndexOf(SettingsSection.About);
-            pages.Insert(about >= 0 ? about : pages.Count, SettingsSection.Themes);
+            // Desktop places Themes right before About; match that slot instead of appending at the end,
+            // and keep it immediately ahead of Display so picking a theme and adjusting how it is drawn
+            // are neighbours.
+            var slot = pages.IndexOf(SettingsSection.Display);
+            if (slot < 0)
+                slot = pages.IndexOf(SettingsSection.About);
+            pages.Insert(slot >= 0 ? slot : pages.Count, SettingsSection.Themes);
             return pages;
         }
     }
@@ -1148,10 +1251,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         if (step == 0)
             return;
 
-        // Step over non-focusable group headers; if there is no focusable row ahead, stay put.
         var index = FocusedRowIndex + step;
-        while (index >= 0 && index < Rows.Count && Rows[index].IsHeader)
-            index += step;
         if (index < 0 || index >= Rows.Count)
             return;
 
@@ -1171,7 +1271,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         ? ActivateAsync(row)
         : Task.CompletedTask;
 
-    internal async Task FocusAndActivateAsync(GamepadSettingsRowViewModel row)
+    public async Task FocusAndActivateAsync(GamepadSettingsRowViewModel row)
     {
         var index = Rows.IndexOf(row);
         if (index < 0)
@@ -1398,43 +1498,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsDisplaySection));
         OnPropertyChanged(nameof(IsAboutSection));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
-        OnPropertyChanged(nameof(IsAmbientToggleFocused));
-        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
     }
 
     partial void OnFocusedThemeIndexChanged(int value)
     {
-        OnPropertyChanged(nameof(IsAmbientToggleFocused));
-        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
-    }
-
-    /// <summary>Toggles the ambient (cover-art recolour) setting from the Themes view; also lands
-    /// focus on the toggle so a pointer click and a controller press read the same.</summary>
-    [RelayCommand]
-    private void ToggleAmbient()
-    {
-        if (!IsThemesSection)
-            return;
-        FocusedThemeIndex = AmbientToggleIndex;
-        AmbientThemeFromArtwork = !AmbientThemeFromArtwork;
-    }
-
-    /// <summary>Toggles the CRT presentation from the Themes view; also lands focus on the toggle so
-    /// a pointer click and a controller press read the same.</summary>
-    [RelayCommand]
-    private void ToggleCrt()
-    {
-        if (!IsThemesSection)
-            return;
-        FocusedThemeIndex = CrtToggleIndex;
-        CrtScreenEffect = !CrtScreenEffect;
     }
 
     partial void OnSelectedSectionChanged(SettingsSection value)
@@ -1455,6 +1530,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsDisplaySection));
         OnPropertyChanged(nameof(IsAboutSection));
         RebuildRows(_focusedRowBySection.GetValueOrDefault(value));
         OnPropertyChanged(nameof(StatusText));
@@ -1498,11 +1574,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         var list = Rows.ToList();
         var target = preferredKey is null
             ? -1
-            : list.FindIndex(row => row.Key == preferredKey && !row.IsHeader);
+            : list.FindIndex(row => row.Key == preferredKey);
         if (target < 0)
-            target = list.FindIndex(row => !row.IsHeader && row.Key != "common.save");
+            target = list.FindIndex(row => row.Key != "common.save");
         if (target < 0)
-            target = list.FindIndex(row => !row.IsHeader);
+            target = 0;
         FocusedRowIndex = Rows.Count == 0 ? 0 : target >= 0 ? target : 0;
         for (var index = 0; index < Rows.Count; index++)
             Rows[index].IsFocused = index == FocusedRowIndex;
@@ -1530,6 +1606,14 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRows()
     {
+        if (IsSetupMode)
+        {
+            // No "Save and close" row: the wizard moves with START (the rail chip), and Finish is the save.
+            foreach (var row in BuildSetupRows())
+                yield return row;
+            yield break;
+        }
+
         // Keep Save one D-pad step above the first section-specific row. Some sections can contain
         // dozens of platform rows, so placing it at the tail would make committing a small change
         // require traversing the entire inventory.
@@ -1541,6 +1625,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             _settings.SaveCommand,
             !_settings.IsWorking);
 
+        // One row height for every section: the compact one-line row Emulators shipped with. Only the
+        // wizard's explanatory pages (built in BuildSetupRows) keep two-line descriptions.
         foreach (var row in SelectedSection switch
         {
             SettingsSection.Emulators => BuildEmulatorsRows(),
@@ -1549,11 +1635,33 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             SettingsSection.ArtworkMetadata => BuildArtworkMetadataRows(),
             SettingsSection.Saves => BuildSaveRows(),
             SettingsSection.TexturePacks => BuildTextureRows(),
+            SettingsSection.Display => BuildDisplayRows(),
             SettingsSection.About => BuildAboutRows(),
             _ => BuildGeneralRows(),
         })
         {
-            yield return row;
+            yield return row with { IsCompact = true };
+        }
+    }
+
+    /// <summary>Every Desktop field id the given section makes reachable on the couch — with every platform
+    /// opened, since a collapsed platform's rows are still one A press away. This is what the Desktop ↔
+    /// couch parity test compares; <see cref="Rows"/> only holds the platform currently open.</summary>
+    public string[] CollectParityIds(string prefix)
+    {
+        _projectEveryPlatform = true;
+        try
+        {
+            return BuildRows()
+                .SelectMany(GamepadSettingsRowSpec.ParityIdsOf)
+                .Where(id => id.StartsWith(prefix, StringComparison.Ordinal))
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+                .ToArray();
+        }
+        finally
+        {
+            _projectEveryPlatform = false;
         }
     }
 
@@ -1569,52 +1677,63 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         yield return ToggleRow(
             "general.empty-platforms",
-            "Empty platforms",
-            "Empty platforms stay available when adding games and configuring emulators. Platforms with temporarily unavailable games remain visible.",
+            "Show empty platforms",
+            _settings.ShowEmptyPlatforms
+                ? "platforms with no games stay in the top bar"
+                : "platforms with no games stay out of the top bar",
             _settings.ShowEmptyPlatforms,
             value => _settings.ShowEmptyPlatforms = value,
-            onLabel: "SHOW",
-            offLabel: "HIDE");
+            onLabel: "Shown",
+            offLabel: "Hidden");
         yield return ActionRow(
             "general.rescan",
             "Rescan all consoles",
-            "Recheck every console's remembered folders. Per-platform rescans and folder management live in the Emulators section.",
-            _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
+            FirstNonEmpty(_settings.MaintenanceStatusText, "Rechecks every console's remembered folders"),
+            _settings.IsMaintainingLibrary ? "Working…" : "A RESCAN",
             _settings.RescanAllCommand,
             _settings.CanRescanAll);
         // Mirrors Desktop's general.open-data-folder so a controller can reach the portable data
         // folder too, and so the two surfaces' general.* field sets stay in parity. Skipped where no
         // OS file manager can open the path (Android), so the row never offers a button that only fails.
+        // The path is the row's value, where the save-folder rows put theirs.
         if (_settings.HasDataDirectory && _settings.CanRevealFiles)
         {
             yield return ActionRow(
                 "general.open-data-folder",
-                "Open data folder",
-                "Your library database, covers, settings, and saves live here. EmuShelf never touches your game files.",
-                "A OPEN",
+                "Data folder",
+                "Library, covers, settings and saves · opens in your file manager",
+                _settings.DataDirectory ?? string.Empty,
                 _settings.OpenDataFolderCommand,
-                enabled: true);
+                enabled: true,
+                GamepadSettingsRowKind.Folder);
         }
         // Android has no file manager to open the folder in, so instead of "Open data folder" it offers a
         // way to move it: the folder is a user-chosen shared-storage path. Choosing a new one persists the
         // pointer and restarts; the old data is left where it is. Surface-specific, so excluded from parity.
         if (_settings.CanChangeDataFolder)
         {
-            var location = _settings.HasDataDirectory
-                ? $" It's at {_settings.DataDirectory} now."
-                : string.Empty;
             yield return ActionRow(
                 "general.change-data-folder",
                 "Data folder",
-                "Your library database, covers, settings, saves, and downloaded artwork live here — EmuShelf "
-                    + "never touches your game files." + location + " Choose a different folder to move it; "
-                    + "EmuShelf restarts, and your existing data stays where it is.",
-                "A CHANGE",
+                "Library, covers, settings and saves · choosing another restarts EmuShelf",
+                _settings.HasDataDirectory ? _settings.DataDirectory ?? string.Empty : "Not set",
                 _settings.ChangeDataFolderCommand,
                 // Gate on the broad IsBusy, not just IsWorking: activating this restarts the process, and
                 // tearing down mid cloud-sync / RetroAchievements / texture work would race those in-flight
                 // writes under the data folder — the same reason Save/Cancel gate on IsBusy.
                 enabled: !_settings.IsBusy,
+                GamepadSettingsRowKind.Folder,
+                excludeFromParity: true);
+        }
+        if (_runSetupCommand is not null)
+        {
+            yield return ActionRow(
+                "general.run-setup",
+                "Run setup again",
+                "Second screen, closing games, games & emulators, saves",
+                "A OPEN",
+                _runSetupCommand,
+                !_settings.IsWorking,
                 excludeFromParity: true);
         }
     }
@@ -1627,43 +1746,56 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// The remaining rows cover PS3 sync (the one platform "Rescan all" skips), per-platform rescan,
     /// and remembered-folder management.
     /// </summary>
+    /// <summary>
+    /// The close-on-return toggle. The description reports the one thing that can silently break this
+    /// setting (the Shizuku grant) instead of explaining what Shizuku is; Y requests the grant right here.
+    /// Shared by the Emulators section and the wizard's Closing games step, which words it in full.
+    /// </summary>
+    private GamepadSettingsRowSpec CloseOnReturnRow(string label, string description, bool compact)
+    {
+        var warning = CloseOnReturnWarning;
+        return ToggleRow(
+            "emulators.close-on-return",
+            label,
+            warning ?? description,
+            CloseEmulatorOnReturn,
+            value => CloseEmulatorOnReturn = value,
+            onLabel: "Close",
+            offLabel: "Keep",
+            stateFirst: warning is null) with
+        {
+            IsCompact = compact,
+            IsWarning = warning is not null,
+            SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Allow Shizuku" : null,
+            // Requesting the grant only raises Shizuku's dialog; the answer lands later. Drop the cached
+            // reading so the rebuild that follows re-asks, which covers the case where the permission was
+            // already granted. The grant made in that dialog is picked up by RefreshDeviceState on return.
+            SecondaryActivate = warning is not null && _grantCloseOnReturnPrivilege is not null
+                ? async () =>
+                {
+                    await _grantCloseOnReturnPrivilege();
+                    _closeOnReturnWarningRead = false;
+                }
+                : null,
+        };
+    }
+
     private IEnumerable<GamepadSettingsRowSpec> BuildEmulatorsRows()
     {
-        if (_settings.HasCloseEmulatorOnReturn)
+        // In the wizard this setting has its own step (Closing games), so the list holds only platforms.
+        if (_settings.HasCloseEmulatorOnReturn && !IsSetupMode)
         {
-            // The description reports the one thing that can silently break this setting (the Shizuku
-            // grant) instead of explaining what Shizuku is; Y requests the grant right here.
-            var warning = CloseOnReturnWarning;
-            yield return ToggleRow(
-                "emulators.close-on-return",
+            yield return CloseOnReturnRow(
                 "Close emulator on return",
-                warning ?? "Force-stop the game's emulator when you come back, so it stops draining the battery.",
-                CloseEmulatorOnReturn,
-                value => CloseEmulatorOnReturn = value,
-                onLabel: "CLOSE",
-                offLabel: "KEEP") with
-            {
-                IsCompact = true,
-                IsWarning = warning is not null,
-                SecondaryLabel = warning is not null && _grantCloseOnReturnPrivilege is not null ? "Grant Shizuku" : null,
-                // Requesting the grant only raises Shizuku's dialog; the answer lands later. Drop the cached
-                // reading so the rebuild that follows re-asks, which covers the case where the permission was
-                // already granted. The grant made in that dialog is picked up by RefreshDeviceState on return.
-                SecondaryActivate = warning is not null && _grantCloseOnReturnPrivilege is not null
-                    ? async () =>
-                    {
-                        await _grantCloseOnReturnPrivilege();
-                        _closeOnReturnWarningRead = false;
-                    }
-                    : null,
-            };
+                "Force-stop the game's emulator when you come back, so it stops draining the battery.",
+                compact: true);
         }
 
         foreach (var row in _settings.Rows)
         {
             var missing = EmulatorMissingFor(row);
-            var expanded = string.Equals(row.SystemId, _expandedSystemId, StringComparison.Ordinal);
-            yield return SummaryRow(row, missing, expanded);
+            var expanded = IsPlatformExpanded(SettingsSection.Emulators, row.SystemId);
+            yield return SummaryRow(row, missing);
             if (!expanded)
                 continue;
 
@@ -1677,7 +1809,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     row.SyncFieldId,
                     "Sync RPCS3 library",
                     "Read the RPCS3 game list to import PlayStation 3 titles.",
-                    _settings.IsMaintainingLibrary ? "WORKING" : "A SYNC",
+                    _settings.IsMaintainingLibrary ? "Working…" : "A SYNC",
                     row.SyncLibraryCommand,
                     row.CanSyncLibrary,
                     isGrouped: true,
@@ -1693,7 +1825,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                         $"emulators.{row.SystemId}.folder.{folder.Id}",
                         folder.Path,
                         FolderDescription(row, folder),
-                        _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
+                        _settings.IsMaintainingLibrary ? "Working…" : "A RESCAN",
                         row.RescanLibraryCommand,
                         row.CanRescan,
                         isGrouped: true,
@@ -1725,7 +1857,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     row.RescanFieldId,
                     "Rescan library",
                     "Recheck this console's remembered folders for added or removed games.",
-                    _settings.IsMaintainingLibrary ? "WORKING" : "A RESCAN",
+                    _settings.IsMaintainingLibrary ? "Working…" : "A RESCAN",
                     row.RescanLibraryCommand,
                     row.CanRescan,
                     isGrouped: true,
@@ -1734,7 +1866,75 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private GamepadSettingsRowSpec SummaryRow(EmulatorSettingsRowViewModel row, string? missing, bool expanded)
+    /// <summary>True while the given section shows this platform's rows beneath its summary. A parity
+    /// sweep sees every platform open, since a collapsed platform's rows are still one A press away.</summary>
+    private bool IsPlatformExpanded(SettingsSection section, string systemId) =>
+        _projectEveryPlatform
+        || (_expandedBySection.TryGetValue(section, out var open)
+            && string.Equals(open, systemId, StringComparison.Ordinal));
+
+    /// <summary>Opens this platform and closes whichever one the section had open. Reads the live state
+    /// rather than a flag captured when the row was built, so a row cannot act on a stale reading.</summary>
+    private void ToggleExpandedPlatform(SettingsSection section, string systemId)
+    {
+        if (_expandedBySection.TryGetValue(section, out var open)
+            && string.Equals(open, systemId, StringComparison.Ordinal))
+            _expandedBySection.Remove(section);
+        else
+            _expandedBySection[section] = systemId;
+    }
+
+    /// <summary>The one shape every section's platform summary takes: artwork and name on the left, that
+    /// section's own one-line detail on the right, A opening its rows beneath it one platform at a time.
+    /// The wizard's steps use it unchanged, so a platform looks and behaves the same in both.</summary>
+    private GamepadSettingsRowSpec PlatformSummaryRow(
+        SettingsSection section,
+        string key,
+        string label,
+        string systemId,
+        string detail,
+        bool warning = false,
+        string? secondaryLabel = null,
+        Func<Task>? secondaryActivate = null) =>
+        ExpandableSummaryRow(section, key, label, systemId, detail, systemId, warning,
+            secondaryLabel, secondaryActivate);
+
+    /// <summary>The accordion without a platform behind it: <paramref name="expansionId"/> is what opens
+    /// and closes, <paramref name="iconSystemId"/> is what draws artwork, and they are only the same thing
+    /// for a platform. ScreenScraper's sign-in uses it to bind three loose rows into one group.</summary>
+    private GamepadSettingsRowSpec ExpandableSummaryRow(
+        SettingsSection section,
+        string key,
+        string label,
+        string expansionId,
+        string detail,
+        string? iconSystemId = null,
+        bool warning = false,
+        string? secondaryLabel = null,
+        Func<Task>? secondaryActivate = null)
+    {
+        return new GamepadSettingsRowSpec(
+            key,
+            label,
+            string.Empty,
+            detail,
+            GamepadSettingsRowKind.Summary,
+            IsEnabled: true,
+            Activate: () =>
+            {
+                ToggleExpandedPlatform(section, expansionId);
+                return Task.CompletedTask;
+            },
+            SystemId: iconSystemId,
+            ExcludeFromParity: true,
+            IsExpanded: IsPlatformExpanded(section, expansionId),
+            IsWarning: warning,
+            IsCompact: true,
+            SecondaryLabel: secondaryLabel,
+            SecondaryActivate: secondaryActivate);
+    }
+
+    private GamepadSettingsRowSpec SummaryRow(EmulatorSettingsRowViewModel row, string? missing)
     {
         var parts = new List<string>();
         if (missing is not null)
@@ -1748,26 +1948,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         if (!string.IsNullOrWhiteSpace(row.MaintenanceStatusText))
             parts.Add(row.MaintenanceStatusText);
 
-        var key = $"emulators.{row.SystemId}.summary";
-        return new GamepadSettingsRowSpec(
-            key,
+        return PlatformSummaryRow(
+            SettingsSection.Emulators,
+            $"emulators.{row.SystemId}.summary",
             row.SystemName,
-            string.Empty,
+            row.SystemId,
             string.Join(" · ", parts),
-            GamepadSettingsRowKind.Summary,
-            IsEnabled: true,
-            Activate: () =>
-            {
-                _expandedSystemId = expanded ? null : row.SystemId;
-                return Task.CompletedTask;
-            },
-            SystemId: row.SystemId,
-            ExcludeFromParity: true,
-            IsExpanded: expanded,
-            IsWarning: missing is not null,
-            IsCompact: true,
-            SecondaryLabel: row.CanRescan ? "Rescan" : null,
-            SecondaryActivate: row.CanRescan ? () => ExecuteAsync(row.RescanLibraryCommand) : null);
+            warning: missing is not null,
+            secondaryLabel: row.CanRescan ? "Rescan" : null,
+            secondaryActivate: row.CanRescan ? () => ExecuteAsync(row.RescanLibraryCommand) : null);
     }
 
     private static string FolderDescription(EmulatorSettingsRowViewModel row, LibraryFolderRowViewModel folder)
@@ -1852,33 +2041,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     /// </summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildAboutRows()
     {
+        // The commit and its date are the description of the version, not two more rows.
         yield return InformationRow(
             "about.version",
             "Version",
-            "Follows the newest release tag on GitHub.",
+            _settings.HasCommitDate
+                ? $"Built from {_settings.AppCommitDisplay} · {_settings.AppCommitDateDisplay}"
+                : $"Built from {_settings.AppCommitDisplay}",
             _settings.AppVersionDisplay);
-        yield return InformationRow(
-            "about.commit",
-            "Last commit",
-            "The exact source this build was compiled from.",
-            _settings.AppCommitDisplay);
-        if (_settings.HasCommitDate)
-        {
-            yield return InformationRow(
-                "about.commit-date",
-                "Committed",
-                string.Empty,
-                _settings.AppCommitDateDisplay);
-        }
         if (_settings.HasUpdateChecker)
         {
             yield return ActionRow(
                 "about.check-updates",
                 "Check for updates",
-                !string.IsNullOrWhiteSpace(UpdateStatusHint)
-                    ? UpdateStatusHint
-                    : "Look on GitHub for a newer EmuShelf. Only the public releases page is contacted.",
-                _settings.IsUpdateBusy ? "WORKING" : "A CHECK",
+                FirstNonEmpty(
+                    UpdateStatusHint,
+                    "Looks for a newer release on GitHub · only the public releases page is contacted"),
+                _settings.IsUpdateBusy ? "Working…" : "A CHECK",
                 _settings.CheckForUpdatesCommand,
                 !_settings.IsUpdateBusy,
                 excludeFromParity: true);
@@ -1887,8 +2066,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 yield return ActionRow(
                     "about.install-update",
                     "Install update",
-                    "Download the new version and restart. On the Steam Deck this stays in gaming mode.",
-                    _settings.IsUpdateBusy ? "WORKING" : "A UPDATE",
+                    "Downloads the new version and restarts · stays in gaming mode",
+                    _settings.IsUpdateBusy ? "Working…" : "A UPDATE",
                     _settings.InstallUpdateCommand,
                     !_settings.IsUpdateBusy,
                     excludeFromParity: true);
@@ -1900,133 +2079,150 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
     {
         if (_settings.IsRetroAchievementsConnected)
         {
-            yield return HeaderRow("retro.account-header", "RetroAchievements account");
+            // One account row: the name is its value, Y disconnects. The same rule as the Google Drive and
+            // ScreenScraper rows — Y on an account row disconnects it — so no separate red row.
             yield return InformationRow(
                 "retro.account",
-                "Connected account",
-                "Achievement data is display-only in EmuShelf.",
-                _settings.ConnectedAccountName ?? string.Empty,
-                isGrouped: true);
+                "Account",
+                "Connected · " + FirstNonEmpty(
+                    _settings.RetroAchievementsProgressText,
+                    _settings.RetroAchievementsStatusText,
+                    "achievement data is display-only in EmuShelf"),
+                _settings.ConnectedAccountName ?? string.Empty) with
+            {
+                SecondaryKey = "retro.disconnect",
+                SecondaryLabel = _settings.IsRetroAchievementsBusy ? null : "Disconnect",
+                SecondaryActivate = () => ExecuteAsync(_settings.DisconnectRetroAchievementsCommand),
+                SecondaryIsDestructive = true,
+                SecondaryConfirmationTitle = "Disconnect RetroAchievements?",
+                SecondaryConfirmationText = "EmuShelf will remove its saved account connection. Your RetroAchievements account and earned progress stay untouched.",
+            };
             if (_settings.HasRetroAchievementsMatchRefresh)
             {
                 yield return ActionRow(
                     "retro.refresh",
                     "Refresh game matches",
-                    "Refresh catalogues and retry known games without rehashing unchanged ROMs.",
-                    _settings.IsRetroAchievementsBusy ? "WORKING" : "A REFRESH",
+                    "Retries known games without rehashing unchanged ROMs",
+                    _settings.IsRetroAchievementsBusy ? "Working…" : "A REFRESH",
                     _settings.RefreshRetroAchievementsMatchesCommand,
-                    _settings.CanRefreshRetroAchievementsMatches,
-                    isGrouped: true);
+                    _settings.CanRefreshRetroAchievementsMatches);
             }
-            yield return ActionRow(
-                "retro.disconnect",
-                "Disconnect RetroAchievements",
-                "Remove the locally stored account connection. Earned achievements are not changed.",
-                "A DISCONNECT",
-                _settings.DisconnectRetroAchievementsCommand,
-                !_settings.IsRetroAchievementsBusy,
-                isDestructive: true,
-                confirmationTitle: "Disconnect RetroAchievements?",
-                confirmationText: "EmuShelf will remove its saved account connection. Your RetroAchievements account and earned progress stay untouched.",
-                isGrouped: true);
             yield break;
         }
 
-        // Group the credentials under a sign-in header so username / key / Connect read as one unit
-        // instead of three rows identical to every other setting.
-        yield return HeaderRow("retro.signin-header", "Sign in to RetroAchievements");
         yield return TextRow(
             "retro.username",
             "Username",
-            "Your RetroAchievements account name.",
+            "Your RetroAchievements account name",
             _settings.RetroAchievementsUsername,
             false,
-            value => _settings.RetroAchievementsUsername = value,
-            isGrouped: true);
+            value => _settings.RetroAchievementsUsername = value);
         yield return TextRow(
             "retro.api-key",
             "Web API key",
-            "From RetroAchievements Control Panel → Keys. It is masked, never logged, and never written to settings.json.",
+            "RetroAchievements → Control Panel → Keys · kept on this device, never in settings.json",
             _settings.RetroAchievementsApiKey,
             true,
-            value => _settings.RetroAchievementsApiKey = value,
-            isGrouped: true);
+            value => _settings.RetroAchievementsApiKey = value);
+        var ready = _settings.RetroAchievementsUsername.Length > 0 && _settings.RetroAchievementsApiKey.Length > 0;
         yield return ActionRow(
             "retro.connect",
             "Connect",
-            "Validate the account, match your library, and fetch progress.",
-            _settings.IsRetroAchievementsBusy ? "CONNECTING…" : "A CONNECT",
+            ready
+                ? "Checks the account, then matches your library"
+                : "Enter the username and key first · checks the account, then matches your library",
+            _settings.IsRetroAchievementsBusy ? "Connecting…" : "A CONNECT",
             _settings.ConnectRetroAchievementsCommand,
-            !_settings.IsRetroAchievementsBusy,
-            isGrouped: true);
+            !_settings.IsRetroAchievementsBusy);
+    }
+
+    /// <summary>Couch-only: how the shelf itself is drawn. Both are excluded from the Desktop↔couch
+    /// field sweep because Desktop deliberately offers neither — there is no field to be in parity with.
+    /// They were the two rows stacked above the theme gallery; on their own page the gallery starts at
+    /// the top and these stop competing with it for the first thing you look at.</summary>
+    private IEnumerable<GamepadSettingsRowSpec> BuildDisplayRows()
+    {
+        yield return ToggleRow(
+            "display.crt",
+            "CRT screen effect",
+            "curved, scanned tube on the shelf · costs GPU time",
+            CrtScreenEffect,
+            value => CrtScreenEffect = value) with { ExcludeFromParity = true };
+        yield return ToggleRow(
+            "display.ambient",
+            "Match colours to game artwork",
+            AmbientThemeFromArtwork
+                ? "the interface takes its colours from the highlighted game"
+                : "the theme is used everywhere",
+            AmbientThemeFromArtwork,
+            value => AmbientThemeFromArtwork = value) with { ExcludeFromParity = true };
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildArtworkMetadataRows()
     {
         // Built-in catalogue: always available, no account needed. Same stable ids as Desktop's
-        // built-in card so the two surfaces stay in parity.
-        yield return HeaderRow("metadata.builtin-header", "Built-in catalogue");
+        // built-in card so the two surfaces stay in parity. No group headers: six rows do not need three.
         yield return ToggleRow(
             "general.metadata-auto",
             "Fetch after import",
-            "Exact titles and covers from bundled catalogues are downloaded only after you opt in. Game files and paths are never uploaded.",
+            "titles and covers from the bundled catalogue · game files never leave the device",
             _settings.AutomaticallyFetchMetadataAfterImport,
             value => _settings.AutomaticallyFetchMetadataAfterImport = value,
-            onLabel: "AUTO",
-            offLabel: "MANUAL",
-            isGrouped: true);
+            onLabel: "Automatic",
+            offLabel: "Manual");
         yield return ActionRow(
             "general.fetch-metadata",
             "Fetch missing metadata",
-            "Fill missing titles and artwork for the current library after your metadata opt-in.",
-            _settings.IsMaintainingLibrary ? "WORKING" : "A FETCH",
+            FirstNonEmpty(
+                _settings.MetadataProgressText,
+                _settings.MetadataStatusText,
+                "Fills missing titles and artwork for the current library"),
+            _settings.IsMaintainingLibrary ? "Working…" : "A FETCH",
             _settings.FetchAllMetadataCommand,
-            _settings.CanFetchAllMetadata,
-            isGrouped: true);
-
-        // Web image search: the manual "Set cover" picker toggle.
-        yield return HeaderRow("metadata.web-header", "Web image search");
+            _settings.CanFetchAllMetadata);
         yield return ToggleRow(
             "metadata.web-image-search",
             "Web image search",
-            "Let the \"Set cover\" picker search the web (DuckDuckGo) for cover images. Results are unverified and never applied automatically — you always choose.",
+            "\"Set cover\" can search the web (DuckDuckGo) · results are never applied automatically, you always choose",
             _settings.WebImageSearchEnabled,
-            value => _settings.WebImageSearchEnabled = value,
-            onLabel: "ON",
-            offLabel: "OFF",
-            isGrouped: true);
+            value => _settings.WebImageSearchEnabled = value);
 
-        // No standalone "ScreenScraper" header: it stacked directly above the "Sign in to ScreenScraper"
-        // / "ScreenScraper account" sub-header below, so it only ate vertical space on the couch surface.
-        // The sub-headers already name the provider.
         if (_settings.IsScreenScraperConnected)
         {
-            yield return HeaderRow("scraper.account-header", "ScreenScraper account");
+            // One account row with the name as its value; Y disconnects (Y on an account row disconnects it).
             yield return InformationRow(
                 "scraper.account",
-                "Connected account",
-                "Titles and artwork are fetched on demand from the per-game scraper.",
-                _settings.ScreenScraperConnectedName ?? string.Empty,
-                isGrouped: true);
-            yield return ActionRow(
-                "scraper.disconnect",
-                "Disconnect ScreenScraper",
-                "Remove the locally stored login. Your ScreenScraper account is not changed.",
-                "A DISCONNECT",
-                _settings.DisconnectScreenScraperCommand,
-                !_settings.IsScreenScraperBusy,
-                isDestructive: true,
-                confirmationTitle: "Disconnect ScreenScraper?",
-                confirmationText: "EmuShelf will remove its saved login. Your ScreenScraper account stays untouched.",
-                isGrouped: true);
+                "ScreenScraper",
+                "Connected · titles and artwork are fetched per game, on demand",
+                _settings.ScreenScraperConnectedName ?? string.Empty) with
+            {
+                SecondaryKey = "scraper.disconnect",
+                SecondaryLabel = _settings.IsScreenScraperBusy ? null : "Disconnect",
+                SecondaryActivate = () => ExecuteAsync(_settings.DisconnectScreenScraperCommand),
+                SecondaryIsDestructive = true,
+                SecondaryConfirmationTitle = "Disconnect ScreenScraper?",
+                SecondaryConfirmationText = "EmuShelf will remove its saved login. Your ScreenScraper account stays untouched.",
+            };
             yield break;
         }
 
-        yield return HeaderRow("scraper.signin-header", "Sign in to ScreenScraper");
+        // Signed out, signing in is one job, not three settings: a summary row that opens to its own
+        // rows, exactly as a platform does in Emulators and Saves. The indent is what binds them, the
+        // section name is said once, and the row is the same shape as the connected account row above.
+        var expanded = IsPlatformExpanded(SettingsSection.ArtworkMetadata, ScraperExpansionId);
+        yield return ExpandableSummaryRow(
+            SettingsSection.ArtworkMetadata,
+            "scraper.account.signin",
+            "ScreenScraper",
+            ScraperExpansionId,
+            "Not signed in");
+        if (!expanded)
+            yield break;
+
         yield return TextRow(
             "scraper.username",
             "Username",
-            "Your ScreenScraper account name.",
+            "Your ScreenScraper account name",
             _settings.ScreenScraperUsername,
             false,
             value => _settings.ScreenScraperUsername = value,
@@ -2034,95 +2230,113 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         yield return TextRow(
             "scraper.password",
             "Password",
-            "Passed directly to ScreenScraper to sign in. It is masked, never logged, and never written to settings.json.",
+            "Sent to ScreenScraper to sign in · masked, never logged, never written to settings.json",
             _settings.ScreenScraperPassword,
             true,
             value => _settings.ScreenScraperPassword = value,
             isGrouped: true);
+        // Mirrors the RetroAchievements Connect row: dimmed until both fields are filled, and saying so,
+        // rather than offering a press that can only fail.
+        var ready = _settings.ScreenScraperUsername.Length > 0 && _settings.ScreenScraperPassword.Length > 0;
         yield return ActionRow(
             "scraper.connect",
-            "Connect",
-            "Validate the account so per-game scraping can fetch titles and artwork.",
-            _settings.IsScreenScraperBusy ? "CONNECTING…" : "A CONNECT",
+            "Sign in",
+            ready
+                ? "Checks the account, then artwork is fetched per game, on demand"
+                : "Enter the username and password first · checks the account before it is used",
+            _settings.IsScreenScraperBusy ? "Connecting…" : "A SIGN IN",
             _settings.ConnectScreenScraperCommand,
-            !_settings.IsScreenScraperBusy,
+            ready && !_settings.IsScreenScraperBusy,
             isGrouped: true);
     }
 
+    /// <summary>The one expandable group in Artwork &amp; Metadata; not a platform, so it needs a name of
+    /// its own to key the section's single-open state by.</summary>
+    private const string ScraperExpansionId = "screenscraper";
+
     private IEnumerable<GamepadSettingsRowSpec> BuildSaveRows()
     {
-        // Connection first: Connect (when disconnected) or the connected summary + Sync all now sits
-        // above the per-platform folder rows, matching the Desktop layout — on a controller the
-        // primary action must not sit below every platform row.
+        // The connection is one row, first: "Google Drive" with the state on its line. Connected, A syncs
+        // (or stops a running sync) and Y disconnects behind the existing confirmation; disconnected, A
+        // connects. The Desktop disconnect button is reachable through Y, which the parity id records.
         if (_settings.IsCloudDisconnected)
         {
-            // Connect is the primary action and the default folder just works, so it leads; the cloud
-            // folder is a single detail row beneath it.
             yield return ActionRow(
                 "saves.connect",
-                "Connect Google Drive",
-                "Open Google's sign-in in your browser and enable the configured save platforms.",
-                _settings.IsCloudBusy ? "CONNECTING…" : "A CONNECT",
+                "Google Drive",
+                _settings.IsCloudBusy
+                    ? "Connecting…"
+                    : "Not connected · opens Google's sign-in in your browser",
+                _settings.IsCloudBusy ? "Connecting…" : "Connect",
                 _settings.ConnectCloudCommand,
                 !_settings.IsCloudBusy);
             yield return TextRow(
                 "saves.cloud-folder",
                 "Cloud folder",
-                "The Google Drive folder that stores EmuShelf save manifests and copies.",
+                "The Google Drive folder that stores EmuShelf save manifests and copies",
                 _settings.CloudFolder,
                 false,
                 value => _settings.CloudFolder = value);
         }
         else
         {
-            if (_settings.IsCloudBusy)
-            {
-                yield return ActionRow(
-                    "saves.stop",
-                    "Stop sync",
-                    "Already transferred batches remain safe; the next sync continues from them.",
-                    "A STOP",
-                    _settings.CancelCloudSyncCommand,
-                    _settings.CancelCloudSyncCommand.CanExecute(null));
-            }
-            else
-            {
-                yield return ActionRow(
-                    "saves.sync",
-                    "Sync all now",
-                    "Reconcile every configured platform with the cloud.",
-                    "A SYNC",
-                    _settings.SyncCloudNowCommand,
-                    true);
-            }
+            var busy = _settings.IsCloudBusy;
             yield return ActionRow(
-                "saves.disconnect",
-                "Disconnect Google Drive",
-                "Disable EmuShelf cloud sync. Local and cloud saves remain untouched.",
-                "A DISCONNECT",
-                _settings.DisconnectCloudCommand,
-                !_settings.IsCloudBusy,
-                isDestructive: true,
-                confirmationTitle: "Disconnect Google Drive?",
-                confirmationText: "EmuShelf will disable cloud sync. It will not delete local saves or anything already stored in Google Drive.");
+                busy ? "saves.stop" : "saves.sync",
+                "Google Drive",
+                "Connected · " + FirstNonEmpty(
+                    busy ? _settings.CloudSyncProgressText : string.Empty,
+                    _settings.CloudStatusText,
+                    "not synced yet"),
+                busy ? "Stop sync" : "Sync now",
+                busy ? _settings.CancelCloudSyncCommand : _settings.SyncCloudNowCommand,
+                !busy || _settings.CancelCloudSyncCommand.CanExecute(null)) with
+            {
+                // The one-off sync and the disconnect behind its Y both stay in Settings; the wizard's
+                // Saves step is for choices. Flagged rather than named by key, because this row's key
+                // flips to saves.stop mid-sync and a key list silently stops matching.
+                SettingsOnly = true,
+                SecondaryKey = "saves.disconnect",
+                SecondaryLabel = busy ? null : "Disconnect",
+                SecondaryActivate = () => ExecuteAsync(_settings.DisconnectCloudCommand),
+                SecondaryIsDestructive = true,
+                SecondaryConfirmationTitle = "Disconnect Google Drive?",
+                SecondaryConfirmationText = "EmuShelf will disable cloud sync. It will not delete local saves or anything already stored in Google Drive.",
+            };
         }
 
         foreach (var platform in _settings.CloudPlatforms)
         {
-            // A per-platform header groups this platform's folder, states, and replace rows so the
-            // section reads as a hierarchy rather than a flat list. Member labels drop the platform
-            // name because the header already carries it; the stable ids (Keys) are unchanged.
-            yield return HeaderRow(
-                $"saves.{platform.SystemId}.header", platform.DisplayName, platform.SystemId);
-            var location = platform.NormalizedOverride ?? platform.DetectedDirectory ?? "Use detected emulator location";
-            var detail = FirstNonEmpty(
-                platform.DetectionErrorText,
-                platform.CompatibilityWarning,
-                platform.LastNoticeText,
-                platform.LastResultText,
-                platform.SaveShapeDescription);
+            // One summary row per platform (artwork, name, what synced and when); A opens its rows beneath
+            // it, one platform at a time, exactly as Emulators does — in the wizard's Saves step too (which
+            // only adds that a platform still missing its folder opens itself once, see BuildSetupRows).
+            var expanded = IsPlatformExpanded(SettingsSection.Saves, platform.SystemId);
+            var (summary, attention) = SaveSummary(platform);
+            var systemId = platform.SystemId;
+            yield return PlatformSummaryRow(
+                SettingsSection.Saves,
+                $"saves.{systemId}.summary",
+                platform.DisplayName,
+                systemId,
+                summary,
+                attention);
+            if (!expanded)
+                continue;
+
+            // No override, nothing detected: say so and ask for the folder, instead of the old "Use detected
+            // emulator location" that read as if something had been found.
+            var location = platform.NormalizedOverride ?? platform.DetectedDirectory
+                ?? (platform.NeedsFolder ? "No folder set" : platform.HasProbed ? "Not available" : "Looking…");
+            var detail = platform.NeedsFolder
+                ? "No save folder found for this emulator · A picks the folder it saves to"
+                : FirstNonEmpty(
+                    platform.DetectionErrorText,
+                    platform.CompatibilityWarning,
+                    platform.LastNoticeText,
+                    platform.LastResultText,
+                    platform.SaveShapeDescription);
             yield return ActionRow(
-                $"saves.{platform.SystemId}.folder",
+                platform.FolderFieldId,
                 "Save folder",
                 detail,
                 location,
@@ -2130,42 +2344,45 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                 platform.IsIdle,
                 GamepadSettingsRowKind.Folder,
                 isGrouped: true,
-                systemId: platform.SystemId);
+                systemId: systemId) with
+            {
+                IsWarning = platform.NeedsFolder || platform.HasDetectionError,
+            };
             if (platform.SupportsSaveStates)
             {
                 yield return ToggleRow(
-                    $"saves.{platform.SystemId}.states",
+                    platform.SaveStatesFieldId,
                     "Save states",
-                    "Sync manual states before launch and after exit only when emulator version and CPU architecture are compatible.",
+                    "syncs manual states before launch and after exit · only when emulator version and CPU match",
                     platform.SyncSaveStates,
                     value => platform.SyncSaveStates = value,
                     platform.IsIdle,
                     isGrouped: true,
-                    systemId: platform.SystemId);
+                    systemId: systemId);
                 // Mirror Desktop: once states sync, the save-state folder gets its own override so a
                 // mis-detected state folder can be corrected the same way as the save folder above.
                 if (platform.SyncSaveStates)
                 {
                     yield return ActionRow(
-                        $"saves.{platform.SystemId}.states-folder",
+                        platform.StateFolderFieldId,
                         "Save-state folder",
-                        "Correct a mis-detected save-state folder. Leave it detected to follow the emulator.",
+                        "Leave it detected to follow the emulator · A picks another",
                         string.IsNullOrEmpty(platform.NormalizedStateOverride)
-                            ? "Use the detected save-state folder"
+                            ? "Detected from the emulator"
                             : platform.NormalizedStateOverride,
                         platform.PickStateDirectoryCommand,
                         platform.IsIdle,
                         GamepadSettingsRowKind.Folder,
                         isGrouped: true,
-                        systemId: platform.SystemId);
+                        systemId: systemId);
                 }
             }
             if (_settings.IsCloudConnected)
             {
                 yield return ActionRow(
-                    $"saves.{platform.SystemId}.replace-cloud",
+                    platform.ReplaceCloudFieldId,
                     "Replace cloud saves",
-                    "Upload this platform's local saves over cloud copies. Replaced cloud copies are backed up.",
+                    "Local copies win · replaced cloud copies are backed up first",
                     "A REPLACE CLOUD",
                     platform.ReplaceCloudCommand,
                     platform.CanReplace,
@@ -2173,11 +2390,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     confirmationTitle: $"Replace {platform.DisplayName} cloud saves?",
                     confirmationText: "Local saves become authoritative for this platform. Replaced cloud copies are backed up before the upload.",
                     isGrouped: true,
-                    systemId: platform.SystemId);
+                    systemId: systemId) with { SettingsOnly = true };
                 yield return ActionRow(
-                    $"saves.{platform.SystemId}.replace-local",
+                    platform.ReplaceLocalFieldId,
                     "Replace local saves",
-                    "Download this platform's cloud saves over local copies. Replaced local copies are backed up.",
+                    "Cloud copies win · replaced local copies are backed up first",
                     "A REPLACE LOCAL",
                     platform.ReplaceLocalCommand,
                     platform.CanReplace,
@@ -2185,27 +2402,27 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
                     confirmationTitle: $"Replace {platform.DisplayName} local saves?",
                     confirmationText: "Cloud saves become authoritative for this platform. Replaced local copies are backed up before the download.",
                     isGrouped: true,
-                    systemId: platform.SystemId);
+                    systemId: systemId) with { SettingsOnly = true };
             }
         }
 
-        // Export mirrors Desktop's always-present buttons: the device export needs no connection, the
-        // cloud export is enabled only while connected. Both rows are always projected so field parity
-        // with Desktop holds regardless of connection state.
+        // Export is one row: A writes this device's saves, Y also includes the copies that live only in
+        // Google Drive. Both Desktop buttons stay reachable (the second through Y), so parity holds
+        // regardless of connection state; Y is only offered while connected, as Desktop only enables it then.
         yield return ActionRow(
             "saves.export.device",
-            "Export saves (this device)",
-            "Save a portable .zip of this machine's saves — save states included — to use on another device.",
+            "Export saves",
+            _settings.IsCloudConnected
+                ? "A portable .zip of this device's saves, save states included · Y also includes cloud-only copies"
+                : "A portable .zip of this device's saves, save states included",
             "A EXPORT",
             _settings.ExportDeviceSavesCommand,
-            _settings.ExportDeviceSavesCommand.CanExecute(null));
-        yield return ActionRow(
-            "saves.export.cloud",
-            "Export saves (this device + cloud)",
-            "Also include saves that live only in your connected Google Drive. Connect first to enable this.",
-            "A EXPORT",
-            _settings.ExportDeviceAndCloudSavesCommand,
-            _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null));
+            _settings.ExportDeviceSavesCommand.CanExecute(null)) with
+        {
+            SecondaryKey = "saves.export.cloud",
+            SecondaryLabel = _settings.ExportDeviceAndCloudSavesCommand.CanExecute(null) ? "Include cloud" : null,
+            SecondaryActivate = () => ExecuteAsync(_settings.ExportDeviceAndCloudSavesCommand),
+        };
 
         if (_settings.HasSyncLog && _settings.CanRevealFiles)
         {
@@ -2214,8 +2431,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             // Skipped on Android, where there is no OS viewer to hand the log path to.
             yield return ActionRow(
                 "saves.log",
-                "Open sync activity log",
-                "Portable, read-only record of previous save-sync actions.",
+                "Sync activity log",
+                "Portable, read-only record of previous save-sync actions · opens in your viewer",
                 "A OPEN",
                 _settings.OpenSyncLogCommand,
                 enabled: true,
@@ -2223,55 +2440,84 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    /// <summary>The one line a platform's summary row carries: the problem if there is one (no folder, a
+    /// detection error, a sync notice — painted as a warning), else the last sync result.</summary>
+    private (string Text, bool Warning) SaveSummary(CloudSavePlatformRowViewModel platform)
+    {
+        if (platform.NeedsFolder)
+            return ("No save folder", true);
+        if (platform.HasDetectionError)
+            return (platform.DetectionErrorText!, true);
+        if (platform.HasLastNotice)
+            return (platform.LastNoticeText!, true);
+        return (FirstNonEmpty(
+            platform.LastResultText,
+            _settings.IsCloudConnected ? "Not synced yet" : string.Empty), false);
+    }
+
     private IEnumerable<GamepadSettingsRowSpec> BuildTextureRows()
     {
         yield return ActionRow(
             "textures.rescan",
             "Rescan installed packs",
-            "Read every configured texture root again. No pack or emulator setting is changed.",
-            _settings.IsTexturePackBusy ? "SCANNING…" : "A RESCAN",
+            FirstNonEmpty(
+                _settings.TexturePackStatusText,
+                _settings.TexturePackSummary,
+                _settings.TexturePackLastScanText,
+                "Reads every configured texture folder again · no pack or emulator setting is changed"),
+            _settings.IsTexturePackBusy ? "Scanning…" : "A RESCAN",
             _settings.RescanTexturePacksCommand,
             !_settings.IsTexturePackBusy);
         yield return ChoiceRow(
             "textures.emulator-filter",
             "Emulator filter",
-            "Limit the inventory to one emulator.",
+            "Limit the list to one emulator",
             _settings.TextureEmulatorFilter,
             _settings.TextureEmulatorFilters,
             value => _settings.TextureEmulatorFilter = value);
         yield return ChoiceRow(
             "textures.status-filter",
             "Status filter",
-            "Show matched packs, packs without library games, or entries needing attention.",
+            "Matched · no game in your library · needs attention",
             _settings.TextureStatusFilter,
             _settings.TextureStatusFilters,
             value => _settings.TextureStatusFilter = value);
 
         foreach (var platform in _settings.TexturePlatforms)
         {
-            yield return HeaderRow(
-                $"textures.{platform.SystemId}.header", platform.DisplayName, platform.SystemId);
+            // One summary row per platform that opens to its texture folder, as in Emulators and Saves. The
+            // folder row is A = pick, Y = back to the folder detected from the emulator; "Use detected folder"
+            // no longer needs a row of its own.
+            var systemId = platform.SystemId;
+            var expanded = IsPlatformExpanded(SettingsSection.TexturePacks, systemId);
+            var hasOverride = platform.DirectoryOverride.Length > 0;
+            var folder = hasOverride ? platform.DirectoryOverride : platform.DetectedRoot ?? "No folder detected";
+            var status = FirstNonEmpty(platform.StatusText, platform.LoadingText);
+            yield return PlatformSummaryRow(
+                SettingsSection.TexturePacks,
+                $"textures.{systemId}.summary",
+                platform.DisplayName,
+                systemId,
+                FirstNonEmpty(status, folder));
+            if (!expanded)
+                continue;
             yield return ActionRow(
-                $"textures.{platform.SystemId}.folder",
+                platform.FolderFieldId,
                 "Texture folder",
-                FirstNonEmpty(platform.StatusText, platform.LoadingText),
-                platform.DirectoryOverride.Length > 0
-                    ? platform.DirectoryOverride
-                    : platform.DetectedRoot ?? "No folder detected",
+                hasOverride
+                    ? FirstNonEmpty(status, "Your folder") + " · Y returns to the folder detected from the emulator"
+                    : FirstNonEmpty(status, "Detected from the emulator"),
+                folder,
                 new AsyncRelayCommand(() => ExecuteAsync(_settings.BrowseTextureOverrideCommand, platform)),
                 !_settings.IsTexturePackBusy,
                 GamepadSettingsRowKind.Folder,
                 isGrouped: true,
-                systemId: platform.SystemId);
-            yield return ActionRow(
-                $"textures.{platform.SystemId}.detected",
-                "Use detected folder",
-                "Clear only EmuShelf's folder override and return to emulator-based detection.",
-                "A USE DETECTED",
-                new AsyncRelayCommand(() => ExecuteAsync(_settings.ClearTextureOverrideCommand, platform)),
-                !_settings.IsTexturePackBusy,
-                isGrouped: true,
-                systemId: platform.SystemId);
+                systemId: systemId) with
+            {
+                SecondaryKey = platform.DetectedFieldId,
+                SecondaryLabel = hasOverride && !_settings.IsTexturePackBusy ? "Use detected" : null,
+                SecondaryActivate = () => ExecuteAsync(_settings.ClearTextureOverrideCommand, platform),
+            };
         }
 
         var entries = _settings.TexturePackEntries;
@@ -2280,7 +2526,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return InformationRow(
                 "textures.empty",
                 "No texture packs to show",
-                "Rescan after configuring an emulator, or change the filters above.",
+                "Rescan after configuring an emulator, or change the filters above",
                 string.Empty);
             yield break;
         }
@@ -2293,9 +2539,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             "textures.inventory-toggle",
             countLabel,
             _texturePackListExpanded
-                ? "Read-only inventory. Press A to hide the pack list again."
-                : "Read-only inventory. Press A to list every matched pack.",
-            _texturePackListExpanded ? "HIDE" : "SHOW",
+                ? "Read-only inventory · A hides the pack list again"
+                : "Read-only inventory · A lists every matched pack",
+            _texturePackListExpanded ? "Hide" : "Show",
             GamepadSettingsRowKind.Action,
             Activate: () =>
             {
@@ -2322,7 +2568,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             yield return InformationRow(
                 "textures.inventory-more",
                 $"+{entries.Count - maxInventoryRows} more not shown",
-                "Narrow the emulator or status filter above, or browse the full inventory in Desktop Settings.",
+                "Narrow the emulator or status filter above, or browse the full inventory in Desktop Settings",
                 string.Empty);
         }
     }
@@ -2338,7 +2584,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             key,
             label,
             description,
-            isSecret ? (value.Length == 0 ? "Not entered" : "••••••••") : value,
+            value.Length == 0 ? "Not entered" : isSecret ? "••••••••" : value,
             isSecret ? GamepadSettingsRowKind.Secret : GamepadSettingsRowKind.Text,
             Activate: () =>
             {
@@ -2347,18 +2593,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
             },
             IsGrouped: isGrouped);
 
-    // A group header. Platform groups pass a systemId for artwork; generic groups (sign-in,
-    // advanced) pass none and render as a plain subheading over their indented members.
-    private static GamepadSettingsRowSpec HeaderRow(string key, string label, string? systemId = null) =>
-        new(
-            key,
-            label,
-            string.Empty,
-            string.Empty,
-            GamepadSettingsRowKind.Header,
-            IsEnabled: false,
-            SystemId: systemId);
-
     private GamepadSettingsRowSpec ToggleRow(
         string key,
         string label,
@@ -2366,17 +2600,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
         bool value,
         Action<bool> set,
         bool enabled = true,
-        string onLabel = "ON",
-        string offLabel = "OFF",
+        string onLabel = "On",
+        string offLabel = "Off",
         bool isGrouped = false,
-        string? systemId = null)
+        string? systemId = null,
+        bool stateFirst = true)
     {
+        // The switch draws no words; the description opens with the state ("Off · …") so the row reads
+        // without looking at the switch. A warning that replaces the description is left alone.
+        var state = value ? onLabel : offLabel;
         void Toggle(int _) => RunLocalEdit(() => set(!value));
         return new GamepadSettingsRowSpec(
             key,
             label,
-            description,
-            value ? onLabel : offLabel,
+            stateFirst ? (description.Length == 0 ? state : $"{state} · {description}") : description,
+            state,
             GamepadSettingsRowKind.Toggle,
             enabled,
             Activate: () =>
@@ -2502,14 +2740,20 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private void NotifyRailStatuses()
     {
+        // Both cached statuses are computed before RefreshSetupRail, which reads them: the wizard chip
+        // would otherwise render the previous rebuild's reading.
         _emulatorsRailStatus = ComputeEmulatorsRailStatus();
+        ComputeSavesRailStatus();
+        RefreshSetupRail();
         OnPropertyChanged(nameof(LibraryRailStatus));
         OnPropertyChanged(nameof(EmulatorsRailStatus));
         OnPropertyChanged(nameof(IsEmulatorsRailWarning));
         OnPropertyChanged(nameof(RetroAchievementsRailStatus));
         OnPropertyChanged(nameof(ArtworkRailStatus));
         OnPropertyChanged(nameof(SavesRailStatus));
+        OnPropertyChanged(nameof(IsSavesRailWarning));
         OnPropertyChanged(nameof(ThemesRailStatus));
+        OnPropertyChanged(nameof(DisplayRailStatus));
         OnPropertyChanged(nameof(AboutRailStatus));
     }
 
@@ -2586,6 +2830,378 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable
 
     private static string FirstNonEmpty(params string?[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? string.Empty;
+
+    // ----- Setup-wizard mode -------------------------------------------------------------------------
+
+    partial void OnIsRailFocusedChanged(bool value) => SetupRail.IsRailFocused = value;
+
+    /// <summary>True when this projection is the in-app half of the Android setup wizard.</summary>
+    public bool IsSetupMode => _setup is not null;
+
+    /// <summary>The wizard rail (steps + START chip) the shared rail view binds to; empty outside setup mode.</summary>
+    public SetupWizardRailModel SetupRail { get; } = new();
+
+    /// <summary>The step whose rows are showing; <see cref="SetupStep.GamesAndEmulators"/> outside setup mode.</summary>
+    public SetupStep CurrentSetupStep =>
+        _liveSetupSteps.Count == 0 ? SetupStep.GamesAndEmulators : _liveSetupSteps[_setupIndex];
+
+    private bool IsLastSetupStep => _setupIndex >= _liveSetupSteps.Count - 1;
+
+    private static SettingsSection SectionForSetupStep(SetupStep step) => step switch
+    {
+        SetupStep.GamesAndEmulators => SettingsSection.Emulators,
+        SetupStep.Saves => SettingsSection.Saves,
+        _ => SettingsSection.General,
+    };
+
+    private string SetupTitle => CurrentSetupStep switch
+    {
+        SetupStep.StorageAccess => "Storage access",
+        SetupStep.DataFolder => "Data folder",
+        SetupStep.SecondScreen => "Playing on the second screen",
+        SetupStep.ClosingGames => "Closing games",
+        SetupStep.GamesAndEmulators => "Games & emulators",
+        SetupStep.Saves => "Saves",
+        _ => "Setup",
+    };
+
+    private string SetupDescription => CurrentSetupStep switch
+    {
+        SetupStep.StorageAccess => "EmuShelf reads your games and keeps its library on this device's storage. Android asked you to allow this once.",
+        SetupStep.DataFolder => "Where EmuShelf keeps its library, covers, settings and saves. Your game files are never moved.",
+        SetupStep.SecondScreen => "This device has a second screen. A game can run there while the library stays here.",
+        SetupStep.ClosingGames => "What happens to the emulator when you come back to EmuShelf from a game.",
+        SetupStep.GamesAndEmulators => "Open a system to add the folders its games are in, and check which app plays it.",
+        SetupStep.Saves => "Back up emulator saves through your own Google Drive, and tell EmuShelf where each emulator keeps them.",
+        _ => string.Empty,
+    };
+
+    // Read once per screen and again after a foreground return (the user flips the switch in Android's
+    // Accessibility settings and comes back), like the other device probes.
+    private bool IsSecondScreenReturnReady
+    {
+        get
+        {
+            if (_setup is null)
+                return true;
+            if (!_secondScreenReadyRead)
+            {
+                _cachedSecondScreenReady = _setup.IsSecondScreenReturnReady();
+                _secondScreenReadyRead = true;
+            }
+            return _cachedSecondScreenReady;
+        }
+    }
+
+    // Same treatment for the all-files grant: the pre-boot page answered it, but Android can take it away
+    // afterwards, so the step reports the live reading rather than asserting it is held. Cached per screen
+    // and re-read on a foreground return, which is when the user comes back from flipping the switch.
+    private bool IsStoragePermissionGranted
+    {
+        get
+        {
+            if (_setup?.IsStoragePermissionGranted is not { } probe)
+                return true;
+            if (!_storageGrantedRead)
+            {
+                _cachedStorageGranted = probe();
+                _storageGrantedRead = true;
+            }
+            return _cachedStorageGranted;
+        }
+    }
+
+    private IEnumerable<GamepadSettingsRowSpec> BuildSetupRows()
+    {
+        switch (CurrentSetupStep)
+        {
+            case SetupStep.StorageAccess:
+                yield return IsStoragePermissionGranted
+                    ? InformationRow(
+                        "setup.storage.grant",
+                        "Allow access to all files",
+                        "Allowed. Android remembers this until you turn it off in its settings.",
+                        "Allowed")
+                    : new GamepadSettingsRowSpec(
+                        "setup.storage.grant",
+                        "Allow access to all files",
+                        "Not allowed. EmuShelf can't read your games or its own folder until it is. A opens Android's permission page.",
+                        _setup?.RequestStoragePermission is null ? string.Empty : "A OPEN",
+                        _setup?.RequestStoragePermission is null
+                            ? GamepadSettingsRowKind.Information
+                            : GamepadSettingsRowKind.Action,
+                        Activate: _setup?.RequestStoragePermission is null
+                            ? null
+                            : () =>
+                            {
+                                _setup.RequestStoragePermission();
+                                // The answer lands on foreground return; drop the cached reading so the
+                                // rebuild that follows re-asks.
+                                _storageGrantedRead = false;
+                                return Task.CompletedTask;
+                            },
+                        IsWarning: true,
+                        ExcludeFromParity: true);
+                yield return InformationRow(
+                    "setup.storage.why",
+                    "What this is used for",
+                    "Reading your games where they are, and writing only inside EmuShelf's own folder. Games are never moved or deleted.",
+                    string.Empty);
+                break;
+            case SetupStep.DataFolder:
+                yield return InformationRow(
+                    "setup.folder.current",
+                    "Data folder",
+                    _settings.HasDataDirectory ? _settings.DataDirectory ?? string.Empty : "Not set",
+                    string.Empty);
+                // Deliberately read-only here, unlike the Library section's row: changing the data folder
+                // restarts the process, which would take every answer given so far with it (they are only
+                // written by Save, at Finish or on the way out). The step reports the folder; moving it is
+                // Settings → Library, where there is nothing in flight to lose.
+                yield return InformationRow(
+                    "setup.folder.change",
+                    "Want it somewhere else?",
+                    "Settings → Library → \"Data folder\" moves it. EmuShelf restarts into the new folder and your existing data stays where it is.",
+                    string.Empty);
+                break;
+            case SetupStep.SecondScreen:
+            {
+                var ready = IsSecondScreenReturnReady;
+                yield return new GamepadSettingsRowSpec(
+                    "setup.second-screen.return",
+                    "Bring EmuShelf back when a game closes",
+                    ready
+                        ? "On. A game closed on the second screen returns you to the library."
+                        : "Off. Needs Android's accessibility permission. A opens that page.",
+                    ready ? "On" : "A OPEN",
+                    ready ? GamepadSettingsRowKind.Information : GamepadSettingsRowKind.Action,
+                    Activate: ready
+                        ? null
+                        : () =>
+                        {
+                            _setup!.RequestSecondScreenReturn();
+                            // The answer lands on foreground return; forget the cached reading so that
+                            // rebuild re-asks.
+                            _secondScreenReadyRead = false;
+                            return Task.CompletedTask;
+                        },
+                    IsWarning: !ready,
+                    ExcludeFromParity: true);
+                yield return InformationRow(
+                    "setup.second-screen.privacy",
+                    "What EmuShelf can see",
+                    "Only which app is open on the second screen. Never what it shows.",
+                    string.Empty);
+                break;
+            }
+            case SetupStep.ClosingGames:
+                yield return CloseOnReturnRow(
+                    "Close the emulator when I come back",
+                    "The emulator stops running in the background, so it does not drain the battery.",
+                    compact: false);
+                if (CloseEmulatorOnReturn && CloseOnReturnWarning is not null && _grantCloseOnReturnPrivilege is not null)
+                {
+                    // The permission gets a row of its own, like storage access and the second screen do,
+                    // rather than living only behind Y on the toggle.
+                    yield return new GamepadSettingsRowSpec(
+                        "setup.closing-games.allow-shizuku",
+                        "Allow Shizuku",
+                        "Shizuku's permission dialog opens. Start Shizuku first if it is not running.",
+                        "A ALLOW",
+                        GamepadSettingsRowKind.Action,
+                        Activate: async () =>
+                        {
+                            await _grantCloseOnReturnPrivilege();
+                            _closeOnReturnWarningRead = false;
+                        },
+                        IsWarning: true,
+                        ExcludeFromParity: true);
+                }
+                yield return InformationRow(
+                    "setup.closing-games.why",
+                    "Why Shizuku",
+                    "Android does not let one app close another. Shizuku is a small helper that can. Without it the emulator keeps running in the background.",
+                    string.Empty);
+                break;
+            case SetupStep.GamesAndEmulators:
+                foreach (var row in BuildEmulatorsRows())
+                    yield return row with { IsCompact = true };
+                break;
+            case SetupStep.Saves:
+            {
+                // The step is for choices (connect, save folders, state sync); the one-off "sync all now",
+                // the disconnect behind its Y and the per-platform replace actions stay in Settings, and
+                // say so on the spec itself. A platform whose save folder could not be detected is the one
+                // thing the user must act on here, so its folder row is painted as a warning and says so.
+                // The step is Settings' Saves section — the same summary cards, one open at a time — except
+                // that the first platform still missing its folder opens itself once, so the row the user
+                // must act on is on screen without a press. The folder probe can land after the step is
+                // entered, which is why this runs on every rebuild until it has fired, and it never
+                // overrides a platform the user opened.
+                var needsFolder = SavePlatformsNeedingAFolder().Select(platform => platform.FolderFieldId).ToHashSet(StringComparer.Ordinal);
+                if (!_savesStepOpenedMissingFolder
+                    && !_expandedBySection.ContainsKey(SettingsSection.Saves)
+                    && SavePlatformsNeedingAFolder().FirstOrDefault() is { } needing)
+                {
+                    _expandedBySection[SettingsSection.Saves] = needing.SystemId;
+                    _savesStepOpenedMissingFolder = true;
+                }
+                foreach (var row in BuildSaveRows())
+                {
+                    if (row.SettingsOnly)
+                        continue;
+                    yield return (needsFolder.Contains(row.Key) ? row with { IsWarning = true } : row) with { IsCompact = true };
+                }
+                break;
+            }
+        }
+    }
+
+    /// <summary>Save platforms with nothing detected (or a detection error) and no manual folder yet.</summary>
+    private IEnumerable<CloudSavePlatformRowViewModel> SavePlatformsNeedingAFolder() =>
+        _settings.CloudPlatforms.Where(platform =>
+            platform.NeedsFolder
+            || (!string.IsNullOrEmpty(platform.DetectionErrorText) && string.IsNullOrEmpty(platform.NormalizedOverride)));
+
+    private void RefreshSetupRail()
+    {
+        if (_setup is null)
+            return;
+
+        foreach (var entry in SetupRail.Steps)
+        {
+            var (status, warning, done) = entry.Step switch
+            {
+                SetupStep.StorageAccess => IsStoragePermissionGranted
+                    ? ("Allowed", false, true)
+                    : ("Not allowed", true, false),
+                SetupStep.DataFolder => (_setup.DataFolderStatus, false, true),
+                SetupStep.SecondScreen => IsSecondScreenReturnReady ? ("On", false, true) : ("Off", true, false),
+                SetupStep.ClosingGames => !CloseEmulatorOnReturn
+                    ? ("Keep running", false, true)
+                    : CloseOnReturnWarning is not null
+                        ? ("Needs Shizuku", true, false)
+                        : ("Close", false, true),
+                // Only missing emulators count here; the Shizuku gap belongs to the Closing games step.
+                SetupStep.GamesAndEmulators => _settings.Rows.FirstOrDefault(row => EmulatorMissingFor(row) is not null) is { } attention
+                    ? ($"{attention.SystemName} needs attention", true, false)
+                    : (LibraryRailStatus, false, LibraryRailStatus.Length > 0),
+                // A folder still to pick is the step's own business and names itself; anything else the
+                // rail is warning about (a detection error, a sync notice) carries its warning through
+                // rather than being painted as a finished step.
+                SetupStep.Saves => SavePlatformsNeedingAFolder().Count() is > 0 and var needed
+                    ? (needed == 1 ? "1 folder needed" : $"{needed} folders needed", true, false)
+                    : IsSavesRailWarning
+                        ? (SavesRailStatus, true, false)
+                        : string.IsNullOrEmpty(SavesRailStatus)
+                            ? ("Not connected", false, false)
+                            : (SavesRailStatus, false, true),
+                _ => (string.Empty, false, false),
+            };
+            entry.Status = status;
+            entry.IsWarning = warning;
+            entry.IsDone = done;
+            entry.IsCurrent = entry.Step == CurrentSetupStep;
+        }
+
+        SetupRail.StartLabel = IsLastSetupStep ? "Finish" : "Continue";
+        SetupRail.StartDetail = IsLastSetupStep
+            ? "Open the library"
+            : $"Next: {SetupStepLabels.For(_liveSetupSteps[_setupIndex + 1])}";
+        SetupRail.IsStartEnabled = !_settings.IsWorking;
+    }
+
+    private void SelectSetupStep(int index)
+    {
+        if (_setup is null || index < 0 || index >= _liveSetupSteps.Count)
+            return;
+
+        RememberFocusedRow();
+        _setupIndex = index;
+        if (IsThemesSection)
+            IsThemesSection = false;
+        var section = SectionForSetupStep(CurrentSetupStep);
+        if (SelectedSection != section)
+            SelectedSection = section;
+        PrepareSetupStep();
+        RebuildRows(preferredKey: PreferredSetupRowKey());
+        OnPropertyChanged(nameof(CurrentSetupStep));
+        OnPropertyChanged(nameof(SectionTitle));
+        OnPropertyChanged(nameof(SectionDescription));
+        FocusRevision++;
+    }
+
+    // An empty library (the genuine first run) opens the first system so "Add game folder" is on screen
+    // without a press; a populated one keeps the list collapsed as Settings does.
+    private void PrepareSetupStep()
+    {
+        if (CurrentSetupStep == SetupStep.GamesAndEmulators
+            && !_expandedBySection.ContainsKey(SettingsSection.Emulators)
+            && _gameCountBySystem is not null
+            && _settings.Rows.Count > 0
+            && _settings.Rows.Sum(row => _gameCountBySystem(row.SystemId)) == 0)
+        {
+            _expandedBySection[SettingsSection.Emulators] = _settings.Rows[0].SystemId;
+        }
+    }
+
+    // The row to land on when a step opens: the first save folder that still needs picking, else the top.
+    private string? PreferredSetupRowKey() => CurrentSetupStep == SetupStep.Saves
+        ? SavePlatformsNeedingAFolder().Select(platform => $"saves.{platform.SystemId}.folder").FirstOrDefault()
+        : null;
+
+    /// <summary>
+    /// True once the wizard's last step was finished with Save. The host records
+    /// <c>SetupCompletedVersion</c> against this rather than against "the settings were saved", because
+    /// leaving early also saves — it just does not count as having walked the wizard.
+    /// </summary>
+    public bool SetupCompleted { get; private set; }
+
+    /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
+    private async Task AdvanceSetupAsync()
+    {
+        if (_setup is null || !IsNormal)
+            return;
+
+        if (!IsLastSetupStep)
+        {
+            SelectSetupStep(_setupIndex + 1);
+            return;
+        }
+
+        // Finish = the ordinary Save: it persists every edit and raises CloseRequested, and the flag above
+        // is what tells the host this was the end of the wizard rather than a save on the way out.
+        SetupCompleted = true;
+        await ExecuteAsync(_settings.SaveCommand);
+    }
+
+    /// <summary>B: the previous step, or on the first step leave the wizard without finishing it.</summary>
+    private void BackSetup()
+    {
+        if (_setup is null)
+            return;
+
+        if (_setupIndex > 0)
+            SelectSetupStep(_setupIndex - 1);
+        else
+            _ = LeaveSetupAsync();
+    }
+
+    /// <summary>
+    /// B on the first step: out of the wizard, keeping what was answered. Close-on-return and the
+    /// per-platform save folders are written only by Save, so simply closing would silently discard every
+    /// choice made on the way here — after which the wizard would open again next launch and ask for them
+    /// a second time. The wizard is still not recorded as completed (<see cref="SetupCompleted"/> stays
+    /// false), so it is offered again; the answers are just already in place when it is.
+    /// </summary>
+    private async Task LeaveSetupAsync()
+    {
+        await ExecuteAsync(_settings.SaveCommand);
+        // A successful save raises CloseRequested itself (and this projection is disposed with it). If it
+        // failed it did not, and B still has to get the user out.
+        if (!_disposed)
+            CloseRequested?.Invoke(false);
+    }
 
     public void Dispose()
     {

@@ -19,6 +19,38 @@ public static class AndroidGamepadInput
     public static Func<GamepadAction, bool>? Dispatch { get; set; }
 
     /// <summary>
+    /// True while the main screen has a surface that must own the controller — Settings, the setup
+    /// wizard — even if the companion display is the top-focused one (Android routes hardware keys to
+    /// the focused window of the top-focused display, and touching Screen-2 makes it that). The
+    /// Screen-2 presentations consult this and forward the pad to <see cref="Dispatch"/> instead of
+    /// handling it themselves, so a trip through a settings page that opened on the bottom screen does
+    /// not leave the wizard dead on the top one. Set by the shell; null (never claims) before it.
+    /// </summary>
+    public static Func<bool>? MainScreenClaimsPad { get; set; }
+
+    /// <summary>
+    /// Feeds a joystick motion event to the shared reader — the only source of stick and hat-axis input
+    /// for both the poll loop and the pre-boot setup page. Returns true when the event was consumed.
+    /// Every window that can become the top-focused one has to call this: Android delivers motion to the
+    /// focused display's window just as it does keys, so a Presentation that forwards keys but not motion
+    /// leaves the D-pad dead on the other screen wherever the pad reports it as a hat axis (the Thor).
+    /// Mouse, touchpad and hover events are left alone so they fall through to Avalonia.
+    /// </summary>
+    public static bool TryFeedMotion(MotionEvent? e)
+    {
+        if (e is not { } motion ||
+            motion.ActionMasked != MotionEventActions.Move ||
+            !motion.Source.HasFlag(InputSourceType.Joystick) ||
+            AndroidGamepadReader.Current is not { } reader)
+        {
+            return false;
+        }
+
+        reader.Update(motion);
+        return true;
+    }
+
+    /// <summary>
     /// Handles the Android system Back button / gesture: returns true when a couch overlay was closed
     /// (Back is consumed), false at the root library so the Activity lets the platform exit. Distinct from
     /// <see cref="Dispatch"/> because the library-level Cancel swallows B, which would otherwise trap Back.

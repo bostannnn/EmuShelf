@@ -70,11 +70,53 @@ public class MainActivity : AvaloniaMainActivity
         ApplyImmersiveMode();
     }
 
+    // The companion-display stand-in while the pre-boot setup page is up (see SetupPresentation).
+    private SetupPresentation? _setupPresentation;
+
     protected override void OnResume()
     {
         base.OnResume();
         Current = this;
         AndroidActivityLifecycle.NotifyActivityAvailable(this);
+        ShowSetupPresentationIfOnboarding();
+    }
+
+    protected override void OnPause()
+    {
+        DismissSetupPresentation();
+        base.OnPause();
+    }
+
+    private void ShowSetupPresentationIfOnboarding()
+    {
+        // Only while the setup page owns the screen; the shell brings its own companion.
+        if (global::EmuShelf.App.App.OnboardingGamepadDispatch is null || _setupPresentation is not null)
+            return;
+        try
+        {
+            _setupPresentation = SetupPresentation.CreateFor(this);
+            _setupPresentation?.Show();
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn("EmuShelfBoot", $"Could not show the setup companion screen: {ex.Message}");
+            _setupPresentation = null;
+        }
+    }
+
+    private void DismissSetupPresentation()
+    {
+        if (_setupPresentation is null)
+            return;
+        try
+        {
+            _setupPresentation.Dismiss();
+        }
+        catch (Exception ex)
+        {
+            global::Android.Util.Log.Warn("EmuShelfBoot", $"Could not dismiss the setup companion screen: {ex.Message}");
+        }
+        _setupPresentation = null;
     }
 
     /// <summary>
@@ -248,19 +290,8 @@ public class MainActivity : AvaloniaMainActivity
     /// the same logic desktop uses. Only joystick-source move events are taken; mouse, touchpad and hover
     /// events fall through to Avalonia and the system unchanged.
     /// </summary>
-    public override bool DispatchGenericMotionEvent(MotionEvent? e)
-    {
-        if (e is { } motion &&
-            motion.ActionMasked == MotionEventActions.Move &&
-            motion.Source.HasFlag(InputSourceType.Joystick) &&
-            AndroidGamepadReader.Current is { } reader)
-        {
-            reader.Update(motion);
-            return true;
-        }
-
-        return base.DispatchGenericMotionEvent(e);
-    }
+    public override bool DispatchGenericMotionEvent(MotionEvent? e) =>
+        AndroidGamepadInput.TryFeedMotion(e) || base.DispatchGenericMotionEvent(e);
 
     /// <summary>
     /// The head's return signal. Fires when EmuShelf gains (or loses) the single top-resumed activity

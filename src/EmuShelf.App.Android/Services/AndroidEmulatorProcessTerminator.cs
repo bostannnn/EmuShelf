@@ -131,9 +131,9 @@ public sealed class AndroidEmulatorProcessTerminator
     public string? PrivilegeWarning()
     {
         if (!_shizuku.IsRunning)
-            return "Shizuku is not running · start it, then press Y to grant permission";
+            return "Shizuku is not running · start it, then press Y to allow it";
         if (!_shizuku.HasPermission)
-            return "Shizuku permission not granted · press Y to grant it";
+            return "Shizuku permission not allowed yet · press Y to allow it";
         return null;
     }
 
