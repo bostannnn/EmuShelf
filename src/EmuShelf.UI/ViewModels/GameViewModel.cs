@@ -516,6 +516,24 @@ public partial class GameViewModel : ObservableObject, IDisposable
     /// churn was measured as a mid-scroll GC hitch on the Thor). Keeping it here means the fast
     /// pre-check and the command's own guard can never drift apart.
     /// </summary>
+    // A view lease protects a decoded cover while an attached tile displays it. Multiple
+    // surfaces may display the same game; recycling/detaching releases only that surface's lease.
+    internal int CoverConsumerCount { get; private set; }
+
+    internal void RetainCover()
+    {
+        CoverConsumerCount++;
+        OnPropertyChanged(nameof(CoverConsumerCount));
+    }
+
+    internal void ReleaseCover()
+    {
+        if (CoverConsumerCount == 0)
+            return;
+        CoverConsumerCount--;
+        OnPropertyChanged(nameof(CoverConsumerCount));
+    }
+
     internal bool NeedsCoverLoad => CoverPath is not null && !HasCoverImage && !IsCoverLoading;
 
     /// <summary>

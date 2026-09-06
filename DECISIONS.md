@@ -11812,3 +11812,52 @@ under the surface, so focus, A-routing and the existing tests keep working; the 
 four directions (`DispatchLaunchScreenNavigation`) because the layout is a row, not a column. The title
 carries the question and the eyebrow carries the game name, so a long game title no longer wraps the
 header onto two lines.
+
+
+## 2026-09-06 — Bound decoded 2D cover retention across library scopes
+
+Library scope caching retains game view models for fast platform switching, but retaining all
+of their decoded covers made bitmap memory grow with browsing history. A UI-thread LRU now
+accounts for each decoded cover instance (including duplicate games in separate scopes) at
+width × height × 4 bytes, with a 64 MiB target. Eviction clears the view-model property and
+uses its existing disposal path; the original cover and disk thumbnail remain untouched.
+Realization and prefetch refresh recency. Manual cover previews use the same budget.
+
+Attached cover hosts hold counted leases, transferred on recycling and released on parking
+or detachment. The 3D shelf's observed window also holds leases because its front faces can
+reuse 2D covers. Leased images cannot be evicted: if the visible working set alone exceeds
+the target, allow temporary overflow and trim when leases are released. This is a decoded
+pixel budget, not a cap on total RSS, GPU textures, or in-flight decodes. Keep separate
+bitmap ownership per view model rather than introducing shared-image reference counting.
+
+Regression tests cover sustained browsing, LRU ordering, duplicate scopes, reload eligibility,
+replacement/disposal accounting, and balanced view leases. AYN Thor memory/scroll verification
+remains pending a connected device.
+
+
+## 2026-09-06 — Cancel obsolete cover work and prepare large library views off-thread
+
+Each library reload now cancels the previous generation's queued cover semaphore waits and
+passes cancellation to thumbnail I/O and the decode worker. Recheck scope/revision/suspension
+after acquiring the gate and after thumbnail lookup, before spending time decoding. Native
+bitmap decode already running cannot be interrupted; the final generation guard still disposes
+its stale result. A realized VM reused by a rapid cache return retries once its obsolete load
+has unwound. Cancellation does not surface as a cover error or leak a gate permit.
+
+Filtering, column sorting, justified packing, and row construction share an immutable projection.
+Capture titles, the selected sort key, and aspect ratios on the UI thread, then calculate on a
+worker for collections over 256 items; smaller collections remain synchronous to avoid scheduling
+overhead. The threshold is a conservative implementation choice, pending Thor measurements.
+Numeric/text comparisons, ascending title tie-breaks, and recency scopes' input order are preserved.
+
+Search keeps its 250 ms debounce and cancels an obsolete projection as soon as the text changes.
+Large-grid resize requests coalesce for 50 ms before capturing a snapshot. Cancellation, library
+generation, and viewport checks reject obsolete results. Publish the completed games and rows
+without triggering a redundant second packing pass. Observable property updates and collection
+publication necessarily remain on the UI thread and still have linear cost; this is not a claim
+of constant-time UI publication or guaranteed frame latency. Delay disposal of invalidated VMs
+until the old visible collection has been replaced. Reload completion awaits presentation.
+
+Regression coverage includes 1,000-game rapid search/sort/resize/navigation, snapshot isolation,
+recency/tie ordering, cancellation before thumbnail I/O, queued cover replacement, and the existing
+300-game tile-recycling test (now awaiting background layout).

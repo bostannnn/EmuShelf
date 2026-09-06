@@ -68,6 +68,8 @@ public class GamepadGridSelectorTests
         try
         {
             await Pump();
+            await viewModel.WaitForPresentationAsync();
+            await Pump();
             var atTop = RealizedTiles(window);
             _output.WriteLine($"realized at top: {atTop.Count} of 300");
             Assert.True(atTop.Count < 120, $"expected only on-screen rows realized, but {atTop.Count} tiles exist");

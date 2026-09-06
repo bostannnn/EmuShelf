@@ -2163,3 +2163,23 @@ breaks the whole-solution macOS build/test loop.
           own 833×468 overlay (pinned by test);
           "external screen" is gone from every string — the only hardware this reaches owns both screens.
           See DECISIONS 2026-09-05.
+
+
+### 2026-09-06 — Decoded cover memory follow-up
+
+- [x] Bound decoded 2D cover retention across cached scopes with a 64 MiB LRU target;
+      protect realized covers with counted leases and reload evicted covers on demand.
+- [x] Verify on AYN Thor (2026-09-06): 975-game library, decoded-cover retention stayed at
+      the 64 MiB target; 1,326 evictions, reloaded search covers, and stable memory across two
+      scrolling passes. See `docs/performance/thor-2026-09-06.md`.
+
+- [x] Cancel superseded cover loads before thumbnail I/O/decode; release canceled queue waits.
+- [x] Prepare filtering/sorting/justified rows off-thread above 256 games, coalesce resize bursts,
+      and reject stale projections while preserving UI-thread publication.
+- [ ] On AYN Thor, measure search/sort latency, resize/layout publication and rapid platform
+      switching with a full library; tune the projection threshold and cache target from measurements.
+
+- [x] Thor cancellation/search pass (2026-09-06): 35 obsolete cover requests skipped; 975-source
+      projections prepared off-thread in 1.2–4.9 ms. Evidence in `docs/performance/thor-2026-09-06.md`.
+- [ ] Profile and reduce UI publication spikes: still 22.7–123.7 ms on the Thor after background
+      preparation. Finding 3 is only partially resolved; inspect rebinding, observers, and GC.

@@ -1476,6 +1476,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
         foreach (var game in _observedGames)
         {
             game.PropertyChanged -= OnVisibleGamePropertyChanged;
+            game.ReleaseCover();
         }
 
         _observedGames.Clear();
@@ -1527,6 +1528,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
             {
                 game.PropertyChanged -= OnVisibleGamePropertyChanged;
                 _observedGames.Remove(game);
+                game.ReleaseCover();
             }
         }
 
@@ -1550,6 +1552,7 @@ public sealed class MediaShelf3DControl : OpenGlControlBase
 
             game.PropertyChanged += OnVisibleGamePropertyChanged;
             _observedGames.Add(game);
+            game.RetainCover();
         }
 
         CancelPhysicalArtworkLoadsOutsideVisibleWindow();
