@@ -9,7 +9,10 @@
     <Grid RowDefinitions="Auto,Auto,*,Auto" RowSpacing="14">
         <TextBlock Text="Setup" FontSize="26" FontWeight="Bold" />
         <Border Grid.Row="1" Height="1" Background="{DynamicResource EmuBorderBrush}" />
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Steps}">
+        <ScrollViewer Grid.Row="2" x:Name="StepsScroller"
+                      VerticalScrollBarVisibility="Hidden"
+                      HorizontalScrollBarVisibility="Disabled">
+        <ItemsControl ItemsSource="{Binding Steps}">
             <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                     <StackPanel Spacing="6" />
@@ -41,6 +44,7 @@
                 </DataTemplate>
             </ItemsControl.ItemTemplate>
         </ItemsControl>
+        </ScrollViewer>
         <Button Grid.Row="3" Classes="gamepad-settings-save"
                 Classes.focused="{Binding IsStartFocused}"
                 IsEnabled="{Binding IsStartEnabled}"
