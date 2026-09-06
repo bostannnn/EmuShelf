@@ -581,7 +581,6 @@ public sealed class GamepadSettingsViewModelTests
         // Collapsed: one focusable summary per platform, no per-platform rows, no non-focusable headers.
         var summaries = viewModel.Rows.Where(row => row.IsSummary).ToList();
         Assert.Equal(viewModel.Settings.Rows.Count, summaries.Count);
-        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
         Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith(".emulator", StringComparison.Ordinal));
         var ds = summaries.Single(row => row.SystemId == "nds");
         Assert.Equal("Nintendo DS", ds.Label);
@@ -1184,7 +1183,6 @@ public sealed class GamepadSettingsViewModelTests
         viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
 
         // Connected: no header rows, no red Disconnect row — one account row that Y disconnects.
-        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.disconnect");
         var account = viewModel.Rows.Single(row => row.Key == "scraper.account");
         Assert.True(account.IsInformation);
@@ -1219,7 +1217,6 @@ public sealed class GamepadSettingsViewModelTests
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.disconnect");
 
         // Platforms are collapsed summaries; A opens one and its rows appear beneath it.
-        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
         var summary = viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary");
         Assert.True(summary.IsSummary);
         Assert.Equal("playstation2", summary.SystemId);
@@ -1274,7 +1271,6 @@ public sealed class GamepadSettingsViewModelTests
         using var viewModel = CreateGamepadSettings(texturePacks: CreateTextureContext());
         viewModel.SelectedSection = SettingsSection.TexturePacks;
 
-        Assert.DoesNotContain(viewModel.Rows, row => row.IsHeader);
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "textures.gamecube.detected");
         var summary = viewModel.Rows.Single(row => row.Key == "textures.gamecube.summary");
         await summary.SelectCommand.ExecuteAsync(null);
@@ -1389,7 +1385,7 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
-    public void SetupWizardSavesStep_ShowsPlatformsAsHeadings_AndLeavesSettingsOnlyRowsOut()
+    public async Task SetupWizardSavesStep_UsesTheSameSummaryCardsAsSettings_AndLeavesSettingsOnlyRowsOut()
     {
         using var viewModel = CreateGamepadSettings(
             cloudSaves: CreateCloudContext(connected: true),
@@ -1402,18 +1398,56 @@ public sealed class GamepadSettingsViewModelTests
         while (viewModel.CurrentSetupStep != SetupStep.Saves)
             Assert.True(viewModel.Dispatch(GamepadAction.Menu));
 
-        // Every platform is already open here, so its row is a heading: a summary would offer a chevron
-        // and take focus for an A press that cannot open or close anything.
+        // The step is Settings' Saves section in setup mode: one summary card per platform, collapsed
+        // when its folder is known, A opening it in place. No second design for the wizard.
         var platform = viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary");
-        Assert.True(platform.IsHeader);
-        Assert.False(platform.IsEnabled);
-        Assert.False(platform.CanActivate);
+        Assert.True(platform.IsSummary);
+        Assert.True(platform.IsCompact);
+        Assert.True(platform.CanActivate);
+        Assert.False(platform.IsExpanded);
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
+        await platform.SelectCommand.ExecuteAsync(null);
+        Assert.True(viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").IsExpanded);
         Assert.Contains(viewModel.Rows, row => row.Key == "saves.playstation2.folder");
 
         // The step is for choices; syncing, disconnecting and the replace actions stay in Settings.
         Assert.DoesNotContain(viewModel.Rows, row => row.Key is "saves.sync" or "saves.stop");
         Assert.DoesNotContain(viewModel.Rows, row => row.SecondaryKey == "saves.disconnect");
         Assert.DoesNotContain(viewModel.Rows, row => row.Key.EndsWith("replace-cloud", StringComparison.Ordinal));
+    }
+
+    [AvaloniaFact]
+    public void SetupWizardSavesStep_OpensThePlatformStillMissingAFolder_ByItself()
+    {
+        using var viewModel = CreateGamepadSettings(
+            cloudSaves: CreateCloudContext(connected: true),
+            setup: new SetupWizardOptions(
+                HasSecondScreen: false,
+                IsSecondScreenReturnReady: () => true,
+                RequestSecondScreenReturn: () => { },
+                DataFolderStatus: "User/EmuShelf"));
+
+        while (viewModel.CurrentSetupStep != SetupStep.Saves)
+            Assert.True(viewModel.Dispatch(GamepadAction.Menu));
+        Assert.False(viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").IsExpanded);
+
+        // The folder probe lands after the step was entered (as on a first run) and finds nothing: the
+        // platform opens itself so the one row the user must act on is on screen without a press. The card
+        // is still the ordinary summary, saying what is wrong in the warning colour.
+        var platform = viewModel.Settings.CloudPlatforms.Single();
+        platform.DetectedDirectory = null;
+        platform.HasProbed = true;
+        Assert.True(platform.NeedsFolder);
+
+        var summary = viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary");
+        Assert.True(summary.IsSummary);
+        Assert.True(summary.IsExpanded);
+        Assert.True(summary.IsWarning);
+        Assert.True(viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder").IsWarning);
+
+        // Once, not every rebuild: closing it again is respected.
+        summary.SelectCommand.Execute(null);
+        Assert.False(viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").IsExpanded);
     }
 
     [AvaloniaFact]

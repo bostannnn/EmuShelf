@@ -12013,3 +12013,26 @@ way it did:
   shelf capture carrying publisher label art (DS trade dress, Taito/Square Enix, the Nintendo seal, ESRB),
   which CLAUDE.md forbids shipping unlicensed and uncredited. Removed; `.bg` is a radial gradient in the
   couch palette.
+
+## 2026-09-06 — The wizard's Saves step is Settings' Saves section, cards and all; the heading row kind is retired
+
+Andrew, on the Thor with #233+#234 installed: "saves menu in onboarding uses old design, not the one from
+234". It did: the step forced every platform open and drew each as `Kind.Header` — the pre-redesign group
+heading (medallion, bold grey label, no card, no detail, no chevron) — because a summary card that is always
+open would have offered a chevron that cannot do anything (see the entry above). That reasoning kept a second
+row design alive in the one place the wizard was meant to share Settings' look.
+
+Decided:
+
+- **One design.** The Saves step yields exactly what Settings' Saves section yields: one compact summary card
+  per platform (artwork, name, what synced and when — or "No save folder" in the warning colour), collapsed,
+  A opening one at a time. The step-only differences stay what they were: the Settings-only rows (sync now,
+  Y-disconnect, replace) are left out, and a folder row still needing a pick is painted as a warning.
+- **The platform still missing its folder opens itself, once.** So the row the user must act on is on screen
+  without a press. It runs in the Saves case of `BuildSetupRows` rather than in `PrepareSetupStep`, because the
+  folder probe can land after the step is entered (it does on a first run); it never overrides a platform the
+  user opened, and it does not reopen one the user closed.
+- **`GamepadSettingsRowKind.Header` is gone**, with `IsHeader`, the header-skipping in row navigation and focus
+  restore, the `forcedOpen` branch of `ExpandableSummaryRow`, and the heading template in
+  `GamepadSettingsRowView`. Nothing produced it any more; a row kind the redesign retired from Settings should
+  not survive as the wizard's private fallback.

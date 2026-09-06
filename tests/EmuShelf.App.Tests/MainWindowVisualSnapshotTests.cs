@@ -2558,7 +2558,6 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
             var summaries = gamepadSettings.Rows.Where(row => row.IsSummary).ToList();
             Assert.Equal(desktopSettings.Rows.Count, summaries.Count);
-            Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsHeader);
             Assert.Equal("PlayStation 2 needs attention", gamepadSettings.EmulatorsRailStatus);
 
             // Focus the platform that needs attention so the snapshot shows the warning row focused.
@@ -2930,7 +2929,6 @@ public class MainWindowVisualSnapshotTests
             // Saves lists one summary per platform (no headers); a platform's member rows appear only
             // once it is opened and carry their platform id so the leading artwork can render.
             Assert.Contains(gamepadSettings.Rows, row => row.IsSummary);
-            Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsHeader);
             Assert.DoesNotContain(gamepadSettings.Rows, row => row.IsGrouped);
 
             window.Height = 720;

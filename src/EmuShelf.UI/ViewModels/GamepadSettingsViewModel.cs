@@ -22,9 +22,6 @@ public enum GamepadSettingsRowKind
     Folder,
     File,
     Information,
-    /// <summary>A non-focusable platform group heading (artwork + name) that gives the section a
-    /// visible hierarchy instead of a flat list of equal-weight rows.</summary>
-    Header,
     /// <summary>A focusable one-line platform summary (artwork, name, "emulator · N games") that expands
     /// its per-platform rows in place when activated, so a 15-platform section reads as 15 rows, not 90.</summary>
     Summary,
@@ -83,7 +80,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public string? SystemId { get; private set; }
     /// <summary>True for a member row under a platform header; indents it beneath its group.</summary>
     public bool IsGrouped { get; private set; }
-    public bool IsHeader => Kind == GamepadSettingsRowKind.Header;
     public bool IsSummary => Kind == GamepadSettingsRowKind.Summary;
     /// <summary>True while a summary row's platform rows are shown beneath it.</summary>
     public bool IsExpanded { get; private set; }
@@ -101,13 +97,12 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     /// <summary>Parity id of the Desktop field the Y action stands in for ("saves.disconnect" on the Google
     /// Drive row), so a field folded into Y still counts as reachable on the couch.</summary>
     public string SecondaryKey { get; private set; } = string.Empty;
-    public bool IsNormalRow => !IsHeader && !IsSaveRow;
+    public bool IsNormalRow => !IsSaveRow;
     public bool HasPlatformIcon => !string.IsNullOrEmpty(SystemId);
     /// <summary>True for gamepad-only view-state controls (e.g. expand inventory) that have no Desktop
     /// settings field and must not participate in the executable parity comparison.</summary>
     public bool ExcludeFromParity { get; private set; }
-    public bool CanActivate => IsEnabled &&
-        Kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header);
+    public bool CanActivate => IsEnabled && Kind is not GamepadSettingsRowKind.Information;
     public string ParityId =>
         GamepadSettingsRowSpec.CoversOwnKey(Kind, Key, ExcludeFromParity) ? Key : string.Empty;
     /// <summary>Every Desktop field id this row covers: its own (A) and the one behind Y, if any. Derived
@@ -185,7 +180,6 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
         OnPropertyChanged(nameof(CanActivate));
         OnPropertyChanged(nameof(ParityId));
-        OnPropertyChanged(nameof(IsHeader));
         OnPropertyChanged(nameof(IsSummary));
         OnPropertyChanged(nameof(IsExpanded));
         OnPropertyChanged(nameof(IsWarning));
@@ -239,12 +233,11 @@ internal sealed record GamepadSettingsRowSpec(
     string? SecondaryKey = null,
     bool SettingsOnly = false)
 {
-    /// <summary>True when a row's own key names a Desktop field. Read-only rows, group headings, the Save
-    /// row and couch-only view state do not. The one place this rule lives: both the AutomationId the
+    /// <summary>True when a row's own key names a Desktop field. Read-only rows, the Save row and
+    /// couch-only view state do not. The one place this rule lives: both the AutomationId the
     /// snapshot test reads off a realized row and the parity sweep ask it, so they cannot disagree.</summary>
     public static bool CoversOwnKey(GamepadSettingsRowKind kind, string key, bool excludeFromParity) =>
-        kind is not (GamepadSettingsRowKind.Information or GamepadSettingsRowKind.Header)
-        && key != "common.save" && !excludeFromParity;
+        kind is not GamepadSettingsRowKind.Information && key != "common.save" && !excludeFromParity;
 
     /// <summary>The Desktop field ids this row makes reachable: its own key, plus the field folded into
     /// its Y action once that action is wired.</summary>
@@ -310,6 +303,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// collapsed. Single-open keeps the list short (the point of the summaries) and the focus predictable,
     /// and keying it by section means opening PS2 in Emulators does not also open it in Saves.</summary>
     private readonly Dictionary<SettingsSection, string> _expandedBySection = [];
+    private bool _savesStepOpenedMissingFolder;
     /// <summary>While set, every platform summary projects its rows, so a parity sweep sees every field a
     /// user can reach by opening a platform, not just the one platform currently open.</summary>
     private bool _projectEveryPlatform;
@@ -1257,10 +1251,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         if (step == 0)
             return;
 
-        // Step over non-focusable group headers; if there is no focusable row ahead, stay put.
         var index = FocusedRowIndex + step;
-        while (index >= 0 && index < Rows.Count && Rows[index].IsHeader)
-            index += step;
         if (index < 0 || index >= Rows.Count)
             return;
 
@@ -1583,11 +1574,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         var list = Rows.ToList();
         var target = preferredKey is null
             ? -1
-            : list.FindIndex(row => row.Key == preferredKey && !row.IsHeader);
+            : list.FindIndex(row => row.Key == preferredKey);
         if (target < 0)
-            target = list.FindIndex(row => !row.IsHeader && row.Key != "common.save");
+            target = list.FindIndex(row => row.Key != "common.save");
         if (target < 0)
-            target = list.FindIndex(row => !row.IsHeader);
+            target = 0;
         FocusedRowIndex = Rows.Count == 0 ? 0 : target >= 0 ? target : 0;
         for (var index = 0; index < Rows.Count; index++)
             Rows[index].IsFocused = index == FocusedRowIndex;
@@ -1895,19 +1886,17 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     /// <summary>The one shape every section's platform summary takes: artwork and name on the left, that
     /// section's own one-line detail on the right, A opening its rows beneath it one platform at a time.
-    /// Where a step shows every platform already open (the wizard's Saves step) the row is a plain heading
-    /// instead — a control that cannot do anything should not take focus or offer a chevron.</summary>
+    /// The wizard's steps use it unchanged, so a platform looks and behaves the same in both.</summary>
     private GamepadSettingsRowSpec PlatformSummaryRow(
         SettingsSection section,
         string key,
         string label,
         string systemId,
         string detail,
-        bool forcedOpen = false,
         bool warning = false,
         string? secondaryLabel = null,
         Func<Task>? secondaryActivate = null) =>
-        ExpandableSummaryRow(section, key, label, systemId, detail, systemId, forcedOpen, warning,
+        ExpandableSummaryRow(section, key, label, systemId, detail, systemId, warning,
             secondaryLabel, secondaryActivate);
 
     /// <summary>The accordion without a platform behind it: <paramref name="expansionId"/> is what opens
@@ -1920,26 +1909,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         string expansionId,
         string detail,
         string? iconSystemId = null,
-        bool forcedOpen = false,
         bool warning = false,
         string? secondaryLabel = null,
         Func<Task>? secondaryActivate = null)
     {
-        if (forcedOpen)
-        {
-            return new GamepadSettingsRowSpec(
-                key,
-                label,
-                string.Empty,
-                detail,
-                GamepadSettingsRowKind.Header,
-                IsEnabled: false,
-                SystemId: iconSystemId,
-                ExcludeFromParity: true,
-                IsWarning: warning,
-                IsCompact: true);
-        }
-
         return new GamepadSettingsRowSpec(
             key,
             label,
@@ -2335,10 +2308,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         foreach (var platform in _settings.CloudPlatforms)
         {
             // One summary row per platform (artwork, name, what synced and when); A opens its rows beneath
-            // it, one platform at a time, exactly as Emulators does. The wizard's Saves step is a checklist
-            // of folders to set, so it shows every platform open and the row is a heading there instead.
-            var forcedOpen = IsSetupMode;
-            var expanded = forcedOpen || IsPlatformExpanded(SettingsSection.Saves, platform.SystemId);
+            // it, one platform at a time, exactly as Emulators does — in the wizard's Saves step too (which
+            // only adds that a platform still missing its folder opens itself once, see BuildSetupRows).
+            var expanded = IsPlatformExpanded(SettingsSection.Saves, platform.SystemId);
             var (summary, attention) = SaveSummary(platform);
             var systemId = platform.SystemId;
             yield return PlatformSummaryRow(
@@ -2347,7 +2319,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 platform.DisplayName,
                 systemId,
                 summary,
-                forcedOpen,
                 attention);
             if (!expanded)
                 continue;
@@ -3062,7 +3033,19 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 // the disconnect behind its Y and the per-platform replace actions stay in Settings, and
                 // say so on the spec itself. A platform whose save folder could not be detected is the one
                 // thing the user must act on here, so its folder row is painted as a warning and says so.
+                // The step is Settings' Saves section — the same summary cards, one open at a time — except
+                // that the first platform still missing its folder opens itself once, so the row the user
+                // must act on is on screen without a press. The folder probe can land after the step is
+                // entered, which is why this runs on every rebuild until it has fired, and it never
+                // overrides a platform the user opened.
                 var needsFolder = SavePlatformsNeedingAFolder().Select(platform => platform.FolderFieldId).ToHashSet(StringComparer.Ordinal);
+                if (!_savesStepOpenedMissingFolder
+                    && !_expandedBySection.ContainsKey(SettingsSection.Saves)
+                    && SavePlatformsNeedingAFolder().FirstOrDefault() is { } needing)
+                {
+                    _expandedBySection[SettingsSection.Saves] = needing.SystemId;
+                    _savesStepOpenedMissingFolder = true;
+                }
                 foreach (var row in BuildSaveRows())
                 {
                     if (row.SettingsOnly)

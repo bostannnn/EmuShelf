@@ -2178,5 +2178,7 @@ breaks the whole-solution macOS build/test loop.
           Saves and Texture Packs platforms are summary rows that open one at a time; Y on an account row
           (Google Drive, RetroAchievements, ScreenScraper) disconnects it, Y on Export includes cloud
           copies, Y on a texture folder returns to the detected one. Parity is compared against
-          `CollectParityIds` (every platform open, Y keys included). See DECISIONS 2026-09-05 (the Settings-language
-          entry) and `docs/prototypes/couch-settings-v5/`.
+          `CollectParityIds` (every platform open, Y keys included). The wizard's Saves step is this section
+          unchanged (summary cards; the platform still missing a folder opens itself) — the heading row kind
+          it used to fall back on is gone. See DECISIONS 2026-09-05 (the Settings-language entry), 2026-09-06
+          and `docs/prototypes/couch-settings-v5/`.

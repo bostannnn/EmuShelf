@@ -9,35 +9,6 @@
          inline template so the wizard cannot drift into a second row design. The host passes whether a
          controller (not the pointer) is driving, which suppresses the hover ring. -->
     <Panel>
-        <!-- Non-focusable platform group header: artwork + name give the
-             section a visible hierarchy over a flat list of equal rows. -->
-        <Grid IsVisible="{Binding IsHeader}"
-              ColumnDefinitions="Auto,*" ColumnSpacing="16"
-              Margin="18,16,0,8">
-            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
-                    IsVisible="{Binding HasPlatformIcon}"
-                    Background="{DynamicResource EmuPlaceholderMedallionBrush}">
-                <Image Width="30" Height="30"
-                       Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                       RenderOptions.BitmapInterpolationMode="None" />
-            </Border>
-            <!-- Generic group (sign-in / advanced): an accent bar stands in for the
-                 missing artwork so the header reads as a clear group divider, and the
-                 label is accent-coloured to separate it from ordinary rows. -->
-            <Border Grid.Column="0" Width="5" Height="26" CornerRadius="3"
-                    IsVisible="{Binding !HasPlatformIcon}"
-                    VerticalAlignment="Center"
-                    Background="{DynamicResource EmuAccentBrush}" />
-            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
-                       FontWeight="Bold" LetterSpacing="0.4" VerticalAlignment="Center"
-                       IsVisible="{Binding HasPlatformIcon}"
-                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-            <TextBlock Grid.Column="1" Text="{Binding Label}" FontSize="15"
-                       FontWeight="Bold" LetterSpacing="0.6" VerticalAlignment="Center"
-                       IsVisible="{Binding !HasPlatformIcon}"
-                       Foreground="{DynamicResource EmuAccentBrush}" />
-        </Grid>
-
         <Button Classes="gamepad-settings-row"
                 Classes.focused="{Binding IsFocused}"
                 Classes.destructive="{Binding IsDestructive}"
