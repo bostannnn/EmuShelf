@@ -23,6 +23,10 @@ public enum SettingsSection
     Saves,
     TexturePacks,
     Themes,
+    /// <summary>Couch-only: how the shelf itself is drawn (the CRT tube, artwork-matched colours).
+    /// Desktop never lists it — see the comment on its Themes card for why neither toggle belongs
+    /// in a window where their effect is invisible.</summary>
+    Display,
     About,
 }
 

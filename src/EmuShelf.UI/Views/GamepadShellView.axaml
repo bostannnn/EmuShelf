@@ -1428,7 +1428,7 @@
                                     <ScrollViewer Grid.Row="2" x:Name="GamepadSettingsNavScroller"
                                                   VerticalScrollBarVisibility="Hidden"
                                                   HorizontalScrollBarVisibility="Disabled">
-                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
+                                    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto" RowSpacing="6">
                                         <Button Grid.Row="0" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsGeneralSection}"
                                                 Focusable="False"
@@ -1547,7 +1547,8 @@
                                             </Grid>
                                         </Button>
                                         <!-- Themes sits in Desktop's slot — right before About — so both surfaces read
-                                             top-to-bottom identically. About stays the always-visible last row. -->
+                                             top-to-bottom identically, with couch-only Display beside it.
+                                             About stays the always-visible last row. -->
                                         <Button Grid.Row="7" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsThemesSection}"
                                                 IsVisible="{Binding GamepadSettings.ShowThemes}"
@@ -1564,7 +1565,25 @@
                                                 </StackPanel>
                                             </Grid>
                                         </Button>
+                                        <!-- Couch-only: how the shelf is drawn. Desktop has no counterpart, so the
+                                             rail is the only place this page is reachable from. -->
                                         <Button Grid.Row="8" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
+                                                Classes.selected="{Binding GamepadSettings.IsDisplaySection}"
+                                                Focusable="False"
+                                                Command="{Binding GamepadSettings.SelectSectionCommand}"
+                                                CommandParameter="{x:Static vm:SettingsSection.Display}">
+                                            <Grid ColumnDefinitions="8,*" ColumnSpacing="12">
+                                                <Border Width="5" CornerRadius="3"
+                                                        Background="{DynamicResource EmuAccentBrush}"
+                                                        IsVisible="{Binding GamepadSettings.IsDisplaySection}" />
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
+                                                    <TextBlock Text="Display" />
+                                                    <TextBlock Classes="gamepad-settings-nav-status" Text="{Binding GamepadSettings.DisplayRailStatus}"
+                                                               IsVisible="{Binding GamepadSettings.DisplayRailStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                        <Button Grid.Row="9" Classes="gamepad-settings-nav" Classes.rail-active="{Binding GamepadSettings.IsRailFocused}"
                                                 Classes.selected="{Binding GamepadSettings.IsAboutSection}"
                                                 Focusable="False"
                                                 Command="{Binding GamepadSettings.SelectSectionCommand}"
@@ -1655,75 +1674,12 @@
                                         </ItemsRepeater>
                                     </ScrollViewer>
 
-                                    <Grid IsVisible="{Binding GamepadSettings.IsThemesVisible}"
-                                          RowDefinitions="Auto,Auto,*" RowSpacing="16">
-                                        <!-- Ambient (cover-art recolour) toggle: a focus target above the
-                                             theme grid so the setting is reachable on a controller. Up from
-                                             the top grid row lands here; A toggles it. -->
-                                        <!-- CRT toggle: the topmost focus target in the Themes view
-                                             (the -2 sentinel), above the ambient toggle. -->
-                                        <!-- The two Themes toggles are the same compact, caption-less row as every
-                                             other setting; their description opens with the state. Compact rows
-                                             free the height the second row of theme cards needs. -->
-                                        <Button Grid.Row="0" Classes="gamepad-settings-row compact"
-                                                Classes.focused="{Binding GamepadSettings.IsCrtToggleFocused}"
-                                                IsVisible="{Binding GamepadSettings.IsThemesVisible}"
-                                                HorizontalAlignment="Stretch"
-                                                Command="{Binding GamepadSettings.ToggleCrtCommand}">
-                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
-                                                    <TextBlock Text="CRT screen effect" FontSize="17"
-                                                               FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding GamepadSettings.CrtToggleDescription}"
-                                                               FontSize="14" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                </StackPanel>
-                                                <Border Grid.Column="1" Classes="gamepad-settings-switch"
-                                                        Classes.on="{Binding GamepadSettings.CrtScreenEffect}"
-                                                        VerticalAlignment="Center">
-                                                    <Panel>
-                                                        <Border Width="32" Height="32" Margin="4"
-                                                                IsVisible="{Binding !GamepadSettings.CrtScreenEffect}"
-                                                                HorizontalAlignment="Left" CornerRadius="16"
-                                                                Background="{DynamicResource EmuTextTertiaryBrush}" />
-                                                        <Border Width="32" Height="32" Margin="4"
-                                                                IsVisible="{Binding GamepadSettings.CrtScreenEffect}"
-                                                                HorizontalAlignment="Right" CornerRadius="16"
-                                                                Background="{DynamicResource EmuAccentBrush}" />
-                                                    </Panel>
-                                                </Border>
-                                            </Grid>
-                                        </Button>
-                                        <Button Grid.Row="1" Classes="gamepad-settings-row compact"
-                                                Classes.focused="{Binding GamepadSettings.IsAmbientToggleFocused}"
-                                                IsVisible="{Binding GamepadSettings.IsThemesVisible}"
-                                                HorizontalAlignment="Stretch"
-                                                Command="{Binding GamepadSettings.ToggleAmbientCommand}">
-                                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
-                                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="4">
-                                                    <TextBlock Text="Match colours to game artwork" FontSize="17"
-                                                               FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding GamepadSettings.AmbientToggleDescription}"
-                                                               FontSize="14" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
-                                                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-                                                </StackPanel>
-                                                <Border Grid.Column="1" Classes="gamepad-settings-switch"
-                                                        Classes.on="{Binding GamepadSettings.AmbientThemeFromArtwork}"
-                                                        VerticalAlignment="Center">
-                                                    <Panel>
-                                                        <Border Width="32" Height="32" Margin="4"
-                                                                IsVisible="{Binding !GamepadSettings.AmbientThemeFromArtwork}"
-                                                                HorizontalAlignment="Left" CornerRadius="16"
-                                                                Background="{DynamicResource EmuTextTertiaryBrush}" />
-                                                        <Border Width="32" Height="32" Margin="4"
-                                                                IsVisible="{Binding GamepadSettings.AmbientThemeFromArtwork}"
-                                                                HorizontalAlignment="Right" CornerRadius="16"
-                                                                Background="{DynamicResource EmuAccentBrush}" />
-                                                    </Panel>
-                                                </Border>
-                                            </Grid>
-                                        </Button>
-                                        <ScrollViewer Grid.Row="2" x:Name="GamepadThemeScroller"
+                                    <Grid IsVisible="{Binding GamepadSettings.IsThemesVisible}">
+                                        <!-- The gallery is the whole page. The CRT and artwork-colour
+                                             switches used to sit above it in full-weight rows, competing
+                                             with the cards for the first thing you look at; they are
+                                             ordinary projected rows in the Display section now. -->
+                                        <ScrollViewer x:Name="GamepadThemeScroller"
                                                       Classes="gamepad-scroll"
                                                       VerticalScrollBarVisibility="Auto"
                                                       HorizontalScrollBarVisibility="Disabled">

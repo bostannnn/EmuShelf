@@ -11930,3 +11930,37 @@ step; read-only rows get their flat `.info` treatment back, so a 24-row texture 
 like pressable cards A ignores; and the three per-section expansion fields become one
 `Dictionary<SettingsSection, string>`, which is what let Emulators quietly opt out of
 `CollectParityIds`'s "every platform open" contract.
+
+## 2026-09-06 — Couch Settings: a Display section, and ScreenScraper sign-in as a group
+
+Andrew, after running the round-5 build on the Thor: ScreenScraper is *"just 3 rows not connected in
+any meaningful way"*, and on Themes the gallery and the two screen switches *"are fighting for
+attention."* Three directions each went into `docs/prototypes/couch-settings-v6/`; his verdicts were
+**A for Themes** and **B for ScreenScraper**.
+
+- **Themes is only themes; the two switches get their own Display section.** The CRT tube and
+  artwork-matched colours used to sit above the gallery in full-weight rows, holding the position the
+  eye lands on first and pushing the cards down to one visible row. They are ordinary `ToggleRow`
+  projections in a new `SettingsSection.Display` now, and the gallery starts at the top — two full rows
+  of thirty cards in view on the Thor, pinned by the renamed snapshot test.
+- **Display is couch-only, spliced in rather than taken from the settings model.** Desktop deliberately
+  offers neither switch (its Themes card says why: a toggle whose effect is invisible from its own
+  window is worse than no toggle), so `EmulatorSettingsViewModel.Sections` never lists Display and the
+  couch inserts it beside Themes. Both rows are `ExcludeFromParity` because there is no Desktop field to
+  be in parity with. Desktop builds a fresh settings view model per open, so a couch session left on
+  Display cannot leave a Desktop window on a section it cannot render.
+- **The Themes gallery lost its two negative focus sentinels.** `FocusedThemeIndex` was -2 for CRT and
+  -1 for ambient, with Up/Down walking on and off the grid; the gallery is the whole page now, so
+  navigation is plain grid movement and the sentinels, their focus flags, the two `[RelayCommand]`
+  toggles and the two hand-written description properties are gone — along with two more copies of the
+  switch markup, which the row template already owns.
+- **ScreenScraper signs in through the accordion the rest of Settings already uses.** Signed out it is
+  one summary row that opens to `Username`, `Password` and `Sign in` beneath it, indented like a
+  platform's rows in Emulators or Saves. That binds the three rows without inventing a control, says
+  "ScreenScraper" once instead of three times, and makes the signed-out shape match the signed-in one
+  (a single account row whose Y disconnects). `Sign in` is dimmed until both fields are filled, as the
+  RetroAchievements Connect row already is.
+- **The accordion is no longer platform-shaped.** `PlatformSummaryRow` now delegates to
+  `ExpandableSummaryRow`, which separates the id that expands from the id that draws artwork — the
+  latter is null for ScreenScraper. The collapsed rows stay reachable for the Desktop↔couch sweep
+  because `CollectParityIds` already projects every group open.

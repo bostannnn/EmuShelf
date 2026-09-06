@@ -2603,11 +2603,12 @@ public class MainWindowVisualSnapshotTests
     }
 
     [AvaloniaFact]
-    public async Task GamepadSettingsThemesAt1280x720_CompactTogglesLeaveAFullRowOfThemesInView()
+    public async Task GamepadSettingsThemesAt1280x720_IsGalleryOnly_WithTwoRowsOfThemesInView()
     {
-        // The two Themes toggles are compact caption-less rows like every other setting. The catalogue
-        // has thirty themes, so the gallery still scrolls; what the compact toggles buy on the Thor's
-        // 1280×720 canvas is that the first row of cards sits fully inside the viewport under them.
+        // Themes is the gallery and nothing else: the CRT and artwork-colour switches moved to Display,
+        // where they stop competing with the cards for the top of the page. The catalogue has thirty
+        // themes so it still scrolls, but on the Thor's 1280×720 canvas the page now opens on two full
+        // rows of cards instead of one.
         var outputDirectory = Environment.GetEnvironmentVariable("EMUSHELF_SNAPSHOT_DIR");
         var desktopSettings = new EmulatorSettingsViewModel(
             KnownSystems.All,
@@ -2649,19 +2650,13 @@ public class MainWindowVisualSnapshotTests
                 "emushelf-gamepad-settings-themes-1280x720.png",
                 new PixelSize(1280, 720));
 
-            var toggles = window.GetVisualDescendants()
-                .OfType<Button>()
-                .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-row"))
-                .ToArray();
-            Assert.Equal(2, toggles.Length);
-            Assert.All(toggles, toggle => Assert.Contains("compact", toggle.Classes));
-            Assert.All(toggles, toggle => Assert.InRange(toggle.Bounds.Height, 66, 80));
-            var switches = window.GetVisualDescendants()
-                .OfType<Border>()
-                .Where(border => border.IsVisible && border.Classes.Contains("gamepad-settings-switch"))
-                .ToArray();
-            Assert.Equal(2, switches.Length);
-            Assert.All(switches, toggle => Assert.InRange(toggle.Bounds.Width, 70, 74));
+            // No settings rows and no switches on this page at all — that is the whole point of the move.
+            Assert.DoesNotContain(
+                window.GetVisualDescendants().OfType<Button>(),
+                button => button.IsVisible && button.Classes.Contains("gamepad-settings-row"));
+            Assert.DoesNotContain(
+                window.GetVisualDescendants().OfType<Border>(),
+                border => border.IsVisible && border.Classes.Contains("gamepad-settings-switch"));
 
             var scroller = window.FindNamed<ScrollViewer>("GamepadThemeScroller");
             Assert.NotNull(scroller);
@@ -2670,8 +2665,9 @@ public class MainWindowVisualSnapshotTests
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-theme-card"))
                 .ToArray();
             Assert.Equal(themes.Length, cards.Length);
-            var firstRow = cards.Take(3).ToArray();
-            Assert.All(firstRow, card =>
+            // Two rows of three, fully inside the viewport: the height the two toggle rows used to take.
+            var firstRows = cards.Take(6).ToArray();
+            Assert.All(firstRows, card =>
             {
                 var origin = card.TranslatePoint(default, scroller);
                 Assert.NotNull(origin);
@@ -2849,9 +2845,10 @@ public class MainWindowVisualSnapshotTests
                 .OfType<Button>()
                 .Where(button => button.IsVisible && button.Classes.Contains("gamepad-settings-nav"))
                 .ToArray();
-            // Library, Emulators, RetroAchievements, Artwork & Metadata, Saves, Texture Packs, About.
-            // (Hotkeys needs a hotkey context and Themes needs theme choices — neither is set up here.)
-            Assert.Equal(7, navigationButtons.Length);
+            // Library, Emulators, RetroAchievements, Artwork & Metadata, Saves, Texture Packs, Display,
+            // About. Display is couch-only and always present; Hotkeys needs a hotkey context and Themes
+            // needs theme choices, and neither is set up here.
+            Assert.Equal(8, navigationButtons.Length);
             Assert.All(
                 navigationButtons,
                 button => Assert.Equal(navigationButtons[0].Bounds.Width, button.Bounds.Width, 1));

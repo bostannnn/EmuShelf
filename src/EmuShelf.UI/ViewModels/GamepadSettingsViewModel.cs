@@ -424,7 +424,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 return;
             _settings.AmbientThemeFromArtwork = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(AmbientToggleDescription));
+            OnPropertyChanged(nameof(DisplayRailStatus));
         }
     }
 
@@ -438,7 +438,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 return;
             _settings.CrtScreenEffect = value;
             OnPropertyChanged();
-            OnPropertyChanged(nameof(CrtToggleDescription));
+            OnPropertyChanged(nameof(DisplayRailStatus));
         }
     }
 
@@ -456,34 +456,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
     }
 
-    /// <summary>
-    /// True when the ambient toggle owns focus, marked by the -1 sentinel of
-    /// <see cref="FocusedThemeIndex"/>.
-    /// </summary>
-    /// <remarks>
-    /// Two negative sentinels now sit above the grid rather than one, so this is an equality test
-    /// rather than the old "any negative". A stray &lt; 0 here would light both toggles at once.
-    /// </remarks>
-    public bool IsAmbientToggleFocused => IsThemesSection && FocusedThemeIndex == AmbientToggleIndex;
-
-    /// <summary>True when the CRT toggle, the topmost focus target in the Themes view, owns focus.</summary>
-    public bool IsCrtToggleFocused => IsThemesSection && FocusedThemeIndex == CrtToggleIndex;
-
-    /// <summary>Focus sentinels for the two toggles stacked above the theme grid.</summary>
-    private const int AmbientToggleIndex = -1;
-
-    /// <inheritdoc cref="AmbientToggleIndex"/>
-    private const int CrtToggleIndex = -2;
-
-    /// <summary>The row list is shown for the four model sections; the gallery replaces it on Themes.</summary>
+    /// <summary>The row list is shown for the model sections; the gallery replaces it on Themes.</summary>
     public bool IsRowsVisible => IsNormal && !IsThemesSection;
-    /// <summary>State-first one-liners for the two Themes toggles, which the view draws itself.</summary>
-    public string CrtToggleDescription => CrtScreenEffect
-        ? "On · curved, scanned tube on the shelf · costs GPU time"
-        : "Off · curved, scanned tube on the shelf · costs GPU time";
-    public string AmbientToggleDescription => AmbientThemeFromArtwork
-        ? "On · the interface takes its colours from the highlighted game"
-        : "Off · the theme below is used everywhere";
 
     public bool IsThemesVisible => IsNormal && IsThemesSection;
 
@@ -507,6 +481,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
+        SettingsSection.Display => "Display",
         SettingsSection.About => "About",
         _ => "Library",
     };
@@ -529,6 +504,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             "Reconcile emulator saves through your own Google Drive. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
+        SettingsSection.Display =>
+            "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them.",
         SettingsSection.About =>
             "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
@@ -596,6 +573,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _savesRailStatus = "Google Drive";
     }
     public string TexturePacksRailStatus => string.Empty;
+    /// <summary>Both switches at a glance, so the rail answers "is the tube on?" without opening the page.</summary>
+    public string DisplayRailStatus =>
+        $"CRT {(CrtScreenEffect ? "on" : "off")} · artwork colours {(AmbientThemeFromArtwork ? "on" : "off")}";
     public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
     public string AboutRailStatus => _settings.AppVersionDisplay;
 
@@ -718,6 +698,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     public bool IsArtworkMetadataSection => !IsThemesSection && SelectedSection == SettingsSection.ArtworkMetadata;
     public bool IsSavesSection => !IsThemesSection && SelectedSection == SettingsSection.Saves;
     public bool IsTexturePacksSection => !IsThemesSection && SelectedSection == SettingsSection.TexturePacks;
+    public bool IsDisplaySection => !IsThemesSection && SelectedSection == SettingsSection.Display;
     public bool IsAboutSection => !IsThemesSection && SelectedSection == SettingsSection.About;
 
     public event Action<bool>? CloseRequested;
@@ -762,9 +743,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         // per-emulator × per-action matrix that a controller can't navigate as a flat list, so its
         // section row opens the controller-native GamepadHotkeysViewModel overlay; About projects
         // read-only build info plus the in-place update actions.
-        Sections = settings.Sections
+        var sections = settings.Sections
             .Where(section => section is not SettingsSection.Themes)
-            .ToArray();
+            .ToList();
+        // Display is couch-only, so it is spliced in here rather than coming from the settings model:
+        // the CRT tube and artwork-matched colours change how the shelf behind this panel is drawn, and
+        // Desktop deliberately offers neither (a toggle whose effect is invisible from its own window is
+        // worse than no toggle). It sits next to Themes so appearance is two neighbouring pages.
+        var beforeAbout = sections.IndexOf(SettingsSection.About);
+        sections.Insert(beforeAbout >= 0 ? beforeAbout : sections.Count, SettingsSection.Display);
+        Sections = sections;
 
         if (_setup is not null)
         {
@@ -933,43 +921,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                     MoveSection(1);
                     return true;
                 case GamepadAction.NavigateLeft:
-                    // The ambient toggle (-1) and the first grid column step out to the section rail.
-                    if (FocusedThemeIndex < 0 || FocusedThemeIndex % ThemeColumns == 0)
+                    // The gallery is the whole page now, so the first column is what steps out to the rail.
+                    if (FocusedThemeIndex % ThemeColumns == 0)
                         EnterRail();
                     else
                         MoveThemeFocus(-1, 0);
                     return true;
                 case GamepadAction.NavigateRight:
-                    if (FocusedThemeIndex >= 0)
-                        MoveThemeFocus(1, 0);
+                    MoveThemeFocus(1, 0);
                     return true;
                 case GamepadAction.NavigateUp:
-                    // Up walks the stack above the grid: top grid row -> ambient -> CRT, and stops.
-                    if (FocusedThemeIndex == AmbientToggleIndex)
-                        FocusedThemeIndex = CrtToggleIndex;
-                    else if (FocusedThemeIndex == CrtToggleIndex)
-                        return true;
-                    else if (FocusedThemeIndex < ThemeColumns)
-                        FocusedThemeIndex = AmbientToggleIndex;
-                    else
-                        MoveThemeFocus(0, -1);
+                    MoveThemeFocus(0, -1);
                     return true;
                 case GamepadAction.NavigateDown:
-                    // Down reverses it, dropping off the ambient toggle into the selected theme.
-                    if (FocusedThemeIndex == CrtToggleIndex)
-                        FocusedThemeIndex = AmbientToggleIndex;
-                    else if (FocusedThemeIndex == AmbientToggleIndex)
-                        FocusedThemeIndex = Math.Max(0, IndexOfSelectedTheme());
-                    else
-                        MoveThemeFocus(0, 1);
+                    MoveThemeFocus(0, 1);
                     return true;
                 case GamepadAction.Confirm:
-                    if (FocusedThemeIndex == CrtToggleIndex)
-                        ToggleCrt();
-                    else if (FocusedThemeIndex == AmbientToggleIndex)
-                        ToggleAmbient();
-                    else
-                        _ = ApplyFocusedThemeAsync();
+                    _ = ApplyFocusedThemeAsync();
                     return true;
                 case GamepadAction.Cancel:
                     CloseRequested?.Invoke(false);
@@ -1117,9 +1085,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             if (!ShowThemes)
                 return Sections;
             var pages = Sections.ToList();
-            // Desktop places Themes right before About; match that slot instead of appending at the end.
-            var about = pages.IndexOf(SettingsSection.About);
-            pages.Insert(about >= 0 ? about : pages.Count, SettingsSection.Themes);
+            // Desktop places Themes right before About; match that slot instead of appending at the end,
+            // and keep it immediately ahead of Display so picking a theme and adjusting how it is drawn
+            // are neighbours.
+            var slot = pages.IndexOf(SettingsSection.Display);
+            if (slot < 0)
+                slot = pages.IndexOf(SettingsSection.About);
+            pages.Insert(slot >= 0 ? slot : pages.Count, SettingsSection.Themes);
             return pages;
         }
     }
@@ -1519,43 +1491,18 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsDisplaySection));
         OnPropertyChanged(nameof(IsAboutSection));
         OnPropertyChanged(nameof(IsRowsVisible));
         OnPropertyChanged(nameof(IsThemesVisible));
-        OnPropertyChanged(nameof(IsAmbientToggleFocused));
-        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
     }
 
     partial void OnFocusedThemeIndexChanged(int value)
     {
-        OnPropertyChanged(nameof(IsAmbientToggleFocused));
-        OnPropertyChanged(nameof(IsCrtToggleFocused));
         UpdateThemeFocus();
         FocusRevision++;
-    }
-
-    /// <summary>Toggles the ambient (cover-art recolour) setting from the Themes view; also lands
-    /// focus on the toggle so a pointer click and a controller press read the same.</summary>
-    [RelayCommand]
-    private void ToggleAmbient()
-    {
-        if (!IsThemesSection)
-            return;
-        FocusedThemeIndex = AmbientToggleIndex;
-        AmbientThemeFromArtwork = !AmbientThemeFromArtwork;
-    }
-
-    /// <summary>Toggles the CRT presentation from the Themes view; also lands focus on the toggle so
-    /// a pointer click and a controller press read the same.</summary>
-    [RelayCommand]
-    private void ToggleCrt()
-    {
-        if (!IsThemesSection)
-            return;
-        FocusedThemeIndex = CrtToggleIndex;
-        CrtScreenEffect = !CrtScreenEffect;
     }
 
     partial void OnSelectedSectionChanged(SettingsSection value)
@@ -1680,6 +1627,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             SettingsSection.ArtworkMetadata => BuildArtworkMetadataRows(),
             SettingsSection.Saves => BuildSaveRows(),
             SettingsSection.TexturePacks => BuildTextureRows(),
+            SettingsSection.Display => BuildDisplayRows(),
             SettingsSection.About => BuildAboutRows(),
             _ => BuildGeneralRows(),
         })
@@ -1941,6 +1889,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         bool forcedOpen = false,
         bool warning = false,
         string? secondaryLabel = null,
+        Func<Task>? secondaryActivate = null) =>
+        ExpandableSummaryRow(section, key, label, systemId, detail, systemId, forcedOpen, warning,
+            secondaryLabel, secondaryActivate);
+
+    /// <summary>The accordion without a platform behind it: <paramref name="expansionId"/> is what opens
+    /// and closes, <paramref name="iconSystemId"/> is what draws artwork, and they are only the same thing
+    /// for a platform. ScreenScraper's sign-in uses it to bind three loose rows into one group.</summary>
+    private GamepadSettingsRowSpec ExpandableSummaryRow(
+        SettingsSection section,
+        string key,
+        string label,
+        string expansionId,
+        string detail,
+        string? iconSystemId = null,
+        bool forcedOpen = false,
+        bool warning = false,
+        string? secondaryLabel = null,
         Func<Task>? secondaryActivate = null)
     {
         if (forcedOpen)
@@ -1952,7 +1917,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 detail,
                 GamepadSettingsRowKind.Header,
                 IsEnabled: false,
-                SystemId: systemId,
+                SystemId: iconSystemId,
                 ExcludeFromParity: true,
                 IsWarning: warning,
                 IsCompact: true);
@@ -1967,12 +1932,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             IsEnabled: true,
             Activate: () =>
             {
-                ToggleExpandedPlatform(section, systemId);
+                ToggleExpandedPlatform(section, expansionId);
                 return Task.CompletedTask;
             },
-            SystemId: systemId,
+            SystemId: iconSystemId,
             ExcludeFromParity: true,
-            IsExpanded: IsPlatformExpanded(section, systemId),
+            IsExpanded: IsPlatformExpanded(section, expansionId),
             IsWarning: warning,
             IsCompact: true,
             SecondaryLabel: secondaryLabel,
@@ -2181,6 +2146,28 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             !_settings.IsRetroAchievementsBusy);
     }
 
+    /// <summary>Couch-only: how the shelf itself is drawn. Both are excluded from the Desktop↔couch
+    /// field sweep because Desktop deliberately offers neither — there is no field to be in parity with.
+    /// They were the two rows stacked above the theme gallery; on their own page the gallery starts at
+    /// the top and these stop competing with it for the first thing you look at.</summary>
+    private IEnumerable<GamepadSettingsRowSpec> BuildDisplayRows()
+    {
+        yield return ToggleRow(
+            "display.crt",
+            "CRT screen effect",
+            "curved, scanned tube on the shelf · costs GPU time",
+            CrtScreenEffect,
+            value => CrtScreenEffect = value) with { ExcludeFromParity = true };
+        yield return ToggleRow(
+            "display.ambient",
+            "Match colours to game artwork",
+            AmbientThemeFromArtwork
+                ? "the interface takes its colours from the highlighted game"
+                : "the theme is used everywhere",
+            AmbientThemeFromArtwork,
+            value => AmbientThemeFromArtwork = value) with { ExcludeFromParity = true };
+    }
+
     private IEnumerable<GamepadSettingsRowSpec> BuildArtworkMetadataRows()
     {
         // Built-in catalogue: always available, no account needed. Same stable ids as Desktop's
@@ -2229,28 +2216,53 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             yield break;
         }
 
+        // Signed out, signing in is one job, not three settings: a summary row that opens to its own
+        // rows, exactly as a platform does in Emulators and Saves. The indent is what binds them, the
+        // section name is said once, and the row is the same shape as the connected account row above.
+        var expanded = IsPlatformExpanded(SettingsSection.ArtworkMetadata, ScraperExpansionId);
+        yield return ExpandableSummaryRow(
+            SettingsSection.ArtworkMetadata,
+            "scraper.account.signin",
+            "ScreenScraper",
+            ScraperExpansionId,
+            "Not signed in");
+        if (!expanded)
+            yield break;
+
         yield return TextRow(
             "scraper.username",
-            "ScreenScraper username",
+            "Username",
             "Your ScreenScraper account name",
             _settings.ScreenScraperUsername,
             false,
-            value => _settings.ScreenScraperUsername = value);
+            value => _settings.ScreenScraperUsername = value,
+            isGrouped: true);
         yield return TextRow(
             "scraper.password",
-            "ScreenScraper password",
+            "Password",
             "Sent to ScreenScraper to sign in · masked, never logged, never written to settings.json",
             _settings.ScreenScraperPassword,
             true,
-            value => _settings.ScreenScraperPassword = value);
+            value => _settings.ScreenScraperPassword = value,
+            isGrouped: true);
+        // Mirrors the RetroAchievements Connect row: dimmed until both fields are filled, and saying so,
+        // rather than offering a press that can only fail.
+        var ready = _settings.ScreenScraperUsername.Length > 0 && _settings.ScreenScraperPassword.Length > 0;
         yield return ActionRow(
             "scraper.connect",
-            "Connect ScreenScraper",
-            "Checks the account so per-game scraping can fetch titles and artwork",
-            _settings.IsScreenScraperBusy ? "Connecting…" : "A CONNECT",
+            "Sign in",
+            ready
+                ? "Checks the account, then artwork is fetched per game, on demand"
+                : "Enter the username and password first · checks the account before it is used",
+            _settings.IsScreenScraperBusy ? "Connecting…" : "A SIGN IN",
             _settings.ConnectScreenScraperCommand,
-            !_settings.IsScreenScraperBusy);
+            ready && !_settings.IsScreenScraperBusy,
+            isGrouped: true);
     }
+
+    /// <summary>The one expandable group in Artwork &amp; Metadata; not a platform, so it needs a name of
+    /// its own to key the section's single-open state by.</summary>
+    private const string ScraperExpansionId = "screenscraper";
 
     private IEnumerable<GamepadSettingsRowSpec> BuildSaveRows()
     {
@@ -2753,6 +2765,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         OnPropertyChanged(nameof(SavesRailStatus));
         OnPropertyChanged(nameof(IsSavesRailWarning));
         OnPropertyChanged(nameof(ThemesRailStatus));
+        OnPropertyChanged(nameof(DisplayRailStatus));
         OnPropertyChanged(nameof(AboutRailStatus));
     }
 

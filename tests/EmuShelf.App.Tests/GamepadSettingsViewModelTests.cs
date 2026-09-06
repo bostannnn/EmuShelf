@@ -29,12 +29,13 @@ public sealed class GamepadSettingsViewModelTests
             cloudSaves: CreateCloudContext(),
             texturePacks: CreateTextureContext());
 
-        // Both modes present the same sections in the same order (only Themes is a separate gallery
-        // page); Emulators is now a couch section rather than a Desktop-only slice.
+        // Both modes present the same sections in the same order (Themes is a separate gallery page, and
+        // Display is couch-only); Emulators is a couch section rather than a Desktop-only slice.
         Assert.Equal(
             [
                 SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements,
-                SettingsSection.Saves, SettingsSection.TexturePacks, SettingsSection.About,
+                SettingsSection.Saves, SettingsSection.TexturePacks, SettingsSection.Display,
+                SettingsSection.About,
             ],
             viewModel.Sections);
 
@@ -86,7 +87,7 @@ public sealed class GamepadSettingsViewModelTests
             [
                 SettingsSection.General, SettingsSection.Emulators, SettingsSection.RetroAchievements,
                 SettingsSection.ArtworkMetadata, SettingsSection.Saves, SettingsSection.TexturePacks,
-                SettingsSection.Themes, SettingsSection.About,
+                SettingsSection.Themes, SettingsSection.Display, SettingsSection.About,
             ],
             order);
     }
@@ -144,8 +145,16 @@ public sealed class GamepadSettingsViewModelTests
         Assert.True(viewModel.IsArtworkMetadataSection);
         Assert.Equal("Artwork & Metadata", viewModel.SectionTitle);
 
-        // Disconnected: the section offers username, a masked password, and connect.
+        // Disconnected, signing in is one group: a summary row that opens to its own three rows, so the
+        // fields are bound to it rather than floating under the catalogue settings.
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.username");
+        var signIn = viewModel.Rows.Single(row => row.Key == "scraper.account.signin");
+        Assert.True(signIn.IsSummary);
+        Assert.Equal("Not signed in", signIn.Value);
+        await signIn.SelectCommand.ExecuteAsync(null);
+
         var username = viewModel.Rows.Single(row => row.Key == "scraper.username");
+        Assert.True(username.IsGrouped);
         await username.SelectCommand.ExecuteAsync(null);
         viewModel.DraftText = "collector";
         viewModel.Dispatch(GamepadAction.Confirm);
@@ -159,7 +168,10 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Equal("collector", viewModel.Settings.ScreenScraperUsername);
         Assert.DoesNotContain(viewModel.Rows, row => row.Value.Contains("s3cret", StringComparison.Ordinal));
 
+        // Sign in only becomes pressable once both fields are filled, like the RetroAchievements row.
         var connect = viewModel.Rows.Single(row => row.Key == "scraper.connect");
+        Assert.True(connect.IsGrouped);
+        Assert.True(connect.IsEnabled);
         await connect.SelectCommand.ExecuteAsync(null);
 
         Assert.Equal("collector", connectedUser);
@@ -175,6 +187,81 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Contains("scraper.disconnect", account.ParityIds);
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.connect");
         Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.disconnect");
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "scraper.account.signin");
+    }
+
+    [AvaloniaFact]
+    public void DisplaySection_CarriesTheTwoShelfSwitches_AndTheRailStatesThem()
+    {
+        var choices = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
+        using var viewModel = CreateGamepadSettings(themeChoices: choices);
+        viewModel.SelectedSection = SettingsSection.Display;
+
+        Assert.Equal("Display", viewModel.SectionTitle);
+        var rows = viewModel.Rows.Where(row => !row.IsSaveRow).ToArray();
+        Assert.Equal(["display.crt", "display.ambient"], rows.Select(row => row.Key));
+        Assert.All(rows, row => Assert.True(row.IsToggle));
+        // Desktop offers neither, so there is no field for them to be in parity with.
+        Assert.Empty(viewModel.CollectParityIds("display."));
+
+        viewModel.CrtScreenEffect = false;
+        viewModel.AmbientThemeFromArtwork = false;
+        Assert.Equal("CRT off · artwork colours off", viewModel.DisplayRailStatus);
+        viewModel.Rows.Single(row => row.Key == "display.crt").SelectCommand.Execute(null);
+        Assert.True(viewModel.CrtScreenEffect);
+        Assert.Equal("CRT on · artwork colours off", viewModel.DisplayRailStatus);
+        Assert.StartsWith("On · ", viewModel.Rows.Single(row => row.Key == "display.crt").Description);
+    }
+
+    [AvaloniaFact]
+    public void ThemesGallery_HoldsNothingButThemes_AndUpFromTheTopRowStaysPut()
+    {
+        var choices = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
+        using var viewModel = CreateGamepadSettings(themeChoices: choices);
+        viewModel.SelectThemesCommand.Execute(null);
+
+        Assert.True(viewModel.IsThemesSection);
+        Assert.False(viewModel.IsRowsVisible);
+        // The two switches used to sit above the grid on negative sentinel indices; nothing is above it
+        // now, so Up on the top row must stay on the grid rather than walking off it.
+        viewModel.FocusedThemeIndex = 1;
+        viewModel.Dispatch(GamepadAction.NavigateUp);
+        Assert.Equal(1, viewModel.FocusedThemeIndex);
+        // Left from the first column still steps out to the rail.
+        viewModel.FocusedThemeIndex = 0;
+        viewModel.Dispatch(GamepadAction.NavigateLeft);
+        Assert.True(viewModel.IsRailFocused);
+    }
+
+    [AvaloniaFact]
+    public void ScreenScraperSignIn_IsCollapsedByDefault_ButItsFieldsStillCountForParity()
+    {
+        using var viewModel = CreateGamepadSettings(screenScraper: CreateScreenScraperContext());
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
+
+        // Collapsed on arrival, so the section is four rows rather than six.
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+        Assert.False(viewModel.Rows.Single(row => row.Key == "scraper.account.signin").IsExpanded);
+
+        // The three rows behind it are one A press away, so Desktop parity still counts them.
+        var scraper = viewModel.CollectParityIds("scraper.");
+        Assert.Equal(["scraper.connect", "scraper.password", "scraper.username"], scraper);
+        Assert.DoesNotContain("scraper.account.signin", scraper);
+        Assert.DoesNotContain(viewModel.Rows, row => row.IsGrouped);
+    }
+
+    [AvaloniaFact]
+    public void ScreenScraperSignIn_DimsSignInUntilBothFieldsAreFilled()
+    {
+        using var viewModel = CreateGamepadSettings(screenScraper: CreateScreenScraperContext());
+        viewModel.SelectedSection = SettingsSection.ArtworkMetadata;
+        viewModel.Rows.Single(row => row.Key == "scraper.account.signin").SelectCommand.Execute(null);
+
+        Assert.False(viewModel.Rows.Single(row => row.Key == "scraper.connect").IsEnabled);
+        viewModel.Settings.ScreenScraperUsername = "collector";
+        Assert.False(viewModel.Rows.Single(row => row.Key == "scraper.connect").IsEnabled);
+        viewModel.Settings.ScreenScraperPassword = "s3cret-pass";
+        Assert.True(viewModel.Rows.Single(row => row.Key == "scraper.connect").IsEnabled);
     }
 
     [AvaloniaFact]
