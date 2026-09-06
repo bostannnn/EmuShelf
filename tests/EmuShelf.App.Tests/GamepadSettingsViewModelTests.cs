@@ -191,6 +191,48 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void EverySection_RaisesItsOwnRailFlag_SoTheRailCanScrollToIt()
+    {
+        // The rail buttons bind Classes.selected to these flags, and the view finds the row to scroll
+        // into view by that class. A section whose flag is never raised looks unselected and the rail
+        // never moves to it — which is exactly what a missing notification for Display did.
+        var flags = new Dictionary<SettingsSection, string>
+        {
+            [SettingsSection.General] = nameof(GamepadSettingsViewModel.IsGeneralSection),
+            [SettingsSection.Emulators] = nameof(GamepadSettingsViewModel.IsEmulatorsSection),
+            [SettingsSection.RetroAchievements] = nameof(GamepadSettingsViewModel.IsRetroAchievementsSection),
+            [SettingsSection.ArtworkMetadata] = nameof(GamepadSettingsViewModel.IsArtworkMetadataSection),
+            [SettingsSection.Saves] = nameof(GamepadSettingsViewModel.IsSavesSection),
+            [SettingsSection.TexturePacks] = nameof(GamepadSettingsViewModel.IsTexturePacksSection),
+            [SettingsSection.Display] = nameof(GamepadSettingsViewModel.IsDisplaySection),
+            [SettingsSection.About] = nameof(GamepadSettingsViewModel.IsAboutSection),
+        };
+        using var viewModel = CreateGamepadSettings(
+            retroAchievements: CreateRetroAchievementsContext(),
+            screenScraper: CreateScreenScraperContext(),
+            cloudSaves: CreateCloudContext(),
+            texturePacks: CreateTextureContext());
+
+        foreach (var section in viewModel.Sections)
+        {
+            Assert.True(flags.ContainsKey(section), $"{section} has no rail flag in this test");
+            viewModel.SelectedSection = section == SettingsSection.General
+                ? SettingsSection.About
+                : SettingsSection.General;
+
+            var raised = new List<string>();
+            void Record(object? _, System.ComponentModel.PropertyChangedEventArgs e) => raised.Add(e.PropertyName ?? string.Empty);
+            viewModel.PropertyChanged += Record;
+            viewModel.SelectedSection = section;
+            viewModel.PropertyChanged -= Record;
+
+            Assert.Contains(flags[section], raised);
+            var flag = typeof(GamepadSettingsViewModel).GetProperty(flags[section])!.GetValue(viewModel);
+            Assert.True((bool)flag!, $"{flags[section]} is false while {section} is selected");
+        }
+    }
+
+    [AvaloniaFact]
     public void DisplaySection_CarriesTheTwoShelfSwitches_AndTheRailStatesThem()
     {
         var choices = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
@@ -204,12 +246,18 @@ public sealed class GamepadSettingsViewModelTests
         // Desktop offers neither, so there is no field for them to be in parity with.
         Assert.Empty(viewModel.CollectParityIds("display."));
 
+        // Silent when neither switch is on, and short enough for the rail's narrow status column.
         viewModel.CrtScreenEffect = false;
         viewModel.AmbientThemeFromArtwork = false;
-        Assert.Equal("CRT off · artwork colours off", viewModel.DisplayRailStatus);
+        Assert.Equal(string.Empty, viewModel.DisplayRailStatus);
         viewModel.Rows.Single(row => row.Key == "display.crt").SelectCommand.Execute(null);
         Assert.True(viewModel.CrtScreenEffect);
-        Assert.Equal("CRT on · artwork colours off", viewModel.DisplayRailStatus);
+        Assert.Equal("CRT on", viewModel.DisplayRailStatus);
+        viewModel.AmbientThemeFromArtwork = true;
+        Assert.Equal("Both on", viewModel.DisplayRailStatus);
+        Assert.All(
+            new[] { "CRT on", "Artwork colours on", "Both on" },
+            status => Assert.True(status.Length <= 18, $"'{status}' will be cut in the rail"));
         Assert.StartsWith("On · ", viewModel.Rows.Single(row => row.Key == "display.crt").Description);
     }
 

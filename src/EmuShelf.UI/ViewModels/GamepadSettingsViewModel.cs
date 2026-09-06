@@ -573,9 +573,16 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _savesRailStatus = "Google Drive";
     }
     public string TexturePacksRailStatus => string.Empty;
-    /// <summary>Both switches at a glance, so the rail answers "is the tube on?" without opening the page.</summary>
-    public string DisplayRailStatus =>
-        $"CRT {(CrtScreenEffect ? "on" : "off")} · artwork colours {(AmbientThemeFromArtwork ? "on" : "off")}";
+    /// <summary>What is switched on, so the rail answers "is the tube on?" without opening the page.
+    /// Silent when neither is, like the Artwork rail line — and short enough to survive the rail's
+    /// ~98px status column, which cut the longer wording mid-word.</summary>
+    public string DisplayRailStatus => (CrtScreenEffect, AmbientThemeFromArtwork) switch
+    {
+        (true, true) => "Both on",
+        (true, false) => "CRT on",
+        (false, true) => "Artwork colours on",
+        _ => string.Empty,
+    };
     public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
     public string AboutRailStatus => _settings.AppVersionDisplay;
 
@@ -1523,6 +1530,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         OnPropertyChanged(nameof(IsArtworkMetadataSection));
         OnPropertyChanged(nameof(IsSavesSection));
         OnPropertyChanged(nameof(IsTexturePacksSection));
+        OnPropertyChanged(nameof(IsDisplaySection));
         OnPropertyChanged(nameof(IsAboutSection));
         RebuildRows(_focusedRowBySection.GetValueOrDefault(value));
         OnPropertyChanged(nameof(StatusText));
