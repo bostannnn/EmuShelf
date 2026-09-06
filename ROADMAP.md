@@ -1781,6 +1781,12 @@ Phase 1 code acceptance: full solution build and tests green (1,666 passed, 1 sk
 headless acceptance render generated. Windows composition, movement feel and controller framing remain
 the hands-on review gate before Phase 2 begins.
 
+- [x] Shelf artwork performance follow-up (2026-09-06): pin visible GPU textures, prioritize fronts
+      around selection, and prepare owned RGBA buffers with two background workers. Preserve the previous
+      same-game face during replacement. Thor GameCube sweeps verified 2026-09-06; see
+      `docs/performance/shelf-2026-09-06/README.md` for measurements and comparison limits. GPU timing,
+      CRT/rotation coverage and long-session memory validation remain outstanding.
+
 ### Phase 2 — One gold-standard SNES vertical slice
 
 - [x] Select a redistribution-safe SNES shell (prefer CC0/CC BY downloadable GLB) and retain source URL,

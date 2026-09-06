@@ -2,19 +2,12 @@ using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
-using EmuShelf.App.Controls;
+using EmuShelf.App.Rendering;
 
 namespace EmuShelf.App.Tests;
 
-/// <summary>
-/// Locks the per-face artwork-upload guard that stands between a cover swap (a scrape) and the
-/// couch shelf blanking. The upload runs on the GL render thread; a bitmap the frame snapshot still
-/// references can be disposed on the UI thread the instant a scrape replaces the cover, and reading
-/// a disposed bitmap throws. That throw must be contained to the one face — not escape into the
-/// render loop, where the consecutive-failure counter would drop the CRT and every 3D model to flat
-/// covers for the session. This is the exact chain in the original bug report; the guard is
-/// exercised here without a GL context via <see cref="MediaShelf3DControl.TryBuildFaceTexture"/>.
-/// </summary>
+/// <summary>Disposed artwork must fail locally during background preparation, while empty
+/// and live faces produce the expected upload data without a GL context.</summary>
 public sealed class MediaShelf3DControlArtworkTests
 {
     private static WriteableBitmap CreateBitmap() =>
@@ -28,7 +21,7 @@ public sealed class MediaShelf3DControlArtworkTests
         // reads it.
         bitmap.Dispose();
 
-        var built = MediaShelf3DControl.TryBuildFaceTexture(bitmap, out var texture);
+        var built = ShelfTexturePreparation.TryBuildFaceTexture(bitmap, out var texture);
 
         // Contained: the face is skipped (keep the GPU's current texture) and nothing is thrown, so
         // the draw never counts a failure toward the flat-cover fallback.
@@ -39,7 +32,7 @@ public sealed class MediaShelf3DControlArtworkTests
     [AvaloniaFact]
     public void FaceTexture_FromNoArtwork_SucceedsWithNoTexture()
     {
-        var built = MediaShelf3DControl.TryBuildFaceTexture(null, out var texture);
+        var built = ShelfTexturePreparation.TryBuildFaceTexture(null, out var texture);
 
         Assert.True(built);
         Assert.Null(texture);
@@ -48,9 +41,9 @@ public sealed class MediaShelf3DControlArtworkTests
     [AvaloniaFact]
     public void FaceTexture_FromLiveBitmap_SucceedsWithATexture()
     {
-        var bitmap = CreateBitmap();
+        using var bitmap = CreateBitmap();
 
-        var built = MediaShelf3DControl.TryBuildFaceTexture(bitmap, out var texture);
+        var built = ShelfTexturePreparation.TryBuildFaceTexture(bitmap, out var texture);
 
         Assert.True(built);
         Assert.NotNull(texture);
