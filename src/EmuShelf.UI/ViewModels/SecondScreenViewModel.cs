@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Media.Imaging;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.App.Services;
@@ -56,6 +57,8 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 {
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStandby))]
+    [NotifyPropertyChangedFor(nameof(SpotlightLogoOpacity))]
+    [NotifyPropertyChangedFor(nameof(ShowRestingBranding))]
     public partial SecondScreenOverlayKind Overlay { get; set; }
 
     // --- Playing-elsewhere standby ---
@@ -69,14 +72,99 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsStandby))]
+    [NotifyPropertyChangedFor(nameof(SpotlightLogoOpacity))]
+    [NotifyPropertyChangedFor(nameof(ShowRestingBranding))]
     public partial bool IsGameRunning { get; set; }
 
     /// <summary>
-    /// Whether the dim standby wash is showing right now: a game is running and nothing sits above it. An
-    /// open overlay (achievements / the app drawer) takes precedence, so opening achievements over a running
-    /// game lifts the dim and closing it restores it — the requested behaviour.
+    /// Whether the dim standby wash is showing right now: a game is running, nothing sits above it, and the
+    /// panel has not been touched recently. An open overlay (achievements / the app drawer) takes precedence,
+    /// so opening achievements over a running game lifts the dim and closing it restores it — the requested
+    /// behaviour — and a touch does the same for <see cref="WakeDuration"/> (see <see cref="NoteInteraction"/>).
     /// </summary>
-    public bool IsStandby => IsGameRunning && Overlay == SecondScreenOverlayKind.None;
+    public bool IsStandby => IsGameRunning && Overlay == SecondScreenOverlayKind.None && !IsAwake;
+
+    /// <summary>
+    /// True while a recent touch is holding the dim off. Kept separate from <see cref="Overlay"/> because
+    /// waking is not a mode: nothing is open, the surface is simply lit long enough to be used, and it goes
+    /// back to sleep on its own.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsStandby))]
+    [NotifyPropertyChangedFor(nameof(SpotlightLogoOpacity))]
+    [NotifyPropertyChangedFor(nameof(ShowRestingBranding))]
+    public partial bool IsAwake { get; private set; }
+
+    /// <summary>How long a touch keeps the panel lit. Long enough to see the dock and press what you came
+    /// for — each press buys another window — and short enough that a panel left alone goes dark again
+    /// almost immediately (the Thor's Screen-2 is burn-in-prone).</summary>
+    internal TimeSpan WakeDuration { get; set; } = TimeSpan.FromSeconds(5);
+
+    private DispatcherTimer? _wakeTimer;
+
+    /// <summary>
+    /// A touch landed on the companion. While a game is running the surface is dimmed to near-black, so the
+    /// first touch has to be about SEEING what is there: the standby wash swallows it (it is hit-testable
+    /// only while dimmed) and this lifts the dim instead of activating whatever sits under the finger.
+    /// Every later touch — a dock slot, the trophy, a badge — passes through normally and lands here too,
+    /// which restarts the countdown, so the panel stays lit for as long as it is being used.
+    /// </summary>
+    public void NoteInteraction()
+    {
+        // Nothing to wake from while the library is being browsed: the surface is already at full
+        // brightness, and starting a timer per touch would just churn. Same while an overlay is up —
+        // achievements / the drawer own the dim for as long as they are open, and the touch that
+        // closes one must hand the wash straight back rather than buy five more seconds of light.
+        if (!IsGameRunning || Overlay != SecondScreenOverlayKind.None)
+            return;
+
+        IsAwake = true;
+        RestartWakeTimer();
+    }
+
+    /// <summary>Ends the wake window early (the game exited, or the countdown elapsed).</summary>
+    private void ReturnToStandby()
+    {
+        StopWakeTimer();
+        IsAwake = false;
+    }
+
+    private void RestartWakeTimer()
+    {
+        if (_wakeTimer is null)
+        {
+            _wakeTimer = new DispatcherTimer { Interval = WakeDuration };
+            _wakeTimer.Tick += (_, _) => ReturnToStandby();
+        }
+
+        // Restart, not merely start: each touch buys the full window again.
+        _wakeTimer.Stop();
+        _wakeTimer.Interval = WakeDuration;
+        _wakeTimer.Start();
+    }
+
+    private void StopWakeTimer() => _wakeTimer?.Stop();
+
+    partial void OnIsGameRunningChanged(bool value)
+    {
+        // The wake window only exists to lift the standby dim, so it dies with the game session — both
+        // when one starts (a stale window from the last one must not swallow the first dim) and when one
+        // ends (the surface is fully lit again; a pending tick would be a no-op that keeps a timer alive).
+        ReturnToStandby();
+    }
+
+    /// <summary>
+    /// Opacity for the RESTING spotlight logo, which is a different element from the faint one the
+    /// standby wash draws over it. Both are centred, but in different regions — the resting logo in the
+    /// spotlight row, the standby one over the whole surface including the dock bar — so with both
+    /// painted the two copies sat ~32px apart and the running game's logo appeared doubled on the
+    /// companion screen. The standby copy owns the look while a game runs, so the resting one fades out
+    /// under it (the Image's own opacity transition carries the crossfade).
+    /// </summary>
+    public double SpotlightLogoOpacity => IsStandby ? 0 : LogoOpacity;
+
+    /// <summary>The no-artwork wordmark, likewise suppressed while standby draws its own faint copy.</summary>
+    public bool ShowRestingBranding => ShowBranding && !IsStandby;
 
     // --- Resting spotlight (fan art + logo) ---
 
@@ -90,9 +178,11 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public partial double FanartOpacity { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SpotlightLogoOpacity))]
     public partial double LogoOpacity { get; set; }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowRestingBranding))]
     public partial bool ShowBranding { get; set; } = true;
 
     public bool HasFanart => FanartImage is not null;
@@ -407,6 +497,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     partial void OnOverlayChanged(SecondScreenOverlayKind value)
     {
+        // An overlay taking over ends any wake window in flight, so closing it restores the dim at
+        // once instead of whenever the touch that opened it happens to expire.
+        if (value != SecondScreenOverlayKind.None)
+            ReturnToStandby();
         OnPropertyChanged(nameof(IsDrawerOpen));
         OnPropertyChanged(nameof(IsAchievementsOpen));
         OnPropertyChanged(nameof(IsAchievementsGridRealized));

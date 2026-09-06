@@ -125,10 +125,17 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public static IReadOnlyList<GameLaunchScreen> LaunchScreenOrder { get; } =
         [GameLaunchScreen.Ask, GameLaunchScreen.BuiltIn, GameLaunchScreen.External];
 
+    /// <summary>
+    /// The only hardware this reaches is a handheld with two of its own panels (the Thor), never a
+    /// monitor plugged into a PC — the whole feature is gated behind <see cref="IExternalDisplayProbe"/>,
+    /// which only the Android head implements. So the labels name the device's two screens rather than
+    /// saying "external", which reads as a TV that is not there. The enum member stays
+    /// <see cref="GameLaunchScreen.External"/>: it is a stored value.
+    /// </summary>
     public static string LaunchScreenLabel(GameLaunchScreen screen) => screen switch
     {
-        GameLaunchScreen.BuiltIn => "Built-in screen",
-        GameLaunchScreen.External => "External screen",
+        GameLaunchScreen.BuiltIn => "Main screen",
+        GameLaunchScreen.External => "Second screen",
         _ => "Ask each time",
     };
 

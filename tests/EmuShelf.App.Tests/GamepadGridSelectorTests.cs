@@ -544,9 +544,15 @@ public class GamepadGridSelectorTests
     // row alone: the last row settled ~78px above the line every other row rests on, and a library
     // small enough to fit the viewport scrolled anyway and clipped the tops of its only row's covers.
     [AvaloniaTheory]
-    [InlineData(40)]
-    [InlineData(3)]
-    public async Task GamepadGrid_EdgeInsets_StayOutOfEveryRowsBand(int gameCount)
+    // Short viewport, many rows: the couch panel geometry (the Thor) where the last row's centring
+    // target falls below the scroller's max offset and a skewed band height shows up.
+    [InlineData(40, 460)]
+    // One row, in a window TALL ENOUGH TO HOLD IT (a row band plus both edge insets is ~614px, so the
+    // viewport has to clear that): the case where the grid must not scroll at all. The height is part
+    // of the case, not scenery — at 460 the single row no longer fits, and "did it scroll?" stops
+    // being a question with an answer.
+    [InlineData(3, 800)]
+    public async Task GamepadGrid_EdgeInsets_StayOutOfEveryRowsBand(int gameCount, double windowHeight)
     {
         var system = KnownSystems.All.Single(candidate => candidate.Id == "playstation2");
         var viewModel = new MainViewModel();
@@ -569,10 +575,7 @@ public class GamepadGridSelectorTests
         viewModel.IsLibraryEmpty = false;
         viewModel.FocusedGame = games[0];
 
-        // Short viewport on purpose: this is the couch panel geometry (the Thor) where the last row's
-        // centring target falls below the ScrollViewer's max offset and is therefore NOT clamped, so a
-        // skewed band height shows up instead of being hidden by the clamp.
-        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = 460 };
+        var window = new MainWindow { DataContext = viewModel, Width = 1280, Height = windowHeight };
         window.Show();
         try
         {
@@ -597,6 +600,11 @@ public class GamepadGridSelectorTests
             {
                 // One row that fits: nothing to scroll, and in particular the covers must not be
                 // pushed up under the rail by an inset the row does not own.
+                Assert.True(
+                    scroller.Extent.Height <= scroller.Viewport.Height + 1,
+                    $"the single row no longer fits a {windowHeight}px window "
+                    + $"(extent {scroller.Extent.Height}, viewport {scroller.Viewport.Height}) — "
+                    + "raise the InlineData height so this case still tests 'does not scroll'");
                 Assert.Equal(0, scroller.Offset.Y, 1);
                 return;
             }

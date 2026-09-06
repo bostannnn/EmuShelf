@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="EmuShelf.App.Controls.ThorDeviceGlyph"
+             x:CompileBindings="True">
+    <!-- The AYN Thor, open, seen from the front: a DS-style clamshell. Lid and base are the SAME width;
+         the 6" 16:9 screen fills the lid, and the 3.92" near-square (31:27) touch screen sits in the
+         middle of the base between the controls. The controls are asymmetric, and that asymmetry is what
+         makes the glyph read as *this* device rather than a generic DS: LEFT column is stick ABOVE
+         D-pad, RIGHT column is face buttons ABOVE stick. Under the bottom screen is a chin with two
+         speaker grilles and the raised AYN button; the stacked shoulders peek out behind the hinge.
+
+         Everything is primitives on a 120x142 canvas inside a Viewbox, so the card sizes it by Width
+         and every fill follows the palette (see EmuShelfTheme.axaml). Which screen is "on" is a class
+         flipped from code-behind (IsTopLit / IsBottomLit): the lit panel takes the accent with a soft
+         accent halo behind it, the dark one is a recessed well. -->
+    <UserControl.Styles>
+        <Style Selector="Rectangle.shell">
+            <Setter Property="Fill" Value="{DynamicResource EmuCoverWellBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource EmuTextSecondaryBrush}" />
+            <Setter Property="StrokeThickness" Value="2.5" />
+        </Style>
+        <Style Selector="Rectangle.screen">
+            <Setter Property="Fill" Value="{DynamicResource EmuSegmentBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource EmuTextTertiaryBrush}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+        </Style>
+        <Style Selector="Rectangle.screen.lit">
+            <Setter Property="Fill" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Rectangle.halo">
+            <Setter Property="Fill" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Opacity" Value="0" />
+        </Style>
+        <Style Selector="Rectangle.halo.lit">
+            <Setter Property="Opacity" Value="0.28" />
+        </Style>
+        <Style Selector="Rectangle.control, Ellipse.control">
+            <Setter Property="Fill" Value="{DynamicResource EmuTextTertiaryBrush}" />
+        </Style>
+        <Style Selector="Ellipse.stick">
+            <Setter Property="Fill" Value="{DynamicResource EmuSegmentBrush}" />
+            <Setter Property="Stroke" Value="{DynamicResource EmuTextTertiaryBrush}" />
+            <Setter Property="StrokeThickness" Value="2.5" />
+        </Style>
+    </UserControl.Styles>
+    <Viewbox Stretch="Uniform">
+        <Canvas Width="120" Height="142">
+            <!-- Stacked shoulders, on the base's back edge behind the hinge. -->
+            <Rectangle Classes="control" Canvas.Left="4" Canvas.Top="66" Width="22" Height="8" RadiusX="3" RadiusY="3" />
+            <Rectangle Classes="control" Canvas.Left="94" Canvas.Top="66" Width="22" Height="8" RadiusX="3" RadiusY="3" />
+
+            <!-- Lid with the 6" 16:9 main screen. -->
+            <Rectangle x:Name="TopHalo" Classes="halo" Canvas.Left="3" Canvas.Top="1" Width="114" Height="68" RadiusX="10" RadiusY="10" />
+            <Rectangle Classes="shell" Canvas.Left="0" Canvas.Top="0" Width="120" Height="70" RadiusX="8" RadiusY="8" />
+            <Rectangle x:Name="TopScreen" Classes="screen" Canvas.Left="7" Canvas.Top="5" Width="106" Height="60" RadiusX="3" RadiusY="3" />
+
+            <!-- Hinge: a full-width barrel between the halves. -->
+            <Rectangle Classes="control" Canvas.Left="10" Canvas.Top="68" Width="100" Height="9" RadiusX="4" RadiusY="4" />
+
+            <!-- Base with the 3.92" (31:27) touch screen between the controls. -->
+            <Rectangle x:Name="BottomHalo" Classes="halo" Canvas.Left="3" Canvas.Top="77" Width="114" Height="64" RadiusX="10" RadiusY="10" />
+            <Rectangle Classes="shell" Canvas.Left="0" Canvas.Top="76" Width="120" Height="66" RadiusX="8" RadiusY="8" />
+            <Rectangle x:Name="BottomScreen" Classes="screen" Canvas.Left="31" Canvas.Top="81" Width="58" Height="50" RadiusX="3" RadiusY="3" />
+
+            <!-- Chin under the bottom screen: two speaker grilles and the raised AYN button. -->
+            <Rectangle Classes="control" Canvas.Left="36" Canvas.Top="135" Width="10" Height="3" RadiusX="1.5" RadiusY="1.5" />
+            <Rectangle Classes="control" Canvas.Left="74" Canvas.Top="135" Width="10" Height="3" RadiusX="1.5" RadiusY="1.5" />
+            <Rectangle Classes="control" Canvas.Left="53" Canvas.Top="134" Width="14" Height="5" RadiusX="2.5" RadiusY="2.5" />
+
+            <!-- Left column: stick above the D-pad. -->
+            <Ellipse Classes="stick" Canvas.Left="8" Canvas.Top="83" Width="17" Height="17" />
+            <Rectangle Classes="control" Canvas.Left="8" Canvas.Top="113.5" Width="17" Height="5.5" RadiusX="1.5" RadiusY="1.5" />
+            <Rectangle Classes="control" Canvas.Left="13.75" Canvas.Top="107.75" Width="5.5" Height="17" RadiusX="1.5" RadiusY="1.5" />
+
+            <!-- Right column: face buttons above the stick. -->
+            <Ellipse Classes="control" Canvas.Left="100" Canvas.Top="82" Width="6" Height="6" />
+            <Ellipse Classes="control" Canvas.Left="93" Canvas.Top="88.5" Width="6" Height="6" />
+            <Ellipse Classes="control" Canvas.Left="107" Canvas.Top="88.5" Width="6" Height="6" />
+            <Ellipse Classes="control" Canvas.Left="100" Canvas.Top="95" Width="6" Height="6" />
+            <Ellipse Classes="stick" Canvas.Left="95" Canvas.Top="108" Width="17" Height="17" />
+        </Canvas>
+    </Viewbox>
+</UserControl>

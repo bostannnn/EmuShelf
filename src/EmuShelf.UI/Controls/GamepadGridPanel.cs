@@ -28,10 +28,10 @@ namespace EmuShelf.App.Controls;
 /// measurement and the estimated-extent drift the old ListBox reveal had to work around
 /// (DECISIONS 2026-08-05): any row's centre offset can be computed whether or not it is realized.
 ///
-/// Layout constants mirror the old row template: rows carried Margin 0,10,0,18 and Padding 40,0,40,0
-/// with 28 px between tiles, and the tile's label strip under the cover is 58 px
-/// (its Grid's "Auto,58"). Pixel output is intended to be identical; the visual snapshot tests
-/// assert it.
+/// Layout constants started as a mirror of the old row template (Margin 0,10,0,18, Padding 40,0,40,0,
+/// 28 px between tiles); the gutters have since been widened to give the focused tile's lift room, so
+/// the numbers below — not that template — are the source of truth. The tile's label strip under the
+/// cover is 58 px (its Grid's "Auto,58").
 /// </remarks>
 public sealed class GamepadGridPanel : Panel
 {
@@ -39,23 +39,30 @@ public sealed class GamepadGridPanel : Panel
     // justified cover width against the gutter and inter-cover spacing, so an independent copy here
     // would silently desync arrange-time layout from pack-time widths the moment either is tuned.
     private const double SideGutter = MainViewModel.GamepadGridSideGutter;
-    private const double TileSpacing = MainViewModel.CoverColumnSpacing;
+    private const double TileSpacing = MainViewModel.GamepadCoverColumnSpacing;
     private const double TileLabelHeight = GamepadGridTile.LabelStripHeight;
-    // The vertical row margins are owned here (the old row template that carried them is gone).
-    private const double RowTopMargin = 10;
-    private const double RowBottomMargin = 18;
+    // The vertical row margins are owned here (the old row template that carried them is gone). They
+    // are the couch counterpart of the column gutter: the focused tile lifts to 1.09 and its shadow
+    // spills past the cover, so a row needs clear air above and below it or the selection reads as
+    // pressed between its neighbours. The bottom side carries more because the label strip sits there.
+    private const double RowTopMargin = 20;
+    private const double RowBottomMargin = 32;
 
     // Blank content above the first row and below the last, INSIDE the scrollable extent, so the
-    // focused tile's shadow and light pool (which overflow the tile by ~20px once the 1.09 focus
-    // scale is applied) are not hard-clipped by the scroll viewport on the edge rows. The host
-    // ScrollViewer's top margin is reduced by EdgeInsetTop, so the resting pixel layout is unchanged.
-    // The bottom inset additionally budgets for the overlay dock that floats over the grid's lower
-    // edge: it is what lets the last row scroll clear of the dock rather than resting under it.
+    // focused tile's shadow (which overflows the tile once the 1.09 focus scale is applied) is not
+    // hard-clipped by the scroll viewport on the edge rows. The host ScrollViewer's top margin was
+    // cut by the ORIGINAL 24 to keep the resting layout where it was; the later rise to 48 was not
+    // compensated, so the resting first row now sits 24 px lower than it did — deliberately, that is
+    // the headroom the taller lift needed. The bottom inset additionally budgets for the overlay dock
+    // that floats over the grid's lower edge: it is what lets the last row scroll clear of the dock
+    // rather than resting under it.
     //
     // Both are extent-only (see _extentHeight). They are deliberately NOT part of any row's band:
     // the reveal centres a row on rowTop + rowHeight / 2, so an inset folded into the last row's
     // height would push that one row off the line every other row rests on.
-    private const double EdgeInsetTop = 24;
+    // Raised from 24 when the row gutters were widened: the focused tile's 1.09 lift plus its drop shadow
+    // reach ~40px above the cover, and at 24 the scroller shaved the top row's crown.
+    private const double EdgeInsetTop = 48;
     private const double EdgeInsetBottom = 156;
 
     /// <summary>Rows realized beyond the viewport on each side, so a glide re-binds tiles just before they show.</summary>

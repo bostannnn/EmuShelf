@@ -30,17 +30,25 @@
                  row shares one height, so the row's covers line up top and bottom. -->
             <Panel Grid.Row="0" Width="{Binding CoverWidth}" Height="{Binding CoverHeight}"
                    Classes="gamepad-cover-stack" ClipToBounds="False">
-                <!-- Controller focus: NO ring — light does the selecting. This invisible box is only
-                     the shadow caster: on .focused (styles) it gains a deep neutral drop shadow while
-                     the cover stack scales up, and the unfocused tiles' dimming supplies the brightness
-                     contrast. A small accent light pool under the tile (gamepad-focus-pool, below)
-                     grounds the lifted cover. Rings were tried twice — the solid accent pad read as a
-                     sticker frame, the thin white ring + coloured glow fought the cover art's own
-                     colours ("cover lights"). Must stay first/bottom-most so the shadow projects from
-                     UNDER the cover. Shown by opacity on .focused; no transition, tracks the d-pad. -->
+                <!-- Controller focus: NO ring and NO light. This invisible box is only the shadow caster:
+                     on .focused (styles) it gains a deep neutral drop shadow while the cover stack scales
+                     up. Every treatment that put colour ON or AROUND the artwork has been rejected on
+                     device — the solid accent pad ("a sticker frame"), the thin white ring + coloured glow
+                     ("cover lights"), and a soft accent halo behind the cover ("terrible") — so the marker
+                     lives OUTSIDE the cover instead (the bar below), and the artwork is left alone.
+                     Must stay first/bottom-most so the shadow projects from UNDER the cover. Shown by
+                     opacity on .focused; no transition, tracks the d-pad. -->
                 <Border Classes="gamepad-focus-tile-ring" IsHitTestVisible="False"
                         Margin="-7" CornerRadius="19"
                         Background="Transparent" />
+                <!-- The selection marker: a crisp accent bar in the gap between the cover and its title,
+                     never touching the art. Negative bottom margin so it hangs below the cover stack into
+                     the label strip's 10px lead-in; it is inside the stack (not the label row) so the 1.09
+                     focus zoom scales it with the tile and no text ever moves. -->
+                <Border Classes="gamepad-focus-bar" IsHitTestVisible="False"
+                        Height="5" CornerRadius="3" VerticalAlignment="Bottom"
+                        Margin="26,0,26,-10"
+                        Background="{DynamicResource EmuAccentBrush}" />
                 <!-- Opaque well behind the cover, sized to the cover. It is never dimmed, so when an
                      unavailable cover drops to 58% opacity its centre reveals this dark well rather
                      than the lit stage behind the tile. -->
@@ -142,20 +150,6 @@
                 <Border Classes="gamepad-hover-ring" IsHitTestVisible="False"
                         CornerRadius="12" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
                         BorderThickness="2" />
-                <!-- The focused tile's accent light pool: a soft radial puddle spilling from under the
-                     cover's bottom edge onto the stage, in the theme accent. The OpacityMask is fine
-                     here — the element is ~250x26 on ONE tile, not a full-screen layer. -->
-                <Border Classes="gamepad-focus-pool" IsHitTestVisible="False"
-                        Height="26" VerticalAlignment="Bottom" Margin="18,0,18,-26"
-                        Background="{DynamicResource EmuAccentBrush}">
-                    <Border.OpacityMask>
-                        <RadialGradientBrush Center="50%,0%" GradientOrigin="50%,0%"
-                                             RadiusX="55%" RadiusY="100%">
-                            <GradientStop Offset="0" Color="#FFFFFFFF" />
-                            <GradientStop Offset="1" Color="#00FFFFFF" />
-                        </RadialGradientBrush>
-                    </Border.OpacityMask>
-                </Border>
             </Panel>
             <TextBlock Grid.Row="1" Classes="gamepad-tile-title" Text="{Binding DisplayTitle}"
                        Margin="2,10,2,0" TextWrapping="Wrap" MaxLines="2"

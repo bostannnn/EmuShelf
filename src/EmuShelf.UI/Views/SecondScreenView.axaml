@@ -39,8 +39,12 @@
          running game's logo faintly visible — dark and easy on the panel (the Thor's Screen-2 is
          burn-in-prone) rather than the full-brightness browse spotlight. Mounted always and driven by an
          .on class (bound to IsStandby) so it dissolves in when a game starts and out when an overlay
-         (achievements / drawer) opens over it. Non-hit-test so it never eats a tap on the
-         dock bar below it. -->
+         (achievements / drawer) opens over it, or when a touch wakes it (SecondScreenViewModel.NoteInteraction).
+
+         It IS hit-testable while it is up, and only then: dimmed to near-black you cannot see what you are
+         about to press, so the first touch has to buy you a look at the panel rather than launch the dock
+         app that happens to be under your finger. Once the wash is gone it stops intercepting and every
+         touch works normally again. -->
     <Style Selector="Border.ss-standby">
       <Setter Property="Background" Value="#F2000000" />
       <Setter Property="Opacity" Value="0" />
@@ -52,6 +56,20 @@
       </Setter>
     </Style>
     <Style Selector="Border.ss-standby.on">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <!-- The mark that rides over the wash (see the bottom of this file). Same class-driven fade on the
+         same curve, so wash and mark arrive and leave together. -->
+    <Style Selector="Panel.ss-standby-mark">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.35" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.ss-standby-mark.on">
       <Setter Property="Opacity" Value="1" />
     </Style>
 
@@ -162,10 +180,13 @@
       <!-- Scrim so the logo and dock read over busy art -->
       <Border Background="#40000000" IsVisible="{Binding HasFanart}" />
 
-      <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink) -->
+      <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink).
+           SpotlightLogoOpacity, not LogoOpacity: it drops to zero while the standby wash is up, because
+           that wash paints its own faint copy of this logo over the whole surface and the two centres
+           differ by half the dock bar — which is what made the logo look doubled on the companion. -->
       <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
              HorizontalAlignment="Center" VerticalAlignment="Center"
-             Opacity="{Binding LogoOpacity}" IsVisible="{Binding HasWheel}">
+             Opacity="{Binding SpotlightLogoOpacity}" IsVisible="{Binding HasWheel}">
         <Image.Transitions>
           <Transitions>
             <DoubleTransition Property="Opacity" Duration="0:0:0.30" Easing="CubicEaseOut" />
@@ -173,10 +194,11 @@
         </Image.Transitions>
       </Image>
 
-      <!-- Fallback when the selected game has no art (or nothing is selected) -->
+      <!-- Fallback when the selected game has no art (or nothing is selected). Hidden under standby for
+           the same reason as the logo above — the wash draws its own wordmark. -->
       <TextBlock Text="EmuShelf" FontSize="44" FontWeight="Bold" Opacity="0.22"
                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                 IsVisible="{Binding ShowBranding}"
+                 IsVisible="{Binding ShowRestingBranding}"
                  Foreground="{DynamicResource EmuTextPrimaryBrush}" />
 
       <!-- App drawer overlay: dim scrim (tap outside to dismiss) + a floating rounded sheet -->
@@ -422,26 +444,30 @@
     </Border>
 
     <!-- Dim standby wash for "a game is playing on the other screen" (see the style above). Spans BOTH rows
-         so the whole surface — spotlight and the dock bar below it — goes dark together, with the running
-         game's logo faintly visible. Non-hit-test, so the trophy/dock underneath stay tappable: tapping the
-         trophy opens achievements, which lifts the dim (IsStandby then false). IsStandby is false whenever
-         an overlay is open, so the wash always reads clean. -->
-    <Border Grid.Row="0" Grid.RowSpan="2" Classes="ss-standby" Classes.on="{Binding IsStandby}">
-      <!-- IsHitTestVisible=False on the wash Border alone doesn't stop its children being hit, so the whole
-           subtree is marked non-hit-test — otherwise the centered logo could intercept a tap aimed at the
-           trophy/dock beneath it on some panel sizes. -->
-      <Panel IsHitTestVisible="False">
-        <!-- The running game's logo, faintly, as the "slightly visible logo" over the black. -->
-        <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
-               Opacity="0.16" IsVisible="{Binding HasWheel}" IsHitTestVisible="False"
-               HorizontalAlignment="Center" VerticalAlignment="Center" />
-        <!-- No game logo: fall back to the app wordmark, equally faint. -->
-        <TextBlock Text="EmuShelf" FontSize="40" FontWeight="Bold" Opacity="0.14"
-                   IsVisible="{Binding !HasWheel}" IsHitTestVisible="False"
-                   HorizontalAlignment="Center" VerticalAlignment="Center"
-                   Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-      </Panel>
-    </Border>
+         so the whole surface — spotlight and the dock bar below it — goes dark together. While it is up it
+         swallows the touch that wakes it; once it is gone the trophy/dock are tappable as usual (tapping the
+         trophy opens achievements, which lifts the dim on its own). IsStandby is false whenever an overlay
+         is open, so the wash always reads clean. Childless: its Background is all it is. -->
+    <Border Grid.Row="0" Grid.RowSpan="2" Classes="ss-standby" Classes.on="{Binding IsStandby}" />
+
+    <!-- The faint "what is playing" mark, over the wash. It lives in ROW 0 — the spotlight row — not in
+         the wash that spans both rows, so it is centred on exactly the same rect as the resting logo it
+         stands in for. That is the whole point: the two copies used to be centred half a dock bar apart,
+         which made the logo look doubled on the companion, and even after the resting copy was faded out
+         under standby the two still crossed over visibly for ~300ms on every dim and every tap-to-wake.
+         Landing them on the same centre makes that crossfade invisible.
+         Non-hit-test, so the wake tap falls through to the wash below it. -->
+    <Panel Grid.Row="0" Classes="ss-standby-mark" Classes.on="{Binding IsStandby}" IsHitTestVisible="False">
+      <!-- The running game's logo, faintly, as the "slightly visible logo" over the black. -->
+      <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
+             Opacity="0.16" IsVisible="{Binding HasWheel}"
+             HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <!-- No game logo: fall back to the app wordmark, equally faint. -->
+      <TextBlock Text="EmuShelf" FontSize="40" FontWeight="Bold" Opacity="0.14"
+                 IsVisible="{Binding !HasWheel}"
+                 HorizontalAlignment="Center" VerticalAlignment="Center"
+                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+    </Panel>
 
   </Grid>
 </UserControl>
