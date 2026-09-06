@@ -1,4 +1,6 @@
+using System;
 using Android.Views;
+using EmuShelf.App.Services;
 using EmuShelf.Core.Input;
 
 namespace EmuShelf.App.Android.Services;
@@ -35,6 +37,17 @@ public sealed class AndroidGamepadReader : IGamepadReader, IPushGamepadSource
     /// thread (the main/UI thread), where the loop also runs, so no marshalling is needed.
     /// </summary>
     public event Action? InputReceived;
+
+    /// <summary>
+    /// Where a D-pad/stick direction goes while no shell poll loop exists to read this reader — the
+    /// pre-boot setup page. The Thor's D-pad is a hat axis, not key events, so without this the page's
+    /// A/B/START worked and nothing moved. Edge-triggered (one action per press), like a key-down. The
+    /// head points it at the same dispatcher the key-event bridge uses; once the shell is up the
+    /// App-level onboarding hook is null, so this becomes a no-op and the poll loop owns the pad.
+    /// </summary>
+    public static Func<GamepadAction, bool>? PreShellNavigate { get; set; }
+
+    private GamepadAction? _lastPreShellDirection;
 
     private float _leftX;
     private float _leftY;
@@ -89,6 +102,29 @@ public sealed class AndroidGamepadReader : IGamepadReader, IPushGamepadSource
         // Wake the poll loop (it stops itself when the pad is at rest). A release event lands here too —
         // its axes are zero — so the loop gets one more tick to process the release, then quiets again.
         InputReceived?.Invoke();
+
+        DispatchPreShellNavigation();
+    }
+
+    private void DispatchPreShellNavigation()
+    {
+        if (PreShellNavigate is not { } navigate)
+            return;
+
+        // Hat first, then the left stick past half travel. Vertical wins over horizontal because the
+        // setup page is a vertical list; Left/Right are still delivered for choice rows.
+        GamepadAction? direction =
+            _dpad.HasFlag(GamepadButtons.DpadUp) || _leftY < -0.5f ? GamepadAction.NavigateUp
+            : _dpad.HasFlag(GamepadButtons.DpadDown) || _leftY > 0.5f ? GamepadAction.NavigateDown
+            : _dpad.HasFlag(GamepadButtons.DpadLeft) || _leftX < -0.5f ? GamepadAction.NavigateLeft
+            : _dpad.HasFlag(GamepadButtons.DpadRight) || _leftX > 0.5f ? GamepadAction.NavigateRight
+            : null;
+
+        if (direction == _lastPreShellDirection)
+            return;
+        _lastPreShellDirection = direction;
+        if (direction is { } action)
+            navigate(action);
     }
 
     // IsConnected must be true or the shared GamepadNavigationController drops the whole reading; when no pad

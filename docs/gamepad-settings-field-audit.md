@@ -60,3 +60,11 @@ Gamepad controls. A real-window test compares Desktop's effectively visible fiel
 complete virtualized controller projection for every section, while separately checking that each
 realized controller row publishes its matching id. Read-only inventory/status rows and external
 links are excluded because they are not settings mutations.
+
+2026-09-05 addendum: a Desktop field may be reachable on the controller through a row's **Y action**
+rather than a row of its own — Disconnect on the Google Drive / RetroAchievements / ScreenScraper account
+rows, the cloud-inclusive export on the Export saves row, "Use detected folder" on a texture folder row.
+The row spec records that field as its `SecondaryKey`, and `GamepadSettingsRowSpec.ParityIdsOf` yields it
+next to the row's own key. Saves and Texture Packs list one summary row per platform and project a
+platform's fields only while it is open, so the parity test compares Desktop's ids against
+`GamepadSettingsViewModel.CollectParityIds(prefix)`, which builds the section with every platform open.

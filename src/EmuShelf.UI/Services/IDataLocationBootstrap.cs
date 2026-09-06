@@ -70,6 +70,18 @@ public interface IDataLocationBootstrap
     Task<DataLocationPickResult> UseRecommendedFolderAsync();
 
     /// <summary>
+    /// A data folder from a previous install that is still on the device — <c>Data/library.db</c> exists
+    /// under it — found by looking in the usual places (the recommended folder, every mounted volume's
+    /// root and first-level folders). Null when nothing is found or the grant is not held yet. Lets a
+    /// reinstall offer "use your existing library" instead of a fresh pick.
+    /// </summary>
+    string? FindExistingDataFolder() => null;
+
+    /// <summary>Adopts a folder returned by <see cref="FindExistingDataFolder"/>: validates it is writable and persists the pointer.</summary>
+    Task<DataLocationPickResult> UseExistingFolderAsync(string baseDirectory) =>
+        Task.FromResult(DataLocationPickResult.Failed("Existing data folders cannot be adopted here."));
+
+    /// <summary>
     /// Runs the system folder picker, validates the choice (readable real path, not an off-limits location),
     /// creates the <c>EmuShelf</c> subfolder, persists the pointer, and returns the resolved base directory.
     /// For users who want their data somewhere other than <see cref="RecommendedBaseDirectory"/>.

@@ -127,6 +127,18 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
 
     public bool HasDetectedDirectory => !string.IsNullOrWhiteSpace(DetectedDirectory);
 
+    /// <summary>True once detection has run at least once, so "nothing detected" can be told apart from "not looked yet".</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NeedsFolder))]
+    public partial bool HasProbed { get; set; }
+
+    /// <summary>
+    /// Detection ran and found nothing, and no folder was picked by hand: the emulator keeps its saves
+    /// somewhere EmuShelf cannot derive (Android melonDS/PPSSPP/Azahar), so nothing syncs for this system
+    /// until the user picks the folder. The one state a settings page must not paper over.
+    /// </summary>
+    public bool NeedsFolder => HasProbed && !HasDetectedDirectory && !HasDetectionError && NormalizedOverride is null;
+
     public bool HasCompatibilityWarning => !string.IsNullOrWhiteSpace(CompatibilityWarning);
 
     public bool HasOptionalContentSummary => !string.IsNullOrWhiteSpace(OptionalContentSummary);
@@ -184,6 +196,10 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
         CompatibilityWarning = null;
         OptionalContentSummary = null;
         DetectionErrorText = null;
+        // Detection has to run again for the newly chosen emulator, so this row is back to "not looked
+        // yet". Without this NeedsFolder would read the cleared state as "looked, found nothing" and the
+        // settings row would announce a missing save folder the user has not actually been asked about.
+        HasProbed = false;
     }
 
     /// <summary>Re-reads the concrete directory this platform resolves to on this machine.</summary>
@@ -214,6 +230,11 @@ public partial class CloudSavePlatformRowViewModel : ViewModelBase
             CompatibilityWarning = null;
             OptionalContentSummary = null;
             DetectionErrorText = $"Cannot sync: {ex.Message}";
+        }
+        finally
+        {
+            HasProbed = true;
+            OnPropertyChanged(nameof(NeedsFolder));
         }
     }
 

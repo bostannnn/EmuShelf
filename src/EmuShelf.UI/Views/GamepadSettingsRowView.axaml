@@ -1,0 +1,132 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.GamepadSettingsRowView"
+             x:DataType="vm:GamepadSettingsRowViewModel"
+             x:Name="RowRoot">
+    <!-- ONE controller-sized settings row, shared by every host that lists GamepadSettingsRowViewModels:
+         the couch Settings overlay and both phases of the Android setup wizard. Extracted from the shell's
+         inline template so the wizard cannot drift into a second row design. The host passes whether a
+         controller (not the pointer) is driving, which suppresses the hover ring. -->
+    <Panel>
+        <Button Classes="gamepad-settings-row"
+                Classes.focused="{Binding IsFocused}"
+                Classes.destructive="{Binding IsDestructive}"
+                Classes.grouped="{Binding IsGrouped}"
+                Classes.compact="{Binding IsCompact}"
+                Classes.summary="{Binding IsSummary}"
+                Classes.info="{Binding IsInformation}"
+                Classes.controller-input="{Binding #RowRoot.IsControllerInputActive}"
+                IsVisible="{Binding IsNormalRow}"
+                IsEnabled="{Binding IsEnabled}"
+                HorizontalAlignment="Stretch"
+                AutomationProperties.AutomationId="{Binding ParityId}"
+                Command="{Binding SelectCommand}">
+        <!-- One row, one trailing control. A row ends in exactly one of four things: a chevron (A does
+             what the label says; red on destructive rows), a switch with no caption (the description opens
+             with the state), ‹ value › for a choice, or a plain value for a read-only row. Platform rows
+             lead with their artwork; every other row has no leading glyph. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+            <Border Grid.Column="0" Width="42" Height="42" CornerRadius="8"
+                    VerticalAlignment="Center"
+                    IsVisible="{Binding HasPlatformIcon}"
+                    Background="{DynamicResource EmuPlaceholderMedallionBrush}">
+                <Image Width="30" Height="30"
+                       Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                       RenderOptions.BitmapInterpolationMode="None" />
+            </Border>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                <TextBlock Text="{Binding Label}" FontSize="17"
+                           FontWeight="SemiBold" TextWrapping="Wrap"
+                           MaxLines="2" TextTrimming="CharacterEllipsis" />
+                <!-- Compact rows keep the description to one state-first line; a row reporting a
+                     problem (emulator missing, no save folder, Shizuku grant absent) paints it in
+                     the warning colour so it reads at a glance. -->
+                <TextBlock Text="{Binding Description}" FontSize="14"
+                           IsVisible="{Binding HasDescription}"
+                           Classes.warning="{Binding IsWarning}"
+                           TextWrapping="Wrap" MaxLines="{Binding DescriptionMaxLines}"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+
+            <!-- Platform summary: "emulator · N games" / "synced 21 Aug" on the right and a chevron
+                 that turns when the platform's rows are open beneath it. -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="14"
+                        IsVisible="{Binding IsSummary}" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Value}" FontSize="14" MaxWidth="420"
+                           Classes.warning="{Binding IsWarning}"
+                           VerticalAlignment="Center" TextAlignment="Right"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <TextBlock Classes="gamepad-settings-chevron" Text="{Binding SummaryChevron}" />
+            </StackPanel>
+
+            <Border Grid.Column="2" Classes="gamepad-settings-switch"
+                    Classes.on="{Binding IsToggleOn}"
+                    IsVisible="{Binding IsToggle}"
+                    VerticalAlignment="Center">
+                <Panel>
+                    <Border Width="32" Height="32" Margin="4"
+                            IsVisible="{Binding !IsToggleOn}"
+                            HorizontalAlignment="Left" CornerRadius="16"
+                            Background="{DynamicResource EmuTextTertiaryBrush}" />
+                    <Border Width="32" Height="32" Margin="4"
+                            IsVisible="{Binding IsToggleOn}"
+                            HorizontalAlignment="Right" CornerRadius="16"
+                            Background="{DynamicResource EmuAccentBrush}" />
+                </Panel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="gamepad-settings-affordance"
+                    IsVisible="{Binding IsChoice}"
+                    VerticalAlignment="Center" MinWidth="250">
+                <!-- Both arrows are real controls: Left/Right select adjacent
+                     values, while A opens the complete labelled choice list. -->
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                    <TextBlock Grid.Column="0" Text="‹" FontSize="24" VerticalAlignment="Center"
+                               Foreground="{DynamicResource EmuAccentBrush}" />
+                    <TextBlock Grid.Column="1" Text="{Binding Value}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center" FontWeight="SemiBold"
+                               TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Text="›" FontSize="24" VerticalAlignment="Center"
+                               Foreground="{DynamicResource EmuAccentBrush}" />
+                </Grid>
+            </Border>
+
+            <!-- Editable value (text, secret, folder, file): the value, then the chevron. -->
+            <Grid Grid.Column="2" IsVisible="{Binding IsEditableValue}"
+                  MaxWidth="400" ColumnDefinitions="*,Auto" ColumnSpacing="14"
+                  VerticalAlignment="Center">
+                <TextBlock Text="{Binding Value}" VerticalAlignment="Center"
+                           TextAlignment="Right" TextWrapping="NoWrap"
+                           TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <TextBlock Grid.Column="1" Classes="gamepad-settings-chevron" Text="›" />
+            </Grid>
+
+            <!-- Action: an optional word before the chevron — what A does when the label alone does
+                 not say ("Sync now"), or that the action is running ("Working…"), shown on the row the
+                 user pressed A on rather than only in the far-away status pill. -->
+            <Grid Grid.Column="2" IsVisible="{Binding IsAction}"
+                  ColumnDefinitions="Auto,Auto" ColumnSpacing="14"
+                  VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="{Binding ActionText}"
+                           IsVisible="{Binding HasActionText}"
+                           VerticalAlignment="Center" FontSize="14" FontWeight="SemiBold"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                <TextBlock Grid.Column="1" Classes="gamepad-settings-chevron" Text="›" />
+            </Grid>
+
+            <TextBlock Grid.Column="2" IsVisible="{Binding IsInformation}"
+                       Text="{Binding Value}" MaxWidth="390"
+                       VerticalAlignment="Center" TextAlignment="Right"
+                       TextWrapping="NoWrap"
+                       TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+        </Grid>
+    </Button>
+    </Panel>
+</UserControl>

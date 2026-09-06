@@ -1153,6 +1153,10 @@ public partial class MainViewModel : ViewModelBase
     /// navigation hints; entry, confirmation, and choice modals swap in their own legends.</summary>
     public bool IsGamepadSettingsNormal =>
         IsGamepadSettingsOpen && GamepadSettings?.IsNormal == true;
+    /// <summary>The ordinary Settings legend (LB/RB sections, START save) — normal state, not the wizard.</summary>
+    public bool IsGamepadSettingsLegendVisible => IsGamepadSettingsNormal && GamepadSettings?.IsSetupMode != true;
+    /// <summary>The setup wizard's legend (START continue, B back) — normal state, wizard mode.</summary>
+    public bool IsGamepadSetupLegendVisible => IsGamepadSettingsNormal && GamepadSettings?.IsSetupMode == true;
     public int GamepadSettingsFocusRevision => GamepadSettings?.FocusRevision ?? 0;
     public bool IsGamepadDesktopModeConfirmationOpen => GamepadOverlay == GamepadOverlayKind.DesktopModeConfirmation;
     public bool IsGamepadQuitConfirmationOpen => GamepadOverlay == GamepadOverlayKind.QuitConfirmation;
@@ -2503,7 +2507,42 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task RequestSettingsFromGamepadAsync()
+    private Task RequestSettingsFromGamepadAsync() => OpenGamepadSettingsCoreAsync(setup: null);
+
+    /// <summary>
+    /// The version of the Android setup wizard. Bump it when a step is added that existing users should
+    /// be walked through once; the shell compares it with <c>AppSettings.SetupCompletedVersion</c>.
+    /// </summary>
+    public const int SetupWizardVersion = 1;
+
+    /// <summary>
+    /// Opens the Settings projection in setup-wizard mode: the steps that need the composed app (second
+    /// screen, closing games, games and emulators, saves), walked in order with START. Runs once on first
+    /// launch after the pre-boot page set the data folder, and again from Settings → "Run setup again".
+    /// </summary>
+    public Task OpenSetupWizardAsync() => OpenGamepadSettingsCoreAsync(BuildSetupWizardOptions());
+
+    private SetupWizardOptions BuildSetupWizardOptions()
+    {
+        // The rail's Data folder line: the last two path segments ("User/EmuShelf"), enough to recognise.
+        var folder = _dataDirectory ?? string.Empty;
+        // Both separators, as an array: Split(char, char, options) does not exist — the second char would
+        // bind to the `count` overload and never split on it.
+        var parts = folder.TrimEnd('/', '\\').Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries);
+        var folderStatus = parts.Length >= 2 ? $"{parts[^2]}/{parts[^1]}" : parts.LastOrDefault() ?? string.Empty;
+        // The same bootstrap the pre-boot page used, so the Storage access step reports the live grant
+        // instead of asserting the answer it was given before the restart. Null off Android.
+        var bootstrap = EmuShelf.App.App.DataLocation;
+        return new SetupWizardOptions(
+            HasSecondScreen: _externalDisplays?.HasExternalDisplay == true,
+            IsSecondScreenReturnReady: () => _externalDisplays?.IsSecondScreenReturnReady != false,
+            RequestSecondScreenReturn: () => _externalDisplays?.RequestSecondScreenReturn(),
+            DataFolderStatus: folderStatus,
+            IsStoragePermissionGranted: bootstrap is null ? null : () => bootstrap.IsStoragePermissionGranted,
+            RequestStoragePermission: bootstrap is null ? null : bootstrap.RequestStoragePermission);
+    }
+
+    private async Task OpenGamepadSettingsCoreAsync(SetupWizardOptions? setup)
     {
         // Building the projection awaits a database read, so a second press before it completes would
         // otherwise start an overlapping open and race on GamepadSettings. One in-flight open at a time.
@@ -2542,6 +2581,9 @@ public partial class MainViewModel : ViewModelBase
                 grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
                     ? null
                     : GrantCloseOnReturnPrivilegeAsync,
+                setup: setup,
+                // The wizard is an Android first-run flow; desktop never shows the row.
+                runSetup: OperatingSystem.IsAndroid() ? OpenSetupWizardAsync : null,
                 refreshGameCounts: async () =>
                 {
                     try
@@ -3808,6 +3850,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));
+        OnPropertyChanged(nameof(IsGamepadSettingsLegendVisible));
+        OnPropertyChanged(nameof(IsGamepadSetupLegendVisible));
         OnPropertyChanged(nameof(GamepadSettingsFocusRevision));
         OnPropertyChanged(nameof(IsGamepadDesktopModeConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadQuitConfirmationOpen));
@@ -6213,6 +6257,40 @@ public partial class MainViewModel : ViewModelBase
         // Fold the independent passes back in so a caller awaiting startup sees them through, and any
         // exception is observed rather than surfacing later as an unobserved-task fault.
         await Task.WhenAll(texturePacks, updateCheck);
+
+        // First launch on Android: the pre-boot page set the data folder and restarted into the shell;
+        // the rest of setup runs here, over the library, once everything above has settled.
+        await OfferSetupWizardAtStartupAsync();
+    }
+
+    /// <summary>
+    /// Opens the in-app setup wizard after startup when it has not been completed at the current version.
+    /// Waits out a busy shell (a scan or reload still running from the startup pass) rather than giving
+    /// up, and logs the decision either way so a wizard that did not appear can be explained from the log.
+    /// </summary>
+    private async Task OfferSetupWizardAtStartupAsync()
+    {
+        var completed = _settingsService?.Load().SetupCompletedVersion;
+        var wanted = OperatingSystem.IsAndroid() && IsGamepadMode && completed is { } version && version < SetupWizardVersion;
+        _logger.Information(
+            $"Setup wizard at startup: {(wanted ? "opening" : "not needed")} (android={OperatingSystem.IsAndroid()}, couch={IsGamepadMode}, completedVersion={completed?.ToString() ?? "n/a"}, current={SetupWizardVersion}).");
+        if (!wanted)
+            return;
+
+        // Up to 30 s for the shell to go idle; the open is skipped while it is busy or another open is in flight.
+        for (var attempt = 0; attempt < 60 && (IsBusy || _openingGamepadSettings || GamepadOverlay != GamepadOverlayKind.None); attempt++)
+            await Task.Delay(500);
+
+        if (GamepadOverlay != GamepadOverlayKind.None)
+        {
+            _logger.Warning($"Setup wizard not opened: the {GamepadOverlay} overlay is up.");
+            return;
+        }
+
+        await OpenSetupWizardAsync();
+        _logger.Information(GamepadSettings?.IsSetupMode == true
+            ? "Setup wizard opened."
+            : $"Setup wizard did not open (busy={IsBusy}, opening={_openingGamepadSettings}).");
     }
 
     /// <summary>
@@ -7588,9 +7666,27 @@ public partial class MainViewModel : ViewModelBase
         if (!IsGamepadSettingsOpen && GamepadSettings is null)
             return;
 
+        var wasSetupWizard = GamepadSettings?.IsSetupMode == true;
+        // Not `saved`: leaving the wizard early saves too, so that the answers already given survive. Only
+        // reaching the last step and pressing Finish counts as having walked it.
+        var setupFinished = GamepadSettings?.SetupCompleted == true;
         CloseGamepadSettingsProjection();
         if (!IsGamepadMode)
             return;
+
+        if (wasSetupWizard)
+        {
+            // Finish records the wizard as done at this version; backing out of the first step leaves it
+            // unrecorded so it is offered again next launch. Either way the library is what comes next,
+            // not the system menu Settings returns to.
+            if (setupFinished)
+            {
+                _settingsService?.Update(settings => settings with { SetupCompletedVersion = SetupWizardVersion });
+                SetStatus("Setup complete.");
+            }
+            CloseGamepadOverlay();
+            return;
+        }
 
         OpenGamepadOverlay(GamepadOverlayKind.SystemMenu);
         var settingsIndex = GamepadOverlayOptions.ToList().FindIndex(option => option.Label == "Settings");
@@ -7605,6 +7701,7 @@ public partial class MainViewModel : ViewModelBase
         if (e.PropertyName is nameof(GamepadSettingsViewModel.FocusRevision) or
             nameof(GamepadSettingsViewModel.FocusedRowIndex) or
             nameof(GamepadSettingsViewModel.SelectedSection) or
+            nameof(GamepadSettingsViewModel.CurrentSetupStep) or
             nameof(GamepadSettingsViewModel.IsTextEntryOpen) or
             nameof(GamepadSettingsViewModel.IsConfirmationOpen) or
             nameof(GamepadSettingsViewModel.IsChoicePickerOpen) or
@@ -7616,6 +7713,8 @@ public partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
             OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
             OnPropertyChanged(nameof(IsGamepadSettingsNormal));
+        OnPropertyChanged(nameof(IsGamepadSettingsLegendVisible));
+        OnPropertyChanged(nameof(IsGamepadSetupLegendVisible));
             OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
         }
     }
@@ -7639,6 +7738,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));
+        OnPropertyChanged(nameof(IsGamepadSettingsLegendVisible));
+        OnPropertyChanged(nameof(IsGamepadSetupLegendVisible));
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 
@@ -7667,6 +7768,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsChoicePickerOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));
+        OnPropertyChanged(nameof(IsGamepadSettingsLegendVisible));
+        OnPropertyChanged(nameof(IsGamepadSetupLegendVisible));
         OnPropertyChanged(nameof(GamepadOverlayOwnsTextInput));
     }
 

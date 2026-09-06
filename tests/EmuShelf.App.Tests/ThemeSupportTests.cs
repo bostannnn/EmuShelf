@@ -216,8 +216,11 @@ public class ThemeSupportTests
         Assert.Equal(SettingsSection.Emulators, gamepad.SelectedSection);
         gamepad.Dispatch(GamepadAction.NavigateDown); // Emulators -> Themes
         Assert.True(gamepad.IsThemesSection);
-        gamepad.Dispatch(GamepadAction.NavigateDown); // Themes -> About (last)
+        // Display sits between them: picking a theme and adjusting how it is drawn are neighbours.
+        gamepad.Dispatch(GamepadAction.NavigateDown); // Themes -> Display
         Assert.False(gamepad.IsThemesSection);
+        Assert.Equal(SettingsSection.Display, gamepad.SelectedSection);
+        gamepad.Dispatch(GamepadAction.NavigateDown); // Display -> About (last)
         Assert.Equal(SettingsSection.About, gamepad.SelectedSection);
 
         // About is the last page: paging Down again stays put, so Themes never sits after it.
