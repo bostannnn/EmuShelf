@@ -669,6 +669,18 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void MissingGameNativeOnlyWarnsWhenSteamGamesAreInUse()
+    {
+        using var unused = CreateGamepadSettings(androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: _ => 0, isEmulatorChoiceInstalled: choice => choice.EmulatorId != "gamenative");
+        Assert.False(unused.IsEmulatorsRailWarning);
+        using var used = CreateGamepadSettings(androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: id => id == "steam" ? 1 : 0,
+            isEmulatorChoiceInstalled: choice => choice.EmulatorId != "gamenative");
+        Assert.Contains("Steam", used.EmulatorsRailStatus);
+    }
+
+    [AvaloniaFact]
     public async Task EmulatorsSection_SaysWhenTheChosenAndroidEmulatorIsNotInstalled()
     {
         using var viewModel = CreateGamepadSettings(

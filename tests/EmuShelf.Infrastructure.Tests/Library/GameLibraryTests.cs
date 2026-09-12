@@ -65,6 +65,18 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void SteamRelocationOntoLegacyRowReportsConflictAndPreservesBothHistories()
+    {
+        var old = NewGame("steam", Path.Combine(BaseDirectory, "Missing.steam"), "Tracked") with
+        { ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "381780" };
+        var legacy = NewGame("steam", Path.Combine(BaseDirectory, "Legacy.steam"), "Legacy");
+        _library.AddGames([old, legacy]);
+        var before = _library.GetGames().ToArray();
+        Assert.Throws<ExternalLibrarySourceConflictException>(() => _library.AddGames([old with { Path = legacy.Path }]));
+        Assert.Equal(before, _library.GetGames());
+    }
+
+    [Fact]
     public void AddGames_InsertsNewAndReportsCount()
     {
         var added = _library.AddGames([

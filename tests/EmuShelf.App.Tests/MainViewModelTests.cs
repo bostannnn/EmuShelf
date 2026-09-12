@@ -91,12 +91,13 @@ public class MainViewModelTests : IDisposable
         IRemoteArtworkDownloader? artworkDownloader = null,
         TexturePackCoordinator? texturePacks = null,
         IFileRevealService? fileReveal = null,
-        IExternalDisplayProbe? externalDisplays = null)
+        IExternalDisplayProbe? externalDisplays = null,
+        IFolderScanner? scanner = null)
     {
         importRules ??= new FileImportRules();
         return new(
             _library,
-            new FolderScanner(importRules),
+            scanner ?? new FolderScanner(importRules),
             importRules,
             new FileAvailabilityChecker(),
             _dialogs,
@@ -3358,6 +3359,49 @@ public class MainViewModelTests : IDisposable
 
         Assert.True(vm.IsAllGamesSelected);
         Assert.Equal(["Alpha", "Beta", "Gamma"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task SteamConflictDoesNotStopOtherExportsOrSystems()
+    {
+        var root = Path.Combine(_baseDirectory, "steam"); Directory.CreateDirectory(root);
+        var conflict = Path.Combine(root, "Conflict.steam"); File.WriteAllText(conflict, "123");
+        _library.AddGames([new Game { SystemId = "steam", Path = conflict, Title = "Original",
+            ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "456", DateAdded = DateTimeOffset.UtcNow }]);
+        File.WriteAllText(Path.Combine(root, "Good.steam"), "789");
+        _library.AddLibraryFolder("steam", root);
+        var roms = MakeRomsFolder(); _library.AddLibraryFolder(Ps1.Id, roms);
+        var vm = CreateViewModel();
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
+        Assert.Contains(_library.GetGames(), g => g.ExternalSourceEntryId == "789");
+        Assert.Contains(_library.GetGames(), g => g.Title == "Original" && g.ExternalSourceEntryId == "456");
+        Assert.NotEmpty(_library.GetGames(Ps1.Id));
+        Assert.Contains("skipped", vm.StatusText);
+        Assert.Equal("123", File.ReadAllText(conflict));
+    }
+
+    [AvaloniaFact]
+    public async Task UnreadableFolderPreservesExistingGamesAndContinuesOtherSystems()
+    {
+        var root = Path.Combine(_baseDirectory, "unreadable"); Directory.CreateDirectory(root);
+        _library.AddLibraryFolder("steam", root);
+        _library.AddGames([new Game { SystemId = "steam", Path = Path.Combine(root, "Keep.steam"), Title = "Keep", DateAdded = DateTimeOffset.UtcNow }]);
+        _library.AddLibraryFolder(Ps1.Id, MakeRomsFolder());
+        var vm = CreateViewModel(scanner: new UnreadableSteamScanner());
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
+        Assert.Single(_library.GetGames("steam"));
+        Assert.NotEmpty(_library.GetGames(Ps1.Id));
+        Assert.Contains("could not scan", vm.StatusText);
+    }
+
+    private sealed class UnreadableSteamScanner : IFolderScanner
+    {
+        public Task<GameEntrySelection> ScanAsync(string folderPath, GameSystem system,
+            IProgress<ScanProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            system.Id == "steam" ? Task.FromException<GameEntrySelection>(new UnauthorizedAccessException()) :
+                new FolderScanner(new FileImportRules()).ScanAsync(folderPath, system, progress, cancellationToken);
     }
 
     [AvaloniaFact]

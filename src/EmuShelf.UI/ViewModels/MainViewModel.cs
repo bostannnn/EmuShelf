@@ -3279,6 +3279,9 @@ public partial class MainViewModel : ViewModelBase
             case GamepadAction.NextPlatform when IsGamepadAchievementsOpen:
                 GamepadAchievementDetails?.CycleFilterCommand.Execute(1);
                 return true;
+            case GamepadAction.Confirm when IsGamepadAchievementsOpen:
+                FocusedGamepadAchievement?.RevealCommand.Execute(null);
+                return true;
             case GamepadAction.Search when IsGamepadAchievementsOpen:
                 GamepadAchievementDetails?.RefreshCommand.Execute(null);
                 return true;
@@ -5934,6 +5937,7 @@ public partial class MainViewModel : ViewModelBase
         try
         {
             var total = 0;
+            var scanWarnings = new List<string>();
             var addedIds = new List<long>();
             // Rows whose files a reachable folder no longer holds, gathered across every system so the
             // whole rescan asks for confirmation once at the end rather than per folder or per system.
@@ -5967,7 +5971,14 @@ public partial class MainViewModel : ViewModelBase
                     // Same predicate FolderScanner gates its walk on, so "reachable" and "produced a
                     // real listing" always agree — a missing root is never mistaken for an empty one.
                     var rootReachable = await Task.Run(() => Directory.Exists(folder.Path));
-                    var selection = await _scanner.ScanAsync(folder.Path, system, progress);
+                    GameEntrySelection selection;
+                    try { selection = await _scanner.ScanAsync(folder.Path, system, progress); }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        scanWarnings.Add($"{system.Name}: could not scan {folder.Path}");
+                        _logger.Warning($"Could not scan library folder {folder.Path}; existing entries were kept.", ex);
+                        continue;
+                    }
                     if (rootReachable)
                     {
                         reachableRoots.Add(Path.GetFullPath(folder.Path));
@@ -5978,7 +5989,26 @@ public partial class MainViewModel : ViewModelBase
                             presentPaths.Add(Path.GetFullPath(path));
                     }
                     var newSelection = system.Id == "steam" ? selection : SelectUnimportedEntries(selection, knownPaths);
-                    var importResult = await ReconcileImportAsync(system, newSelection);
+                    GameImportResult importResult;
+                    if (system.Id == "steam")
+                    {
+                        var steamAdded = new List<long>();
+                        foreach (var export in newSelection.EntryPaths)
+                        {
+                            try
+                            {
+                                var entryResult = await ReconcileImportAsync(system, new GameEntrySelection([export], []));
+                                steamAdded.AddRange(entryResult.AddedGameIds);
+                            }
+                            catch (ExternalLibrarySourceConflictException ex)
+                            {
+                                scanWarnings.Add($"{Path.GetFileName(export)}: {ex.Message}");
+                                _logger.Warning($"Skipped conflicting Steam export {export}.", ex);
+                            }
+                        }
+                        importResult = new GameImportResult(steamAdded);
+                    }
+                    else importResult = await ReconcileImportAsync(system, newSelection);
                     // Overlapping folders shouldn't re-read an entry the previous folder just added.
                     foreach (var path in newSelection.EntryPaths)
                         knownPaths.Add(Path.GetFullPath(path));
@@ -6023,7 +6053,9 @@ public partial class MainViewModel : ViewModelBase
                 await ShowSystemAsync(systemToShow);
             else
                 await ReloadGamesAsync();
-            SetStatus(BuildRescanStatus(total, removed));
+            SetStatus(BuildRescanStatus(total, removed) + (scanWarnings.Count == 0 ? "" :
+                $" — {scanWarnings.Count} skipped: {string.Join("; ", scanWarnings)}"),
+                scanWarnings.Count == 0 ? StatusSeverity.Info : StatusSeverity.Error);
             if (addedIds.Count > 0)
             {
                 // A remembered-folder rescan is another import path. Only its newly discovered

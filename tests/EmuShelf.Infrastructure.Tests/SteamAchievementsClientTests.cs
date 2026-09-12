@@ -60,7 +60,7 @@ public sealed class SteamAchievementsClientTests
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.Forbidden, AchievementStatus.Unavailable)]
+    [InlineData(HttpStatusCode.Forbidden, AchievementStatus.AuthenticationFailed)]
     [InlineData(HttpStatusCode.Unauthorized, AchievementStatus.AuthenticationFailed)]
     public async Task PrivatePlayerEndpointAndExpiredAuthenticationAreDistinct(HttpStatusCode code, AchievementStatus expected)
     {
@@ -82,6 +82,18 @@ public sealed class SteamAchievementsClientTests
         Assert.Equal("76561198000000002", result.Snapshot!.AccountId);
         Assert.Equal(3, handler.Requests.Count);
         Assert.Single(handler.Requests, request => request.Uri.Contains("GetSchemaForGame"));
+    }
+
+    [Fact]
+    public async Task RevokedKeyWithCachedSchemaRemainsAnAuthenticationFailure()
+    {
+        using var http = new HttpClient(new Responses((HttpStatusCode.OK, Schema),
+            (HttpStatusCode.OK, """{"playerstats":{"success":true,"achievements":[{"apiname":"FIRST","achieved":1,"unlocktime":0},{"apiname":"SECRET","achieved":0,"unlocktime":0}]}}"""),
+            (HttpStatusCode.Forbidden, "revoked")));
+        var client = new SteamAchievementsClient(http);
+        Assert.True((await client.GetAchievementsAsync("76561198000000001", "381780", "key", CancellationToken.None)).Snapshot!.ProgressKnown);
+        var result = await client.GetAchievementsAsync("76561198000000001", "381780", "key", CancellationToken.None);
+        Assert.Equal(AchievementStatus.AuthenticationFailed, result.Status);
     }
 
     [Fact]

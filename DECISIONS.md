@@ -12170,3 +12170,11 @@ Steam's explicit bulk-sync command reads all added Steam app IDs and deduplicate
 sequentially with a short gap, report progress and allow cancellation; stop on network/auth/rate
 limit failures or account changes. Preserve completed/cached results and publish one library
 notification at the end to avoid rebuilding every library view for every game.
+
+### 2026-09-12 — Steam review: preserve identity and fail per source
+
+Steam progress HTTP 401/403 is treated as authentication failure; an ambiguous HTTP status must not replace known cached progress with unknown state. Explicit successful API privacy responses remain unavailable. Icon failures receive a 30-second cooldown and concurrent requests for one canonical URL share a download.
+
+Folder rescans isolate Steam identity conflicts per export and unreadable listings per root. An incomplete root is excluded from removal reconciliation; conflicts preserve both library histories and never alter exports. The folder-export integration remains on the import path: `IExternalLibrarySource` forbids arbitrary folder scanning, and its reconciler treats a complete source snapshot as authoritative. Moving individual exports into that contract without redesign could mark unrelated entries missing.
+
+Steam is optional in setup: missing GameNative is actionable only when Steam games are in the library. macOS/Linux credentials remain session-only; a portable persistent store is not a substitute for an OS-protected secret store.

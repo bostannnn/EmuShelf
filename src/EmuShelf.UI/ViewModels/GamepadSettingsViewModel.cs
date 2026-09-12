@@ -605,6 +605,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// device, else null. Only standalone-app choices are probed; RetroArch cores live inside RetroArch.</summary>
     private string? EmulatorMissingFor(EmulatorSettingsRowViewModel row)
     {
+        // Optional Steam support is relevant only after the user imports games into the library.
+        if (row.SystemId == "steam" && (_gameCountBySystem?.Invoke(row.SystemId) ?? 0) == 0)
+            return null;
         if (_isEmulatorChoiceInstalled is null || !row.HasEmulatorChoices)
             return null;
         var choice = row.SelectedChoice ?? row.AvailableChoices[0];

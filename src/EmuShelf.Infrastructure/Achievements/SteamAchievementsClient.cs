@@ -81,7 +81,7 @@ public sealed class SteamAchievementsClient(HttpClient http) : ISteamAchievement
             if (definitions.ValueKind == JsonValueKind.Undefined || definitions.GetArrayLength() == 0)
                 return new(AchievementStatus.Success, new(reference, steamId, Text(game, "gameName"), [], DateTimeOffset.UtcNow));
 
-            var progress = await GetAsync($"ISteamUserStats/GetPlayerAchievements/v1/?appid={id}&steamid={Uri.EscapeDataString(steamId)}&l=english", apiKey, cancellationToken, privateProgress: true);
+            var progress = await GetAsync($"ISteamUserStats/GetPlayerAchievements/v1/?appid={id}&steamid={Uri.EscapeDataString(steamId)}&l=english", apiKey, cancellationToken);
             using var progressDoc = progress.Document;
             var unlocks = new Dictionary<string, (bool Unlocked, DateTimeOffset? Date)>(StringComparer.Ordinal);
             var status = progress.Status;
@@ -126,7 +126,7 @@ public sealed class SteamAchievementsClient(HttpClient http) : ISteamAchievement
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() ?? fallback : fallback;
 
     private async Task<(AchievementStatus Status, JsonDocument? Document, TimeSpan? RetryAfter)> GetAsync(
-        string path, string apiKey, CancellationToken cancellationToken, bool privateProgress = false)
+        string path, string apiKey, CancellationToken cancellationToken)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -135,8 +135,6 @@ public sealed class SteamAchievementsClient(HttpClient http) : ISteamAchievement
             using var request = new HttpRequestMessage(HttpMethod.Get, "https://api.steampowered.com/" + path);
             request.Headers.Add("x-webapi-key", apiKey);
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token).ConfigureAwait(false);
-            if (privateProgress && response.StatusCode == HttpStatusCode.Forbidden)
-                return (AchievementStatus.Unavailable, null, null);
             if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
                 return (AchievementStatus.AuthenticationFailed, null, null);
             if (response.StatusCode == HttpStatusCode.TooManyRequests)

@@ -14,6 +14,7 @@ public sealed class SteamAchievementsService : IAchievementProvider
     private readonly ISteamCredentialStore _credentials;
     private readonly ISettingsService _settings;
     private readonly HttpClient _http;
+    private readonly TimeProvider _time;
     private readonly string _root;
     private readonly object _gate = new();
     private readonly SemaphoreSlim _requests = new(1, 1);
@@ -25,10 +26,11 @@ public sealed class SteamAchievementsService : IAchievementProvider
     private string? _key;
 
     public SteamAchievementsService(ISteamAchievementsClient client, ISteamCredentialStore credentials,
-        ISettingsService settings, string cacheDirectory, HttpClient http)
+        ISettingsService settings, string cacheDirectory, HttpClient http, TimeProvider? timeProvider = null)
     {
         _client = client; _credentials = credentials; _settings = settings; _http = http;
         _root = Path.Combine(cacheDirectory, "SteamAchievements");
+        _time = timeProvider ?? TimeProvider.System;
         _key = credentials.Read();
         var saved = settings.Load();
         if (saved.SteamAchievementsSteamId is { Length: 17 } id && id.All(char.IsAsciiDigit))
@@ -97,20 +99,30 @@ public sealed class SteamAchievementsService : IAchievementProvider
 
     public AchievementSnapshot? GetCached(AchievementGameRef game)
     {
+        string account;
+        int generation;
         lock (_gate)
         {
             if (_profile is null || !Valid(game)) return null;
-            if (_memory.TryGetValue(game.GameId, out var snapshot)) return snapshot;
-            try
+            if (_memory.TryGetValue(game.GameId, out var existing)) return existing;
+            account = _profile.SteamId;
+            generation = _generation;
+        }
+        // Disk reads and JSON parsing must not hold the lock used by UI account properties.
+        try
+        {
+            var file = SnapshotPath(account, game.GameId);
+            if (!File.Exists(file) || new FileInfo(file).Length > 8 * 1024 * 1024) return null;
+            var snapshot = JsonSerializer.Deserialize(File.ReadAllText(file), SteamAchievementJsonContext.Default.AchievementSnapshot);
+            if (snapshot?.AccountId != account || snapshot.Game != game) return null;
+            lock (_gate)
             {
-                var file = SnapshotPath(_profile.SteamId, game.GameId);
-                if (!File.Exists(file) || new FileInfo(file).Length > 8 * 1024 * 1024) return null;
-                snapshot = JsonSerializer.Deserialize(File.ReadAllText(file), SteamAchievementJsonContext.Default.AchievementSnapshot);
-                if (snapshot?.AccountId != _profile.SteamId || snapshot.Game != game) return null;
+                if (generation != _generation) return null;
+                if (_memory.TryGetValue(game.GameId, out var newer)) return newer;
                 return _memory[game.GameId] = snapshot;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException) { return null; }
     }
 
     public Task<AchievementResult> RefreshAsync(AchievementGameRef game, CancellationToken cancellationToken = default, bool manual = false) =>
@@ -199,7 +211,32 @@ public sealed class SteamAchievementsService : IAchievementProvider
         finally { _requests.Release(); }
     }
 
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Task<string?>>> _iconRequests = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTimeOffset> _iconRetryAt = new();
+
     public async Task<string?> GetIconPathAsync(string icon, CancellationToken cancellationToken = default)
+    {
+        var uri = NormalizeIconUri(icon);
+        if (uri is null) return null;
+        var key = uri.AbsoluteUri;
+        if (_iconRetryAt.TryGetValue(key, out var retryAt) && _time.GetUtcNow() < retryAt) return null;
+        var request = _iconRequests.GetOrAdd(key, _ => new Lazy<Task<string?>>(() => DownloadSharedIconAsync(key)));
+        return await request.Value.WaitAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string?> DownloadSharedIconAsync(string icon)
+    {
+        try
+        {
+            var path = await DownloadIconAsync(icon, CancellationToken.None).ConfigureAwait(false);
+            if (path is null) _iconRetryAt[icon] = _time.GetUtcNow().AddSeconds(30);
+            else _iconRetryAt.TryRemove(icon, out _);
+            return path;
+        }
+        finally { _iconRequests.TryRemove(icon, out _); }
+    }
+
+    private async Task<string?> DownloadIconAsync(string icon, CancellationToken cancellationToken)
     {
         var uri = NormalizeIconUri(icon);
         if (uri is null) return null;

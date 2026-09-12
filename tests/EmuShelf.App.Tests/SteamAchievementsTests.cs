@@ -237,12 +237,16 @@ public sealed class SteamAchievementsTests : IDisposable
         using var imageBytes = new MemoryStream();
         bitmap.Save(imageBytes, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
         using var handler = new IconResponse { Bytes = imageBytes.ToArray(), FailFirst = true };
+        var clock = new Clock();
         using var http = new HttpClient(handler);
-        var provider = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        var provider = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http, clock);
         const string icon = "https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/2142790/fc7112873f2eb80bf26225c48efadf7ba61e7363.jpg";
         using var row = new AchievementRowViewModel(new("FIRST", "First", "Start", icon, 0, true), provider, loadBadge: false);
         await row.LoadBadgeAsync(icon, Token);
         Assert.False(row.HasBadge);
+        await row.LoadBadgeAsync(icon, Token);
+        Assert.Single(handler.Requests);
+        clock.Now += TimeSpan.FromSeconds(31);
         var publishedOnUiThread = false;
         row.PropertyChanged += (_, args) =>
         {
@@ -278,6 +282,80 @@ public sealed class SteamAchievementsTests : IDisposable
             Assert.NotEmpty(handler.Requests);
         }
         finally { window.Close(); }
+    }
+
+    [Fact]
+    public async Task SimultaneousIconRequestsShareDownloadAndCancellationOnlyStopsOneWaiter()
+    {
+        using var handler = new PendingIconResponse(); using var http = new HttpClient(handler);
+        var provider = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        using var cancelled = new CancellationTokenSource();
+        const string icon = "https://cdn.steamstatic.com/icon.png";
+        var first = provider.GetIconPathAsync(icon, cancelled.Token);
+        var second = provider.GetIconPathAsync(icon, Token);
+        cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => first);
+        handler.Complete.SetResult();
+        Assert.NotNull(await second);
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    private sealed class PendingIconResponse : HttpMessageHandler
+    {
+        public TaskCompletionSource Complete { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int RequestCount;
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref RequestCount);
+            await Complete.Task.WaitAsync(cancellationToken);
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new ByteArrayContent([1, 2, 3]) };
+        }
+    }
+
+    private sealed class Clock : TimeProvider
+    {
+        public DateTimeOffset Now = DateTimeOffset.UtcNow;
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public async Task UnrelatedRefreshPreservesRowsAndControllerConfirmReveals()
+    {
+        var service = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, _http);
+        await service.ConnectAsync("76561198000000001", Key, Token);
+        await service.RefreshAsync(Game, Token);
+        using var viewer = new AchievementDetailsViewModel("Fixture", Game, service, service.GetCached(Game), deferBadgeLoading: true);
+        var original = viewer.VisibleAchievements[0];
+        await service.RefreshAsync(new("steam", "123"), Token);
+        await Task.Delay(100, Token);
+        Assert.Same(original, viewer.VisibleAchievements[0]);
+        using var empty = new AchievementDetailsViewModel("Empty", new("steam", "456"), service);
+        await service.RefreshAsync(new("steam", "789"), Token);
+        await Task.Delay(100, Token);
+        Assert.DoesNotContain("Connect Steam", empty.StatusText);
+
+        using var hidden = new AchievementDetailsViewModel("Hidden", Game, service,
+            new(Game, service.AccountId!, "Hidden", [new("SECRET", "Ending", "Spoiler", "", 0, false, IsHidden: true)], DateTimeOffset.UtcNow), deferBadgeLoading: true);
+        var main = new MainViewModel { IsGamepadMode = true, GamepadAchievementDetails = hidden, GamepadOverlay = GamepadOverlayKind.Achievements };
+        main.FocusedGamepadAchievement = hidden.VisibleAchievements[0];
+        Assert.True(main.DispatchGamepadAction(GamepadAction.Confirm));
+        Assert.False(main.FocusedGamepadAchievement.CanReveal);
+        Assert.Equal("Ending", main.FocusedGamepadAchievement.Title);
+    }
+
+    [Fact]
+    public async Task AuthenticationFailureKeepsDiskProgress()
+    {
+        var client = new Client(); var settings = new Settings(); var keys = new SessionSteamCredentialStore();
+        var service = new SteamAchievementsService(client, keys, settings, _root, _http);
+        await service.ConnectAsync("76561198000000001", Key, Token);
+        await service.RefreshAsync(Game, Token);
+        client.Status = AchievementStatus.AuthenticationFailed;
+        var result = await service.RefreshAsync(Game, Token, manual: true);
+        Assert.Equal(AchievementStatus.AuthenticationFailed, result.Status);
+        Assert.True(result.Snapshot!.Achievements[0].IsUnlocked);
+        var restarted = new SteamAchievementsService(client, keys, settings, _root, _http);
+        Assert.True(restarted.GetCached(Game)!.Achievements[0].IsUnlocked);
     }
 
     private sealed class IconResponse : HttpMessageHandler

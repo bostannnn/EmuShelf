@@ -72,3 +72,17 @@ viewer. Added a bounded 32-icon window around controller focus (also used by the
 and explicit UI-thread publication. Verified DAVE THE DIVER icons actually render on the Thor
 in the updated Steam Dev app; existing account/library data was preserved. 136 achievement
 tests passed, plus the focused test proving loading starts before visual tiles attach.
+
+### PR 240 review follow-up
+
+- Preserve cached unlocks on revoked-key HTTP 403; stop bulk sync on authentication errors.
+- Avoid rebuilding unchanged achievement snapshots and avoid disconnected messaging for connected cache misses.
+- Throttle failed icon retries and coalesce simultaneous downloads, retaining retry after cooldown.
+- Isolate rescan conflicts per export and inaccessible roots without removing unseen records.
+- Detect relocation onto legacy path owners as an explicit conflict.
+- Wire controller A to hidden-achievement reveal; restore the desktop reward divider.
+- Do not warn about missing GameNative before Steam games are imported.
+- Read cached snapshot files outside the UI account-state lock.
+- Keep the folder-import contract and session-only macOS/Linux secrets; rationale recorded in DECISIONS.md.
+
+Validation: full app suite 1,147 passed; full infrastructure suite 1,350 passed; final focused achievement/Steam suite 45 passed (including the added shared-download cancellation test). Android arm64 Release/AOT built with 0 errors and 9 existing platform warnings.

@@ -388,6 +388,9 @@ public sealed class GameLibrary : IGameLibrary
         var existing = FindExternalEntry(connection, transaction, "gamenative-steam", game.ExternalSourceEntryId!);
         if (existing is { } found)
         {
+            if (legacyId is { } occupied && occupied != found.Id)
+                throw new ExternalLibrarySourceConflictException(
+                    "A legacy Steam entry already owns this export path. Resolve the duplicate library entry before moving its history.");
             // Multiple export roots may contain the same app. Keep the existing live export.
             var path = File.Exists(_pathResolver.ToAbsolutePath(found.Path)) ? found.Path : incoming;
             using var update = connection.CreateCommand();

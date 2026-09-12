@@ -104,9 +104,11 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         if (loadBadge && !CanReveal) _ = LoadBadgeAsync(BadgeName);
     }
 
+    private long _badgeRetryAtTicks;
+
     public async Task LoadBadgeAsync(string badgeName, CancellationToken cancellationToken = default)
     {
-        if (_loadIcon is null || CanReveal || Badge is not null || string.IsNullOrWhiteSpace(badgeName) ||
+        if (Volatile.Read(ref _disposed) != 0 || _loadIcon is null || CanReveal || Badge is not null || string.IsNullOrWhiteSpace(badgeName) ||
             Interlocked.CompareExchange(ref _badgeLoadStarted, 1, 0) != 0)
             return;
 
@@ -138,7 +140,11 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         {
             // The XAML placeholder remains visible for an unreadable/missing local badge.
         }
-        finally { Interlocked.Exchange(ref _badgeLoadStarted, 0); }
+        finally
+        {
+            Interlocked.Exchange(ref _badgeRetryAtTicks, Badge is null ? DateTimeOffset.UtcNow.AddSeconds(30).Ticks : 0);
+            Interlocked.Exchange(ref _badgeLoadStarted, 0);
+        }
     }
 
     /// <summary>Preloads a bounded window around controller focus, independent of native attachment events.</summary>
@@ -147,7 +153,8 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         var index = focused is null ? 0 : rows.IndexOf(focused);
         var start = Math.Max(0, index - 8);
         foreach (var row in rows.Skip(start).Take(32))
-            _ = row.LoadBadgeAsync(row.BadgeName);
+            if (DateTimeOffset.UtcNow.Ticks >= Interlocked.Read(ref row._badgeRetryAtTicks))
+                _ = row.LoadBadgeAsync(row.BadgeName);
     }
 
     partial void OnBadgeChanging(Bitmap? value)
@@ -429,9 +436,16 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         }
     }
 
+    private AchievementSnapshot? _appliedSnapshot;
+
     private void ApplySnapshot(AchievementSnapshot snapshot)
     {
         if (snapshot.Game != _game || (_provider.Id == "steam" && snapshot.AccountId != _provider.AccountId)) return;
+        if (_appliedSnapshot is { } previous && previous.Game == snapshot.Game &&
+            previous.AccountId == snapshot.AccountId && previous.Title == snapshot.Title &&
+            previous.RefreshedAt == snapshot.RefreshedAt && previous.ProgressKnown == snapshot.ProgressKnown &&
+            previous.Achievements.SequenceEqual(snapshot.Achievements)) return;
+        _appliedSnapshot = snapshot;
         if (string.IsNullOrWhiteSpace(GameTitle)) GameTitle = snapshot.Title;
         foreach (var row in Achievements) row.Dispose();
         Achievements.Clear();
@@ -502,13 +516,16 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
                 if (Volatile.Read(ref _disposed) != 0 || revision != Volatile.Read(ref _providerChangeRevision)) return;
                 if (snapshot is not null && (_provider.Id != "steam" || snapshot.AccountId == _provider.AccountId))
                     ApplySnapshot(snapshot);
-                else
+                else if (!_provider.IsConnected || (_appliedSnapshot is { } applied && applied.AccountId != _provider.AccountId))
                 {
+                    _appliedSnapshot = null;
                     foreach (var row in Achievements) row.Dispose();
                     Achievements.Clear(); RebuildVisibleAchievements();
                     UnlockedCount = TotalCount = EarnedPoints = TotalPoints = HardcoreUnlockedCount = HardcoreEarnedPoints = 0;
                     LastRefreshedAt = null; HasLoadedSnapshot = false; ProgressKnown = false;
-                    StatusText = $"Connect {_provider.DisplayName} in Settings to load achievement details.";
+                    StatusText = _provider.IsConnected
+                        ? "No cached achievements for this account. Refresh to load them."
+                        : $"Connect {_provider.DisplayName} in Settings to load achievement details.";
                     OnPropertyChanged(nameof(HasAchievements)); OnPropertyChanged(nameof(ProviderText));
                 }
             }, DispatcherPriority.Send);

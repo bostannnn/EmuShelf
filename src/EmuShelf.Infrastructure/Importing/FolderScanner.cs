@@ -31,6 +31,8 @@ public sealed class FolderScanner : IFolderScanner
             var options = new EnumerationOptions
             {
                 RecurseSubdirectories = true,
+                // Steam reconciliation needs a complete export listing. Let the caller report a
+                // failed root and preserve its records instead of accepting a partial snapshot.
                 IgnoreInaccessible = system.Id != "steam",
             };
 
