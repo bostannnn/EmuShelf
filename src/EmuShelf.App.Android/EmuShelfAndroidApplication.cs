@@ -36,6 +36,8 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         // provider query), and a verdict frozen there was what the user later saw on the panel.
         var appPrivateFilesDir = FilesDir?.AbsolutePath ?? ApplicationContext?.FilesDir?.AbsolutePath;
         WireDataLocation(appPrivateFilesDir);
+        global::EmuShelf.App.App.StartupFailureReporter = ex =>
+            global::Android.Util.Log.Error("EmuShelfBoot", $"Startup failed ({ex.GetType().Name}). Check the data folder Logs for details.");
         if (appPrivateFilesDir is not null)
             global::EmuShelf.App.App.SteamCredentialStoreFactory = () => new AndroidSteamCredentialStore(appPrivateFilesDir);
 

@@ -12182,3 +12182,39 @@ Steam is optional in setup: missing GameNative is actionable only when Steam gam
 ### 2026-09-12 — Resolve Steam covers from published store assets
 
 Steam library portraits are not always named library_600x900.jpg at the app root. The public StoreBrowse API exposes hash-prefixed asset filenames and portrait.png for older games. Resolve published library capsules by app ID before legacy artwork candidates, with headers as the final published fallback. Restrict asset paths to the requested app under Steam's CDN and keep existing cover consent, cancellation, download limits and manual-cover protection. No Steam account or API key is used.
+### 2026-09-12 — Android production preparation: identity, startup and release gates
+
+Reuse the existing desktop shelf/books mark and its exact red (#D43F4A) in native
+Android vectors. API 24/25 use a scalable legacy icon, API 26+ an adaptive icon, and
+API 33+ a monochrome layer. Launch themes remain AppCompat descendants and use the
+existing dark background (#1E1E2A). No generated game art or new branding.
+
+Android now returns a lightweight content host before storage probing and database
+initialization. A single startup attempt survives Activity recreation, prepares the
+bootstrapper off-thread, then composes the UI on the dispatcher. Failures leave a
+controller/touch recovery view. Retry restarts the process, avoiding duplicate service
+registration after partial composition; folder recovery never deletes the old data.
+
+The Android APK is now arm64-only: SDK defaults included x64 and accidentally bundled
+a desktop Linux SDL2 binary. Tagged releases require stable signing inputs, verify
+the APK against the configured certificate, and gate publication on Android success.
+Artifact checks inspect the merged manifest, icon, ZIP alignment and every ELF LOAD
+segment for 16 KB alignment. This supersedes the experimental optional-Android CI gate;
+it does not claim device acceptance or 16 KB runtime testing has passed.
+
+### 2026-09-12 — Replace the flat Android shelf icon with a cartridge collection
+
+The user rejected the reused desktop shelf mark as boring. Android now uses original
+ImageGen artwork: three tactile red/ivory/charcoal cartridges in a small cradle,
+matching the app's physical-media presentation. Launcher, native splash and managed
+startup share one asset; themed/notification icons use a simplified cartridge vector.
+The desktop mark remains unchanged. Prompt and provenance live beside the image in
+`src/EmuShelf.UI/Assets/Branding/README.md`.
+
+### 2026-09-12 — Scope Android runtime selection to its project
+
+Keep `RuntimeIdentifiers=android-arm64` in the Android head, not as a global CI
+publish argument. A clean publish with the global argument reproduces MSB3030:
+Core/Rendering build without a RID, then the Android inner publish looks for their
+DLLs in `obj/Release/net10.0/android-arm64`. Project-scoped selection preserves the
+arm64-only APK without changing the shared libraries' build graph.

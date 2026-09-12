@@ -45,6 +45,12 @@ library, settings, and the storage-access grant**).
   point it at the same folder you granted the emulator. That keeps multi-disc games (a per-game folder
   with `Disc 1`/`Disc 2` and an `.m3u`) launchable — see DECISIONS 2026-08-22.
 
+## Data, permissions and recovery
+
+See [Android data and permissions](android-privacy.md) for network features, storage,
+optional Shizuku/accessibility access and startup recovery. If the library cannot open,
+use Retry or Choose data folder; avoid uninstalling as a repair step.
+
 ## Notes and limitations
 
 - **Not on Google Play.** EmuShelf is GPLv3 and needs all-files access; both rule out Play distribution.

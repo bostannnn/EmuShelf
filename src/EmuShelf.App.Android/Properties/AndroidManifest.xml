@@ -63,6 +63,8 @@
     <package android:name="com.retroarch.aarch64" />          <!-- multi RetroArch -->
   </queries>
   <application android:label="EmuShelf"
+               android:icon="@mipmap/ic_launcher"
+               android:roundIcon="@mipmap/ic_launcher"
                android:allowBackup="false"
                android:hardwareAccelerated="true">
     <!-- Android 14+ requires every foreground service to declare a type. Keeping a user-visible

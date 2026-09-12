@@ -10,6 +10,9 @@
   -->
   <PropertyGroup>
     <TargetFramework>net10.0-android36.0</TargetFramework>
+    <!-- The shipped APK is arm64-only. SDK defaults also include x64, which can pull
+         desktop Linux native assets (including SDL2) into an Android package. -->
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <SupportedOSPlatformVersion>24</SupportedOSPlatformVersion>
     <OutputType>Exe</OutputType>
     <Nullable>enable</Nullable>
@@ -67,6 +70,11 @@
          reflection-only usage). AndroidX.Core already ships it, so mark the Java-dependency verifier's
          requirement satisfied instead of pinning a second AndroidX.Annotation version that could drift. -->
     <AndroidIgnoredJavaDependency Include="androidx.annotation:annotation:1.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AndroidResource Include="../EmuShelf.UI/Assets/Branding/emushelf_cartridges.png"
+                     Link="Resources/drawable-nodpi/emushelf_cartridges.png" />
   </ItemGroup>
 
   <ItemGroup>

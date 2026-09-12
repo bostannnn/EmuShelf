@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.StartupView"
+             x:DataType="vm:StartupViewModel">
+    <ThemeVariantScope RequestedThemeVariant="Dark">
+        <Grid Background="{DynamicResource EmuWindowBackgroundBrush}"
+              TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}"
+              TextElement.Foreground="{DynamicResource EmuTextPrimaryBrush}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Margin="36,28" MaxWidth="680" Spacing="16"
+                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Image RenderOptions.BitmapInterpolationMode="HighQuality" Width="128" Height="128" HorizontalAlignment="Center" Stretch="Uniform"
+                           Source="avares://EmuShelf.UI/Assets/Branding/emushelf_cartridges.png" />
+                    <TextBlock Text="EmuShelf" FontSize="32" FontWeight="Bold" TextAlignment="Center" />
+                    <TextBlock Text="{Binding Status}" FontSize="17" TextWrapping="Wrap" TextAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    <ProgressBar IsVisible="{Binding IsLoading}" IsIndeterminate="True"
+                                 Width="200" Height="3" HorizontalAlignment="Center" />
+                    <StackPanel IsVisible="{Binding HasError}" Spacing="16">
+                        <TextBlock Text="Your game files won't be changed. Choosing another data folder keeps the old library in place."
+                                   FontSize="14" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                                   IsEnabled="{Binding !IsChoosingFolder}">
+                            <Button Content="A · Retry" Command="{Binding RetryCommand}" MinHeight="48" Margin="4" />
+                            <Button Content="X · Choose data folder" Command="{Binding ChooseFolderCommand}" MinHeight="48" Margin="4" />
+                            <Button Content="Y · Details" Command="{Binding ToggleDiagnosticsCommand}" MinHeight="48" Margin="4" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding Diagnostics}" IsVisible="{Binding ShowDiagnostics}"
+                                   FontSize="14" TextWrapping="Wrap" TextAlignment="Center"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+    </ThemeVariantScope>
+</UserControl>
