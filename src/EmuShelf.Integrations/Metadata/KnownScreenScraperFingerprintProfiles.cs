@@ -10,6 +10,7 @@ public static class KnownScreenScraperFingerprintProfiles
             Profile("playstation", ".bin", ".iso", ".img"),
             Profile("playstation2", ".iso", ".bin", ".img"),
             Profile("playstation3"),
+            Profile("steam"), // A shortcut is not a ROM; never hash its bytes.
             Profile("psp", ".iso"),
             Profile("gamecube", ".iso", ".gcm"),
             Profile("wii", ".iso"),

@@ -141,6 +141,12 @@ public static class AndroidEmulatorLaunchProfiles
         PayloadSlot: AndroidRomPayloadSlot.RetroArchCore,
         Action: AndroidIntentActions.View);
 
+    /// <summary>GameNative launches a Steam app id rather than a ROM path.</summary>
+    public static AndroidLaunchProfile GameNative { get; } = new(
+        "android.gamenative", "gamenative", "GameNative", ["steam"],
+        "app.gamenative", "app.gamenative.MainActivity", AndroidRomPayloadSlot.SteamAppId,
+        Action: "app.gamenative.LAUNCH_GAME");
+
     /// <summary>Every Android launch profile, in the order the matrix was measured.</summary>
     public static IReadOnlyList<AndroidLaunchProfile> All { get; } =
     [
@@ -155,6 +161,7 @@ public static class AndroidEmulatorLaunchProfiles
         MelonDs,
         MelonDsNightly,
         RetroArch,
+        GameNative,
     ];
 
     /// <summary>Distinct emulator package names — the source of truth for the manifest <c>&lt;queries&gt;</c> block.</summary>

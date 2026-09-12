@@ -85,6 +85,10 @@ public sealed class AndroidGameLauncher(Func<Context?> context, IAppLogger logge
         foreach (var (key, value) in request.BoolExtras)
             intent.PutExtra(key, value);
 
+        if (request.IntExtras is not null)
+            foreach (var (key, value) in request.IntExtras)
+                intent.PutExtra(key, value);
+
         // The emulator runs as its own task and becomes the top-resumed activity; NEW_TASK is required
         // because we may be starting it from a non-Activity context, and it is what makes the eventual
         // onTopResumedActivityChanged exit signal (Milestone B) fire when the user returns to EmuShelf.

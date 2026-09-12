@@ -14,6 +14,7 @@ public static class SettingsSectionLabel
         // so both settings surfaces label it "Library". The enum member stays General for stable
         // field ids (general.*) and settings compatibility.
         SettingsSection.General => "Library",
+        SettingsSection.RetroAchievements => "Achievements",
         SettingsSection.TexturePacks => "Texture Packs",
         SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         _ => section.ToString(),

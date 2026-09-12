@@ -1,3 +1,4 @@
+using EmuShelf.Integrations.Importing;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -76,6 +77,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
     // Non-null only on the Android head; gates the per-system launch-screen chooser (see LaunchGameCoreAsync).
     private IExternalDisplayProbe? _externalDisplays;
+    private readonly SteamAchievementsService? _steamAchievements;
+    public SteamAchievementsService? SteamAchievements => _steamAchievements;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
     private readonly IGameCoverService _covers;
     private readonly IGameDetailsStore? _gameDetails;
@@ -1673,7 +1676,8 @@ public partial class MainViewModel : ViewModelBase
         AppUpdateCoordinator? updates = null,
         IFileRevealService? fileReveal = null,
         HotkeyCoordinator? hotkeys = null,
-        IExternalDisplayProbe? externalDisplays = null)
+        IExternalDisplayProbe? externalDisplays = null,
+        SteamAchievementsService? steamAchievements = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
         // The resting hero breathes on every platform. It was nearly gated off the reduced-effects
@@ -1701,6 +1705,8 @@ public partial class MainViewModel : ViewModelBase
         _fileReveal = fileReveal ?? new NullFileRevealService();
         _emulatorConfigurations = emulatorConfigurations ?? new NullEmulatorConfigurationStore();
         _externalDisplays = externalDisplays;
+        _steamAchievements = steamAchievements;
+        if (_steamAchievements is not null) _steamAchievements.Changed += OnSteamAchievementsChanged;
         _emulators = emulators ?? KnownEmulators.All;
         _covers = covers ?? new NullGameCoverService();
         _gameDetails = gameDetails;
@@ -4989,6 +4995,12 @@ public partial class MainViewModel : ViewModelBase
     // (no network). Runs on the load worker before the view models reach the bound collection.
     private void ApplyAchievementDisplays(IReadOnlyList<GameViewModel> viewModels)
     {
+        foreach (var game in viewModels.Where(g => g.SystemId == "steam"))
+        {
+            var appId = game.Model.ExternalSourceEntryId ?? SteamShortcutReader.TryRead(game.Model.Path)?.ToString();
+            game.SteamAchievementAppId = appId;
+            game.ApplySteamAchievements(appId is null ? null : _steamAchievements?.GetCached(new("steam", appId)), _steamAchievements?.IsConnected == true);
+        }
         if (_retroAchievementsRead is null || viewModels.Count == 0)
             return;
 
@@ -4997,7 +5009,7 @@ public partial class MainViewModel : ViewModelBase
             var links = _retroAchievementsRead.GetAllLinks();
             var progress = _retroAchievementsRead.GetAllProgress();
             var connected = _retroAccount?.IsConnected ?? false;
-            foreach (var viewModel in viewModels)
+            foreach (var viewModel in viewModels.Where(game => game.SystemId != "steam"))
             {
                 links.TryGetValue(viewModel.Id, out var link);
                 RetroAchievementsProgressSnapshot? snapshot = null;
@@ -5963,7 +5975,7 @@ public partial class MainViewModel : ViewModelBase
                         foreach (var path in selection.EntryPaths.Concat(selection.SuppressedPaths))
                             presentPaths.Add(Path.GetFullPath(path));
                     }
-                    var newSelection = SelectUnimportedEntries(selection, knownPaths);
+                    var newSelection = system.Id == "steam" ? selection : SelectUnimportedEntries(selection, knownPaths);
                     var importResult = await ReconcileImportAsync(system, newSelection);
                     // Overlapping folders shouldn't re-read an entry the previous folder just added.
                     foreach (var path in newSelection.EntryPaths)
@@ -5983,6 +5995,7 @@ public partial class MainViewModel : ViewModelBase
                         {
                             var full = Path.GetFullPath(game.Path);
                             return !presentPaths.Contains(full)
+                                && (system.Id != "steam" || !File.Exists(full))
                                 && reachableRoots.Any(root => IsPathUnderRoot(full, root));
                         })
                         .Select(game => (game.Id, game.Title))
@@ -6100,6 +6113,8 @@ public partial class MainViewModel : ViewModelBase
         var games = preparedEntries.Select(entry => new Game
         {
             SystemId = system.Id,
+            ExternalSourceId = system.Id == "steam" ? "gamenative-steam" : null,
+            ExternalSourceEntryId = system.Id == "steam" ? entry.Metadata.Identifiers.FirstOrDefault(id => id.Kind == GameIdentifierKind.SteamAppId)?.Value : null,
             Path = entry.Path,
             Title = entry.Metadata.EmbeddedTitle ?? System.IO.Path.GetFileNameWithoutExtension(entry.Path),
             TitleOrigin = entry.Metadata.EmbeddedTitle is null
@@ -6351,10 +6366,12 @@ public partial class MainViewModel : ViewModelBase
         {
             // An external source owns this state. A generic startup stat must not revive an
             // entry that a later source sync retained as source-missing.
-            if (game.ExternalSourceId is not null)
+            if (game.ExternalSourceId is not null && game.SystemId != "steam")
                 continue;
 
-            var available = _availabilityChecker.IsAvailable(game);
+            var available = game.SystemId == "steam"
+                ? SteamShortcutReader.TryRead(game.Path) is { } appId && (game.ExternalSourceEntryId is null || game.ExternalSourceEntryId == appId.ToString())
+                : _availabilityChecker.IsAvailable(game);
             if (available != game.IsAvailable)
                 updates.Add(new GameAvailabilityUpdate(game.Id, available));
         }
@@ -6719,6 +6736,7 @@ public partial class MainViewModel : ViewModelBase
                 "(likely a session recovered long after process death).");
         }
 
+        _ = RefreshSteamAfterReturnAsync(game);
         CloudSaveSyncOutcome? afterSync = null;
         try
         {
@@ -6823,6 +6841,7 @@ public partial class MainViewModel : ViewModelBase
         bool afterExit,
         CancellationToken cancellationToken)
     {
+        if (game.SystemId == "steam") return null;
         if (_gameSaveSync?.CanSyncSystem(game.SystemId) != true)
             return null;
 
@@ -6986,6 +7005,44 @@ public partial class MainViewModel : ViewModelBase
         (context is null ? "" : $" {context}") +
         " (older copy backed up)";
 
+    private async void OnSteamAchievementsChanged()
+    {
+        if (_steamAchievements is null) return;
+        try
+        {
+            var games = await Dispatcher.UIThread.InvokeAsync(() => _systemGames.Concat(_scopeCache.Values.SelectMany(scope => scope)).Distinct().Where(g => g.SystemId == "steam").ToArray());
+            var snapshots = await Task.Run(() => games.Select(g => g.SteamAchievementAppId is { } app ?
+                _steamAchievements.GetCached(new("steam", app)) : null).ToArray());
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                for (var i = 0; i < games.Length; i++)
+                    if (snapshots[i] is not { } snapshot || snapshot.AccountId == _steamAchievements.AccountId)
+                        games[i].ApplySteamAchievements(snapshots[i], _steamAchievements.IsConnected);
+            });
+        }
+        catch (Exception) { /* A failed optional display refresh never affects the library. */ }
+    }
+
+    private async Task RefreshSteamAfterReturnAsync(Game game)
+    {
+        if (_steamAchievements is null || !_steamAchievements.IsConnected || game.SystemId != "steam") return;
+        var account = _steamAchievements.AccountId;
+        try
+        {
+            var app = game.ExternalSourceEntryId ?? await Task.Run(() => SteamShortcutReader.TryRead(game.Path)?.ToString());
+            if (app is null) return;
+            // Allow GameNative to finish submission; one later retry, never gameplay polling.
+            foreach (var delay in new[] { 3, 12 })
+            {
+                await Task.Delay(TimeSpan.FromSeconds(delay));
+                if (_steamAchievements.AccountId != account || !_steamAchievements.IsConnected) return;
+                var result = await _steamAchievements.RefreshAsync(new("steam", app), manual: true);
+                if (result.Status is AchievementStatus.AuthenticationFailed or AchievementStatus.RateLimited or AchievementStatus.NotConnected) return;
+            }
+        }
+        catch (Exception) { /* Read-only follow-up, independent of launch/session success. */ }
+    }
+
     private async Task RefreshRetroAchievementsAfterTrackedExitAsync(int retroAchievementsGameId)
     {
         if (_retroRefresh is null)
@@ -7009,6 +7066,26 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private async Task OpenAchievementDetailsAsync(GameViewModel? game)
     {
+        if (game?.SystemId == "steam")
+        {
+            if (_steamAchievements is null || game.SteamAchievementAppId is not { } appId) return;
+            var reference = new AchievementGameRef("steam", appId);
+            var cached = await Task.Run(() => _steamAchievements.GetCached(reference));
+            var steamDetails = new AchievementDetailsViewModel(game.DisplayTitle, reference, _steamAchievements,
+                cached, logger: _logger, deferBadgeLoading: IsGamepadMode);
+            if (IsGamepadMode)
+            {
+                OpenGamepadOverlay(GamepadOverlayKind.Achievements);
+                GamepadAchievementDetails = steamDetails;
+                FocusFirstAchievement();
+                _ = steamDetails.RefreshIfStaleAsync();
+            }
+            else
+            {
+                using (steamDetails) await _dialogs.ShowAchievementDetailsAsync(steamDetails);
+            }
+            return;
+        }
         if (game?.RetroAchievementsGameId is not { } retroAchievementsGameId)
             return;
 
@@ -7625,7 +7702,11 @@ public partial class MainViewModel : ViewModelBase
                 _retroAccount.IsConnected,
                 ConnectRetroAchievementsAsync,
                 DisconnectRetroAchievementsAsync,
-                RefreshRetroAchievementsMatchesAsync);
+                RefreshRetroAchievementsMatchesAsync,
+                _steamAchievements,
+                cancellationToken => Task.Run<IReadOnlyList<AchievementGameRef>>(() => _library.GetGames("steam")
+                    .Select(game => game.ExternalSourceEntryId ?? SteamShortcutReader.TryRead(game.Path)?.ToString())
+                    .OfType<string>().Select(app => new AchievementGameRef("steam", app)).Distinct().ToArray(), cancellationToken));
 
     // Reads each configured emulator's hotkey config to build the section state; the caller runs it
     // on a worker so opening Settings never does file IO on the UI thread.

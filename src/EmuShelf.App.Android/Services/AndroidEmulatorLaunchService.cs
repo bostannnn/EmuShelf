@@ -82,7 +82,7 @@ internal sealed class AndroidEmulatorLaunchService(
 
         // Pull cloud saves (if wired) before the emulator can read them — once, and only now that a
         // launch is actually going ahead, so a fail-loud path above never reconciles saves needlessly.
-        if (beforeStart is not null)
+        if (game.SystemId != "steam" && beforeStart is not null)
             await beforeStart(cancellationToken);
 
         logger.Information(
@@ -134,6 +134,10 @@ internal sealed class AndroidEmulatorLaunchService(
             return LaunchPreflight.Failed(
                 "the game path is unavailable (grant all-files access, or the SD card is not mounted).");
         }
+
+        if (game.SystemId == "steam" && game.ExternalSourceEntryId is { } importedId &&
+            EmuShelf.Integrations.Importing.SteamShortcutReader.TryRead(game.Path)?.ToString() != importedId)
+            return LaunchPreflight.Failed("the Steam export changed identity. Rescan the export folder before launching.");
 
         var configuration = configurations.Get(game.SystemId);
 

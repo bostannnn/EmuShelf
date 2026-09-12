@@ -27,16 +27,27 @@ public enum AchievementDisplaySort
 /// <summary>Presentation state for a single display-ordered RetroAchievements achievement.</summary>
 public partial class AchievementRowViewModel : ObservableObject, IDisposable
 {
-    private readonly IRetroAchievementsBadgeCache? _badges;
+    private readonly Func<string, CancellationToken, Task<string?>>? _loadIcon;
 
-    public int AchievementId { get; }
-    public string Title { get; }
-    public string Description { get; }
+    public string AchievementId { get; }
+    public bool HasPoints { get; }
+    public bool ProgressKnown { get; }
+    private readonly string _title;
+    private readonly string _description;
+    [ObservableProperty]
+    public partial bool IsRevealed { get; set; }
+    public bool IsHidden { get; }
+    public bool CanReveal => IsHidden && !IsUnlocked && !IsRevealed;
+    [RelayCommand]
+    private void Reveal() => IsRevealed = true;
+    partial void OnIsRevealedChanged(bool value) { OnPropertyChanged(nameof(Title)); OnPropertyChanged(nameof(Description)); OnPropertyChanged(nameof(CanReveal)); if (!CanReveal) _ = LoadBadgeAsync(BadgeName); }
+    public string Title => CanReveal ? "Hidden achievement" : _title;
+    public string Description => CanReveal ? "Reveal to see this achievement’s details." : _description;
     public string PointsText { get; }
     public string EarnedText { get; }
     public string UnlockStateText { get; }
     public bool IsUnlocked { get; }
-    public bool IsLocked => !IsUnlocked;
+    public bool IsLocked => ProgressKnown && !IsUnlocked;
 
     /// <summary>
     /// Whether this achievement was unlocked in hardcore. A hardcore unlock always implies the
@@ -63,33 +74,39 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         IRetroAchievementsBadgeCache? badges,
         bool loadBadge = true)
     {
-        _badges = badges;
-        AchievementId = achievement.AchievementId;
-        Title = achievement.Title;
-        Description = achievement.Description;
-        Points = achievement.Points;
+        _loadIcon = badges is null ? null : badges.GetBadgePathAsync;
+        AchievementId = achievement.AchievementId.ToString();
+        _title = achievement.Title; _description = achievement.Description;
+        Points = achievement.Points; HasPoints = true; ProgressKnown = true;
         DisplayOrder = achievement.DisplayOrder;
         PointsText = achievement.Points == 1 ? "1 point" : $"{achievement.Points} points";
-        IsUnlocked = achievement.IsEarned;
-        IsHardcore = achievement.IsHardcore;
+        IsUnlocked = achievement.IsEarned; IsHardcore = achievement.IsHardcore;
         BadgeName = achievement.BadgeName;
         EarnedAt = achievement.DateEarnedHardcore ?? achievement.DateEarned;
-        UnlockStateText = achievement.IsHardcore
-            ? "Hardcore"
-            : achievement.IsEarned
-                ? "Softcore"
-                : "Locked";
-        EarnedText = EarnedAt is { } earned
-            ? $"Earned {earned.ToLocalTime():d MMM yyyy}"
-            : "Not earned";
+        UnlockStateText = IsHardcore ? "Hardcore" : IsUnlocked ? "Softcore" : "Locked";
+        EarnedText = EarnedAt is { } earned ? $"Earned {earned.ToLocalTime():d MMM yyyy}" : "Not earned";
+        if (loadBadge && _loadIcon is not null) _ = LoadBadgeAsync(BadgeName);
+    }
 
-        if (loadBadge && _badges is not null && !string.IsNullOrWhiteSpace(BadgeName))
-            _ = LoadBadgeAsync(BadgeName);
+    public AchievementRowViewModel(AchievementEntry entry, IAchievementProvider provider, bool loadBadge = true)
+    {
+        _loadIcon = provider.GetIconPathAsync;
+        AchievementId = entry.Id; _title = entry.Title; _description = entry.Description;
+        Points = entry.Points ?? 0; HasPoints = entry.Points is not null;
+        PointsText = entry.Points is { } points ? $"{points} point{(points == 1 ? "" : "s")}" : "";
+        ProgressKnown = entry.IsUnlocked is not null; IsUnlocked = entry.IsUnlocked == true;
+        IsHardcore = entry.IsHardcore; IsHidden = entry.IsHidden;
+        BadgeName = entry.Icon; DisplayOrder = entry.DisplayOrder; EarnedAt = entry.EarnedAt;
+        UnlockStateText = !ProgressKnown ? "Unknown" : IsHardcore ? "Hardcore" : IsUnlocked ?
+            (provider.SupportsHardcore ? "Softcore" : "Unlocked") : "Locked";
+        EarnedText = !ProgressKnown ? "Progress unavailable" : EarnedAt is { } earned ?
+            $"Earned {earned.ToLocalTime():d MMM yyyy}" : IsUnlocked ? "Unlocked" : "Not earned";
+        if (loadBadge && !CanReveal) _ = LoadBadgeAsync(BadgeName);
     }
 
     public async Task LoadBadgeAsync(string badgeName, CancellationToken cancellationToken = default)
     {
-        if (_badges is null || Badge is not null || string.IsNullOrWhiteSpace(badgeName) ||
+        if (_loadIcon is null || CanReveal || Badge is not null || string.IsNullOrWhiteSpace(badgeName) ||
             Interlocked.CompareExchange(ref _badgeLoadStarted, 1, 0) != 0)
             return;
 
@@ -98,7 +115,7 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
             // Badge cache lookup/download and file I/O stay on a worker. Only assigning the
             // decoded Bitmap returns to the UI context.
             var path = await Task.Run(
-                () => _badges.GetBadgePathAsync(badgeName, cancellationToken),
+                () => _loadIcon(badgeName, cancellationToken),
                 cancellationToken);
             if (path is null)
                 return;
@@ -147,10 +164,14 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
 {
     public static readonly TimeSpan DetailRefreshAge = TimeSpan.FromMinutes(5);
 
-    private readonly int _retroAchievementsGameId;
-    private readonly IRetroAchievementsDetailsService _details;
-    private readonly IRetroAchievementsAccountService _account;
-    private readonly IRetroAchievementsBadgeCache? _badges;
+    private readonly AchievementGameRef _game;
+    private readonly IAchievementProvider _provider;
+    private readonly bool _ownsProvider;
+    public bool SupportsPoints => _provider.SupportsPoints;
+    public bool SupportsHardcore => _provider.SupportsHardcore;
+    public string ProviderText => _provider.DisplayName + (_provider.AccountId is { } account ? " · " + account : "");
+    [ObservableProperty]
+    public partial bool ProgressKnown { get; set; } = true;
     private readonly IAppLogger _logger;
     private readonly bool _deferBadgeLoading;
     private readonly TimeProvider _timeProvider;
@@ -209,7 +230,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     // Softcore (silver) and hardcore (gold) read in parallel — same shape, one word apart — so no
     // surface labels one of them "unlocked" and the other by mode. Both are always shown once a set
     // has loaded, so they never disagree.
-    public string ProgressText => $"{UnlockedCount} / {TotalCount} softcore";
+    public string ProgressText => !ProgressKnown ? "Progress unavailable" : $"{UnlockedCount} / {TotalCount} {(SupportsHardcore ? "softcore" : "unlocked")}";
     public string PointsText => $"{EarnedPoints} / {TotalPoints} points";
     public string HardcoreProgressText => $"{HardcoreUnlockedCount} / {TotalCount} hardcore";
     public string HardcorePointsText => $"{HardcoreEarnedPoints} / {TotalPoints} points";
@@ -220,7 +241,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     public bool HasAchievements => Achievements.Count > 0;
     public bool HasVisibleAchievements => VisibleAchievements.Count > 0;
     public bool HasFilteredEmptyState => HasAchievements && !HasVisibleAchievements;
-    public int LockedCount => Math.Max(0, TotalCount - UnlockedCount);
+    public int LockedCount => Achievements.Count(row => row.IsLocked);
     public string AllFilterText => $"All  {TotalCount}";
     public string LockedFilterText => $"Locked  {LockedCount}";
     public string UnlockedFilterText => $"Unlocked  {UnlockedCount}";
@@ -247,10 +268,10 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
             ? "Loading achievements…"
             : "No achievement details cached";
     public string EmptyStateDescription => IsRefreshing
-        ? "Contacting RetroAchievements and updating this game’s details."
+        ? $"Contacting {_provider.DisplayName} and updating this game’s details."
         : HasLoadedSnapshot
-            ? "RetroAchievements did not return any achievements for this game."
-            : _account.IsConnected
+            ? $"{_provider.DisplayName} did not return any achievements for this game."
+            : _provider.IsConnected
                 ? "Press Refresh to download this game's achievement list."
                 : "Reconnect to load this game's achievement list. Once loaded, it will remain available offline.";
 
@@ -266,21 +287,23 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         TimeProvider? timeProvider = null,
         IAppLogger? logger = null,
         bool deferBadgeLoading = false)
+        : this(gameTitle, new("retroachievements", retroAchievementsGameId.ToString()),
+            new RetroAchievementProvider(details, account, badges),
+            cached is null ? null : RetroAchievementProvider.Convert(cached, account.Account?.UserUlid ?? ""),
+            timeProvider, logger, deferBadgeLoading, ownsProvider: true)
+    { }
+
+    public AchievementDetailsViewModel(string gameTitle, AchievementGameRef game, IAchievementProvider provider,
+        AchievementSnapshot? cached = null, TimeProvider? timeProvider = null, IAppLogger? logger = null,
+        bool deferBadgeLoading = false, bool ownsProvider = false)
     {
-        GameTitle = gameTitle;
-        _retroAchievementsGameId = retroAchievementsGameId;
-        _details = details;
-        _account = account;
-        _badges = badges;
+        GameTitle = gameTitle; _game = game; _provider = provider; _ownsProvider = ownsProvider;
         _logger = logger ?? NullAppLogger.Instance;
         _deferBadgeLoading = deferBadgeLoading;
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _details.DetailsRefreshed += HandleDetailsRefreshed;
-
-        if (cached is not null)
-            ApplySnapshot(cached);
-        else
-            StatusText = "Loading achievement details…";
+        _provider.Changed += HandleProviderChanged;
+        if (cached is not null) ApplySnapshot(cached);
+        else StatusText = "Loading achievement details…";
     }
 
     /// <summary>Starts a background refresh only for missing or older-than-five-minute details.</summary>
@@ -316,8 +339,8 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     [RelayCommand]
     private void CycleSort()
     {
-        var sorts = Enum.GetValues<AchievementDisplaySort>();
-        SelectedSort = sorts[((int)SelectedSort + 1) % sorts.Length];
+        var sorts = Enum.GetValues<AchievementDisplaySort>().Where(sort => SupportsPoints || sort != AchievementDisplaySort.Points).ToArray();
+        SelectedSort = sorts[(Array.IndexOf(sorts, SelectedSort) + 1) % sorts.Length];
     }
 
     [RelayCommand]
@@ -328,12 +351,11 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         if (IsRefreshing)
             return;
 
-        var credentials = _account.CurrentCredentials;
-        if (credentials is null)
+        if (!_provider.IsConnected)
         {
             StatusText = HasAchievements
-                ? "Reconnect RetroAchievements to refresh cached details."
-                : "Connect RetroAchievements to load achievement details.";
+                ? $"Reconnect {_provider.DisplayName} to refresh cached details."
+                : $"Connect {_provider.DisplayName} in Settings to load achievement details.";
             return;
         }
 
@@ -345,32 +367,30 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
             // Detail requests and SQLite cache writes run away from the UI thread. The result is
             // applied below on the captured UI context so the popup remains responsive.
             var response = await Task.Run(
-                () => _details.RefreshAsync(
-                    credentials,
-                    _retroAchievementsGameId,
-                    _lifetime.Token,
-                    manual),
+                () => _provider.RefreshAsync(_game, _lifetime.Token, manual),
                 _lifetime.Token);
             if (_lifetime.IsCancellationRequested)
                 return;
 
+            if (response.Status == AchievementStatus.AccountChanged) return;
+            if (response.Snapshot is { } snapshot) ApplySnapshot(snapshot);
             if (response.IsSuccess)
             {
-                ApplySnapshot(response.Value!);
                 StatusText = string.Empty;
                 return;
             }
 
             StatusText = response.Status switch
             {
-                RetroAchievementsRequestStatus.AuthenticationFailed =>
-                    "RetroAchievements needs to be reconnected before details can refresh.",
-                RetroAchievementsRequestStatus.Offline =>
+                AchievementStatus.AuthenticationFailed =>
+                    $"{_provider.DisplayName} needs to be reconnected before details can refresh.",
+                AchievementStatus.Offline =>
                     HasLoadedSnapshot
                         ? "Offline — showing cached achievement details."
                         : "Offline — achievement details have not been cached yet.",
-                RetroAchievementsRequestStatus.RateLimited =>
-                    "RetroAchievements is rate limiting detail refreshes. Try again shortly.",
+                AchievementStatus.RateLimited =>
+                    $"{_provider.DisplayName} is rate limiting detail refreshes. Try again shortly.",
+                AchievementStatus.Unavailable => "Progress is private or unavailable. Showing the achievement list.",
                 _ => HasLoadedSnapshot
                     ? "Achievement details could not be refreshed; cached data is still available."
                     : "Achievement details could not be loaded and no cached copy is available.",
@@ -383,7 +403,7 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         catch (Exception ex)
         {
             _logger.Error(
-                $"RetroAchievements detail refresh failed for game id {_retroAchievementsGameId}.",
+                $"Achievement detail refresh failed for {_game.Provider} game id {_game.GameId}.",
                 ex);
             StatusText = HasLoadedSnapshot
                 ? "Achievement details could not be refreshed; cached data is still available."
@@ -396,41 +416,25 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private void ApplySnapshot(RetroAchievementsDetailsSnapshot snapshot)
+    private void ApplySnapshot(AchievementSnapshot snapshot)
     {
-        if (string.IsNullOrWhiteSpace(GameTitle))
-            GameTitle = snapshot.Details.Title;
-
-        foreach (var row in Achievements)
-            row.Dispose();
+        if (snapshot.Game != _game || (_provider.Id == "steam" && snapshot.AccountId != _provider.AccountId)) return;
+        if (string.IsNullOrWhiteSpace(GameTitle)) GameTitle = snapshot.Title;
+        foreach (var row in Achievements) row.Dispose();
         Achievements.Clear();
-        foreach (var achievement in snapshot.Details.Achievements
-                     .OrderBy(achievement => achievement.DisplayOrder)
-                     .ThenBy(achievement => achievement.AchievementId))
-        {
-            Achievements.Add(new AchievementRowViewModel(
-                achievement,
-                _badges,
-                loadBadge: !_deferBadgeLoading));
-        }
-
-        UnlockedCount = snapshot.Details.UnlockedAchievements;
-        TotalCount = snapshot.Details.TotalAchievements;
-        EarnedPoints = snapshot.Details.EarnedPoints;
-        TotalPoints = snapshot.Details.TotalPoints;
-        HardcoreUnlockedCount = snapshot.Details.UnlockedHardcoreAchievements;
-        HardcoreEarnedPoints = snapshot.Details.Achievements
-            .Where(achievement => achievement.IsHardcore)
-            .Sum(achievement => achievement.Points);
-        LastRefreshedAt = snapshot.LastRefreshedAt;
-        HasLoadedSnapshot = true;
+        foreach (var entry in snapshot.Achievements.OrderBy(a => a.DisplayOrder).ThenBy(a => a.Id))
+            Achievements.Add(new AchievementRowViewModel(entry, _provider, !_deferBadgeLoading));
+        ProgressKnown = snapshot.ProgressKnown;
+        UnlockedCount = Achievements.Count(a => a.IsUnlocked); TotalCount = Achievements.Count;
+        EarnedPoints = Achievements.Where(a => a.IsUnlocked).Sum(a => a.Points);
+        TotalPoints = Achievements.Sum(a => a.Points);
+        HardcoreUnlockedCount = Achievements.Count(a => a.IsHardcore);
+        HardcoreEarnedPoints = Achievements.Where(a => a.IsHardcore).Sum(a => a.Points);
+        LastRefreshedAt = snapshot.RefreshedAt; HasLoadedSnapshot = true;
         RebuildVisibleAchievements();
-        OnPropertyChanged(nameof(ProgressMaximum));
-        OnPropertyChanged(nameof(ProgressText));
-        OnPropertyChanged(nameof(PointsText));
-        OnPropertyChanged(nameof(LastRefreshText));
-        OnPropertyChanged(nameof(HasAchievements));
-        OnPropertyChanged(nameof(HasFilteredEmptyState));
+        foreach (var name in new[] { nameof(ProgressMaximum), nameof(ProgressText), nameof(PointsText),
+            nameof(LastRefreshText), nameof(HasAchievements), nameof(HasFilteredEmptyState), nameof(ProviderText),
+            nameof(LockedCount), nameof(LockedFilterText) }) OnPropertyChanged(name);
     }
 
     private void RebuildVisibleAchievements()
@@ -472,19 +476,34 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
         OnPropertyChanged(nameof(FilterEmptyStateText));
     }
 
-    private void HandleDetailsRefreshed(RetroAchievementsDetailsSnapshot snapshot)
-    {
-        if (snapshot.Details.GameId != _retroAchievementsGameId || _lifetime.IsCancellationRequested)
-            return;
+    private int _providerChangeRevision;
 
-        // A post-session refresh can complete independently of this window. Updating through
-        // the dispatcher keeps the active popup and its bound collection in sync safely.
-        Dispatcher.UIThread.Post(() =>
+    private async void HandleProviderChanged()
+    {
+        var revision = Interlocked.Increment(ref _providerChangeRevision);
+        try
         {
-            if (!_lifetime.IsCancellationRequested)
-                ApplySnapshot(snapshot);
-        }, DispatcherPriority.Send);
+            var snapshot = await Task.Run(() => _provider.GetCached(_game)).ConfigureAwait(false);
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (Volatile.Read(ref _disposed) != 0 || revision != Volatile.Read(ref _providerChangeRevision)) return;
+                if (snapshot is not null && (_provider.Id != "steam" || snapshot.AccountId == _provider.AccountId))
+                    ApplySnapshot(snapshot);
+                else
+                {
+                    foreach (var row in Achievements) row.Dispose();
+                    Achievements.Clear(); RebuildVisibleAchievements();
+                    UnlockedCount = TotalCount = EarnedPoints = TotalPoints = HardcoreUnlockedCount = HardcoreEarnedPoints = 0;
+                    LastRefreshedAt = null; HasLoadedSnapshot = false; ProgressKnown = false;
+                    StatusText = $"Connect {_provider.DisplayName} in Settings to load achievement details.";
+                    OnPropertyChanged(nameof(HasAchievements)); OnPropertyChanged(nameof(ProviderText));
+                }
+            }, DispatcherPriority.Send);
+        }
+        catch (Exception) { /* An optional cache update must not interrupt the active viewer. */ }
     }
+
+    partial void OnProgressKnownChanged(bool value) => OnPropertyChanged(nameof(ProgressText));
 
     partial void OnUnlockedCountChanged(int value)
     {
@@ -548,7 +567,8 @@ public partial class AchievementDetailsViewModel : ViewModelBase, IDisposable
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0)
             return;
-        _details.DetailsRefreshed -= HandleDetailsRefreshed;
+        _provider.Changed -= HandleProviderChanged;
+        if (_ownsProvider && _provider is IDisposable owned) owned.Dispose();
         _lifetime.Cancel();
         VisibleAchievements = Array.Empty<AchievementRowViewModel>();
         foreach (var row in Achievements)

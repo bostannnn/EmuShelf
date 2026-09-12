@@ -7,6 +7,15 @@ namespace EmuShelf.App.Tests;
 public class PlatformArtworkTests
 {
     [AvaloniaFact]
+    public void Steam_UsesCachedNavigationSizedBitmap_AndIsLastInTheRow()
+    {
+        var artwork = Assert.IsType<Avalonia.Media.Imaging.Bitmap>(PlatformArtwork.ForSystem("steam"));
+        Assert.InRange(artwork.PixelSize.Width, 1, 256);
+        Assert.Same(artwork, PlatformArtwork.ForSystem("STEAM"));
+        Assert.Equal("steam", KnownSystems.All[^1].Id);
+    }
+
+    [AvaloniaFact]
     public void Catalog_LoadsCurrentAndFuturePlatformArtwork()
     {
         foreach (var systemId in PlatformArtwork.SupportedSystemIds)
@@ -28,7 +37,7 @@ public class PlatformArtworkTests
         // list is grouped by manufacturer (see NavigationOrder_* below), so what matters here is that
         // every expansion id is still present and still has licensed artwork.
         string[] expansionSystemIds =
-            ["psp", "megadrive", "nds", "gba", "3ds", "nes", "snes", "dreamcast", "arcade", "gbc"];
+            ["psp", "megadrive", "nds", "gba", "3ds", "nes", "snes", "dreamcast", "arcade", "gbc", "steam"];
         Assert.All(expansionSystemIds, id =>
             Assert.Contains(KnownSystems.All, system => system.Id == id));
         Assert.All(expansionSystemIds, id =>
@@ -82,6 +91,6 @@ public class PlatformArtworkTests
             .Where((manufacturer, index) => index == 0 || manufacturer != manufacturers[index - 1])
             .ToArray();
 
-        Assert.Equal(["Nintendo", "Sega", "Sony", "Arcade"], groupOrder);
+        Assert.Equal(["Nintendo", "Sega", "Sony", "Arcade", "Valve"], groupOrder);
     }
 }

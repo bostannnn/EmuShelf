@@ -12139,3 +12139,34 @@ upload passes and worst sampled GL callbacks of 4.6 and 4.3 ms. The earlier inst
 and storage pressure prevent attributing the whole numerical change to this patch. The original
 Steam experiment APK was restored after testing because this checkout does not include that separate
 feature. Full method, hashes, memory observations and limits: `docs/performance/shelf-2026-09-06/README.md`.
+
+## 2026-09-12 — Steam library identity and achievement providers
+
+Retain the experimental `steam` system ID and GameNative Android intent contract. Treat
+GameNative Steam exports as external entries keyed by app ID, so moved/duplicate shortcuts
+preserve history. Reject a different app ID at an occupied path rather than silently
+reassigning history. Scans and reconciliation never write to game/export files.
+
+Reuse achievement presentations behind a read-only provider contract. Steam API names are
+string IDs, while the RetroAchievements adapter preserves existing numeric IDs as strings,
+points and hardcore semantics. Unknown/private progress is distinct from locked progress.
+GameNative continues to own submission, Steam client login and cloud saves.
+
+Link Steam with profile identity and a personal Web API key; do not build a credential-bearing
+backend or Steam client login. OpenID alone cannot grant private achievement access. Protect
+keys using Android Keystore / Windows DPAPI, and explicitly offer session-only storage on
+other platforms. Scope snapshots by account and app; reject stale account responses. Full
+Steam authentication is outside the frontend's responsibilities.
+
+
+## 2026-09-12 — Group achievement settings and sync the Steam library
+
+Present Steam and RetroAchievements as separate expandable provider rows, with one group
+open at a time, matching emulator settings. Keep the internal RetroAchievements section enum
+for compatibility but label both navigation surfaces “Achievements”. Provider-specific account
+fields and actions stay inside their group.
+
+Steam's explicit bulk-sync command reads all added Steam app IDs and deduplicates them. Fetch
+sequentially with a short gap, report progress and allow cancellation; stop on network/auth/rate
+limit failures or account changes. Preserve completed/cached results and publish one library
+notification at the end to avoid rebuilding every library view for every game.

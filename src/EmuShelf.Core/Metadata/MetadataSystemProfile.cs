@@ -18,7 +18,7 @@ public enum DatFormat
 public sealed record MetadataSystemProfile(
     string SystemId,
     GameIdentifierKind CatalogKeyKind,
-    Uri CatalogUri,
+    Uri? CatalogUri,
     IGameIdentifierExtractor IdentifierExtractor,
     IReadOnlyList<IGameArtworkProvider> ArtworkProviders,
     IReadOnlyList<GameIdentifierKind>? FallbackCatalogKeyKinds = null,

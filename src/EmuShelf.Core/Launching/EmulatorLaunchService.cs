@@ -129,6 +129,10 @@ public sealed class EmulatorLaunchService : IEmulatorLaunchService
             return LaunchPreparation.Failed(
                 $"Cannot launch {title}: no emulator supports this system.");
 
+        if (emulator.AndroidOnly)
+            return LaunchPreparation.Failed(
+                $"{emulator.Name} games launch on Android. Open this library on your handheld to play.");
+
         if (emulator.RequiresContentFile && !File.Exists(game.Path))
         {
             return LaunchPreparation.Failed(

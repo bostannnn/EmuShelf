@@ -473,7 +473,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     {
         SettingsSection.Emulators => "Emulators",
         SettingsSection.Hotkeys => "Hotkeys",
-        SettingsSection.RetroAchievements => "RetroAchievements",
+        SettingsSection.RetroAchievements => "Achievements",
         SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
@@ -529,9 +529,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     }
 
     public string HotkeysRailStatus => string.Empty;
-    public string RetroAchievementsRailStatus => _settings.IsRetroAchievementsConnected
-        ? _settings.ConnectedAccountName ?? "Signed in"
-        : "Not signed in";
+    public string RetroAchievementsRailStatus =>
+        $"{(_settings.IsSteamConnected ? 1 : 0) + (_settings.IsRetroAchievementsConnected ? 1 : 0)} connected";
     public string ArtworkRailStatus => _settings.IsScreenScraperConnected ? "ScreenScraper connected" : string.Empty;
     /// <summary>Like Emulators: the rail names the platform that needs a look (no save folder, a detection
     /// error, a sync notice) before it says anything routine.</summary>
@@ -641,9 +640,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SettingsSection.Hotkeys => FirstNonEmpty(
             _settings.SteamTemplateStatus,
             _settings.HotkeySchemeSummary),
-        SettingsSection.RetroAchievements => FirstNonEmpty(
-            _settings.RetroAchievementsProgressText,
-            _settings.RetroAchievementsStatusText),
+        SettingsSection.RetroAchievements => _expandedBySection.GetValueOrDefault(SettingsSection.RetroAchievements) == "steam"
+            ? _settings.SteamStatusText
+            : FirstNonEmpty(_settings.RetroAchievementsProgressText, _settings.RetroAchievementsStatusText),
         SettingsSection.ArtworkMetadata => FirstNonEmpty(
             _settings.MetadataProgressText,
             _settings.MetadataStatusText,
@@ -689,7 +688,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     {
         SettingsSection.Emulators => _settings.IsMaintainingLibrary,
         SettingsSection.Hotkeys => _settings.IsHotkeyBusy,
-        SettingsSection.RetroAchievements => _settings.IsRetroAchievementsBusy,
+        SettingsSection.RetroAchievements => _settings.IsRetroAchievementsBusy || _settings.IsSteamBusy,
         SettingsSection.ArtworkMetadata => _settings.IsScreenScraperBusy || _settings.IsMaintainingLibrary,
         SettingsSection.Saves => _settings.IsCloudBusy,
         SettingsSection.TexturePacks => _settings.IsTexturePackBusy,
@@ -1845,8 +1844,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 }
                 yield return ActionRow(
                     row.AddFolderFieldId,
-                    "Add game folder",
-                    string.Empty,
+                    row.IsSteamPlatform ? "Add GameNative export folder" : "Add game folder",
+                    row.LibraryFolderHelp,
                     "A ADD FOLDER",
                     row.AddLibraryFolderCommand,
                     row.CanManageLibraryFolders,
@@ -2078,6 +2077,47 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildRetroAchievementsRows()
+    {
+        if (_settings.HasSteamAchievements)
+        {
+            yield return ExpandableSummaryRow(SettingsSection.RetroAchievements, "steam.summary", "Steam", "steam",
+                _settings.IsSteamBusy ? "Working…" : _settings.IsSteamConnected ? _settings.SteamAccountText : "Not connected", "steam");
+            if (IsPlatformExpanded(SettingsSection.RetroAchievements, "steam"))
+                foreach (var row in BuildSteamAchievementRows()) yield return row;
+        }
+        yield return ExpandableSummaryRow(SettingsSection.RetroAchievements, "retro.summary", "RetroAchievements", "retro",
+            _settings.IsRetroAchievementsBusy ? "Working…" : _settings.IsRetroAchievementsConnected ? _settings.ConnectedAccountName ?? "Connected" : "Not connected");
+        if (IsPlatformExpanded(SettingsSection.RetroAchievements, "retro"))
+            foreach (var row in BuildRetroOnlyRows()) yield return row;
+    }
+
+    private IEnumerable<GamepadSettingsRowSpec> BuildSteamAchievementRows()
+    {
+            yield return InformationRow("steam.account", "Steam achievements", _settings.SteamKeyStorageText, _settings.SteamAccountText);
+            if (_settings.IsSteamConnected)
+            {
+                yield return ActionRow("steam.sync", "Sync all Steam achievements", "Updates progress for every Steam game added to your library",
+                    _settings.IsSteamSyncing ? "Syncing…" : "A SYNC", _settings.SyncSteamAchievementsCommand, _settings.CanSyncSteamAchievements);
+                if (_settings.IsSteamSyncing)
+                    yield return ActionRow("steam.cancel-sync", "Cancel Steam sync", "Completed updates are kept", "A CANCEL",
+                        _settings.SyncSteamAchievementsCancelCommand, true);
+                yield return ActionRow("steam.disconnect", "Disconnect Steam", "Leaves your Steam account and earned achievements unchanged",
+                    "A DISCONNECT", _settings.DisconnectSteamCommand, !_settings.IsSteamBusy);
+            }
+            else
+            {
+                yield return TextRow("steam.profile", "Steam profile", "SteamID64 or Steam Community profile URL",
+                    _settings.SteamProfileInput, false, value => _settings.SteamProfileInput = value);
+                yield return TextRow("steam.api-key", "Steam Web API key", "Create your personal key using the link below",
+                    _settings.SteamApiKey, true, value => _settings.SteamApiKey = value);
+                yield return ActionRow("steam.key-page", "Get a Steam API key", "Opens Steam in your browser", "A OPEN",
+                    _settings.OpenSteamApiKeyPageCommand, !_settings.IsSteamBusy);
+                yield return ActionRow("steam.connect", "Link Steam profile", _settings.SteamStatusText,
+                    _settings.IsSteamBusy ? "Connecting…" : "A CONNECT", _settings.ConnectSteamCommand, !_settings.IsSteamBusy);
+            }
+    }
+
+    private IEnumerable<GamepadSettingsRowSpec> BuildRetroOnlyRows()
     {
         if (_settings.IsRetroAchievementsConnected)
         {

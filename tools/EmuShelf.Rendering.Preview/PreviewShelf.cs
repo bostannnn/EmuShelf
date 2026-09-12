@@ -164,5 +164,9 @@ public static class PreviewShelf
             MediaShell.NesCartridge, new Vector3(120f, 135f, 18.3f),
             PhysicalArtworkSlots.CartridgeSupport, "nes-grey", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.012f)),
+        new("steam", new PhysicalMediaProfile(
+            MediaShell.DiscKeepCase, new Vector3(126f, 190f, 14f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+            "steam-midnight", "case-downward")),
     ];
 }

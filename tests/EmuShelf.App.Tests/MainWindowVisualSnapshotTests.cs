@@ -1566,7 +1566,7 @@ public class MainWindowVisualSnapshotTests
             await PumpAsync();
             Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
             Assert.Equal(17, viewModel.GamepadAchievementDetails.VisibleAchievements.Count);
-            Assert.Equal(8, viewModel.FocusedGamepadAchievement?.AchievementId);
+            Assert.Equal("8", viewModel.FocusedGamepadAchievement?.AchievementId);
             AssertAchievementTopLeftCellIsOccupied(window, viewModel.FocusedGamepadAchievement!);
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
             await PumpAsync();
@@ -1847,7 +1847,7 @@ public class MainWindowVisualSnapshotTests
             viewModel.DispatchGamepadAction(GamepadAction.NextPlatform);
             await PumpAsync();
             Assert.Equal(AchievementDisplayFilter.Locked, viewModel.GamepadAchievementDetails.SelectedFilter);
-            Assert.Equal(8, viewModel.FocusedGamepadAchievement?.AchievementId);
+            Assert.Equal("8", viewModel.FocusedGamepadAchievement?.AchievementId);
             Assert.Equal(0, viewModel.GamepadAchievementDetails.VisibleAchievements
                 .IndexOf(viewModel.FocusedGamepadAchievement!));
             Assert.Equal(revisionBeforeFilter + 1, viewModel.GamepadAchievementLayoutRevision);
@@ -2856,6 +2856,8 @@ public class MainWindowVisualSnapshotTests
             Assert.Equal(navigationButtons[0].Bounds.Width, saveButton.Bounds.Width, 1);
 
             gamepadSettings.SelectedSection = SettingsSection.RetroAchievements;
+            if (!gamepadSettings.Rows.Single(row => row.Key == "retro.summary").IsExpanded)
+                await gamepadSettings.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
             await PumpAsync();
             await SaveGamepadOverlaySnapshotAsync(
                 window,
@@ -3002,6 +3004,8 @@ public class MainWindowVisualSnapshotTests
                 SettingsSection.RetroAchievements,
                 "retro.");
             gamepadSettings.SelectedSection = SettingsSection.RetroAchievements;
+            if (!gamepadSettings.Rows.Single(row => row.Key == "retro.summary").IsExpanded)
+                await gamepadSettings.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
             await PumpAsync();
             AssertGamepadSettingsParity(SettingsSection.RetroAchievements, "retro.");
 
@@ -3081,6 +3085,7 @@ public class MainWindowVisualSnapshotTests
         async Task<string[]> CaptureDesktopFieldIdsAsync(SettingsSection section, string prefix)
         {
             desktopSettings.SelectedSection = section;
+            desktopSettings.IsRetroAchievementsExpanded = section == SettingsSection.RetroAchievements;
             var desktopWindow = new EmulatorSettingsWindow
             {
                 DataContext = desktopSettings,

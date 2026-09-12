@@ -53,6 +53,30 @@ public sealed class ScreenScraperPreviewService : IScreenScraperPreviewService
         if (!_profiles.TryGetValue(game.SystemId, out var profile))
             return Failure(ScreenScraperPreviewStatus.UnsupportedSystem, "This platform is not mapped to ScreenScraper.");
 
+        // Steam exports contain an app id, not ROM bytes. A unique exact PC title is the only
+        // automatic title-search match we accept; ambiguous/fuzzy results remain a user choice.
+        if (game.SystemId == "steam")
+        {
+            var title = game.Title;
+            var search = await _client.SearchGamesAsync(credentials, profile.ProviderSystemId, title, cancellationToken);
+            if (!search.IsSuccess)
+                return new(ScreenScraperPreviewStatus.ProviderFailure, null, search.Status, search.Error);
+            static string Normalize(string value) => string.Concat(value.Where(char.IsLetterOrDigit)).ToUpperInvariant();
+            var normalizedTitle = Normalize(title);
+            var matches = search.Data!.Where(m => normalizedTitle.Length > 0 && Normalize(m.Name) == normalizedTitle)
+                .DistinctBy(m => m.ProviderGameId).ToArray();
+            if (matches.Length != 1)
+                return new(ScreenScraperPreviewStatus.ProviderFailure, null, ScreenScraperRequestStatus.NotFound,
+                    "No unique exact PC title match. Use ScreenScraper title search to choose the game.");
+            var info = await _client.GetGameInfoAsync(credentials,
+                new ScreenScraperGameRequest(profile.ProviderSystemId, Path.GetFileName(game.Path), 0,
+                    ProviderGameId: matches[0].ProviderGameId, Language: ScreenScraperMediaProfile.PreferredLanguage), cancellationToken);
+            if (!info.IsSuccess)
+                return new(ScreenScraperPreviewStatus.ProviderFailure, null, info.Status, info.Error);
+            return await BuildPreviewAsync(game, profile, info.Data!, GameProviderMatchMethod.ExactTitleSearch,
+                title, null, info.Quota, cancellationToken);
+        }
+
         // Three match routes, in order: (1) disc product code (a disc serial, or the GameCube/Wii
         // disc game code), read from inside the container — so a compressed image (CHD/CSO/RVZ/WBFS/…)
         // that cannot be whole-file hashed still matches; (2) arcade romsets, matched by the ROM file

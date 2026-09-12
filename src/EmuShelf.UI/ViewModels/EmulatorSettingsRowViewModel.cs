@@ -178,6 +178,8 @@ public partial class EmulatorSettingsRowViewModel : ViewModelBase
     public bool HasSyncLibrary => _syncLibrary is not null;
     public bool CanSyncLibrary => HasSyncLibrary && !IsMaintenanceBlocked;
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
+    public string LibraryFolderHelp => SystemId == "steam" ? "Enable frontend export/sync in GameNative, then select the folder containing .steam exports. GameNative manages installations and cloud saves." : string.Empty;
+    public bool IsSteamPlatform => SystemId == "steam";
     public bool HasFolderManagement => _folderActions is not null;
     public bool HasRememberedFolders => LibraryFolders.Count > 0;
     public bool CanManageLibraryFolders => HasFolderManagement && !IsMaintenanceBlocked;

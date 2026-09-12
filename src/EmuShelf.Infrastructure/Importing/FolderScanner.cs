@@ -31,7 +31,7 @@ public sealed class FolderScanner : IFolderScanner
             var options = new EnumerationOptions
             {
                 RecurseSubdirectories = true,
-                IgnoreInaccessible = true,
+                IgnoreInaccessible = system.Id != "steam",
             };
 
             string? lastDirectory = null;

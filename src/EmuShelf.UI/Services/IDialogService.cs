@@ -94,6 +94,8 @@ public interface IDialogService
     /// <summary>Shows cache-first achievement details for one confirmed RetroAchievements game.</summary>
     Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId);
 
+    Task ShowAchievementDetailsAsync(EmuShelf.App.ViewModels.AchievementDetailsViewModel viewModel) => Task.CompletedTask;
+
     /// <summary>
     /// Opens the ScreenScraper scrape/apply window for one game. Returns true when data was applied,
     /// so the caller can refresh the library. Implementations without the provider return false.
