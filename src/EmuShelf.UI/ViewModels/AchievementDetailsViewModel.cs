@@ -121,10 +121,13 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
                 return;
 
             var image = await Task.Run(() => new Bitmap(path), cancellationToken);
-            if (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
-                Badge = image;
-            else
-                image.Dispose();
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
+                    Badge = image;
+                else
+                    image.Dispose();
+            });
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -136,6 +139,15 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
             // The XAML placeholder remains visible for an unreadable/missing local badge.
         }
         finally { Interlocked.Exchange(ref _badgeLoadStarted, 0); }
+    }
+
+    /// <summary>Preloads a bounded window around controller focus, independent of native attachment events.</summary>
+    public static void LoadBadgeWindow(IList<AchievementRowViewModel> rows, AchievementRowViewModel? focused)
+    {
+        var index = focused is null ? 0 : rows.IndexOf(focused);
+        var start = Math.Max(0, index - 8);
+        foreach (var row in rows.Skip(start).Take(32))
+            _ = row.LoadBadgeAsync(row.BadgeName);
     }
 
     partial void OnBadgeChanging(Bitmap? value)

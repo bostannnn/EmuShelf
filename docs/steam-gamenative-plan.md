@@ -66,3 +66,9 @@ URLs. The loader rejected that host, and the old CDN also returned 404. The same
 Normalize only recognized Steam legacy hosts and asset paths to HTTPS on the current CDN,
 including cached URLs, and release the per-row loading guard after failed downloads.
 134 achievement tests passed, followed by 21 Steam tests including image decoding and retry.
+
+On-device follow-up also exposed unreliable tile-attachment loading in the Android gamepad
+viewer. Added a bounded 32-icon window around controller focus (also used by the second screen)
+and explicit UI-thread publication. Verified DAVE THE DIVER icons actually render on the Thor
+in the updated Steam Dev app; existing account/library data was preserved. 136 achievement
+tests passed, plus the focused test proving loading starts before visual tiles attach.

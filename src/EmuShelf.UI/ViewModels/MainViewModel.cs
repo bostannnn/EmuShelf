@@ -4415,6 +4415,8 @@ public partial class MainViewModel : ViewModelBase
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
+        if (GamepadAchievementDetails is { } details)
+            AchievementRowViewModel.LoadBadgeWindow(details.VisibleAchievements, newValue);
         OnPropertyChanged(nameof(HasFocusedGamepadAchievement));
     }
 

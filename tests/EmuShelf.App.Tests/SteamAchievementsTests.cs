@@ -243,10 +243,41 @@ public sealed class SteamAchievementsTests : IDisposable
         using var row = new AchievementRowViewModel(new("FIRST", "First", "Start", icon, 0, true), provider, loadBadge: false);
         await row.LoadBadgeAsync(icon, Token);
         Assert.False(row.HasBadge);
-        await row.LoadBadgeAsync(icon, Token);
+        var publishedOnUiThread = false;
+        row.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(row.Badge))
+                publishedOnUiThread = Avalonia.Threading.Dispatcher.UIThread.CheckAccess();
+        };
+        await Task.Run(() => row.LoadBadgeAsync(icon, Token), Token);
+        Assert.True(publishedOnUiThread);
         Assert.True(row.HasBadge);
         Assert.Equal(2, row.Badge!.PixelSize.Width);
         Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public async Task GamepadViewerRequestsIconsForVisibleDeferredRows()
+    {
+        using var handler = new IconResponse(); using var http = new HttpClient(handler);
+        var provider = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        await provider.ConnectAsync("76561198000000001", Key, Token);
+        const string icon = "https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/2142790/fc7112873f2eb80bf26225c48efadf7ba61e7363.jpg";
+        using var viewer = new AchievementDetailsViewModel("Fixture", Game, provider,
+            new(Game, provider.AccountId!, "Fixture", [new("FIRST", "First", "Start", icon, 0, true)], DateTimeOffset.UtcNow), deferBadgeLoading: true);
+        var main = new MainViewModel { IsGamepadMode = true, GamepadAchievementDetails = viewer, GamepadOverlay = GamepadOverlayKind.Achievements };
+        main.FocusedGamepadAchievement = viewer.VisibleAchievements[0];
+        await Task.Delay(100, Token);
+        Assert.NotEmpty(handler.Requests); // Focus loads icons even before any Android tile attachment event.
+        var window = new EmuShelf.App.Views.MainWindow { DataContext = main, Width = 1280, Height = 800 };
+        window.Show();
+        try
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Render);
+            await Task.Delay(100, Token);
+            Assert.NotEmpty(handler.Requests);
+        }
+        finally { window.Close(); }
     }
 
     private sealed class IconResponse : HttpMessageHandler

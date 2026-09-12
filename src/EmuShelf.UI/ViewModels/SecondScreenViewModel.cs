@@ -271,6 +271,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
+        AchievementRowViewModel.LoadBadgeWindow(_achievements, newValue);
         OnPropertyChanged(nameof(HasSelectedAchievement));
         OnPropertyChanged(nameof(SelectedAchievementMeta));
     }
