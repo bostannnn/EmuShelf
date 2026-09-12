@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="EmuShelfTheme" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/emushelf_startup</item>
+        <item name="android:statusBarColor">@color/emushelf_startup</item>
+        <item name="android:navigationBarColor">@color/emushelf_startup</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+    <style name="EmuShelfLaunchTheme" parent="EmuShelfTheme">
+        <item name="android:windowBackground">@drawable/emushelf_launch_background</item>
+    </style>
+</resources>

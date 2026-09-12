@@ -208,30 +208,77 @@ public partial class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>
-    /// The Android head's deferred first view, invoked by the Activity on (re)creation. Resolves the data
-    /// folder <i>now</i> — device booted, storage mounted, the user actually opening the app — and either
-    /// returns the onboarding view or composes the shell and returns its first view. Composition happens
-    /// once per process: <see cref="BuildAndRun"/> makes the platform shell install its own factory, which
-    /// serves every later Activity recreation directly, so this method never runs again after it.
-    /// </summary>
+    public static Action<Exception>? StartupFailureReporter { get; set; }
+
+    private StartupViewModel? _androidStartup;
+    private ContentControl? _androidStartupHost;
+
+    // Return a cheap view immediately. The same attempt survives Activity recreation, while every
+    // Activity owns a fresh host. Replacing host.Content is supported (unlike replacing MainView).
     private Control BuildInitialAndroidView(IActivityApplicationLifetime lifetime, IDataLocationBootstrap bootstrap)
     {
-        var resolution = bootstrap.Resolve();
-        if (!resolution.IsResolved)
-            return CreateOnboardingView(bootstrap, resolution);
-
-        BaseDirectoryOverride = resolution.BaseDirectory;
-        var deferred = lifetime.MainViewFactory;
-        BuildAndRun();
-
-        var shellFactory = lifetime.MainViewFactory;
-        if (shellFactory is null || ReferenceEquals(shellFactory, deferred))
+        _androidStartup ??= new StartupViewModel(
+            () => InitializeAndroidAsync(lifetime, bootstrap),
+            () => RestartRequested?.Invoke(),
+            async () =>
+            {
+                var result = await bootstrap.PickFolderAsync();
+                if (result.Succeeded)
+                    OnDataFolderChosen(result.BaseDirectory!);
+                return result.Error;
+            },
+            ex => StartupFailureReporter?.Invoke(ex));
+        OnboardingGamepadDispatch = _androidStartup.DispatchGamepadAction;
+        var host = new ContentControl
         {
-            throw new InvalidOperationException(
-                "The platform shell did not install its main-view factory; there is no view to show.");
+            HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+            VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Stretch,
+            Content = new Views.StartupView { DataContext = _androidStartup },
+        };
+        _androidStartupHost = host;
+        host.AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(
+            () => _androidStartup.StartCommand.Execute(null), DispatcherPriority.Background);
+        return host;
+    }
+
+    private async Task InitializeAndroidAsync(IActivityApplicationLifetime lifetime, IDataLocationBootstrap bootstrap)
+    {
+        try
+        {
+            // Directory probing and database migrations can block on removable media. Neither needs
+            // an Avalonia view; all shell/control composition below stays on the dispatcher.
+            var resolution = await Task.Run(bootstrap.Resolve);
+            if (!resolution.IsResolved)
+            {
+                lifetime.MainViewFactory = () => CreateOnboardingView(bootstrap, resolution);
+            }
+            else
+            {
+                BaseDirectoryOverride = resolution.BaseDirectory;
+                var prepared = await Task.Run(() => new AppBootstrapper(resolution.BaseDirectory));
+                var startupFactory = lifetime.MainViewFactory;
+                BuildAndRun(prepared);
+                if (ReferenceEquals(startupFactory, lifetime.MainViewFactory))
+                    throw new InvalidOperationException("The platform shell did not install its main-view factory.");
+            }
+
+            var factory = lifetime.MainViewFactory
+                ?? throw new InvalidOperationException("The platform shell did not install its main-view factory.");
+            // Clear startup dispatch before constructing the next view: onboarding installs its own.
+            OnboardingGamepadDispatch = null;
+            var view = factory();
+            if (_androidStartupHost is { } host)
+                host.Content = view;
+            _androidStartupHost = null;
         }
-        return shellFactory();
+        catch
+        {
+            // Composition might already have replaced the factory. Keep the error surface available
+            // on later Activity recreation; Retry deliberately starts an entirely fresh process.
+            lifetime.MainViewFactory = () => BuildInitialAndroidView(lifetime, bootstrap);
+            OnboardingGamepadDispatch = _androidStartup!.DispatchGamepadAction;
+            throw;
+        }
     }
 
     /// <summary>
@@ -270,9 +317,9 @@ public partial class App : Application
     /// from <see cref="OnFrameworkInitializationCompleted"/> when a data folder is already resolved, or
     /// after first-run onboarding picks one.
     /// </summary>
-    private void BuildAndRun()
+    private void BuildAndRun(AppBootstrapper? prepared = null)
     {
-        Bootstrapper = new AppBootstrapper(BaseDirectoryOverride);
+        Bootstrapper = prepared ?? new AppBootstrapper(BaseDirectoryOverride);
 
         // Route Avalonia's framework log into the portable Logs/ file. The default .LogToTrace() sink
         // (Program.cs) writes to System.Diagnostics.Trace, which has no listener in a Steam Game Mode
