@@ -12179,6 +12179,9 @@ Folder rescans isolate Steam identity conflicts per export and unreadable listin
 
 Steam is optional in setup: missing GameNative is actionable only when Steam games are in the library. macOS/Linux credentials remain session-only; a portable persistent store is not a substitute for an OS-protected secret store.
 
+### 2026-09-12 — Resolve Steam covers from published store assets
+
+Steam library portraits are not always named library_600x900.jpg at the app root. The public StoreBrowse API exposes hash-prefixed asset filenames and portrait.png for older games. Resolve published library capsules by app ID before legacy artwork candidates, with headers as the final published fallback. Restrict asset paths to the requested app under Steam's CDN and keep existing cover consent, cancellation, download limits and manual-cover protection. No Steam account or API key is used.
 ### 2026-09-12 — Android production preparation: identity, startup and release gates
 
 Reuse the existing desktop shelf/books mark and its exact red (#D43F4A) in native

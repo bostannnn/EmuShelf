@@ -55,6 +55,13 @@ public interface IGameArtworkTitleIndex
         CancellationToken cancellationToken = default);
 }
 
+/// <summary>Resolves current publisher artwork paths from stable game identifiers.</summary>
+public interface IGameArtworkResolver
+{
+    Task<IReadOnlyList<ArtworkCandidate>> ResolveAsync(string systemId,
+        IReadOnlyList<GameIdentifier> identifiers, CancellationToken cancellationToken = default);
+}
+
 public interface IRemoteArtworkDownloader
 {
     Task<DownloadedArtwork?> DownloadFirstAsync(
