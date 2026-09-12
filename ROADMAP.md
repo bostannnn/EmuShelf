@@ -2220,3 +2220,15 @@ breaks the whole-solution macOS build/test loop.
 - [x] Expandable provider groups and cancellable whole-library Steam achievement sync.
 - [x] Automated regression suite, rendered Steam viewer and Android Release/AOT build.
 - [ ] Target-device and live Steam-account acceptance — tracked in `docs/steam-gamenative-plan.md`.
+
+### Android production preparation (2026-09-12)
+
+- [x] Reuse the existing shelf mark for native launcher, adaptive/themed icon, splash and notification.
+- [x] Show startup immediately, prepare storage/database off-thread, and offer non-destructive recovery.
+- [x] Require Android packaging/signing on tagged releases; verify certificate, manifest and 16 KB alignment.
+- [x] Ship arm64 only and fix downloaded checksum paths.
+- [x] Add startup recovery tests, small-handheld render checks, and Android data/support documentation.
+- [ ] Signed release-candidate cold/warm start, upgrade and lifecycle acceptance on Thor; 16 KB runtime acceptance.
+- [ ] Close remaining performance, wizard/settings and Steam/GameNative device gates.
+
+See `docs/android-production-readiness.md` for evidence and remaining acceptance scope.

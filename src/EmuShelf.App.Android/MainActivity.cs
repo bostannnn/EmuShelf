@@ -23,11 +23,8 @@ namespace EmuShelf.App.Android;
 [Activity(
     Name = "com.emushelf.app.MainActivity",
     Label = "EmuShelf",
-    // AvaloniaActivity derives from AppCompatActivity, so the theme MUST be a Theme.AppCompat
-    // descendant (a plain @android Material theme aborts with "You need to use a Theme.AppCompat
-    // theme"). AndroidX AppCompat ships with Avalonia.Android, so this built-in resolves without a
-    // custom styles.xml.
-    Theme = "@style/Theme.AppCompat.NoActionBar",
+    // Both launch and runtime themes inherit AppCompat, as required by Avalonia.
+    Theme = "@style/EmuShelfLaunchTheme",
     MainLauncher = true,
     Exported = true,
     // The couch shell is landscape-only, and the Thor's panel is natively portrait (1080x1920) —
@@ -66,6 +63,7 @@ public class MainActivity : AvaloniaMainActivity
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
+        SetTheme(Resource.Style.EmuShelfTheme);
         base.OnCreate(savedInstanceState);
         ApplyImmersiveMode();
     }

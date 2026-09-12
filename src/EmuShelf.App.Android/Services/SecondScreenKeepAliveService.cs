@@ -76,8 +76,14 @@ public sealed class SecondScreenKeepAliveService : Service
             ? new Notification.Builder(this, ChannelId)
             : new Notification.Builder(this);
 
+        using var openApp = new Intent(this, typeof(MainActivity));
+        openApp.AddFlags(ActivityFlags.SingleTop | ActivityFlags.ClearTop);
+        var contentIntent = PendingIntent.GetActivity(this, 0, openApp,
+            PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+
         return builder
-            .SetSmallIcon(global::Android.Resource.Drawable.IcDialogInfo)
+            .SetSmallIcon(Resource.Drawable.ic_emushelf_notification)
+            .SetContentIntent(contentIntent)
             .SetContentTitle("EmuShelf companion screen")
             .SetContentText("Keeping the second screen available while the game runs")
             .SetOngoing(true)
