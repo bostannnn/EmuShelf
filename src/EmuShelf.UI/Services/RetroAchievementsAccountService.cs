@@ -16,7 +16,9 @@ public sealed record RetroAchievementsSettingsContext(
         Task<RetroAchievementsConnectionSummary>> ConnectAsync,
     Func<CancellationToken, Task> DisconnectAsync,
     Func<IProgress<RetroAchievementsLibrarySyncProgress>?, CancellationToken,
-        Task<RetroAchievementsLibrarySyncSummary?>>? RefreshMatchesAsync = null);
+        Task<RetroAchievementsLibrarySyncSummary?>>? RefreshMatchesAsync = null,
+    SteamAchievementsService? Steam = null,
+    Func<CancellationToken, Task<IReadOnlyList<AchievementGameRef>>>? GetSteamGamesAsync = null);
 
 /// <summary>One observable step in the account connection library sync.</summary>
 public enum RetroAchievementsLibrarySyncPhase

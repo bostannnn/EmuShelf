@@ -31,6 +31,7 @@ public static class ScreenScraperSystemMap
             // cross-checked against the live systemesListe.php catalogue like the entries above.
             ["3ds"] = 17,
             ["nes"] = 3,
+            ["steam"] = 138, // PC Windows; verified on the official platform page, 2026-09-06.
         };
 
     /// <summary>All EmuShelf-to-ScreenScraper system mappings, for auditing against the live catalogue.</summary>

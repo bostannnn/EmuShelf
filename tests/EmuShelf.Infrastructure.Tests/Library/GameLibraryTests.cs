@@ -27,6 +27,56 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     };
 
     [Fact]
+    public void SteamExportRenamePreservesIdentityTitleAndPlayHistory()
+    {
+        var firstPath = Path.Combine(BaseDirectory, "Old.steam");
+        var secondPath = Path.Combine(BaseDirectory, "New.steam");
+        File.WriteAllText(firstPath, "381780");
+        var game = NewGame("steam", firstPath, "Old") with
+        { ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "381780" };
+        _library.AddGames([game]);
+        var original = Assert.Single(_library.GetGames());
+        _library.UpdateTitle(original.Id, "My title");
+        _library.AddPlaytime(original.Id, TimeSpan.FromMinutes(10));
+        File.Move(firstPath, secondPath);
+        Assert.Equal(0, _library.AddGames([game with { Path = secondPath, Title = "New" }]));
+        var relocated = Assert.Single(_library.GetGames());
+        Assert.Equal(original.Id, relocated.Id);
+        Assert.Equal("My title", relocated.Title);
+        Assert.Equal(TimeSpan.FromMinutes(10), relocated.Playtime);
+        Assert.Equal(secondPath, relocated.Path);
+        Assert.Equal("381780", File.ReadAllText(secondPath));
+    }
+
+    [Fact]
+    public void SteamDuplicateExportsShareOneRecord_ChangedIdentityRollsBack()
+    {
+        var path = Path.Combine(BaseDirectory, "First.steam");
+        var duplicate = Path.Combine(BaseDirectory, "Duplicate.steam");
+        File.WriteAllText(path, "381780"); File.WriteAllText(duplicate, "381780");
+        var game = NewGame("steam", path, "First") with
+        { ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "381780" };
+        Assert.Equal(1, _library.AddGames([game, game with { Path = duplicate }]));
+        var first = Assert.Single(_library.GetGames());
+        Assert.Throws<ExternalLibrarySourceConflictException>(() => _library.AddGames([
+            game with { Path = Path.Combine(BaseDirectory, "Other.steam"), ExternalSourceEntryId = "123" },
+            game with { ExternalSourceEntryId = "456" }]));
+        Assert.Equal(first, Assert.Single(_library.GetGames()));
+    }
+
+    [Fact]
+    public void SteamRelocationOntoLegacyRowReportsConflictAndPreservesBothHistories()
+    {
+        var old = NewGame("steam", Path.Combine(BaseDirectory, "Missing.steam"), "Tracked") with
+        { ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "381780" };
+        var legacy = NewGame("steam", Path.Combine(BaseDirectory, "Legacy.steam"), "Legacy");
+        _library.AddGames([old, legacy]);
+        var before = _library.GetGames().ToArray();
+        Assert.Throws<ExternalLibrarySourceConflictException>(() => _library.AddGames([old with { Path = legacy.Path }]));
+        Assert.Equal(before, _library.GetGames());
+    }
+
+    [Fact]
     public void AddGames_InsertsNewAndReportsCount()
     {
         var added = _library.AddGames([

@@ -381,6 +381,7 @@
                        TextWrapping="Wrap" MaxLines="2" LineHeight="20" Height="40"
                        TextTrimming="CharacterEllipsis"
                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            <Button Content="Reveal hidden achievement" Command="{Binding SelectedAchievement.RevealCommand}" IsVisible="{Binding SelectedAchievement.CanReveal}" />
             <TextBlock Text="{Binding SelectedAchievementMeta}" FontSize="12"
                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
           </StackPanel>

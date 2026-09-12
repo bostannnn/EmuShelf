@@ -14,6 +14,7 @@ public static class KnownEmulators
 {
     public static IReadOnlyList<EmulatorDefinition> All { get; } =
     [
+        new("gamenative", "GameNative", ["steam"], "", AndroidOnly: true),
         DuckStationDefinition.Instance,
         Pcsx2Definition.Instance,
         Rpcs3Definition.Instance,

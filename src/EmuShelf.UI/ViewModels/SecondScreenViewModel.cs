@@ -253,6 +253,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         {
             if (SelectedAchievement is not { } achievement)
                 return null;
+            if (!achievement.HasPoints) return achievement.EarnedText;
             var points = achievement.Points == 1 ? "1 pt" : $"{achievement.Points} pts";
             return achievement.EarnedAt is { } earned
                 ? $"{points} · Earned {earned.ToLocalTime():d MMM}"
@@ -270,6 +271,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
+        AchievementRowViewModel.LoadBadgeWindow(_achievements, newValue);
         OnPropertyChanged(nameof(HasSelectedAchievement));
         OnPropertyChanged(nameof(SelectedAchievementMeta));
     }

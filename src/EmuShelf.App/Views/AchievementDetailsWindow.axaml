@@ -64,7 +64,7 @@
             <StackPanel Spacing="8">
                 <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
                     <StackPanel Spacing="2">
-                        <TextBlock Text="ACHIEVEMENTS" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
+                        <TextBlock Text="{Binding ProviderText}" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="Bold"
                                    LetterSpacing="1.2"
                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
                         <TextBlock Text="{Binding GameTitle}" FontSize="{DynamicResource EmuTextTitleSize}" FontWeight="SemiBold"
@@ -90,18 +90,18 @@
                                      Minimum="0" Maximum="{Binding ProgressMaximum}"
                                      Value="{Binding UnlockedCount}" Height="7" VerticalAlignment="Center"
                                      Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
-                        <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding PointsText}"
+                        <TextBlock IsVisible="{Binding SupportsPoints}" Grid.Row="0" Grid.Column="2" Text="{Binding PointsText}"
                                    FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Right"
                                    Foreground="{DynamicResource EmuAchievementSoftcoreBrush}" />
 
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding HardcoreProgressText}"
+                        <TextBlock IsVisible="{Binding SupportsHardcore}" Grid.Row="1" Grid.Column="0" Text="{Binding HardcoreProgressText}"
                                    FontWeight="SemiBold" VerticalAlignment="Center"
                                    Foreground="{DynamicResource EmuAchievementBrush}" />
-                        <ProgressBar x:Name="AchievementHardcoreProgress" Grid.Row="1" Grid.Column="1"
+                        <ProgressBar IsVisible="{Binding SupportsHardcore}" x:Name="AchievementHardcoreProgress" Grid.Row="1" Grid.Column="1"
                                      Minimum="0" Maximum="{Binding ProgressMaximum}"
                                      Value="{Binding HardcoreUnlockedCount}" Height="7" VerticalAlignment="Center"
                                      Foreground="{DynamicResource EmuAchievementBrush}" />
-                        <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding HardcorePointsText}"
+                        <TextBlock IsVisible="{Binding SupportsHardcore}" Grid.Row="1" Grid.Column="2" Text="{Binding HardcorePointsText}"
                                    FontWeight="SemiBold" VerticalAlignment="Center" TextAlignment="Right"
                                    Foreground="{DynamicResource EmuAchievementBrush}" />
                     </Grid>
@@ -152,11 +152,12 @@
                                             <TextBlock Text="{Binding Title}" FontSize="{DynamicResource EmuTextSubheadingSize}" FontWeight="SemiBold"
                                                        TextTrimming="CharacterEllipsis"
                                                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-                                            <TextBlock Grid.Row="1" Text="{Binding Description}"
+                                            <TextBlock IsVisible="{Binding !CanReveal}" Grid.Row="1" Text="{Binding Description}"
                                                        TextWrapping="Wrap" MaxLines="2"
                                                        TextTrimming="CharacterEllipsis" FontSize="{DynamicResource EmuTextBodySize}"
                                                        VerticalAlignment="Center"
                                                        Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                    <Button Grid.Row="1" HorizontalAlignment="Left" Content="Reveal hidden achievement" Command="{Binding RevealCommand}" IsVisible="{Binding CanReveal}" />
                                             <TextBlock Grid.Row="2" Text="{Binding EarnedText}"
                                                        FontSize="{DynamicResource EmuTextSmallSize}"
                                                        Foreground="{DynamicResource EmuTextTertiaryBrush}" />
@@ -167,19 +168,19 @@
                                          description, mirroring the fixed reward dock in console
                                          achievement lists. -->
                                     <Border Grid.Column="2" Classes="achievement-reward-panel">
-                                        <Grid RowDefinitions="*,1,*">
-                                            <StackPanel Classes="achievement-points-zone"
+                                        <Grid RowDefinitions="Auto,Auto,*">
+                                            <StackPanel IsVisible="{Binding HasPoints}" Classes="achievement-points-zone"
                                                         HorizontalAlignment="Center"
                                                         VerticalAlignment="Center" Spacing="2">
                                                 <TextBlock Text="REWARD" FontSize="{DynamicResource EmuTextCaptionSize}" FontWeight="Bold"
                                                            LetterSpacing="0.8" TextAlignment="Center"
                                                            Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                                <TextBlock Text="{Binding PointsText}" FontSize="{DynamicResource EmuTextLabelSize}"
+                                                <TextBlock IsVisible="{Binding HasPoints}" Text="{Binding PointsText}" FontSize="{DynamicResource EmuTextLabelSize}"
                                                            FontWeight="SemiBold" TextAlignment="Center"
                                                            TextTrimming="CharacterEllipsis"
                                                            Foreground="{DynamicResource EmuTextPrimaryBrush}" />
                                             </StackPanel>
-                                            <Border Grid.Row="1"
+                                            <Border Grid.Row="1" Height="1" IsVisible="{Binding HasPoints}"
                                                     Background="{DynamicResource EmuStrongBorderBrush}" />
                                             <StackPanel Grid.Row="2" Classes="achievement-status-zone"
                                                         HorizontalAlignment="Stretch"

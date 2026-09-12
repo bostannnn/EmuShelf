@@ -276,7 +276,8 @@ public sealed class SingleViewShell : IPlatformShell
     // toast reflects the force-stop's real result rather than merely that the command was dispatched.
     private async Task CloseEmulatorIfRequestedAsync(MainViewModel viewModel, string? emulatorPackage)
     {
-        if (string.IsNullOrEmpty(emulatorPackage))
+        // GameNative owns Steam cloud uploads; force-stopping it can interrupt that work.
+        if (string.IsNullOrEmpty(emulatorPackage) || emulatorPackage == "app.gamenative")
             return;
 
         if (!_settingsService.Load().CloseEmulatorOnReturn)

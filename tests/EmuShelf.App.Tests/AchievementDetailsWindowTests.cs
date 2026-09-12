@@ -155,12 +155,17 @@ public class AchievementDetailsWindowTests
                     [new RetroAchievementsAchievement(1, "Old", "", 5, "", 1, null, null)]),
                 refreshedAt));
 
+        var changed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(viewModel.VisibleAchievements)) changed.TrySetResult();
+        };
         details.Publish(new RetroAchievementsDetailsSnapshot(
             new RetroAchievementsGameDetails(
                 1234, "Game", 1, 1, 1,
                 [new RetroAchievementsAchievement(1, "New", "", 5, "", 1, refreshedAt, refreshedAt)]),
             refreshedAt.AddMinutes(1)));
-        await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
+        await changed.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.Equal("New", Assert.Single(viewModel.Achievements).Title);
         Assert.Equal(1, viewModel.UnlockedCount);

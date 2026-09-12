@@ -13,6 +13,7 @@ public enum GameIdentifierKind
     // how FinalBurn Neo itself keys a set. Appended last so existing persisted identifier kinds
     // keep their stored ordinal.
     ArcadeSetName,
+    SteamAppId,
 }
 
 /// <summary>

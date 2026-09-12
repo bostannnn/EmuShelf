@@ -598,6 +598,35 @@ public class EmulatorLaunchServiceTests : IDisposable
         Assert.Contains("Launching Test Emulator for Test Game.", _logger.InformationMessages);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task LaunchAsync_AndroidOnlyRestrictionAppliesToSelectedEmulator(bool selectAndroid)
+    {
+        var game = CreateGameFile();
+        var executable = CreateExecutableFile("desktop.exe");
+        var android = new EmulatorDefinition("android", "GameNative", [game.SystemId], "", AndroidOnly: true);
+        _configurations.Configuration = new EmulatorConfiguration(game.SystemId, executable, null)
+        {
+            EmulatorId = selectAndroid ? android.Id : _emulator.Id,
+        };
+        var service = new EmulatorLaunchService(_configurations, _runner, _frontend,
+            [android, _emulator], _logger);
+        var callbackInvoked = false;
+
+        var result = await service.LaunchAsync(game, beforeStart: _ =>
+        {
+            callbackInvoked = true;
+            return Task.CompletedTask;
+        });
+
+        Assert.Equal(!selectAndroid, result.Succeeded);
+        Assert.Equal(!selectAndroid, _runner.WasRun);
+        Assert.Equal(!selectAndroid, callbackInvoked);
+        if (selectAndroid)
+            Assert.Contains("GameNative games launch on Android", result.StatusText);
+    }
+
     private EmulatorLaunchService CreateService() => new(
         _configurations,
         _runner,

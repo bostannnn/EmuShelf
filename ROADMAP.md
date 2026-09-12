@@ -2208,3 +2208,15 @@ breaks the whole-solution macOS build/test loop.
           unchanged (summary cards; the platform still missing a folder opens itself) — the heading row kind
           it used to fall back on is gone. See DECISIONS 2026-09-05 (the Settings-language entry), 2026-09-06
           and `docs/prototypes/couch-settings-v5/`.
+
+### Steam games through GameNative and Steam achievements (2026-09-12)
+
+- [x] Steam platform/PC artwork, export-folder scan, stable app-ID reconciliation and metadata.
+- [x] Android launch, return/session handling and Steam-specific save/termination exclusions.
+- [x] Steam shelf case and shared grid/list/platform presentation.
+- [x] Provider-neutral achievement viewer with Steam schema/progress, hidden/unknown states.
+- [x] Local account connection, protected keys, offline cache and stale-account guards.
+- [x] Desktop, gamepad and second-screen routing and settings.
+- [x] Expandable provider groups and cancellable whole-library Steam achievement sync.
+- [x] Automated regression suite, rendered Steam viewer and Android Release/AOT build.
+- [ ] Target-device and live Steam-account acceptance — tracked in `docs/steam-gamenative-plan.md`.

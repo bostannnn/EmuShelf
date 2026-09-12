@@ -1,3 +1,4 @@
+using EmuShelf.Core.Achievements;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -27,6 +28,8 @@ public partial class App : Application
     /// shell against <see cref="ISingleViewApplicationLifetime"/>. Kept as a hook so the shared
     /// composition root below never references a concrete window type.
     /// </summary>
+    public static Func<ISteamCredentialStore>? SteamCredentialStoreFactory { get; set; }
+
     public static Func<IClassicDesktopStyleApplicationLifetime, AppBootstrapper, PlatformShellDependencies, IPlatformShell>?
         DesktopShellFactory { get; set; }
 
@@ -147,6 +150,7 @@ public partial class App : Application
     private HttpClient? _metadataHttpClient;
     private HttpClient? _webArtworkHttpClient;
     private HttpClient? _retroAchievementsHttpClient;
+    private HttpClient? _steamAchievementsHttpClient;
     private HttpClient? _updateHttpClient;
     private GamepadInputService? _gamepadInput;
 
@@ -447,6 +451,14 @@ public partial class App : Application
             _retroAchievementsHttpClient,
             Bootstrapper.Logger);
 
+        var steamHttp = _steamAchievementsHttpClient = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(20) };
+        var steamCredentials = SteamCredentialStoreFactory?.Invoke() ??
+            (OperatingSystem.IsWindows()
+                ? (ISteamCredentialStore)new WindowsSteamCredentialStore(Path.Combine(Bootstrapper.Paths.SettingsDirectory, "steam-achievements.key"))
+                : new SessionSteamCredentialStore());
+        var steamAchievements = new SteamAchievementsService(new SteamAchievementsClient(steamHttp),
+            steamCredentials, Bootstrapper.SettingsService, Bootstrapper.Paths.CacheDirectory, steamHttp);
+
         // Hand the window-typed subset of the graph to the platform shell.
         var shell = shellFactory(
             new PlatformShellDependencies(
@@ -531,7 +543,8 @@ public partial class App : Application
             appPaths: Bootstrapper.Paths,
             updates: updateCoordinator,
             fileReveal: new FileRevealService(),
-            externalDisplays: shell.ExternalDisplays);
+            externalDisplays: shell.ExternalDisplays,
+            steamAchievements: steamAchievements);
 
         // Native controller input drives the same Gamepad-mode routing as Steam Input's keyboard
         // mapping. It polls only in Gamepad mode and degrades to no-op if no controller is available,
@@ -556,6 +569,7 @@ public partial class App : Application
                 _webArtworkHttpClient?.Dispose();
                 _metadataHttpClient?.Dispose();
                 _retroAchievementsHttpClient?.Dispose();
+                _steamAchievementsHttpClient?.Dispose();
                 _updateHttpClient?.Dispose();
                 Bootstrapper.Logger.Information("EmuShelf exited.");
             }));

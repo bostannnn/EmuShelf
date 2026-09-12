@@ -62,7 +62,7 @@ public class AndroidEmulatorLaunchProfilesTests
         Assert.Equal(
             [
                 "duckstation", "armsx2", "dolphin", "ppsspp", "azahar",
-                "watermelonds", "melonds", "melonds-nightly", "retroarch",
+                "watermelonds", "melonds", "melonds-nightly", "retroarch", "gamenative",
             ],
             ids);
         Assert.All(ids, id => Assert.DoesNotContain('.', id));
@@ -196,7 +196,7 @@ public class AndroidEmulatorLaunchProfilesTests
         foreach (var profile in AndroidEmulatorLaunchProfiles.All)
         {
             var core = profile.PayloadSlot == AndroidRomPayloadSlot.RetroArchCore ? "/cores/x.so" : null;
-            var intent = AndroidIntentFactory.Build(profile, uri, core);
+            var intent = AndroidIntentFactory.Build(profile, profile.PayloadSlot == AndroidRomPayloadSlot.SteamAppId ? "381780" : uri, core);
             Assert.Equal(profile.PackageName, intent.PackageName);
             Assert.False(string.IsNullOrEmpty(intent.ActivityName));
         }

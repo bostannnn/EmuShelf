@@ -22,6 +22,48 @@ public sealed class GamepadSettingsViewModelTests
     private readonly RecordingConfigurationStore _configurations = new();
 
     [AvaloniaFact]
+    public async Task AchievementsProvidersExpandOneAtATimeAndKeepTheirFieldsTogether()
+    {
+        using var http = new HttpClient();
+        var settings = new TestSteamSettings();
+        var steam = new SteamAchievementsService(new EmuShelf.Infrastructure.Achievements.SteamAchievementsClient(http),
+            new EmuShelf.Infrastructure.Achievements.SessionSteamCredentialStore(), settings, Path.GetTempPath(), http);
+        using var vm = CreateGamepadSettings(retroAchievements: CreateRetroAchievementsContext() with { Steam = steam });
+        vm.SelectedSection = SettingsSection.RetroAchievements;
+        Assert.Equal(["steam.summary", "retro.summary"], vm.Rows.Where(row => row.IsSummary).Select(row => row.Key));
+        Assert.DoesNotContain(vm.Rows, row => row.Key == "steam.profile" || row.Key == "retro.username");
+        await vm.Rows.Single(row => row.Key == "steam.summary").SelectCommand.ExecuteAsync(null);
+        Assert.Contains(vm.Rows, row => row.Key == "steam.profile");
+        Assert.DoesNotContain(vm.Rows, row => row.Key == "retro.username");
+        await vm.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
+        Assert.Contains(vm.Rows, row => row.Key == "retro.username");
+        Assert.DoesNotContain(vm.Rows, row => row.Key == "steam.profile");
+        Assert.Contains("steam.api-key", vm.CollectParityIds("steam."));
+        await vm.Rows.Single(row => row.Key == "steam.summary").SelectCommand.ExecuteAsync(null);
+        var window = new EmuShelf.App.Views.MainWindow
+        {
+            DataContext = new MainViewModel { IsGamepadMode = true, GamepadSettings = vm, GamepadOverlay = GamepadOverlayKind.Settings },
+            Width = 1280, Height = 800,
+        };
+        window.Show();
+        try
+        {
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() => { }, Avalonia.Threading.DispatcherPriority.Render);
+            using var frame = Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window);
+            Assert.NotNull(frame);
+            using var output = File.Create(Path.Combine(Path.GetTempPath(), "emushelf-gamepad-provider-groups.png"));
+            frame.Save(output, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+        finally { window.Close(); }
+    }
+
+    private sealed class TestSteamSettings : ISettingsService
+    {
+        public AppSettings Load() => new();
+        public void Save(AppSettings settings) { }
+    }
+
+    [AvaloniaFact]
     public void ShoulderSections_MirrorDesktopStructureAndRestoreEachRowsFocus()
     {
         using var viewModel = CreateGamepadSettings(
@@ -100,6 +142,7 @@ public sealed class GamepadSettingsViewModelTests
             retroAchievements: CreateRetroAchievementsContext(),
             onScreenKeyboard: keyboard);
         viewModel.SelectedSection = SettingsSection.RetroAchievements;
+        await viewModel.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
 
         var username = viewModel.Rows.Single(row => row.Key == "retro.username");
         await username.SelectCommand.ExecuteAsync(null);
@@ -626,6 +669,18 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public void MissingGameNativeOnlyWarnsWhenSteamGamesAreInUse()
+    {
+        using var unused = CreateGamepadSettings(androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: _ => 0, isEmulatorChoiceInstalled: choice => choice.EmulatorId != "gamenative");
+        Assert.False(unused.IsEmulatorsRailWarning);
+        using var used = CreateGamepadSettings(androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            gameCountBySystem: id => id == "steam" ? 1 : 0,
+            isEmulatorChoiceInstalled: choice => choice.EmulatorId != "gamenative");
+        Assert.Contains("Steam", used.EmulatorsRailStatus);
+    }
+
+    [AvaloniaFact]
     public async Task EmulatorsSection_SaysWhenTheChosenAndroidEmulatorIsNotInstalled()
     {
         using var viewModel = CreateGamepadSettings(
@@ -1038,6 +1093,7 @@ public sealed class GamepadSettingsViewModelTests
         Assert.Same(viewModel.Rows.Single(row => row.IsSaveRow), viewModel.SaveRow);
 
         viewModel.SelectedSection = SettingsSection.RetroAchievements;
+        await viewModel.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
         var secret = viewModel.Rows.Single(row => row.Key == "retro.api-key");
         Assert.True(secret.IsEditableValue);
         Assert.True(secret.ShowsChevron);

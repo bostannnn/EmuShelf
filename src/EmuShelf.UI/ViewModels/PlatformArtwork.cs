@@ -23,6 +23,7 @@ public static class PlatformArtwork
             ["playstation2"] = "playstation2.png",
             ["playstation3"] = "playstation3.png",
             ["wii"] = "wii.png",
+            ["steam"] = "steam.png",
             ["psp"] = "psp.png",
             // Original EmuShelf art: OpenEmu ships no 3DS icon, so this dual-screen clamshell is
             // bundled here rather than under the licensed OpenEmu PlatformIcons set.
@@ -91,7 +92,7 @@ public static class PlatformArtwork
         new(StringComparer.OrdinalIgnoreCase);
 
     public static IReadOnlyCollection<string> SupportedSystemIds { get; } =
-        Assets.Keys.ToArray();
+        Assets.Keys.Concat(ConsoleAssets.Keys).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
     public static IImage? ForSystem(string? systemId)
     {
@@ -116,7 +117,11 @@ public static class PlatformArtwork
                 relativePath.Split('/').Select(Uri.EscapeDataString));
             using var stream = AssetLoader.Open(new Uri(
                 assetRoot + escapedPath));
-            var bitmap = new Bitmap(stream);
+            // The generated Steam source is much larger than its navigation slot. Decode
+            // a bounded thumbnail once instead of retaining a full-resolution RGBA bitmap.
+            var bitmap = systemId.Equals("steam", StringComparison.OrdinalIgnoreCase)
+                ? Bitmap.DecodeToWidth(stream, 256)
+                : new Bitmap(stream);
             Cache[systemId] = bitmap;
             return bitmap;
         }

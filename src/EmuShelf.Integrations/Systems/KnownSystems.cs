@@ -13,7 +13,7 @@ public static class KnownSystems
     // square US/Japanese jewel cases and portrait PAL keep cases) is never cropped to fit a
     // system-wide assumption.
     // Display order: systems are grouped by Manufacturer in the navigation list, and the groups
-    // themselves are ordered by their oldest system — Nintendo → Sega → Sony → Arcade. Within a
+    // themselves are ordered by their oldest system — Nintendo → Sega → Sony → Arcade → Valve. Within a
     // group the order below is oldest-first (handhelds interleave with home consoles by year).
     // This authored order IS the navigation order; ids stay stable regardless of position.
     //
@@ -65,5 +65,8 @@ public static class KnownSystems
         // barely exists for it, so the card is landscape and the cover is a title screen / snap
         // (see LibretroArcadeArtworkProvider) rather than portrait packaging.
         new("arcade",       "Arcade",         "ARC", "#C0473A", 1.333, "Arcade"),
+
+        // Steam library capsules are portrait; GameNative owns installation and cloud saves.
+        new("steam", "Steam", "Steam", "#66C0F4", 2.0 / 3.0, "Valve"),
     ];
 }

@@ -216,7 +216,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/no-intro/Sega%20-%20Mega%20Drive%20-%20Genesis.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
@@ -238,7 +238,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Nintendo%20DS.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
@@ -269,7 +269,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Game%20Boy%20Advance.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
@@ -300,7 +300,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Nintendo%203DS.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Equal("gametdb-3ds", profile.ArtworkProviders[0].Id);
         Assert.Equal("libretro-thumbnails", profile.ArtworkProviders[1].Id);
         Assert.Collection(
@@ -335,7 +335,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Sha1, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/no-intro/Nintendo%20-%20Super%20Nintendo%20Entertainment%20System.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
@@ -357,7 +357,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.True(profile.ReadRomSerials);
         Assert.EndsWith(
             "/metadat/redump/Sega%20-%20Dreamcast.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Collection(
             profile.ArtworkProviders,
             provider => Assert.Equal("libretro-thumbnails", provider.Id));
@@ -405,7 +405,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/redump/Sony%20-%20PlayStation%20Portable.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
         Assert.Equal("ULUS-10002", identifier.Value);
         Assert.Equal("PSP PARAM.SFO", identifier.Source);
@@ -435,7 +435,7 @@ public class IdentifierExtractorTests : TempAppDirectoryTestBase
         Assert.Equal(GameIdentifierKind.Serial, profile.CatalogKeyKind);
         Assert.EndsWith(
             "/metadat/redump/Sony%20-%20PlayStation%203.dat",
-            profile.CatalogUri.AbsolutePath);
+            Assert.IsType<Uri>(profile.CatalogUri).AbsolutePath);
         Assert.Equal(GameIdentifierKind.Serial, identifier.Kind);
         Assert.Equal("BLUS-30443", identifier.Value);
         Assert.Equal("RPCS3 title id", identifier.Source);

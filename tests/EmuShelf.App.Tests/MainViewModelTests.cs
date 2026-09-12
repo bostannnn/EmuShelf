@@ -91,12 +91,13 @@ public class MainViewModelTests : IDisposable
         IRemoteArtworkDownloader? artworkDownloader = null,
         TexturePackCoordinator? texturePacks = null,
         IFileRevealService? fileReveal = null,
-        IExternalDisplayProbe? externalDisplays = null)
+        IExternalDisplayProbe? externalDisplays = null,
+        IFolderScanner? scanner = null)
     {
         importRules ??= new FileImportRules();
         return new(
             _library,
-            new FolderScanner(importRules),
+            scanner ?? new FolderScanner(importRules),
             importRules,
             new FileAvailabilityChecker(),
             _dialogs,
@@ -1204,7 +1205,7 @@ public class MainViewModelTests : IDisposable
         vm.FocusedGame = Assert.Single(vm.Games);
         await vm.OpenFocusedAchievementsCommand.ExecuteAsync(null);
         vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.Achievements[1];
-        Assert.Equal(2, vm.FocusedGamepadAchievement.AchievementId);
+        Assert.Equal("2", vm.FocusedGamepadAchievement.AchievementId);
 
         details.Publish(new RetroAchievementsDetailsSnapshot(
             new RetroAchievementsGameDetails(
@@ -1216,7 +1217,7 @@ public class MainViewModelTests : IDisposable
             DateTimeOffset.UtcNow.AddMinutes(1)));
         await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
 
-        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("2", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Contains(vm.FocusedGamepadAchievement!, vm.GamepadAchievementDetails!.Achievements);
     }
 
@@ -1261,47 +1262,47 @@ public class MainViewModelTests : IDisposable
         vm.GamepadAchievementViewportWidth = 250;
         Assert.Equal(2, vm.GamepadAchievementColumnCount);
 
-        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("1", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
-        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("2", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
-        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("2", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
-        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("4", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateRight));
-        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("4", vm.FocusedGamepadAchievement?.AchievementId);
 
         vm.GamepadAchievementViewportWidth = 400; // -> 3 columns
         Assert.Equal(3, vm.GamepadAchievementColumnCount);
         vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails!.VisibleAchievements[1];
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateDown));
-        Assert.Equal(2, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("2", vm.FocusedGamepadAchievement?.AchievementId);
         vm.FocusedGamepadAchievement = vm.GamepadAchievementDetails.VisibleAchievements[3];
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NavigateLeft));
-        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("4", vm.FocusedGamepadAchievement?.AchievementId);
         vm.GamepadAchievementViewportWidth = 250; // -> 2 columns
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
         Assert.Equal(AchievementDisplayFilter.Locked, vm.GamepadAchievementDetails!.SelectedFilter);
-        Assert.Equal([2, 4], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
-        Assert.Equal(4, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(["2", "4"], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal("4", vm.FocusedGamepadAchievement?.AchievementId);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.NextPlatform));
         Assert.Equal(AchievementDisplayFilter.Unlocked, vm.GamepadAchievementDetails.SelectedFilter);
-        Assert.Equal([1, 3], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
-        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(["1", "3"], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal("1", vm.FocusedGamepadAchievement?.AchievementId);
         var revisionBeforeSort = vm.GamepadAchievementLayoutRevision;
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
         Assert.Equal(AchievementDisplaySort.Points, vm.GamepadAchievementDetails.SelectedSort);
-        Assert.Equal([3, 1], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
-        Assert.Equal(3, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal(["3", "1"], vm.GamepadAchievementDetails.VisibleAchievements.Select(row => row.AchievementId));
+        Assert.Equal("3", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
         Assert.Equal(revisionBeforeSort + 1, vm.GamepadAchievementLayoutRevision);
 
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Actions));
         Assert.Equal(AchievementDisplaySort.UnlockedFirst, vm.GamepadAchievementDetails.SelectedSort);
-        Assert.Equal(1, vm.FocusedGamepadAchievement?.AchievementId);
+        Assert.Equal("1", vm.FocusedGamepadAchievement?.AchievementId);
         Assert.Equal(0, vm.GamepadAchievementDetails.VisibleAchievements.IndexOf(vm.FocusedGamepadAchievement!));
         Assert.Equal(revisionBeforeSort + 2, vm.GamepadAchievementLayoutRevision);
     }
@@ -3358,6 +3359,49 @@ public class MainViewModelTests : IDisposable
 
         Assert.True(vm.IsAllGamesSelected);
         Assert.Equal(["Alpha", "Beta", "Gamma"], vm.Games.Select(game => game.Title));
+    }
+
+    [AvaloniaFact]
+    public async Task SteamConflictDoesNotStopOtherExportsOrSystems()
+    {
+        var root = Path.Combine(_baseDirectory, "steam"); Directory.CreateDirectory(root);
+        var conflict = Path.Combine(root, "Conflict.steam"); File.WriteAllText(conflict, "123");
+        _library.AddGames([new Game { SystemId = "steam", Path = conflict, Title = "Original",
+            ExternalSourceId = "gamenative-steam", ExternalSourceEntryId = "456", DateAdded = DateTimeOffset.UtcNow }]);
+        File.WriteAllText(Path.Combine(root, "Good.steam"), "789");
+        _library.AddLibraryFolder("steam", root);
+        var roms = MakeRomsFolder(); _library.AddLibraryFolder(Ps1.Id, roms);
+        var vm = CreateViewModel();
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
+        Assert.Contains(_library.GetGames(), g => g.ExternalSourceEntryId == "789");
+        Assert.Contains(_library.GetGames(), g => g.Title == "Original" && g.ExternalSourceEntryId == "456");
+        Assert.NotEmpty(_library.GetGames(Ps1.Id));
+        Assert.Contains("skipped", vm.StatusText);
+        Assert.Equal("123", File.ReadAllText(conflict));
+    }
+
+    [AvaloniaFact]
+    public async Task UnreadableFolderPreservesExistingGamesAndContinuesOtherSystems()
+    {
+        var root = Path.Combine(_baseDirectory, "unreadable"); Directory.CreateDirectory(root);
+        _library.AddLibraryFolder("steam", root);
+        _library.AddGames([new Game { SystemId = "steam", Path = Path.Combine(root, "Keep.steam"), Title = "Keep", DateAdded = DateTimeOffset.UtcNow }]);
+        _library.AddLibraryFolder(Ps1.Id, MakeRomsFolder());
+        var vm = CreateViewModel(scanner: new UnreadableSteamScanner());
+        await vm.OpenSettingsCommand.ExecuteAsync(null);
+        await _dialogs.MaintenanceActions!.RescanAll(new Progress<string>());
+        Assert.Single(_library.GetGames("steam"));
+        Assert.NotEmpty(_library.GetGames(Ps1.Id));
+        Assert.Contains("could not scan", vm.StatusText);
+    }
+
+    private sealed class UnreadableSteamScanner : IFolderScanner
+    {
+        public Task<GameEntrySelection> ScanAsync(string folderPath, GameSystem system,
+            IProgress<ScanProgress>? progress = null, CancellationToken cancellationToken = default) =>
+            system.Id == "steam" ? Task.FromException<GameEntrySelection>(new UnauthorizedAccessException()) :
+                new FolderScanner(new FileImportRules()).ScanAsync(folderPath, system, progress, cancellationToken);
     }
 
     [AvaloniaFact]

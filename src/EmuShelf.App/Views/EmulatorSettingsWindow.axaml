@@ -305,6 +305,7 @@
                                         <StackPanel IsVisible="{Binding HasFolderManagement}"
                                                     IsEnabled="{Binding CanManageLibraryFolders}"
                                                     Spacing="7" Margin="0,5,0,0">
+                                            <TextBlock Text="{Binding LibraryFolderHelp}" IsVisible="{Binding IsSteamPlatform}" TextWrapping="Wrap" />
                                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                                 <StackPanel Grid.Column="0" Spacing="2">
                                                     <TextBlock Text="GAME FOLDERS" FontSize="{DynamicResource EmuTextSmallSize}" FontWeight="SemiBold"
@@ -378,6 +379,39 @@
                     </StackPanel>
 
                     <StackPanel IsVisible="{Binding IsRetroAchievementsSection}" Spacing="12">
+                        <Expander IsVisible="{Binding HasSteamAchievements}" IsExpanded="{Binding IsSteamAchievementsExpanded}"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <TextBlock Text="Steam" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SteamAccountText}" Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <Border Classes="settings-card">
+                                <StackPanel Spacing="10">
+                                    <TextBlock Text="STEAM ACHIEVEMENTS" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding SteamAccountText}" />
+                                    <TextBlock Text="{Binding SteamKeyStorageText}" TextWrapping="Wrap" />
+                                    <StackPanel IsVisible="{Binding !IsSteamConnected}" Spacing="8">
+                                        <TextBox Text="{Binding SteamProfileInput}" PlaceholderText="SteamID64 or Steam profile URL" AutomationProperties.AutomationId="steam.profile" />
+                                        <TextBox Text="{Binding SteamApiKey}" PasswordChar="●" PlaceholderText="Steam Web API key" AutomationProperties.AutomationId="steam.api-key" />
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Button Content="Get API key" Command="{Binding OpenSteamApiKeyPageCommand}" AutomationProperties.AutomationId="steam.key-page" />
+                                            <Button Content="Link Steam profile" Command="{Binding ConnectSteamCommand}" IsEnabled="{Binding !IsSteamBusy}" AutomationProperties.AutomationId="steam.connect" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel IsVisible="{Binding IsSteamConnected}" Spacing="8">
+                                        <Button Content="Sync all Steam achievements" Command="{Binding SyncSteamAchievementsCommand}" AutomationProperties.AutomationId="steam.sync" />
+                                        <Button Content="Cancel Steam sync" Command="{Binding SyncSteamAchievementsCancelCommand}" IsVisible="{Binding IsSteamSyncing}" AutomationProperties.AutomationId="steam.cancel-sync" />
+                                    </StackPanel>
+                                    <Button Content="Disconnect Steam" Command="{Binding DisconnectSteamCommand}" IsVisible="{Binding IsSteamConnected}" IsEnabled="{Binding !IsSteamBusy}" AutomationProperties.AutomationId="steam.disconnect" />
+                                    <TextBlock Text="{Binding SteamStatusText}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+                        </Expander>
+
+                        <Expander Header="RetroAchievements" IsExpanded="{Binding IsRetroAchievementsExpanded}"
+                                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch">
                         <Border Classes="settings-card">
                             <StackPanel Spacing="14">
                                 <StackPanel Spacing="3">
@@ -457,6 +491,7 @@
                                            Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                             </StackPanel>
                         </Border>
+                        </Expander>
                     </StackPanel>
 
                     <StackPanel IsVisible="{Binding IsArtworkMetadataSection}" Spacing="12">

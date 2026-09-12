@@ -35,6 +35,8 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
         string? filenameHint = null,
         CancellationToken cancellationToken = default)
     {
+        if (profile.CatalogUri is null) return null;
+
         var relevant = identifiers
             .Where(identifier => profile.CatalogKeyKinds.Contains(identifier.Kind))
             .OrderBy(identifier => CatalogKeyPriority(profile.CatalogKeyKinds, identifier.Kind))
@@ -81,7 +83,7 @@ public sealed partial class LibretroDatCatalog : IGameMetadataCatalog
     {
         var path = Path.Combine(_catalogDirectory, $"{profile.SystemId}.dat");
         var maxBytes = profile.MaxCatalogBytes ?? MaximumCatalogBytes;
-        await EnsureCurrentCatalogAsync(profile.CatalogUri, path, maxBytes, cancellationToken);
+        await EnsureCurrentCatalogAsync(profile.CatalogUri!, path, maxBytes, cancellationToken);
 
         return await Task.Run(
             () => profile.CatalogFormat == DatFormat.LogiqxXml

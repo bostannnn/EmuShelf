@@ -45,6 +45,7 @@ public static class MediaShellMap
         ["gamecube"] = MediaShell.DiscKeepCase,
         ["wii"] = MediaShell.DiscKeepCase,
         ["psp"] = MediaShell.DiscKeepCase,
+        ["steam"] = MediaShell.DiscKeepCase,
     };
 
     private static readonly Dictionary<string, PhysicalMediaProfile> ProfilesBySystemId = new(StringComparer.Ordinal)
@@ -210,6 +211,11 @@ public static class MediaShellMap
             MediaShell.DiscKeepCase, new(104f, 178f, 15f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "psp-clear", "case-downward"),
+        // Virtual PC library case, sized to Steam's 2:3 capsule. No fictional disc label.
+        ["steam"] = new(
+            MediaShell.DiscKeepCase, new(126f, 190f, 14f),
+            PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
+            "steam-midnight", "case-downward"),
     };
 
     /// <summary>The shell for a system, or null when it should keep its flat cover.</summary>

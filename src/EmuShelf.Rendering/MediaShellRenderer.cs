@@ -2177,6 +2177,7 @@ public sealed class MediaShellRenderer : IDisposable
             // the sleeve — and at 1.42 that rim blew out into a cyan strip that read as a light
             // leak down the edge of the case rather than as clear plastic. Clear plastic is not
             // brighter than black plastic by half, it is less absorbing and slightly glossier.
+            "steam-midnight" => new(new Vector3(0.08f, 0.14f, 0.21f), 0.42f, 0.64f, 1.12f),
             "psp-clear" => new(new Vector3(0.56f, 0.57f, 0.59f), 0.20f, 0.74f, 1.18f),
             // Jewel-case polystyrene rather than the keep cases' polypropylene: harder, glossier
             // and more reflective, which is most of what tells the two apart on screen. The tint is

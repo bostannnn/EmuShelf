@@ -756,6 +756,22 @@ public partial class GameViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>Only confirmed achievement-bearing catalogue links can open the detail popup.</summary>
+    public string? SteamAchievementAppId { get; set; }
+    public bool SupportsHardcoreAchievements => SystemId != "steam";
+    public void ApplySteamAchievements(AchievementSnapshot? snapshot, bool connected)
+    {
+        var known = snapshot?.ProgressKnown == true;
+        var total = snapshot?.Achievements.Count ?? 0;
+        var unlocked = snapshot?.Achievements.Count(a => a.IsUnlocked == true) ?? 0;
+        ApplyAchievementsDisplay(new RetroAchievementsDisplay(total > 0,
+            known ? $"{unlocked}/{total}" : "—",
+            !connected ? "Connect Steam in Settings to see your progress." : snapshot is null ? "Open achievements to load Steam progress." :
+            !known ? "Steam progress is private or unavailable." : $"{unlocked} of {total} Steam achievements unlocked.",
+            known ? unlocked : 0, 0, known ? total : 0));
+        HardcoreColumnText = "—";
+        CanOpenAchievementDetails = SteamAchievementAppId is not null;
+    }
+
     public void ApplyAchievementLink(int? retroAchievementsGameId)
     {
         RetroAchievementsGameId = retroAchievementsGameId;

@@ -3,6 +3,8 @@ namespace EmuShelf.Core.Settings;
 /// <summary>Portable user settings, persisted as JSON in Settings/.</summary>
 public sealed record AppSettings
 {
+    public string? SteamAchievementsSteamId { get; init; }
+    public string? SteamAchievementsProfileName { get; init; }
     public ThemePreference Theme { get; init; } = ThemePreference.System;
 
     /// <summary>When true, the couch UI recolours itself from the focused game's artwork; the chosen

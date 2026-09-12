@@ -86,7 +86,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         SettingsSection.General => "Library visibility, maintenance, and where EmuShelf keeps its data.",
         SettingsSection.Emulators => "Point each system at its emulator and set how it launches.",
         SettingsSection.Hotkeys => "Write one keyboard-hotkey scheme into each emulator's own settings.",
-        SettingsSection.RetroAchievements => "Connect your RetroAchievements account to track progress.",
+        SettingsSection.RetroAchievements => "Link RetroAchievements and Steam to view achievement progress.",
         SettingsSection.ArtworkMetadata => "Fetch titles, covers, and artwork from the built-in catalogue, ScreenScraper, or web image search.",
         SettingsSection.Saves => "Sync in-game saves between machines through your own Google Drive.",
         SettingsSection.TexturePacks => "See the replacement-texture packs your emulators already have.",
@@ -304,7 +304,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
     /// cloud sync/connect, account connects, or texture rescan. The global Save/Cancel buttons gate on
     /// this so the window can't be committed or torn down mid-operation (which would race concurrent
     /// writes and orphan the in-flight task's progress callbacks).</summary>
-    public bool IsBusy => IsWorking || IsCloudBusy || IsRetroAchievementsBusy
+    public bool IsBusy => IsWorking || IsCloudBusy || IsRetroAchievementsBusy || IsSteamBusy
         || IsScreenScraperBusy || IsTexturePackBusy;
 
     public bool HasMaintenanceStatus => !string.IsNullOrWhiteSpace(MaintenanceStatusText);
@@ -528,6 +528,7 @@ public partial class EmulatorSettingsViewModel : ViewModelBase
         _maintenance = maintenance;
         _metadataPreferences = metadataPreferences;
         _retroAchievements = retroAchievements;
+        SteamProfileInput = retroAchievements?.Steam?.AccountId ?? string.Empty;
         _screenScraper = screenScraper;
         _cloudSaves = cloudSaves;
         _texturePacks = texturePacks;

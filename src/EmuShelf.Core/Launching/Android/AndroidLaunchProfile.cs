@@ -27,6 +27,9 @@ public enum AndroidRomPayloadSlot
     /// only one that needs a core.
     /// </summary>
     RetroArchCore,
+
+    /// <summary>A validated Steam app id supplied as an integer extra to GameNative.</summary>
+    SteamAppId,
 }
 
 /// <summary>

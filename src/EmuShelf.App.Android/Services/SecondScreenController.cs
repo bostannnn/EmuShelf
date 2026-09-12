@@ -48,6 +48,9 @@ internal sealed class SecondScreenController
     private DisplayManager? _displayManager;
     private ThorSecondScreenPresentation? _presentation;
     private long? _runningGameId;
+    private string? _runningSteamAppId;
+    private int _steamRefreshCount;
+    private string? _steamRefreshAccount;
     private string? _runningGameTitle;
     private long? _achievementTargetGameId;
     private string? _achievementTargetTitle;
@@ -96,7 +99,9 @@ internal sealed class SecondScreenController
 
         if (_viewModel is not null)
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
+        if (_viewModel?.SteamAchievements is { } previousSteam) previousSteam.Changed -= SteamAchievementsChanged;
         _viewModel = viewModel;
+        if (viewModel.SteamAchievements is { } steam) steam.Changed += SteamAchievementsChanged;
         _viewModel.PropertyChanged += ViewModelPropertyChanged;
 
         AndroidActivityLifecycle.ActivityAvailable += AttachActivity;
@@ -204,6 +209,7 @@ internal sealed class SecondScreenController
         {
             var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
             _runningGameId = game.Id;
+            _runningSteamAppId = game.SystemId == "steam" ? game.ExternalSourceEntryId ?? EmuShelf.Integrations.Importing.SteamShortcutReader.TryRead(game.Path)?.ToString() : null;
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
@@ -255,6 +261,7 @@ internal sealed class SecondScreenController
         {
             var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
             _runningGameId = null;
+            _runningSteamAppId = null;
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
@@ -810,6 +817,14 @@ internal sealed class SecondScreenController
             return;
         }
 
+        var steamApp = _runningGameId is not null ? _runningSteamAppId : focused?.SteamAchievementAppId;
+        if (steamApp is not null && _viewModel?.SteamAchievements is { } steam)
+        {
+            _achievementTargetGameId = gameId; _achievementTargetTitle = title;
+            _ = OpenSteamAchievementsAsync(steam, steamApp, gameId.Value, title, surfaceRevision, forceRefresh, allowNetworkRefresh);
+            return;
+        }
+
         if (!GetLinks().TryGetValue(gameId.Value, out var link) ||
             link is not { HasAchievements: true, RetroAchievementsGameId: { } raGameId })
         {
@@ -866,6 +881,68 @@ internal sealed class SecondScreenController
                     surfaceRevision, gameId.Value, title, cached, "Achievement details could not be refreshed."));
             }
         });
+    }
+
+    private void SteamAchievementsChanged() => RunOnMain(() =>
+    {
+        if (Volatile.Read(ref _steamRefreshCount) > 0 && _steamRefreshAccount == _viewModel?.SteamAchievements?.AccountId)
+            return; // The active request applies its own result and error status without invalidating its revision.
+        if (_navigation.Overlay == SecondScreenOverlay.Achievements)
+            OpenAchievementsCore(false, allowNetworkRefresh: false);
+    });
+
+    private async Task OpenSteamAchievementsAsync(SteamAchievementsService steam, string app, long gameId,
+        string title, long revision, bool forceRefresh, bool allowNetworkRefresh)
+    {
+        var account = steam.AccountId;
+        var reference = new AchievementGameRef("steam", app);
+        try
+        {
+            var cached = await Task.Run(() => steam.GetCached(reference));
+            RunOnMain(() =>
+            {
+                if (!IsAchievementRequestCurrent(revision, gameId, title) || account != steam.AccountId) return;
+                if (cached is not null) ShowSteamSnapshot(title, cached, steam);
+                else ShowAchievementsMessage(title, steam.IsConnected ? "Press Refresh to load Steam achievements." :
+                    "Connect Steam in Settings to load achievements.", steam.IsConnected);
+            });
+            if (!steam.IsConnected || (!forceRefresh && (!allowNetworkRefresh ||
+                cached is not null && DateTimeOffset.UtcNow - cached.RefreshedAt < DetailRefreshAge))) return;
+            _steamRefreshAccount = account;
+            Interlocked.Increment(ref _steamRefreshCount);
+            try
+            {
+                var result = await steam.RefreshAsync(reference, manual: forceRefresh);
+                RunOnMain(() =>
+                {
+                    if (!IsAchievementRequestCurrent(revision, gameId, title) || account != steam.AccountId) return;
+                    if (result.Snapshot is { } snapshot) ShowSteamSnapshot(title, snapshot, steam);
+                    if (!result.IsSuccess && _presentation is { } presentation)
+                        presentation.Model.AchievementsStatus = "Steam progress is unavailable. Reconnect or refresh later.";
+                });
+            }
+            finally { RunOnMain(() => Interlocked.Decrement(ref _steamRefreshCount)); }
+        }
+        catch (Exception)
+        {
+            RunOnMain(() =>
+            {
+                if (IsAchievementRequestCurrent(revision, gameId, title))
+                    ShowAchievementsMessage(title, "Steam achievements could not be loaded.", steam.IsConnected);
+            });
+        }
+    }
+
+    private void ShowSteamSnapshot(string title, AchievementSnapshot snapshot, SteamAchievementsService steam)
+    {
+        if (_presentation is not { } presentation || snapshot.AccountId != steam.AccountId) return;
+        presentation.Model.AchievementsTitle = title;
+        presentation.Model.AchievementsStatus = snapshot.ProgressKnown ? null : "Progress is private or unavailable.";
+        presentation.Model.CanRefresh = steam.IsConnected;
+        presentation.Model.AchievementsSummary = snapshot.ProgressKnown ?
+            $"Steam · {snapshot.Achievements.Count(a => a.IsUnlocked == true)} / {snapshot.Achievements.Count} unlocked" : "Steam · Progress unavailable";
+        presentation.Model.SetAchievements(snapshot.Achievements.Select(a => new AchievementRowViewModel(a, steam, loadBadge: false)).ToArray());
+        presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
     private void ApplyAchievementRefresh(
@@ -1128,6 +1205,7 @@ internal sealed class SecondScreenController
         _disposed = true;
         if (_viewModel is not null)
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
+        if (_viewModel?.SteamAchievements is { } previousSteam) previousSteam.Changed -= SteamAchievementsChanged;
         AndroidActivityLifecycle.ActivityAvailable -= AttachActivity;
         AndroidActivityLifecycle.ActivityDestroyed -= ActivityDestroyed;
         AndroidActivityLifecycle.TopResumedChanged -= TopResumedChanged;

@@ -212,7 +212,7 @@ public sealed class GameLibrary : IGameLibrary
         command.Transaction = transaction;
         command.CommandText =
             """
-            SELECT Id, TitleOrigin
+            SELECT Id, TitleOrigin, Path
             FROM Games
             WHERE ExternalSourceId = $sourceId AND ExternalSourceEntryId = $sourceEntryId;
             """;
@@ -220,7 +220,7 @@ public sealed class GameLibrary : IGameLibrary
         command.Parameters.AddWithValue("$sourceEntryId", sourceEntryId);
         using var reader = command.ExecuteReader();
         return reader.Read()
-            ? new ExistingExternalEntry(reader.GetInt64(0), (GameTitleOrigin)reader.GetInt32(1))
+            ? new ExistingExternalEntry(reader.GetInt64(0), (GameTitleOrigin)reader.GetInt32(1), reader.GetString(2))
             : null;
     }
 
@@ -366,6 +366,54 @@ public sealed class GameLibrary : IGameLibrary
         }
     }
 
+    // Export filenames may change; the Steam app ID owns history and manual metadata.
+    // A changed ID at the same path is rejected rather than attributing a new game to old history.
+    private bool ReconcileSteamEntry(SqliteConnection connection, SqliteTransaction transaction, Game game)
+    {
+        var incoming = _pathResolver.ToStorablePath(game.Path);
+        using var atPath = connection.CreateCommand();
+        atPath.Transaction = transaction;
+        atPath.CommandText = "SELECT Id, SystemId, ExternalSourceEntryId FROM Games WHERE Path = $path";
+        atPath.Parameters.AddWithValue("$path", incoming);
+        long? legacyId = null;
+        using (var reader = atPath.ExecuteReader())
+        {
+            if (reader.Read())
+            {
+                if (reader.GetString(1) != "steam" || (!reader.IsDBNull(2) && reader.GetString(2) != game.ExternalSourceEntryId))
+                    throw new ExternalLibrarySourceConflictException("A Steam export now identifies a different game. Remove the old library entry, then import the export again. Game files are untouched.");
+                if (reader.IsDBNull(2)) legacyId = reader.GetInt64(0);
+            }
+        }
+        var existing = FindExternalEntry(connection, transaction, "gamenative-steam", game.ExternalSourceEntryId!);
+        if (existing is { } found)
+        {
+            if (legacyId is { } occupied && occupied != found.Id)
+                throw new ExternalLibrarySourceConflictException(
+                    "A legacy Steam entry already owns this export path. Resolve the duplicate library entry before moving its history.");
+            // Multiple export roots may contain the same app. Keep the existing live export.
+            var path = File.Exists(_pathResolver.ToAbsolutePath(found.Path)) ? found.Path : incoming;
+            using var update = connection.CreateCommand();
+            update.Transaction = transaction;
+            update.CommandText = "UPDATE Games SET Path = $path, IsAvailable = 1 WHERE Id = $id";
+            update.Parameters.AddWithValue("$path", path);
+            update.Parameters.AddWithValue("$id", found.Id);
+            update.ExecuteNonQuery();
+            return true;
+        }
+        if (legacyId is { } legacy)
+        {
+            using var adopt = connection.CreateCommand();
+            adopt.Transaction = transaction;
+            adopt.CommandText = "UPDATE Games SET ExternalSourceId = 'gamenative-steam', ExternalSourceEntryId = $entry, IsAvailable = 1 WHERE Id = $id";
+            adopt.Parameters.AddWithValue("$entry", game.ExternalSourceEntryId!);
+            adopt.Parameters.AddWithValue("$id", legacy);
+            adopt.ExecuteNonQuery();
+            return true;
+        }
+        return false;
+    }
+
     private GameImportResult WriteGames(
         IEnumerable<Game> games,
         string? systemId,
@@ -396,11 +444,13 @@ public sealed class GameLibrary : IGameLibrary
             """
             INSERT OR IGNORE INTO Games (
                 SystemId, Path, Title, TitleOrigin, CoverPath, CoverOrigin,
-                IsAvailable, DateAdded, DateAddedUnixMilliseconds)
+                IsAvailable, DateAdded, DateAddedUnixMilliseconds, ExternalSourceId, ExternalSourceEntryId)
             VALUES (
                 $systemId, $path, $title, $titleOrigin, $coverPath, $coverOrigin,
-                $isAvailable, $dateAdded, $dateAddedUnixMilliseconds);
+                $isAvailable, $dateAdded, $dateAddedUnixMilliseconds, $source, $entry);
             """;
+        var source = command.Parameters.Add("$source", SqliteType.Text);
+        var entryId = command.Parameters.Add("$entry", SqliteType.Text);
         var systemIdParameter = command.Parameters.Add("$systemId", SqliteType.Text);
         var path = command.Parameters.Add("$path", SqliteType.Text);
         var title = command.Parameters.Add("$title", SqliteType.Text);
@@ -438,6 +488,10 @@ public sealed class GameLibrary : IGameLibrary
         var addedIds = new List<long>();
         foreach (var game in games)
         {
+            if (game.ExternalSourceId == "gamenative-steam" && game.ExternalSourceEntryId is not null &&
+                ReconcileSteamEntry(connection, transaction, game)) continue;
+            source.Value = (object?)game.ExternalSourceId ?? DBNull.Value;
+            entryId.Value = (object?)game.ExternalSourceEntryId ?? DBNull.Value;
             systemIdParameter.Value = game.SystemId;
             path.Value = _pathResolver.ToStorablePath(game.Path);
             title.Value = game.Title;
@@ -812,5 +866,5 @@ public sealed class GameLibrary : IGameLibrary
         PlayCount = (int)reader.GetInt64(14),
     };
 
-    private sealed record ExistingExternalEntry(long Id, GameTitleOrigin TitleOrigin);
+    private sealed record ExistingExternalEntry(long Id, GameTitleOrigin TitleOrigin, string Path);
 }
