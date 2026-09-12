@@ -3207,6 +3207,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// </summary>
     public bool SetupCompleted { get; private set; }
     private bool _finishingSetup;
+    private int _setupFinishRevision;
 
     /// <summary>START: the next step, or on the last step the save that finishes the wizard.</summary>
     private async Task AdvanceSetupAsync()
@@ -3222,6 +3223,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
         // Finish = the ordinary Save: it persists every edit and raises CloseRequested, and the flag above
         // is what tells the host this was the end of the wizard rather than a save on the way out.
+        var revision = ++_setupFinishRevision;
         _finishingSetup = true;
         try
         {
@@ -3229,7 +3231,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
         finally
         {
-            _finishingSetup = false;
+            // SaveCommand can complete before this outer continuation resumes. A retry may
+            // already be running; the previous attempt must not clear its completion marker.
+            if (revision == _setupFinishRevision)
+                _finishingSetup = false;
         }
     }
 

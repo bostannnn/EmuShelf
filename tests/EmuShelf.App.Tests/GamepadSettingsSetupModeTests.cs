@@ -296,6 +296,54 @@ public sealed class GamepadSettingsSetupModeTests
     }
 
     [Fact]
+    public void FinishRetry_BeforePreviousContinuation_KeepsItsCompletionMarker()
+    {
+        var previous = SynchronizationContext.Current;
+        var context = new QueuedContext();
+        SynchronizationContext.SetSynchronizationContext(context);
+        try
+        {
+            var store = new FailingStore();
+            var settings = DesktopSettings(closeOnReturn: false, store: store);
+            using var vm = Wizard(settings, hasSecondScreen: false);
+            var closed = false;
+            vm.CloseRequested += saved => closed = saved;
+            vm.Dispatch(GamepadAction.Menu);
+            context.RunUntil(() => settings.SaveCommand.ExecutionTask!.IsCompleted);
+            Assert.False(vm.SetupCompleted);
+
+            // The inner save is complete, but AdvanceSetupAsync's finally is still queued.
+            store.Fail = false;
+            vm.Dispatch(GamepadAction.Menu);
+            context.RunUntil(() => settings.SaveCommand.ExecutionTask!.IsCompleted);
+            Assert.True(closed);
+            Assert.True(vm.SetupCompleted);
+            context.Drain();
+        }
+        finally { SynchronizationContext.SetSynchronizationContext(previous); }
+    }
+
+    private sealed class QueuedContext : SynchronizationContext
+    {
+        private readonly System.Collections.Concurrent.ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
+        public override void Post(SendOrPostCallback callback, object? state) => _queue.Enqueue((callback, state));
+        public void RunUntil(Func<bool> complete)
+        {
+            var timeout = System.Diagnostics.Stopwatch.StartNew();
+            while (!complete())
+            {
+                Assert.True(timeout.Elapsed < TimeSpan.FromSeconds(5), "Timed out waiting for the save continuation.");
+                if (_queue.TryDequeue(out var work)) work.Callback(work.State);
+                else Thread.Yield();
+            }
+        }
+        public void Drain()
+        {
+            while (_queue.TryDequeue(out var work)) work.Callback(work.State);
+        }
+    }
+
+    [Fact]
     public async Task FailedBackSave_StaysOpenAndKeepsAnswers()
     {
         var settings = DesktopSettings(store: new FailingStore());
