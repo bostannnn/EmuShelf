@@ -325,12 +325,13 @@ jobs:
           version_name="$(git describe --tags --always 2>/dev/null | sed 's/^v//')"
           [ -n "$version_name" ] || version_name="0.0.0"
           echo "Android version: code=$version_code name=$version_name"
+          # Keep RuntimeIdentifiers in the Android csproj: a command-line global property leaks
+          # into shared net10.0 libraries and breaks the Android inner publish's output paths.
           dotnet publish src/EmuShelf.App.Android/EmuShelf.App.Android.csproj \
             -c Release \
             -p:ApplicationVersion="$version_code" \
             -p:ApplicationDisplayVersion="$version_name" \
             -p:AndroidPackageFormat=apk \
-            -p:RuntimeIdentifiers=android-arm64 \
             -p:JavaSdkDirectory="$JAVA_HOME" \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \
             "${sign_args[@]}" \

@@ -12207,3 +12207,11 @@ matching the app's physical-media presentation. Launcher, native splash and mana
 startup share one asset; themed/notification icons use a simplified cartridge vector.
 The desktop mark remains unchanged. Prompt and provenance live beside the image in
 `src/EmuShelf.UI/Assets/Branding/README.md`.
+
+### 2026-09-12 — Scope Android runtime selection to its project
+
+Keep `RuntimeIdentifiers=android-arm64` in the Android head, not as a global CI
+publish argument. A clean publish with the global argument reproduces MSB3030:
+Core/Rendering build without a RID, then the Android inner publish looks for their
+DLLs in `obj/Release/net10.0/android-arm64`. Project-scoped selection preserves the
+arm64-only APK without changing the shared libraries' build graph.

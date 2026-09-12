@@ -99,7 +99,8 @@ project history.
 - Added native icon/splash resources; revised the initial flat shelf mark after user
   feedback to a tactile red/ivory/charcoal cartridge collection. Startup keeps the
   existing dark-theme brushes and Exo 2 font. Artwork/prompt: `src/EmuShelf.UI/Assets/Branding/`.
-- Release/AOT arm64 APK published locally before the final artwork revision. Artifact verification passed for signature,
+- Clean Release/AOT arm64 APK publish passed with the final artwork after removing the
+  global CI runtime override. Artifact verification passed for signature,
   non-debuggable manifest, launcher icon, ZIP alignment and all 139 native libraries.
   The final cartridge artwork also passed an Android Debug build and handheld layout test.
   The local build uses a development signing key; this is not a distributable release.
@@ -111,5 +112,7 @@ project history.
   Signed in-place upgrade and live UI acceptance remain open.
 - CI now requires all existing signing inputs on tags; exported keystore certificate
   is compared with the packaged APK. No new signing secrets are required. The workflow
-  was syntax-parsed locally; GitHub-hosted execution remains to be observed.
+  was syntax-parsed locally. The first GitHub run exposed a global RuntimeIdentifiers
+  override that broke shared-library output paths; a clean reproduction and corrected
+  AOT publish confirmed the fix. GitHub verification of the follow-up remains pending.
 - New support/data documentation: `docs/android-privacy.md`.
