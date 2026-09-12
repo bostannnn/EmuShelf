@@ -60,6 +60,7 @@ public sealed class GameMetadataService : IGameMetadataService
     private readonly IGameCoverService _covers;
     private readonly IAppLogger _logger;
     private readonly IGameArtworkTitleIndex _artworkTitleIndex;
+    private readonly IGameArtworkResolver? _artworkResolver;
     private readonly SemaphoreSlim _runLock = new(1, 1);
     private readonly SemaphoreSlim _artworkIndexGate = new(ArtworkIndexParallelism, ArtworkIndexParallelism);
 
@@ -70,8 +71,10 @@ public sealed class GameMetadataService : IGameMetadataService
         IRemoteArtworkDownloader artworkDownloader,
         IGameCoverService covers,
         IAppLogger? logger = null,
-        IGameArtworkTitleIndex? artworkTitleIndex = null)
+        IGameArtworkTitleIndex? artworkTitleIndex = null,
+        IGameArtworkResolver? artworkResolver = null)
     {
+        _artworkResolver = artworkResolver;
         _store = store;
         _profiles = profiles.ToDictionary(profile => profile.SystemId, StringComparer.Ordinal);
         _catalog = catalog;
@@ -249,7 +252,16 @@ public sealed class GameMetadataService : IGameMetadataService
                 // A candidate built from an index entry is known to exist. A URL fabricated from a
                 // catalogue or filename title is a guess, so it is only probed once the index has
                 // had its say.
-                var candidates = indexedCandidates
+                // Steam exposes hashed filenames and non-JPEG portraits through its store API.
+                // Resolve these before trying legacy predictable URLs; missing artwork still falls back.
+                IReadOnlyList<ArtworkCandidate> resolved = [];
+                if (_artworkResolver is not null)
+                {
+                    await downloadGate.WaitAsync(cancellationToken);
+                    try { resolved = await _artworkResolver.ResolveAsync(current.SystemId, identifiers, cancellationToken); }
+                    finally { downloadGate.Release(); }
+                }
+                var candidates = resolved.Concat(indexedCandidates)
                     .Concat(profile.ArtworkProviders
                         .SelectMany(provider => provider.GetCandidates(identifiers, match)))
                     .Concat(profile.ArtworkProviders

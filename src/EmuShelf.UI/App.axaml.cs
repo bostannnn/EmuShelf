@@ -405,7 +405,8 @@ public partial class App : Application
             artworkDownloader,
             coverService,
             Bootstrapper.Logger,
-            new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient));
+            new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient),
+            new SteamStoreArtworkResolver(_metadataHttpClient));
         _retroAchievementsHttpClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30),

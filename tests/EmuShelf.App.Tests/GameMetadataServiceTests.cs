@@ -53,6 +53,52 @@ public class GameMetadataServiceTests
     }
 
     [Fact]
+    public async Task Enrich_UsesResolvedArtworkWhenNoPredictableCandidateExists()
+    {
+        var game = new Game
+        {
+            Id = 7,
+            SystemId = "test-system",
+            Path = "/games/filename.iso",
+            Title = "filename",
+            TitleOrigin = GameTitleOrigin.Filename,
+            DateAdded = DateTimeOffset.UtcNow,
+        };
+        var store = new RecordingMetadataStore(game);
+        var candidate = new ArtworkCandidate(
+            "test-art",
+            new Uri("https://example.test/cover.jpg"),
+            ".jpg");
+        var temporaryPath = Path.GetTempFileName();
+        var service = new GameMetadataService(
+            store,
+            [
+                new MetadataSystemProfile(
+                    "test-system",
+                    GameIdentifierKind.Serial,
+                    new Uri("https://example.test/catalog.dat"),
+                    new FixedExtractor(),
+                    []),
+            ],
+            new FixedCatalog(),
+            new FixedDownloader(new DownloadedArtwork(candidate, temporaryPath)),
+            new RecordingCoverService(), artworkResolver: new FixedResolver(candidate));
+
+        var summary = await service.EnrichAsync(
+            [game.Id],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, summary.TitlesApplied);
+        Assert.Equal(1, summary.CoversApplied);
+        Assert.Equal("Catalog Game (USA)", store.Game.Title);
+        Assert.Equal(GameTitleOrigin.Catalog, store.Game.TitleOrigin);
+        Assert.Equal(GameCoverOrigin.Downloaded, store.Game.CoverOrigin);
+        Assert.Equal(GameMetadataStatus.Matched, store.LastAttempt?.Status);
+        Assert.Equal("test-art", store.LastAttempt?.CoverProviderId);
+        Assert.False(File.Exists(temporaryPath));
+    }
+
+    [Fact]
     public async Task Enrich_ForwardsTheFilenameToTheCatalogAsItsHint()
     {
         // A region-free serial resolves to the wrong region unless the catalog is told which
@@ -506,6 +552,13 @@ public class GameMetadataServiceTests
             Candidates = candidates;
             return Task.FromResult(artwork);
         }
+    }
+
+    private sealed class FixedResolver(ArtworkCandidate candidate) : IGameArtworkResolver
+    {
+        public Task<IReadOnlyList<ArtworkCandidate>> ResolveAsync(string systemId,
+            IReadOnlyList<GameIdentifier> identifiers, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<ArtworkCandidate>>([candidate]);
     }
 
     private sealed class FixedDownloader(DownloadedArtwork? artwork) : IRemoteArtworkDownloader

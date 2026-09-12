@@ -12178,3 +12178,7 @@ Steam progress HTTP 401/403 is treated as authentication failure; an ambiguous H
 Folder rescans isolate Steam identity conflicts per export and unreadable listings per root. An incomplete root is excluded from removal reconciliation; conflicts preserve both library histories and never alter exports. The folder-export integration remains on the import path: `IExternalLibrarySource` forbids arbitrary folder scanning, and its reconciler treats a complete source snapshot as authoritative. Moving individual exports into that contract without redesign could mark unrelated entries missing.
 
 Steam is optional in setup: missing GameNative is actionable only when Steam games are in the library. macOS/Linux credentials remain session-only; a portable persistent store is not a substitute for an OS-protected secret store.
+
+### 2026-09-12 — Resolve Steam covers from published store assets
+
+Steam library portraits are not always named library_600x900.jpg at the app root. The public StoreBrowse API exposes hash-prefixed asset filenames and portrait.png for older games. Resolve published library capsules by app ID before legacy artwork candidates, with headers as the final published fallback. Restrict asset paths to the requested app under Steam's CDN and keep existing cover consent, cancellation, download limits and manual-cover protection. No Steam account or API key is used.
