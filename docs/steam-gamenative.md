@@ -35,7 +35,9 @@ Bulk sync shows counts, supports cancellation, and stops on an account change, a
 failure, network outage or rate limit. Private/unavailable games are counted separately. Desktop, gamepad and Android second-screen
 views select Steam automatically; console games continue to use RetroAchievements.
 
-The viewer shows earned/total achievements, icons, descriptions and unlock times. Steam
+The viewer shows earned/total achievements, icons, descriptions and unlock times. Legacy
+Steam achievement image URLs are normalized to the current Steam CDN when read, including
+URLs already stored in the local cache; no new achievement sync is required for that repair. Steam
 has no RetroAchievements points or hardcore mode. Hidden locked achievements require an
 explicit reveal. Private or unavailable progress is shown as unknown, never as zero earned.
 The key does not bypass Steam privacy settings; game details must be available to the API.

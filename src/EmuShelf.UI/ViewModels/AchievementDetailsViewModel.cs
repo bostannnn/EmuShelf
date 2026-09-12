@@ -135,6 +135,7 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         {
             // The XAML placeholder remains visible for an unreadable/missing local badge.
         }
+        finally { Interlocked.Exchange(ref _badgeLoadStarted, 0); }
     }
 
     partial void OnBadgeChanging(Bitmap? value)

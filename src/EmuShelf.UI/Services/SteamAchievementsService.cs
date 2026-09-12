@@ -201,10 +201,9 @@ public sealed class SteamAchievementsService : IAchievementProvider
 
     public async Task<string?> GetIconPathAsync(string icon, CancellationToken cancellationToken = default)
     {
-        if (!Uri.TryCreate(icon, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
-            !(uri.Host.EndsWith(".steamstatic.com", StringComparison.OrdinalIgnoreCase) ||
-              uri.Host.EndsWith(".steamcommunity.com", StringComparison.OrdinalIgnoreCase))) return null;
-        var path = Path.Combine(_root, "Icons", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(icon))) + ".img");
+        var uri = NormalizeIconUri(icon);
+        if (uri is null) return null;
+        var path = Path.Combine(_root, "Icons", Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(uri.AbsoluteUri))) + ".img");
         if (File.Exists(path)) return path;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
@@ -230,6 +229,27 @@ public sealed class SteamAchievementsService : IAchievementProvider
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested) { return null; }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or HttpRequestException) { return null; }
+    }
+
+    private static Uri? NormalizeIconUri(string icon)
+    {
+        if (!Uri.TryCreate(icon, UriKind.Absolute, out var uri) ||
+            uri.Scheme is not ("https" or "http") || !uri.IsDefaultPort || uri.UserInfo.Length != 0) return null;
+        var steamHost = uri.Host.EndsWith(".steamstatic.com", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.EndsWith(".steamcommunity.com", StringComparison.OrdinalIgnoreCase);
+        var legacyHost = uri.Host.Equals("steamcdn-a.akamaihd.net", StringComparison.OrdinalIgnoreCase) ||
+            uri.Host.Equals("media.steampowered.com", StringComparison.OrdinalIgnoreCase);
+        if (!steamHost && !legacyHost) return null;
+        const string oldPrefix = "/steamcommunity/public/images/apps/";
+        if (uri.AbsolutePath.StartsWith(oldPrefix, StringComparison.Ordinal))
+        {
+            var asset = uri.AbsolutePath[oldPrefix.Length..];
+            if (!System.Text.RegularExpressions.Regex.IsMatch(asset, @"^[0-9]+/[a-fA-F0-9]{40}\.(jpg|png)$")) return null;
+            // Steam still returns this legacy path in schemas, but its old CDNs now return 404.
+            // Normalize on read so previously cached snapshots also recover without a metadata refresh.
+            return new Uri("https://shared.fastly.steamstatic.com/community_assets/images/apps/" + asset);
+        }
+        return steamHost && uri.Scheme == "https" ? uri : null;
     }
 
     private string SnapshotPath(string account, string app) => Path.Combine(_root, account, app + "-english.json");

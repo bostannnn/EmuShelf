@@ -199,6 +199,69 @@ public sealed class SteamAchievementsTests : IDisposable
         finally { window.Close(); }
     }
 
+    [Theory]
+    [InlineData("https://steamcdn-a.akamaihd.net")]
+    [InlineData("http://media.steampowered.com")]
+    [InlineData("https://cdn.akamai.steamstatic.com")]
+    [InlineData("https://cdn.cloudflare.steamstatic.com")]
+    public async Task LegacySteamIconsUseCurrentCdnAndReuseTheDiskCache(string host)
+    {
+        using var handler = new IconResponse();
+        using var http = new HttpClient(handler);
+        var service = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        const string asset = "2142790/fc7112873f2eb80bf26225c48efadf7ba61e7363.jpg";
+        var oldUrl = host + "/steamcommunity/public/images/apps/" + asset;
+        var path = await service.GetIconPathAsync(oldUrl, Token);
+        Assert.NotNull(path); Assert.True(File.Exists(path));
+        Assert.Equal("https://shared.fastly.steamstatic.com/community_assets/images/apps/" + asset, handler.Requests.Single());
+        Assert.Equal(path, await service.GetIconPathAsync(oldUrl, Token));
+        Assert.Single(handler.Requests);
+    }
+
+    [Theory]
+    [InlineData("https://steamcdn-a.akamaihd.net.example.org/steamcommunity/public/images/apps/1/a.jpg")]
+    [InlineData("https://unrelated.akamaihd.net/steamcommunity/public/images/apps/1/a.jpg")]
+    [InlineData("https://steamcdn-a.akamaihd.net/anything-else")]
+    public async Task UntrustedOrUnrecognizedLegacyIconsAreNotRequested(string url)
+    {
+        using var handler = new IconResponse(); using var http = new HttpClient(handler);
+        var service = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        Assert.Null(await service.GetIconPathAsync(url, Token));
+        Assert.Empty(handler.Requests);
+    }
+
+    [Avalonia.Headless.XUnit.AvaloniaFact]
+    public async Task IconRowDecodesCdnImageAndCanRetryAfterAFailedDownload()
+    {
+        using var bitmap = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(2, 2));
+        using var imageBytes = new MemoryStream();
+        bitmap.Save(imageBytes, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        using var handler = new IconResponse { Bytes = imageBytes.ToArray(), FailFirst = true };
+        using var http = new HttpClient(handler);
+        var provider = new SteamAchievementsService(new Client(), new SessionSteamCredentialStore(), new Settings(), _root, http);
+        const string icon = "https://steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/2142790/fc7112873f2eb80bf26225c48efadf7ba61e7363.jpg";
+        using var row = new AchievementRowViewModel(new("FIRST", "First", "Start", icon, 0, true), provider, loadBadge: false);
+        await row.LoadBadgeAsync(icon, Token);
+        Assert.False(row.HasBadge);
+        await row.LoadBadgeAsync(icon, Token);
+        Assert.True(row.HasBadge);
+        Assert.Equal(2, row.Badge!.PixelSize.Width);
+        Assert.Equal(2, handler.Requests.Count);
+    }
+
+    private sealed class IconResponse : HttpMessageHandler
+    {
+        public byte[] Bytes { get; init; } = [1, 2, 3];
+        public bool FailFirst { get; init; }
+        public List<string> Requests { get; } = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Requests.Add(request.RequestUri!.AbsoluteUri);
+            return Task.FromResult(new HttpResponseMessage(FailFirst && Requests.Count == 1 ? System.Net.HttpStatusCode.ServiceUnavailable : System.Net.HttpStatusCode.OK)
+            { Content = new ByteArrayContent(Bytes) });
+        }
+    }
+
     private sealed class Configurations : IEmulatorConfigurationStore
     {
         public EmulatorConfiguration? Get(string systemId) => null;

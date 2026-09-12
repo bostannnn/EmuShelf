@@ -56,3 +56,13 @@ See [setup and behavior](steam-gamenative.md).
 The connected Thor's export directory was inspected read-only and contains 23 `.steam`
 shortcuts. No authenticated Steam API result is claimed from fixture tests. No full Steam
 client login, backend service, other-store importer or achievement-unlock writer is included.
+
+
+### Achievement icon follow-up
+
+The Thor cache contained `steamcdn-a.akamaihd.net/steamcommunity/public/images/apps/…`
+URLs. The loader rejected that host, and the old CDN also returned 404. The same image at
+`shared.fastly.steamstatic.com/community_assets/images/apps/…` returned HTTP 200/image/jpeg.
+Normalize only recognized Steam legacy hosts and asset paths to HTTPS on the current CDN,
+including cached URLs, and release the per-row loading guard after failed downloads.
+134 achievement tests passed, followed by 21 Steam tests including image decoding and retry.
