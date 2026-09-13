@@ -14,6 +14,10 @@ public sealed record MetadataEnrichmentSummary(
 {
     public int ArtworkApplied { get; init; }
 
+    // Supplementary Steam-artwork fetch that failed on a game whose title/cover match still succeeded.
+    // Tracked separately so a fanart/logo hiccup never recategorises a good metadata match as a failure.
+    public int ArtworkFailed { get; init; }
+
     public string ToStatusText()
     {
         if (Processed == 0)
@@ -30,6 +34,8 @@ public sealed record MetadataEnrichmentSummary(
             parts.Add($"{Unmatched} unmatched");
         if (Failed > 0)
             parts.Add($"{Failed} failed");
+        if (ArtworkFailed > 0)
+            parts.Add($"{ArtworkFailed} artwork failed");
         return $"Metadata complete — {string.Join(", ", parts)}";
     }
 }
@@ -127,6 +133,7 @@ public sealed class GameMetadataService : IGameMetadataService
             using var downloadGate = new SemaphoreSlim(DownloadParallelism, DownloadParallelism);
             var completed = 0;
             var artworkApplied = 0;
+            var artworkFailed = 0;
             progress?.Report(new MetadataEnrichmentProgress(0, ids.Length, null));
             var tasks = ids.Select(async id =>
             {
@@ -142,8 +149,10 @@ public sealed class GameMetadataService : IGameMetadataService
                     catch (OperationCanceledException) { throw; }
                     catch (Exception ex)
                     {
+                        // The title/cover match already succeeded and was persisted; a supplementary
+                        // artwork miss is reported on its own tally, not by flipping this game to Failed.
                         _logger.Warning($"Artwork enrichment failed for game id {id}.", ex);
-                        result = result with { Failed = true };
+                        Interlocked.Increment(ref artworkFailed);
                     }
                 }
                 progress?.Report(new MetadataEnrichmentProgress(
@@ -156,7 +165,7 @@ public sealed class GameMetadataService : IGameMetadataService
                 results.Count(result => result.TitleApplied),
                 results.Count(result => result.CoverApplied),
                 results.Count(result => result.Unmatched),
-                results.Count(result => result.Failed)) { ArtworkApplied = artworkApplied };
+                results.Count(result => result.Failed)) { ArtworkApplied = artworkApplied, ArtworkFailed = artworkFailed };
         }
         finally
         {

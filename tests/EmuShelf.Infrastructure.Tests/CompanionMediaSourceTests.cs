@@ -238,6 +238,97 @@ public class CompanionMediaCacheTests : TempAppDirectoryTestBase
         Assert.Equal(RemoteMediaKind.Video, download.Last!.MediaKind);
     }
 
+    [Fact]
+    public async Task EmptyStoreResponseDoesNotClobberACachedManifest()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        var download = new Downloader(BaseDirectory);
+        // Seed a good manifest (library_hero + logo) into the on-disk manifest cache.
+        using (var goodHttp = new HttpClient(new StoreHandler()))
+        {
+            var seeded = new CompanionMediaSource(new MemoryDetails(), goodHttp, download, AppPaths);
+            Assert.Equal(2, await seeded.FetchMissingAsync(Game(), CancellationToken.None));
+        }
+        var cachePath = Path.Combine(AppPaths.CacheDirectory, "CompanionMedia", "250180.json");
+        var cachedManifest = await File.ReadAllTextAsync(cachePath);
+        Assert.Contains("library_hero", cachedManifest);
+        // Age it past the seven-day freshness window so the next run must consult the network.
+        File.SetLastWriteTimeUtc(cachePath, DateTime.UtcNow.AddDays(-8));
+
+        // A fresh instance (empty retry-after + media store) hits an empty live response.
+        var emptyHandler = new EmptyStoreHandler();
+        using var emptyHttp = new HttpClient(emptyHandler);
+        var reopened = new CompanionMediaSource(new MemoryDetails(), emptyHttp, download, AppPaths);
+        // The empty/failed response must be ignored: the cached manifest still yields hero + logo,
+        // and the cache file itself is left untouched rather than overwritten with the empty response.
+        Assert.Equal(2, await reopened.FetchMissingAsync(Game(), CancellationToken.None));
+        Assert.Equal(1, emptyHandler.Calls);
+        Assert.Equal(cachedManifest, await File.ReadAllTextAsync(cachePath));
+    }
+
+    [Fact]
+    public async Task AConcurrentSaveDuringDownloadIsNotOverwritten()
+    {
+        AppPaths.EnsureDirectoriesExist();
+        using var http = new HttpClient(new StoreHandler());
+        var details = new MemoryDetails();
+        var download = new PausableDownloader(BaseDirectory);
+        var source = new CompanionMediaSource(details, http, download, AppPaths);
+
+        using var cancel = new CancellationTokenSource();
+        var fetch = source.FetchMissingAsync(Game(), cancel.Token);
+        // Block until the fetch's own fanart download is in flight.
+        await download.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        // A competing scrape / manual choice lands a fanart while the fetch is mid-download.
+        var rival = Path.Combine(AppPaths.CoversDirectory, "rival-fanart.png");
+        await File.WriteAllTextAsync(rival, "rival");
+        details.SaveMedia(new(0, 1, GameMediaKind.Fanart, rival, true, GameMediaSelectionOrigin.User,
+            GameMediaOrigin.Provider, "screenscraper", "250180", null, null, null, ".png",
+            null, null, null, null, null, DateTimeOffset.UtcNow));
+
+        download.Release();
+        var applied = await fetch.WaitAsync(TimeSpan.FromSeconds(3));
+
+        // The post-download recheck must discard the fetched fanart in favour of the intervening
+        // choice; only the logo (a kind still absent) is saved.
+        var fanarts = details.GetDetails(1).Media.Where(i => i.Kind == GameMediaKind.Fanart).ToArray();
+        Assert.Equal(rival, Assert.Single(fanarts).LocalPath);
+        Assert.Equal(1, applied);
+        Assert.Contains(details.GetDetails(1).Media, i => i.Kind == GameMediaKind.Wheel);
+    }
+
+    private sealed class EmptyStoreHandler : HttpMessageHandler
+    {
+        public int Calls;
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Calls++;
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                { Content = new StringContent("""{"response":{"store_items":[]}}""") });
+        }
+    }
+
+    private sealed class PausableDownloader(string root) : IRemoteArtworkDownloader
+    {
+        private int _calls;
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public void Release() => _release.TrySetResult();
+        public async Task<DownloadedArtwork?> DownloadFirstAsync(IReadOnlyList<ArtworkCandidate> candidates,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _calls) == 1)
+            {
+                Started.TrySetResult();
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+            var path = Path.Combine(root, "download-" + Guid.NewGuid());
+            await File.WriteAllTextAsync(path, "fixture", cancellationToken);
+            return new(candidates[0], path);
+        }
+    }
+
     private static EmuShelf.Core.Library.Game Game() => new()
     {
         Id = 1, SystemId = "steam", Title = "Game", Path = "/game.steam", ExternalSourceEntryId = "250180"

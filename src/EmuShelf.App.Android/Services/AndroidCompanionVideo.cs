@@ -21,8 +21,11 @@ internal sealed class AndroidCompanionVideo : ICompanionVideoPlayer
         _view = view;
         _prepared = new PreparedListener(player =>
         {
-            if (_disposed || !view.IsShown) return;
+            // Mute unconditionally: this is the only place volume is ever set, so it must never be
+            // skipped — otherwise a later Start() could play the trailer at full device volume on the
+            // second screen. Only the auto-start is gated on the surface still being live.
             player?.SetVolume(0, 0);
+            if (_disposed || !view.IsShown) return;
             if (!_paused) view.Start();
         });
         view.SetOnPreparedListener(_prepared);

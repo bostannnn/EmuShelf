@@ -1251,6 +1251,9 @@ internal sealed class SecondScreenController
         ++_spotlightGeneration;
         _spotlightLoad?.Cancel();
         _spotlightLoad?.Dispose();
+        // Null it so the later _spotlightLoad?.Cancel() inside DismissPresentation is a no-op rather than
+        // a Cancel() on a disposed source (which throws ObjectDisposedException and would abort teardown).
+        _spotlightLoad = null;
         if (_focusedMediaGame is not null) _focusedMediaGame.PropertyChanged -= FocusedMediaChanged;
         if (_viewModel is not null)
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
