@@ -7,6 +7,50 @@ namespace EmuShelf.App.Tests;
 public class GameMetadataServiceTests
 {
     [Fact]
+    public async Task FetchMissingIncludesSteamArtworkEvenWhenTitleAndCoverAreComplete()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "EmuShelfMediaTest-" + Guid.NewGuid());
+        try
+        {
+            var paths = new EmuShelf.Infrastructure.Storage.AppPaths(directory);
+            paths.EnsureDirectoriesExist();
+            var database = new EmuShelf.Infrastructure.Persistence.LibraryDatabase(paths);
+            database.Initialize();
+            var library = new EmuShelf.Infrastructure.Library.GameLibrary(database,
+                new EmuShelf.Infrastructure.Storage.RelativePathResolver(paths));
+            library.AddGames([new Game { SystemId = "steam", Title = "Ready title", Path = "/game.steam",
+                CoverPath = "/existing.png", ExternalSourceEntryId = "123" }]);
+            var game = Assert.Single(library.GetGames());
+            var store = new RecordingMetadataStore(game, missingMetadata: false);
+            var media = new RecordingMediaEnricher();
+            var service = new GameMetadataService(store, [], new NoMatchCatalog(),
+                new FixedDownloader(null), new RecordingCoverService(), mediaEnricher: media, library: library);
+            Assert.Equal(0, (await service.EnrichMissingAsync("ps2", cancellationToken: TestContext.Current.CancellationToken)).Processed);
+            var result = await service.EnrichMissingAsync("steam", cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(1, result.Processed);
+            Assert.Equal(3, result.ArtworkApplied);
+            Assert.Equal(new[] { game.Id }, media.Fetched);
+            Assert.Contains("3 artwork files", result.ToStatusText());
+            media.Fetched.Clear();
+            await service.EnrichAsync([game.Id], cancellationToken: TestContext.Current.CancellationToken);
+            Assert.Equal(new[] { game.Id }, media.Fetched); // import enrichment uses the same path
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, true); }
+    }
+
+    private sealed class RecordingMediaEnricher : EmuShelf.Core.SecondScreen.IGameMediaEnricher
+    {
+        public List<long> Fetched { get; } = [];
+        public bool Supports(Game game) => game.SystemId == "steam";
+        public bool HasMissingArtwork(Game game) => Supports(game);
+        public Task<int> FetchMissingAsync(Game game, CancellationToken token)
+        {
+            Fetched.Add(game.Id);
+            return Task.FromResult(3);
+        }
+    }
+
+    [Fact]
     public async Task Enrich_AppliesExactTitleAndCoverAndRecordsProvenance()
     {
         var game = new Game

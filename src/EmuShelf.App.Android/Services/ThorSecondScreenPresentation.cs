@@ -121,6 +121,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         // unplugged — does not leak them.
         Model.SetSpotlight(null, null);
         Model.ClearAchievements();
+        Model.ClearMedia();
         // Detach the embedded Avalonia top level before the Presentation window is torn down, so its
         // render loop and input handlers do not outlive the display.
         _avaloniaView.Content = null;

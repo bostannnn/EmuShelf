@@ -90,6 +90,7 @@ public sealed class SingleViewShell : IPlatformShell
         // is that return signal; ReturnedToForeground is a single slot already owned by play sessions.
         AndroidActivityLifecycle.TopResumedChanged += OnTopResumedForDeviceState;
 
+        EmuShelf.App.Controls.CompanionVideoHost.Factory = AndroidCompanionVideo.Create;
         _secondScreen = new SecondScreenController(
             new FileSecondScreenDockStore(
                 Path.Combine(boot.Paths.SettingsDirectory, "second-screen-dock.json"),
@@ -99,7 +100,8 @@ public sealed class SingleViewShell : IPlatformShell
             deps.RetroAchievementsAccount,
             deps.RetroAchievementsBadges,
             boot.GameDetailsStore,
-            boot.Logger);
+            boot.Logger,
+            deps.CompanionMedia);
 
         LaunchService = new AndroidEmulatorLaunchService(
             gameLauncher,

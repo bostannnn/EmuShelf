@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:EmuShelf.App.Controls"
              xmlns:vm="using:EmuShelf.App.ViewModels"
              xmlns:ai="using:Avalonia.Input"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -11,6 +12,34 @@
              Background="{DynamicResource EmuWindowBackgroundBrush}">
 
   <UserControl.Styles>
+    <Style Selector="TextBlock.spotlight-title">
+      <Setter Property="Opacity" Value="0.22" />
+      <Setter Property="Foreground" Value="{DynamicResource EmuTextPrimaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.spotlight-title.on-art">
+      <Setter Property="Opacity" Value="0.9" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Button.media-control">
+      <Setter Property="Background" Value="#661A2029" />
+      <Setter Property="Foreground" Value="White" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="Panel.media-gallery">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Transitions"><Transitions><DoubleTransition Property="Opacity" Duration="0:0:0.16" /></Transitions></Setter>
+    </Style>
+    <Style Selector="Panel.media-gallery.open">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+    <Style Selector="Image.media-photo.video"><Setter Property="Opacity" Value="0.45" /></Style>
+    <Style Selector="Button.media-control:pointerover /template/ ContentPresenter">
+      <Setter Property="Background" Value="#DD303A49" />
+    </Style>
     <!-- Achievement badge tiles: locked ones are dimmed, hardcore unlocks get the gold ring — the same
          treatment as the gamepad achievements grid. Scoped class names so they never touch other tiles. -->
     <Style Selector="Grid.ss-badge-inner.locked">
@@ -178,7 +207,8 @@
            Opacity="{Binding FanartOpacity}" IsVisible="{Binding HasFanart}" />
     <Border Grid.RowSpan="2" Background="#40000000" IsVisible="{Binding HasFanart}" />
 
-    <Panel Grid.Row="0" ClipToBounds="True">
+    <Panel Grid.Row="0" ClipToBounds="True" Background="Transparent"
+           PointerPressed="OnMediaPointerPressed" PointerReleased="OnMediaPointerReleased">
 
       <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink).
            SpotlightLogoOpacity, not LogoOpacity: it drops to zero while the standby wash is up, because
@@ -196,10 +226,9 @@
 
       <!-- Fallback when the selected game has no art (or nothing is selected). Hidden under standby for
            the same reason as the logo above — the wash draws its own wordmark. -->
-      <TextBlock Text="EmuShelf" FontSize="44" FontWeight="Bold" Opacity="0.22"
+      <TextBlock Classes="spotlight-title" Classes.on-art="{Binding HasFanart}" Text="{Binding SpotlightTitle}" TextWrapping="Wrap" TextAlignment="Center" Margin="24" FontSize="32" FontWeight="Bold"
                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                 IsVisible="{Binding ShowRestingBranding}"
-                 Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+                 IsVisible="{Binding ShowRestingBranding}" />
 
       <!-- App drawer overlay: dim scrim (tap outside to dismiss) + a floating rounded sheet -->
       <Border Classes="ss-scrim" Classes.open="{Binding IsDrawerOpen}" Tapped="OnOverlayScrimTapped" />
@@ -387,12 +416,18 @@
           </StackPanel>
         </Grid>
       </Border>
-    </Panel>
 
+      <Button Classes="media-control" Width="40" Height="40" Margin="16"
+              HorizontalAlignment="Right" VerticalAlignment="Top" Command="{Binding OpenMediaCommand}"
+              IsVisible="{Binding IsSpotlight}" AutomationProperties.Name="Open photos and videos">
+        <PathIcon Width="18" Height="18" Foreground="White"
+                  Data="F0 M2,3 H22 V21 H2 Z M4,5 V19 H20 V5 Z M5,17 L9,12 L12,15 L15,11 L19,17 Z M6,7 H9 V10 H6 Z" />
+      </Button>
+    </Panel>
     <!-- Bottom bar:  ☰  |  five dock slots  |  trophy. Hidden while the achievements overlay is open so the
          badge grid + detail strip own the full square panel; Close (or Back) returns to it. -->
-    <Border Grid.Row="1" Height="80" Margin="12,0,12,12" Background="{DynamicResource EmuToolbarBrush}"
-            IsVisible="{Binding !IsAchievementsOpen}"
+    <Border x:Name="CompanionDock" Grid.Row="1" Height="80" Margin="12,0,12,12" Background="{DynamicResource EmuToolbarBrush}"
+            IsVisible="{Binding IsDockVisible}"
             CornerRadius="24" BoxShadow="0 4 16 0 #33000000">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0">
 
@@ -445,6 +480,62 @@
         </Button>
       </Grid>
     </Border>
+
+    <!-- A dedicated full-display viewer. The dock is removed from layout while this is open. -->
+    <Panel x:Name="MediaGallery" Grid.RowSpan="2" Background="#080A0D" Classes="media-gallery" Classes.open="{Binding IsMediaOpen}"
+           ClipToBounds="True" PointerPressed="OnMediaPointerPressed" PointerReleased="OnMediaPointerReleased">
+      <Panel x:Name="MediaViewport">
+        <Image Classes="media-photo" Classes.video="{Binding IsSelectedVideo}" Source="{Binding MediaImage}" Stretch="Uniform" />
+        <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsMediaLoading}" Height="2" Width="72"
+                     Foreground="#B9C0CA" Background="#26303D" VerticalAlignment="Bottom" Margin="0,0,0,48" />
+        <TextBlock Text="{Binding MediaStatus}" Foreground="#B9C0CA" FontSize="13" Margin="40"
+                   TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        <StackPanel IsVisible="{Binding !HasMedia}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10" Margin="40">
+          <TextBlock Text="No media yet" FontSize="22" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center" />
+          <TextBlock Text="Photos and videos will appear here." Foreground="#9CA6B5" TextAlignment="Center" />
+          <Button Content="Fetch missing artwork" Classes="media-control" Command="{Binding FetchMediaCommand}"
+                  IsVisible="{Binding CanFetchMedia}" IsEnabled="{Binding !IsFetchingMedia}" HorizontalAlignment="Center" Padding="18,10" />
+        </StackPanel>
+        <Button Classes="media-control" Command="{Binding PlayMediaCommand}" IsVisible="{Binding ShowMediaPlay}"
+                Width="68" Height="68" CornerRadius="34" HorizontalAlignment="Center" VerticalAlignment="Center"
+                AutomationProperties.Name="Play muted video">
+          <PathIcon Width="24" Height="24" Foreground="White" Data="M5,2 L21,12 L5,22 Z" />
+        </Button>
+        <!-- Native Android views render above Avalonia: reserve only slim control bands for video. -->
+        <ContentControl IsVisible="{Binding IsVideoPlaying}" Content="{Binding PlayingVideoPath}" Margin="0,56,0,44"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+          <ContentControl.ContentTemplate>
+            <DataTemplate><controls:CompanionVideoHost Source="{Binding}" AttachedToVisualTree="OnVideoAttached" /></DataTemplate>
+          </ContentControl.ContentTemplate>
+        </ContentControl>
+      </Panel>
+      <Border Height="110" VerticalAlignment="Top" IsHitTestVisible="False" IsVisible="{Binding IsMediaChromeVisible}">
+        <Border.Background><LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Color="#C0080A0D" Offset="0" /><GradientStop Color="#00080A0D" Offset="1" /></LinearGradientBrush></Border.Background>
+      </Border>
+      <Border Height="90" VerticalAlignment="Bottom" IsHitTestVisible="False" IsVisible="{Binding IsMediaChromeVisible}">
+        <Border.Background><LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%"><GradientStop Color="#00080A0D" Offset="0" /><GradientStop Color="#D9080A0D" Offset="1" /></LinearGradientBrush></Border.Background>
+      </Border>
+      <ProgressBar IsIndeterminate="True" IsVisible="{Binding IsFetchingMedia}" Height="2" Margin="20,0" VerticalAlignment="Top" Foreground="#B9C0CA" Background="Transparent" />
+      <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="12,10" Height="36" VerticalAlignment="Top" IsVisible="{Binding IsMediaChromeVisible}">
+        <Button Classes="media-control" Width="36" Height="36" Command="{Binding CloseOverlayCommand}" AutomationProperties.Name="Close media">
+          <PathIcon Width="14" Height="14" Foreground="White" Data="M3,5 L5,3 L12,10 L19,3 L21,5 L14,12 L21,19 L19,21 L12,14 L5,21 L3,19 L10,12 Z" />
+        </Button>
+        <TextBlock Grid.Column="1" Text="{Binding MediaTitle}" FontSize="14" FontWeight="Medium" Foreground="White" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+        <Button Grid.Column="2" Classes="media-control" Width="36" Height="36" Command="{Binding FetchMediaCommand}"
+                IsVisible="{Binding CanFetchMedia}" IsEnabled="{Binding !IsFetchingMedia}" AutomationProperties.Name="Fetch missing artwork" ToolTip.Tip="Fetch missing artwork for this game">
+          <PathIcon Width="16" Height="16" Foreground="White" Data="M11,2 H13 V13 L17,9 L19,11 L12,18 L5,11 L7,9 L11,13 Z M3,19 H21 V22 H3 Z" />
+        </Button>
+      </Grid>
+      <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,6" Height="32" VerticalAlignment="Bottom" IsVisible="{Binding IsMediaChromeVisible}">
+        <Button Classes="media-control" Width="36" Height="32" Command="{Binding PreviousMediaCommand}" IsVisible="{Binding CanBrowseMedia}" AutomationProperties.Name="Previous media">
+          <PathIcon Width="8" Height="12" Foreground="White" Data="M10,0 L0,10 L10,20 L12,18 L4,10 L12,2 Z" />
+        </Button>
+        <TextBlock Grid.Column="1" Text="{Binding MediaCaption}" FontSize="11" Foreground="#B9C0CA" VerticalAlignment="Center" HorizontalAlignment="Center" />
+        <Button Grid.Column="2" Classes="media-control" Width="36" Height="32" Command="{Binding NextMediaCommand}" IsVisible="{Binding CanBrowseMedia}" AutomationProperties.Name="Next media">
+          <PathIcon Width="8" Height="12" Foreground="White" Data="M2,0 L12,10 L2,20 L0,18 L8,10 L0,2 Z" />
+        </Button>
+      </Grid>
+    </Panel>
 
     <!-- Dim standby wash for "a game is playing on the other screen" (see the style above). Spans BOTH rows
          so the whole surface — spotlight and the dock bar below it — goes dark together. While it is up it

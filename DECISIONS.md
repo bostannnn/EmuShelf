@@ -12218,3 +12218,63 @@ publish argument. A clean publish with the global argument reproduces MSB3030:
 Core/Rendering build without a RID, then the Android inner publish looks for their
 DLLs in `obj/Release/net10.0/android-arm64`. Project-scoped selection preserves the
 arm64-only APK without changing the shared libraries' build graph.
+
+
+## 2026-09-13 — Companion artwork fallback and swipe media viewer
+
+The Thor's Steam library had covers but the companion read only selected fanart and wheels,
+so browsing Steam showed the EmuShelf wordmark while scraped console games showed artwork.
+Resolve companion backgrounds in fanart → screenshot → title screen → cover order. Covers
+fit without cropping. Keep the running game as the media target until return to the library.
+
+The companion's Photos & videos overlay shares one provider-neutral media list. Horizontal
+swipes and controller left/right browse it; vertical gestures remain available to other
+panels. Images decode off-thread to a bounded 1240×1080 fit. Videos download only on Play,
+start muted, and stop on close, page/game change, teardown or a dock-app handoff. Android
+supplies a native VideoView through the shared host; no Android dependency enters Core/UI.
+
+Local ScreenScraper assets remain in their existing store. Public Steam StoreBrowse assets
+use a separate recreatable Cache/CompanionMedia cache (256 MiB payload target; manifest TTL
+seven days, failed-request cooldown two minutes). Only publisher paths tied to the requested
+app ID are accepted. Fetch automatically only with automatic metadata enabled; otherwise
+Get Steam media is an explicit action. Cached local covers work without network consent.
+Use published MP4 microtrailers as video previews; full adaptive trailers are not downloaded.
+This does not overwrite manual covers or write game/save files. Existing ScreenScraper MP4s
+play from local storage; the viewer does not silently start a ScreenScraper batch scrape.
+
+Device diagnosis was performed on Thor 1.8.5 (856); changed-build device acceptance is pending
+release signing. See docs/second-screen-media.md for findings and the acceptance checklist.
+
+
+### 2026-09-13 — Companion gallery owns the entire display
+
+User review rejected the dock-sized gallery. Media now occupies both layout rows with the
+dock hidden, a fixed dark backdrop, compact overlay controls, tap-to-hide chrome for images,
+and swipe-down dismissal. Native video retains only narrow top/bottom control bands because
+Android surfaces paint above Avalonia; its aspect-fitted view is centered in a native frame.
+Screenshot pages precede packaging art. Acceptance must check full-display bounds and dock
+visibility, not merely that the viewer fits somewhere on screen.
+
+
+### 2026-09-13 — Steam spotlight uses library assets, not store banners
+
+StoreBrowse omits a logo field. Resolve the publisher's separate logo.png route, and on
+a missing direct logo use api.steamcmd.net's public app-info mirror to resolve the hashed
+library_logo path. Only the focused game's public numeric ID is sent; no account or game
+files are sent. Cache the validated path for seven days, cap metadata at 2 MiB/10 seconds,
+and accept only the requested app's Steam CDN logo path. Failed assets back off ten minutes.
+Keep selected local artwork first, prefer high-resolution hero art, and never treat a
+store header banner as fanart. Video gallery pages use screenshot posters without
+automatically fetching or starting the video.
+
+Steam spotlight fetches its hero/logo on selection independently of the import-time
+automatic-metadata setting. This is lazy presentation loading, not an import scrape;
+video payloads still require Play. Cached art is published first for offline use.
+
+### 2026-09-13 — Stable Steam spotlight while artwork loads
+
+Steam's resting companion surface now restricts backgrounds to fanart in both cached and network passes. Screenshots/covers remain in the gallery instead of briefly appearing before publisher fanart. Selection changes immediately clear the previous game's spotlight and show the new title while uncached art loads. Cached payload reads bypass the download semaphore, and manifests use a separate semaphore, so a video download cannot hold up already-cached artwork. Cache contents and user media are preserved.
+
+### 2026-09-13 — One saved-artwork path for every companion platform
+
+This supersedes the earlier Steam selection-time enrichment behavior. The companion resolves selected local fanart and wheel media once, regardless of platform; covers/screenshots are gallery content. Steam enrichment runs only through explicit fetch or the existing opt-in import pipeline. The existing Fetch missing metadata action now includes Steam games whose cover/title are complete but fanart, logo or screenshots are absent. Results are durable GameMediaAssets under Covers/Media with Steam provenance, preserving existing media selections and user artwork. Previously cached preview artwork is migrated locally without provider requests. Video descriptors may be read from an already-cached manifest; video bytes remain on-demand when Play is pressed. No second bulk-scrape button is introduced.

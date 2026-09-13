@@ -16,6 +16,7 @@ public enum SecondScreenOverlayKind
     None,
     Drawer,
     Achievements,
+    Media,
 }
 
 /// <summary>One launchable app in the second-screen drawer.</summary>
@@ -209,7 +210,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     {
         FanartImage = fanart;
         WheelImage = wheel;
-        ShowBranding = fanart is null && wheel is null;
+        ShowBranding = wheel is null;
     }
 
     // --- Drawer / dock / achievements ---
@@ -302,7 +303,18 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         // Cancel always closes an open overlay (Back behaviour), even an empty/message achievements panel.
         if (action == GamepadAction.Cancel && Overlay != SecondScreenOverlayKind.None)
         {
-            OverlayClosed?.Invoke();
+            CloseOverlayCommand.Execute(null);
+            return true;
+        }
+
+        if (IsMediaOpen)
+        {
+            switch (action)
+            {
+                case GamepadAction.NavigateLeft: PreviousMediaCommand.Execute(null); break;
+                case GamepadAction.NavigateRight: NextMediaCommand.Execute(null); break;
+                case GamepadAction.Confirm when IsSelectedVideo: PlayMediaCommand.Execute(null); break;
+            }
             return true;
         }
 
@@ -499,6 +511,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     partial void OnOverlayChanged(SecondScreenOverlayKind value)
     {
+        OnPropertyChanged(nameof(IsMediaOpen));
+        OnPropertyChanged(nameof(IsDockVisible));
+        OnPropertyChanged(nameof(IsSpotlight));
+        if (value != SecondScreenOverlayKind.Media) StopMedia();
         // An overlay taking over ends any wake window in flight, so closing it restores the dim at
         // once instead of whenever the touch that opened it happens to expire.
         if (value != SecondScreenOverlayKind.None)
@@ -532,7 +548,11 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     private void ToggleAchievements() => AchievementsToggled?.Invoke();
 
     [RelayCommand]
-    private void CloseOverlay() => OverlayClosed?.Invoke();
+    private void CloseOverlay()
+    {
+        Overlay = SecondScreenOverlayKind.None;
+        OverlayClosed?.Invoke();
+    }
 
     [RelayCommand]
     private void ClearSlot() => SlotCleared?.Invoke();

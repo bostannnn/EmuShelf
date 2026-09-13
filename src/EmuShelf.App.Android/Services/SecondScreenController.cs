@@ -36,7 +36,10 @@ internal sealed class SecondScreenController
     private readonly IRetroAchievementsDetailsService _details;
     private readonly IRetroAchievementsAccountService _account;
     private readonly IRetroAchievementsBadgeCache _badges;
-    private readonly IGameDetailsStore _gameDetails;
+    private readonly ICompanionMediaSource? _mediaSource;
+    private CancellationTokenSource? _spotlightLoad;
+    private Game? _runningGame;
+    private GameViewModel? _focusedMediaGame;
     private readonly IAppLogger _logger;
     private readonly Handler _mainHandler = new(Looper.MainLooper!);
 
@@ -79,7 +82,8 @@ internal sealed class SecondScreenController
         IRetroAchievementsAccountService account,
         IRetroAchievementsBadgeCache badges,
         IGameDetailsStore gameDetails,
-        IAppLogger logger)
+        IAppLogger logger,
+        ICompanionMediaSource? mediaSource = null)
     {
         _dockStore = dockStore;
         _readStore = readStore;
@@ -87,7 +91,8 @@ internal sealed class SecondScreenController
         _account = account;
         // Feeds the achievement grid's badge tiles (each AchievementRowViewModel loads its badge from here).
         _badges = badges;
-        _gameDetails = gameDetails;
+        _mediaSource = mediaSource;
+        if (_mediaSource is not null) _mediaSource.ArtworkChanged += SavedArtworkChanged;
         _logger = logger;
         _dock = dockStore.Load();
     }
@@ -208,6 +213,7 @@ internal sealed class SecondScreenController
         RunOnMain(() =>
         {
             var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
+            _runningGame = game;
             _runningGameId = game.Id;
             _runningSteamAppId = game.SystemId == "steam" ? game.ExternalSourceEntryId ?? EmuShelf.Integrations.Importing.SteamShortcutReader.TryRead(game.Path)?.ToString() : null;
             _runningGameTitle = title;
@@ -260,6 +266,7 @@ internal sealed class SecondScreenController
         RunOnMain(() =>
         {
             var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
+            _runningGame = null;
             _runningGameId = null;
             _runningSteamAppId = null;
             _runningGameTitle = null;
@@ -477,6 +484,9 @@ internal sealed class SecondScreenController
     // the Avalonia UI thread, which is the Android main thread, so no extra marshalling is needed.
     private void WireModel(SecondScreenViewModel model)
     {
+        model.ResolveMediaPath = _mediaSource is null ? null : _mediaSource.GetLocalPathAsync;
+        model.MediaOpening = () => { _navigation = _navigation.CloseOverlay(); ResetAchievementTarget(); };
+        model.MediaFetchRequested = () => _ = FetchFocusedMediaAsync(model);
         model.DrawerToggled = ToggleDrawer;
         model.AchievementsToggled = ToggleAchievements;
         model.OverlayClosed = CloseOverlay;
@@ -602,6 +612,36 @@ internal sealed class SecondScreenController
             presentation.Model.Overlay = SecondScreenOverlayKind.None;
     }
 
+    private void SavedArtworkChanged(long gameId) => RunOnMain(() =>
+    {
+        if ((_runningGame ?? _viewModel?.FocusedGame?.Model)?.Id == gameId)
+            ScheduleSpotlightUpdate();
+    });
+
+    private async Task FetchFocusedMediaAsync(SecondScreenViewModel model)
+    {
+        var game = _runningGame ?? _viewModel?.FocusedGame?.Model;
+        if (model.IsFetchingMedia || game is null || _mediaSource is not IGameMediaEnricher enricher) return;
+        model.IsFetchingMedia = true;
+        model.MediaStatus = "Fetching missing artwork…";
+        try
+        {
+            var count = await Task.Run(() => enricher.FetchMissingAsync(game, CancellationToken.None));
+            if ((_runningGame ?? _viewModel?.FocusedGame?.Model)?.Id == game.Id)
+            {
+                model.MediaStatus = count > 0 ? $"Saved {count} artwork files" : "No additional artwork available";
+                ScheduleSpotlightUpdate();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not fetch artwork for game {game.Id}.", ex);
+            if ((_runningGame ?? _viewModel?.FocusedGame?.Model)?.Id == game.Id)
+                model.MediaStatus = "Artwork could not be fetched. Try again later.";
+        }
+        finally { model.IsFetchingMedia = false; }
+    }
+
     private void ScheduleSpotlightUpdate()
     {
         if (_presentation is null)
@@ -610,85 +650,65 @@ internal sealed class SecondScreenController
         // Debounce: focus changes fire rapidly while scrolling the library, so only the settled game's
         // art is loaded. A monotonic generation both debounces and guards the async load below.
         var generation = ++_spotlightGeneration;
+        _spotlightLoad?.Cancel();
+        _spotlightLoad?.Dispose();
+        _spotlightLoad = new CancellationTokenSource();
+        var token = _spotlightLoad.Token;
         _mainHandler.PostDelayed(
             () =>
             {
                 if (generation == _spotlightGeneration)
-                    UpdateSpotlight(generation);
+                    UpdateSpotlight(generation, token);
             },
             110);
     }
 
-    private void UpdateSpotlight(long generation)
+    private void UpdateSpotlight(long generation, CancellationToken token)
     {
-        if (_presentation is null)
-            return;
-
-        var targetId = _runningGameId ?? _viewModel?.FocusedGame?.Id;
-        if (targetId is null)
+        if (_presentation is null) return;
+        var game = _runningGame ?? _viewModel?.FocusedGame?.Model;
+        if (game is null) { ClearSpotlight(); return; }
+        var displayTitle = _runningGameTitle ?? _viewModel?.FocusedGame?.DisplayTitle ?? game.Title;
+        _ = Task.Run(async () =>
         {
-            ClearSpotlight();
-            return;
-        }
-
-        var id = targetId.Value;
-        _ = Task.Run(() =>
-        {
-            Avalonia.Media.Imaging.Bitmap? fanart = null;
-            Avalonia.Media.Imaging.Bitmap? wheel = null;
             try
             {
-                var media = _gameDetails.GetDetails(id).Media;
-                var fanartPath = media
-                    .Where(item => item.Kind == GameMediaKind.Fanart && item.IsSelected)
-                    .OrderByDescending(item => item.Id)
-                    .Select(item => item.LocalPath)
-                    .FirstOrDefault();
-                var wheelPath = media
-                    .Where(item => item.Kind == GameMediaKind.Wheel && item.IsSelected)
-                    .OrderByDescending(item => item.Id)
-                    .Select(item => item.LocalPath)
-                    .FirstOrDefault();
-                fanart = LoadAvaloniaBitmap(fanartPath, decodeWidth: 1240);
-                wheel = LoadAvaloniaBitmap(wheelPath, decodeWidth: 900);
+                if (_mediaSource is null) return;
+                await PublishAsync(await _mediaSource.GetAsync(game, token));
             }
-            catch (Exception ex)
+            catch (System.OperationCanceledException) { }
+            catch (Exception ex) { _logger.Warning($"Could not resolve companion media for game {game.Id}.", ex); }
+            async Task PublishAsync(CompanionMediaSet media)
             {
-                _logger.Warning($"Could not resolve second-screen spotlight art for game {id}.", ex);
-            }
-
-            RunOnMain(() =>
-            {
-                if (generation != _spotlightGeneration || _presentation is not { } presentation)
+                token.ThrowIfCancellationRequested();
+                Avalonia.Media.Imaging.Bitmap? background = null;
+                Avalonia.Media.Imaging.Bitmap? logo = null;
+                try
                 {
-                    fanart?.Dispose();
-                    wheel?.Dispose();
-                    return;
-                }
-
-                var model = presentation.Model;
-                // Fan art swaps instantly (no fade-out to the background), so scrolling the library game to
-                // game never blinks the panel. The logo is held back and faded in after a short delay — the
-                // original "logo appears after the art" entrance — and that touches only the logo, not the
-                // background, so it adds no blink.
-                model.ShowBranding = fanart is null && wheel is null;
-                model.FanartImage = fanart;
-                model.FanartOpacity = fanart is not null ? 1 : 0;
-                model.LogoOpacity = 0;
-                _mainHandler.PostDelayed(
-                    () =>
+                    foreach (var candidate in media.Items.Where(i => i.Kind == GameMediaKind.Fanart).Take(2))
                     {
-                        if (generation != _spotlightGeneration)
-                        {
-                            wheel?.Dispose();
-                            return;
-                        }
-                        model.WheelImage = wheel;
-                        model.LogoOpacity = wheel is not null ? 1 : 0;
-                    },
-                    190);
-            });
-        });
+                        background = LoadAvaloniaBitmap(candidate.LocalPath, 1240);
+                        if (background is not null) break;
+                    }
+                    if (media.Logo is { } wheel)
+                        logo = LoadAvaloniaBitmap(wheel.LocalPath, 900);
+                    token.ThrowIfCancellationRequested();
+                }
+                catch { background?.Dispose(); logo?.Dispose(); throw; }
+                await global::Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (generation != _spotlightGeneration || _presentation is not { } presentation || _disposed)
+                    { background?.Dispose(); logo?.Dispose(); return; }
+                    var model = presentation.Model;
+                    model.SetMedia(media with { Title = displayTitle });
+                    model.CanFetchMedia = _mediaSource is IGameMediaEnricher enricher && enricher.Supports(game);
+                    model.SpotlightTitle = displayTitle;
+                    model.SetSpotlight(background, logo);
+                    model.FanartOpacity = background is not null ? 1 : 0;
+                    model.LogoOpacity = logo is not null ? 1 : 0;
+                });
+            }
+        }, token);
     }
 
     private void ClearSpotlight()
@@ -698,6 +718,9 @@ internal sealed class SecondScreenController
         presentation.Model.FanartOpacity = 0;
         presentation.Model.LogoOpacity = 0;
         presentation.Model.SetSpotlight(null, null);
+        presentation.Model.ClearMedia();
+        presentation.Model.CanFetchMedia = false;
+        presentation.Model.SpotlightTitle = "EmuShelf";
     }
 
     private static Avalonia.Media.Imaging.Bitmap? LoadAvaloniaBitmap(string? path, int decodeWidth)
@@ -706,8 +729,7 @@ internal sealed class SecondScreenController
             return null;
         try
         {
-            using var stream = File.OpenRead(path);
-            return Avalonia.Media.Imaging.Bitmap.DecodeToWidth(stream, decodeWidth);
+            return SafeImageDecoder.DecodeToFit(path, decodeWidth, 1080);
         }
         catch
         {
@@ -786,7 +808,10 @@ internal sealed class SecondScreenController
                 () =>
                 {
                     if (_appLaunchedOnSecondScreen && ReferenceEquals(launched, _presentation))
+                    {
+                        launched?.Model.StopMedia();
                         launched?.Hide();
+                    }
                 },
                 350);
         }
@@ -1091,6 +1116,15 @@ internal sealed class SecondScreenController
         if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
             return;
 
+        if (_focusedMediaGame is not null) _focusedMediaGame.PropertyChanged -= FocusedMediaChanged;
+        _focusedMediaGame = _viewModel?.FocusedGame;
+        if (_focusedMediaGame is not null) _focusedMediaGame.PropertyChanged += FocusedMediaChanged;
+
+        // Clear the previous game immediately, including during the selection debounce.
+        ClearSpotlight();
+        if (_presentation is { } current)
+            current.Model.SpotlightTitle = _viewModel?.FocusedGame?.DisplayTitle ?? "EmuShelf";
+
         // Any pending achievement request for the previously focused game must not overwrite the new
         // context, so drop the target first.
         ResetAchievementTarget();
@@ -1100,6 +1134,14 @@ internal sealed class SecondScreenController
         ScheduleAchievementsFollow();
         // While browsing, the spotlight follows the library selection (a running game always wins).
         ScheduleSpotlightUpdate();
+    }
+
+    private void FocusedMediaChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_runningGameId is null && e.PropertyName is nameof(GameViewModel.HasScrapedFanart)
+            or nameof(GameViewModel.HasScrapedLogo) or nameof(GameViewModel.HasScrapedScreenshot)
+            or nameof(GameViewModel.CoverPath))
+            ScheduleSpotlightUpdate();
     }
 
     // Debounced re-point of an open achievements panel to the currently focused game. Focus changes fire
@@ -1135,6 +1177,8 @@ internal sealed class SecondScreenController
         if (_presentation is not { } presentation)
             return;
         _presentation = null;
+        ++_spotlightGeneration;
+        _spotlightLoad?.Cancel();
         StopKeepAlive();
         // The second screen is going away. If a game had swapped the companion onto the built-in panel,
         // drop that overlay — its model belongs to the presentation we are tearing down.
@@ -1203,6 +1247,11 @@ internal sealed class SecondScreenController
         if (_disposed)
             return;
         _disposed = true;
+        if (_mediaSource is not null) _mediaSource.ArtworkChanged -= SavedArtworkChanged;
+        ++_spotlightGeneration;
+        _spotlightLoad?.Cancel();
+        _spotlightLoad?.Dispose();
+        if (_focusedMediaGame is not null) _focusedMediaGame.PropertyChanged -= FocusedMediaChanged;
         if (_viewModel is not null)
             _viewModel.PropertyChanged -= ViewModelPropertyChanged;
         if (_viewModel?.SteamAchievements is { } previousSteam) previousSteam.Changed -= SteamAchievementsChanged;

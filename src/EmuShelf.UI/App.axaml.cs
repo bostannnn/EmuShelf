@@ -445,6 +445,8 @@ public partial class App : Application
                 Bootstrapper.MetadataStore,
                 Bootstrapper.GameDetailsStore,
                 Bootstrapper.Logger);
+        var companionMedia = new CompanionMediaSource(Bootstrapper.GameDetailsStore, _metadataHttpClient,
+            webArtworkDownloader, Bootstrapper.Paths);
         var metadataService = new GameMetadataService(
             Bootstrapper.MetadataStore,
             Bootstrapper.MetadataProfiles,
@@ -453,7 +455,7 @@ public partial class App : Application
             coverService,
             Bootstrapper.Logger,
             new LibretroArtworkTitleIndex(Bootstrapper.Paths, _metadataHttpClient),
-            new SteamStoreArtworkResolver(_metadataHttpClient));
+            new SteamStoreArtworkResolver(_metadataHttpClient), companionMedia, Bootstrapper.Library);
         _retroAchievementsHttpClient = new HttpClient
         {
             Timeout = TimeSpan.FromSeconds(30),
@@ -517,7 +519,8 @@ public partial class App : Application
                 webArtworkDownloader,
                 scrapeApply,
                 screenScraperAccount,
-                scrapeBatch));
+                scrapeBatch,
+                companionMedia));
 
         // The Android head supplies its own intent-based launch service; every desktop head leaves this
         // null and gets the shared process-tracking launcher.
