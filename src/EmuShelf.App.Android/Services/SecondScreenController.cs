@@ -703,9 +703,25 @@ internal sealed class SecondScreenController
                     model.SetMedia(media with { Title = displayTitle });
                     model.CanFetchMedia = _mediaSource is IGameMediaEnricher enricher && enricher.Supports(game);
                     model.SpotlightTitle = displayTitle;
-                    model.SetSpotlight(background, logo);
+                    // Fan art swaps in place at full opacity (the background never fades, so game-to-game
+                    // scrolling never blinks). The logo is held back and faded in after a short delay —
+                    // the "logo appears after the art" entrance — touching only the logo, not the art.
+                    model.FanartImage = background;
+                    model.ShowBranding = logo is null;
                     model.FanartOpacity = background is not null ? 1 : 0;
-                    model.LogoOpacity = logo is not null ? 1 : 0;
+                    model.LogoOpacity = 0;
+                    _mainHandler.PostDelayed(
+                        () =>
+                        {
+                            if (generation != _spotlightGeneration || _presentation is not { } current || _disposed)
+                            {
+                                logo?.Dispose();
+                                return;
+                            }
+                            current.Model.WheelImage = logo;
+                            current.Model.LogoOpacity = logo is not null ? 1 : 0;
+                        },
+                        190);
                 });
             }
         }, token);
@@ -1120,10 +1136,9 @@ internal sealed class SecondScreenController
         _focusedMediaGame = _viewModel?.FocusedGame;
         if (_focusedMediaGame is not null) _focusedMediaGame.PropertyChanged += FocusedMediaChanged;
 
-        // Clear the previous game immediately, including during the selection debounce.
-        ClearSpotlight();
-        if (_presentation is { } current)
-            current.Model.SpotlightTitle = _viewModel?.FocusedGame?.DisplayTitle ?? "EmuShelf";
+        // Do NOT blank the panel here. The previous game's art stays up through the selection debounce
+        // and is swapped in place once the settled game's art loads, so scrolling game to game never
+        // blinks to the empty wordmark. (An empty focus, e.g. no selection, is handled in UpdateSpotlight.)
 
         // Any pending achievement request for the previously focused game must not overwrite the new
         // context, so drop the target first.
