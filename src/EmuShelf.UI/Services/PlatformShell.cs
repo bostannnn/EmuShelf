@@ -77,4 +77,5 @@ public sealed record PlatformShellDependencies(
     IRemoteArtworkDownloader WebArtworkDownloader,
     IGameScrapeApplicationService ScrapeApply,
     IScreenScraperAccountService ScreenScraperAccount,
-    IScreenScraperBatchService? ScrapeBatch);
+    IScreenScraperBatchService? ScrapeBatch,
+    EmuShelf.Core.SecondScreen.ICompanionMediaSource? CompanionMedia = null);

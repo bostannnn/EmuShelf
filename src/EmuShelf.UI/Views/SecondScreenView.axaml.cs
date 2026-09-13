@@ -30,6 +30,40 @@ public partial class SecondScreenView : UserControl
     private void OnSurfacePointerPressed(object? sender, PointerPressedEventArgs e) =>
         (DataContext as SecondScreenViewModel)?.NoteInteraction();
 
+    private Point? _mediaPress;
+    private void OnMediaPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _mediaPress = null;
+        // Android's native video surface owns its touches; do not also page on the routed gesture.
+        if (DataContext is not SecondScreenViewModel model || model.IsStandby || model.IsVideoPlaying ||
+            model.Overlay is SecondScreenOverlayKind.Drawer or SecondScreenOverlayKind.Achievements) return;
+        if (e.Source is Visual visual && visual.GetSelfAndVisualAncestors().OfType<Button>().Any()) return;
+        _mediaPress = e.GetPosition(this);
+    }
+
+    private void OnMediaPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (_mediaPress is not { } start || DataContext is not SecondScreenViewModel model) return;
+        _mediaPress = null;
+        var delta = e.GetPosition(this) - start;
+        if (Math.Abs(delta.X) < 8 && Math.Abs(delta.Y) < 8) model.TapMedia();
+        else model.SwipeMedia(delta.X, delta.Y);
+    }
+
+    private void OnVideoAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is not EmuShelf.App.Controls.CompanionVideoHost host) return;
+        host.PlaybackFailed -= OnVideoFailed;
+        host.PlaybackFailed += OnVideoFailed;
+        host.Swiped -= OnVideoSwiped;
+        host.Swiped += OnVideoSwiped;
+    }
+    private void OnVideoFailed(string message)
+    {
+        if (DataContext is SecondScreenViewModel model) { model.StopVideoCommand.Execute(null); model.MediaStatus = message; }
+    }
+    private void OnVideoSwiped(double x, double y) => (DataContext as SecondScreenViewModel)?.SwipeMedia(x, y);
+
     private SecondScreenViewModel? _boundModel;
 
     protected override void OnDataContextChanged(EventArgs e)

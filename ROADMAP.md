@@ -2232,3 +2232,28 @@ breaks the whole-solution macOS build/test loop.
 - [ ] Close remaining performance, wizard/settings and Steam/GameNative device gates.
 
 See `docs/android-production-readiness.md` for evidence and remaining acceptance scope.
+
+
+### Second-screen artwork and media viewer (2026-09-13)
+
+- [x] Diagnose Steam's blank companion on Thor: library covers are available, but the old
+      spotlight only reads fanart/wheels. Confirm console spotlight and Steam achievements work.
+- [x] Add provider-neutral local media gallery, cover fallback, horizontal swipe/controller
+      navigation, and lazy, bounded image decoding.
+- [x] Add cached public Steam hero/screenshots/MP4 previews with existing automatic-metadata
+      consent or explicit Get Steam media; preserve manual art and source files.
+- [x] Add Android tap-to-play muted video and cancel/stop on viewer lifecycle transitions.
+- [x] Install the release-signed update on Thor; verify Steam/ScreenScraper images and actual
+      Steam preview decoding with lazy download. Preserve library/settings during upgrade.
+- [ ] Complete offline-device, local ScreenScraper MP4 and both-placement gameplay checks.
+      Steam gameplay was stopped at the other-active-session warning; see docs/second-screen-media.md.
+
+- [x] Rework media after user review: full-display dark viewer, hidden dock, compact controls,
+      screenshot-first ordering, tap-to-hide chrome and swipe-down return. Verify both image
+      and native-video dismissal on Thor; 47 companion regression tests pass.
+
+- [x] Restore Steam spotlight to fanart plus separate publisher logo, including hashed logo
+      paths. Load on selection independently of import metadata settings. Polish gallery
+      fades, controls, loading feedback and video posters; 61 focused tests passed.
+
+- [x] Unify companion fanart/logo rendering across platforms; move Steam enrichment to explicit/import fetch, save shared media records, migrate preview cache locally, and extend Fetch missing metadata to missing Steam artwork.

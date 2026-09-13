@@ -2210,7 +2210,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         yield return ToggleRow(
             "general.metadata-auto",
             "Fetch after import",
-            "titles and covers from the bundled catalogue · game files never leave the device",
+            "titles, covers and available Steam artwork · game files stay on the device",
             _settings.AutomaticallyFetchMetadataAfterImport,
             value => _settings.AutomaticallyFetchMetadataAfterImport = value,
             onLabel: "Automatic",
@@ -2221,7 +2221,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             FirstNonEmpty(
                 _settings.MetadataProgressText,
                 _settings.MetadataStatusText,
-                "Fills missing titles and artwork for the current library"),
+                "Fills missing titles, covers and Steam fanart, logos and screenshots · keeps existing artwork"),
             _settings.IsMaintainingLibrary ? "Working…" : "A FETCH",
             _settings.FetchAllMetadataCommand,
             _settings.CanFetchAllMetadata);

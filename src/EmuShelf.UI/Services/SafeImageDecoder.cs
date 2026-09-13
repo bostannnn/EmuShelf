@@ -4,7 +4,7 @@ using Avalonia.Media.Imaging;
 
 namespace EmuShelf.App.Services;
 
-internal static class SafeImageDecoder
+public static class SafeImageDecoder
 {
     internal const int MaximumDimension = 16_384;
     internal const long MaximumPixels = 40_000_000;

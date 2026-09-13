@@ -1,6 +1,7 @@
 using EmuShelf.Core.Diagnostics;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Metadata;
+using EmuShelf.Core.SecondScreen;
 
 namespace EmuShelf.App.Services;
 
@@ -11,6 +12,12 @@ public sealed record MetadataEnrichmentSummary(
     int Unmatched,
     int Failed)
 {
+    public int ArtworkApplied { get; init; }
+
+    // Supplementary Steam-artwork fetch that failed on a game whose title/cover match still succeeded.
+    // Tracked separately so a fanart/logo hiccup never recategorises a good metadata match as a failure.
+    public int ArtworkFailed { get; init; }
+
     public string ToStatusText()
     {
         if (Processed == 0)
@@ -21,10 +28,14 @@ public sealed record MetadataEnrichmentSummary(
             TitlesApplied == 1 ? "1 title" : $"{TitlesApplied} titles",
             CoversApplied == 1 ? "1 cover" : $"{CoversApplied} covers",
         };
+        if (ArtworkApplied > 0)
+            parts.Add($"{ArtworkApplied} artwork files");
         if (Unmatched > 0)
             parts.Add($"{Unmatched} unmatched");
         if (Failed > 0)
             parts.Add($"{Failed} failed");
+        if (ArtworkFailed > 0)
+            parts.Add($"{ArtworkFailed} artwork failed");
         return $"Metadata complete — {string.Join(", ", parts)}";
     }
 }
@@ -54,6 +65,8 @@ public sealed class GameMetadataService : IGameMetadataService
     private const int ArtworkIndexParallelism = 2;
 
     private readonly IGameMetadataStore _store;
+    private readonly IGameMediaEnricher? _mediaEnricher;
+    private readonly IGameLibrary? _library;
     private readonly IReadOnlyDictionary<string, MetadataSystemProfile> _profiles;
     private readonly IGameMetadataCatalog _catalog;
     private readonly IRemoteArtworkDownloader _artworkDownloader;
@@ -72,8 +85,12 @@ public sealed class GameMetadataService : IGameMetadataService
         IGameCoverService covers,
         IAppLogger? logger = null,
         IGameArtworkTitleIndex? artworkTitleIndex = null,
-        IGameArtworkResolver? artworkResolver = null)
+        IGameArtworkResolver? artworkResolver = null,
+        IGameMediaEnricher? mediaEnricher = null,
+        IGameLibrary? library = null)
     {
+        _mediaEnricher = mediaEnricher;
+        _library = library;
         _artworkResolver = artworkResolver;
         _store = store;
         _profiles = profiles.ToDictionary(profile => profile.SystemId, StringComparer.Ordinal);
@@ -92,6 +109,8 @@ public sealed class GameMetadataService : IGameMetadataService
         var ids = await Task.Run(
             () => _store.GetGamesMissingMetadata(systemId)
                 .Concat(_store.GetGamesWithMismatchedDiscTitles(systemId))
+                .Concat(_mediaEnricher is not null && _library is not null
+                    ? _library.GetGames(systemId).Where(_mediaEnricher.HasMissingArtwork) : [])
                 .Select(game => game.Id)
                 .ToArray(),
             cancellationToken);
@@ -113,10 +132,29 @@ public sealed class GameMetadataService : IGameMetadataService
             using var identifyGate = new SemaphoreSlim(IdentifyParallelism, IdentifyParallelism);
             using var downloadGate = new SemaphoreSlim(DownloadParallelism, DownloadParallelism);
             var completed = 0;
+            var artworkApplied = 0;
+            var artworkFailed = 0;
+            progress?.Report(new MetadataEnrichmentProgress(0, ids.Length, null));
             var tasks = ids.Select(async id =>
             {
                 var title = _store.GetGame(id)?.Title;
                 var result = await EnrichGameAsync(id, identifyGate, downloadGate, cancellationToken);
+                if (_mediaEnricher is not null && _store.GetGame(id) is { } game && _mediaEnricher.Supports(game))
+                {
+                    try
+                    {
+                        var count = await _mediaEnricher.FetchMissingAsync(game, cancellationToken);
+                        Interlocked.Add(ref artworkApplied, count);
+                    }
+                    catch (OperationCanceledException) { throw; }
+                    catch (Exception ex)
+                    {
+                        // The title/cover match already succeeded and was persisted; a supplementary
+                        // artwork miss is reported on its own tally, not by flipping this game to Failed.
+                        _logger.Warning($"Artwork enrichment failed for game id {id}.", ex);
+                        Interlocked.Increment(ref artworkFailed);
+                    }
+                }
                 progress?.Report(new MetadataEnrichmentProgress(
                     Interlocked.Increment(ref completed), ids.Length, title));
                 return result;
@@ -127,7 +165,7 @@ public sealed class GameMetadataService : IGameMetadataService
                 results.Count(result => result.TitleApplied),
                 results.Count(result => result.CoverApplied),
                 results.Count(result => result.Unmatched),
-                results.Count(result => result.Failed));
+                results.Count(result => result.Failed)) { ArtworkApplied = artworkApplied, ArtworkFailed = artworkFailed };
         }
         finally
         {

@@ -502,7 +502,7 @@
                                     <TextBlock Text="BUILT-IN CATALOGUE" FontSize="{DynamicResource EmuTextSmallSize}"
                                                FontWeight="Bold" LetterSpacing="1"
                                                Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                                    <TextBlock Text="Exact titles and covers from bundled catalogues. Downloaded only after you opt in; game files and paths are never uploaded."
+                                    <TextBlock Text="Titles and covers from bundled catalogues, plus Steam fanart, logos and screenshots. Fills missing artwork and keeps existing choices. Game files and paths are never uploaded."
                                                TextWrapping="Wrap"
                                                Foreground="{DynamicResource EmuTextSecondaryBrush}" />
                                 </StackPanel>
