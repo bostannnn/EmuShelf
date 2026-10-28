@@ -178,30 +178,31 @@ public sealed class IndeterminateProgressGuardTests
         return (window, host, bar);
     }
 
-    // The theme's sweep animates TranslateTransform.X inside the indicator's render transform.
-    private static TranslateTransform SweepTransform(ProgressBar bar)
-    {
-        var indicator = bar.GetVisualDescendants().OfType<Border>()
-            .Single(border => border.Name == "IndeterminateProgressBarIndicator");
-        return indicator.RenderTransform switch
-        {
-            TranslateTransform translate => translate,
-            TransformGroup group => group.Children.OfType<TranslateTransform>().Single(),
-            var other => throw new Xunit.Sdk.XunitException(
-                $"The Fluent sweep is no longer a TranslateTransform ({other?.GetType().Name ?? "none"}); revisit IndeterminateProgressGuard."),
-        };
-    }
+    // The theme's sweep animates TranslateTransform.X inside both indicators' render transforms. Each
+    // indicator HOLDS for part of the 2 s cycle (the first from 1.5 s, the second until 0.75 s), but never
+    // at the same time, so watching both means a short sample always sees movement while it runs.
+    private static TranslateTransform[] SweepTransform(ProgressBar bar) =>
+        new[] { "IndeterminateProgressBarIndicator", "IndeterminateProgressBarIndicator2" }
+            .Select(name => bar.GetVisualDescendants().OfType<Border>().Single(border => border.Name == name))
+            .Select(indicator => indicator.RenderTransform switch
+            {
+                TranslateTransform translate => translate,
+                TransformGroup group => group.Children.OfType<TranslateTransform>().Single(),
+                var other => throw new Xunit.Sdk.XunitException(
+                    $"The Fluent sweep is no longer a TranslateTransform ({other?.GetType().Name ?? "none"}); revisit IndeterminateProgressGuard."),
+            })
+            .ToArray();
 
-    // Lets real time pass across several frames and reports whether the sweep moved meanwhile.
-    private static async Task<bool> IsSweeping(TranslateTransform sweep)
+    // Lets real time pass across several frames and reports whether either indicator moved meanwhile.
+    private static async Task<bool> IsSweeping(TranslateTransform[] sweep)
     {
         await Frame();
-        var start = sweep.X;
-        for (var i = 0; i < 8; i++)
+        var start = sweep.Select(transform => transform.X).ToArray();
+        for (var i = 0; i < 10; i++)
         {
             await Task.Delay(40);
             await Frame();
-            if (sweep.X != start)
+            if (sweep.Where((transform, index) => transform.X != start[index]).Any())
                 return true;
         }
 
