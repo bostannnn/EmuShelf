@@ -113,26 +113,32 @@ public sealed class SqliteRetroAchievementsStore
         return results;
     }
 
-    public void SaveCatalogueMatch(
-        long gameId,
-        int? retroAchievementsGameId,
-        bool? hasAchievements)
+    public void SaveCatalogueMatches(IReadOnlyCollection<RetroAchievementsCatalogueResolution> resolutions)
     {
+        if (resolutions.Count == 0)
+            return;
+
         using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             UPDATE RetroAchievementGameLinks
             SET RetroAchievementsGameId = $raId, HasAchievements = $has
             WHERE GameId = $gameId;
             """;
-        command.Parameters.AddWithValue("$gameId", gameId);
-        command.Parameters.AddWithValue(
-            "$raId", (object?)retroAchievementsGameId ?? DBNull.Value);
-        command.Parameters.AddWithValue(
-            "$has",
-            hasAchievements is null ? DBNull.Value : hasAchievements.Value ? 1 : 0);
-        command.ExecuteNonQuery();
+        var gameId = command.Parameters.Add("$gameId", SqliteType.Integer);
+        var raId = command.Parameters.Add("$raId", SqliteType.Integer);
+        var has = command.Parameters.Add("$has", SqliteType.Integer);
+        foreach (var resolution in resolutions)
+        {
+            gameId.Value = resolution.GameId;
+            raId.Value = (object?)resolution.RetroAchievementsGameId ?? DBNull.Value;
+            has.Value = resolution.HasAchievements is { } value ? (value ? 1 : 0) : DBNull.Value;
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds()
@@ -176,10 +182,22 @@ public sealed class SqliteRetroAchievementsStore
             DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(3)));
     }
 
-    public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt)
+    public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt) =>
+        SaveProgress([progress], refreshedAt);
+
+    public void SaveProgress(
+        IReadOnlyCollection<RetroAchievementsGameProgress> progress,
+        DateTimeOffset refreshedAt)
     {
+        if (progress.Count == 0)
+            return;
+
+        // One transaction for the whole batch: each commit creates and deletes the rollback journal,
+        // which on Android's shared storage is a MediaProvider round trip of ~20 ms.
         using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText =
             """
             INSERT INTO RetroAchievementProgress (
@@ -192,12 +210,20 @@ public sealed class SqliteRetroAchievementsStore
                 NumAwardedHardcore = excluded.NumAwardedHardcore,
                 LastRefreshUnixMilliseconds = excluded.LastRefreshUnixMilliseconds;
             """;
-        command.Parameters.AddWithValue("$id", progress.GameId);
-        command.Parameters.AddWithValue("$count", progress.AchievementCount);
-        command.Parameters.AddWithValue("$awarded", progress.NumAwarded);
-        command.Parameters.AddWithValue("$hardcore", progress.NumAwardedHardcore);
+        var id = command.Parameters.Add("$id", SqliteType.Integer);
+        var count = command.Parameters.Add("$count", SqliteType.Integer);
+        var awarded = command.Parameters.Add("$awarded", SqliteType.Integer);
+        var hardcore = command.Parameters.Add("$hardcore", SqliteType.Integer);
         command.Parameters.AddWithValue("$refreshed", refreshedAt.ToUnixTimeMilliseconds());
-        command.ExecuteNonQuery();
+        foreach (var game in progress)
+        {
+            id.Value = game.GameId;
+            count.Value = game.AchievementCount;
+            awarded.Value = game.NumAwarded;
+            hardcore.Value = game.NumAwardedHardcore;
+            command.ExecuteNonQuery();
+        }
+        transaction.Commit();
     }
 
     public DateTimeOffset? GetLastSummaryRefreshAt()

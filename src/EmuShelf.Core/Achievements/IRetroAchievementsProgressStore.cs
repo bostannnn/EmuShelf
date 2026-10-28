@@ -1,6 +1,9 @@
 namespace EmuShelf.Core.Achievements;
 
-/// <summary>Cached account-scoped progress for one RA game, with when it was last refreshed.</summary>
+/// <summary>
+/// Cached account-scoped progress for one RA game. <see cref="LastRefreshedAt"/> is when these numbers
+/// were last written: a refresh that finds them unchanged leaves the row (and so the time) alone.
+/// </summary>
 public sealed record RetroAchievementsProgressSnapshot(
     RetroAchievementsGameProgress Progress,
     DateTimeOffset LastRefreshedAt);
@@ -17,7 +20,18 @@ public interface IRetroAchievementsProgressStore
 
     RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId);
 
+    /// <summary>All cached progress, keyed by RA game id, so a refresh can skip unchanged games.</summary>
+    IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress();
+
     void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt);
+
+    /// <summary>
+    /// Saves a whole batch of summaries as one write. A library refresh must use this rather than
+    /// calling the single-game overload in a loop: on Android the database sits on shared storage,
+    /// where every separate commit costs ~20 ms, so 800 games saved one by one stalled the device for
+    /// ~16 s after every cold launch.
+    /// </summary>
+    void SaveProgress(IReadOnlyCollection<RetroAchievementsGameProgress> progress, DateTimeOffset refreshedAt);
 
     /// <summary>
     /// Gets when every linked game's summary last completed successfully. This is separate from
