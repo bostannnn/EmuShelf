@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:EmuShelf.App.Controls">
     <!-- Shared EmuShelf control/class styles for both the Desktop and Android heads, and for
          the headless render tests (TestApp includes this too). Moved out of MainWindow.axaml's
          Window.Styles during the A1 gamepad-shell extraction; no selector targets the Window
@@ -167,6 +168,13 @@
             <Setter Property="Width" Value="218" />
             <Setter Property="Opacity" Value="1" />
             <Setter Property="IsHitTestVisible" Value="True" />
+        </Style>
+        <!-- Every ProgressBar: no busy sweep while it cannot be seen. The Fluent indeterminate sweep is an
+             infinite animation that Avalonia does not pause when the bar is hidden or swapped out, so a
+             bar that had been shown once kept the UI thread ticking at 60 Hz for the rest of the session
+             (~24% of a core on the Thor at rest). See IndeterminateProgressGuard, DECISIONS 2026-10-28. -->
+        <Style Selector="ProgressBar">
+            <Setter Property="controls:IndeterminateProgressGuard.IsEnabled" Value="True" />
         </Style>
         <!-- ========================== End motion ========================== -->
 

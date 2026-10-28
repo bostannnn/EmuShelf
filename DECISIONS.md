@@ -12278,3 +12278,46 @@ Steam's resting companion surface now restricts backgrounds to fanart in both ca
 ### 2026-09-13 — One saved-artwork path for every companion platform
 
 This supersedes the earlier Steam selection-time enrichment behavior. The companion resolves selected local fanart and wheel media once, regardless of platform; covers/screenshots are gallery content. Steam enrichment runs only through explicit fetch or the existing opt-in import pipeline. The existing Fetch missing metadata action now includes Steam games whose cover/title are complete but fanart, logo or screenshots are absent. Results are durable GameMediaAssets under Covers/Media with Steam provenance, preserving existing media selections and user artwork. Previously cached preview artwork is migrated locally without provider requests. Video descriptors may be read from an already-cached manifest; video bytes remain on-demand when Play is pressed. No second bulk-scrape button is introduced.
+
+### 2026-10-28 — Hidden indeterminate progress bars no longer keep the UI thread awake
+
+Symptom: the Android couch shell burned ~24% of a core on the Thor's UI thread at rest (v1.8.7,
+grid, CRT off, no input): 62 wakeups/s, exactly 16.0 ms apart, kernel-timer driven, with nothing
+drawn on either screen. 2026-09-05 measured 0.2–0.5% for the same state.
+
+Source, named on device rather than guessed: an atrace of the idle Thor showed the 16.0 ms
+timer. A temporary census of Avalonia's live `Dispatcher._timers` and of its animation clock's
+subscribers (Release build, emulator; it reproduces there at an even higher cost) found the
+ticking timer. It was not ours: it was Avalonia's own `MediaContext` 16 ms animation timer.
+Avalonia restarts that timer every frame while any animation is subscribed to its clock. The two
+subscribers were the Fluent `ProgressBar`'s indeterminate sweep, two `IterationCount="Infinite"`
+animations on `TranslateTransform.X`. Their owner was the detached `StartupView`'s boot bar (added
+2026-09-12, after the last good measurement). Avalonia pauses an animation on an invisible
+control, and ends it on detach, only when its target is a `Visual` (`AnimationInstance`). A
+transform is not a `Visual`, so the sweep runs on behind any bar that has been shown once and
+then hidden, or swapped out as the startup screen is. The gamepad poll loop was ruled out: its
+first tick read neutral and it stopped.
+
+Fix: `IndeterminateProgressGuard`, enabled for every `ProgressBar` by one style in
+EmuShelfStyles. While a bar is not shown (hidden itself or by an ancestor, or out of either tree),
+the guard clears the bar's `:indeterminate` pseudo-class. That deactivates the theme's animation
+styles and disposes the sweep; the pseudo-class returns when the bar is shown again.
+`IsIndeterminate` itself is untouched. The guard is enable-only. On Android the startup
+screen leaves the logical tree before it leaves the visual tree. That withdraws the style that
+turned the guard on, and a first version treated the withdrawal as "disable", handed
+`:indeterminate` back, and left the sweep running. "Shown" therefore also requires logical
+attachment. Every bar is covered, including the companion's media-loading bars and the couch
+settings/scraper/achievement bars. Those would leak the same way once shown and then hidden (the
+headless tests reproduce that case), though only the boot bar was caught on device.
+
+Rejected: per-site `IsIndeterminate` bindings (the next `<ProgressBar IsIndeterminate="True">`
+would bring it back), and replacing the Fluent ProgressBar theme with a `Visual`-targeted
+animation (a copied template to maintain for one property).
+
+Verified: on the emulator the main thread went from 61% of a core at 62 wakeups/s to 0.08% at 0
+wakeups/s, and the census shows no animation-clock subscribers. Headless tests show the real
+Fluent sweep moving when shown and stopping when it or an ancestor is hidden, or when it is
+handed off. They fail without the guard (hide cases) or with the non-sticky version (hand-off
+case). Thor re-measure is pending: the Thor runs Andrew's CI 1.8.7, and sideloading means an
+uninstall. Recipe: `/proc/<pid>/task/<pid>/sched` `sum_exec_runtime` and `nr_voluntary_switches`
+over 20 s, settled on the grid. Expect <1% and roughly 0 wakeups/s.
