@@ -161,8 +161,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     /// painted the two copies sat ~32px apart and the running game's logo appeared doubled on the
     /// companion screen. The standby copy owns the look while a game runs, so the resting one fades out
     /// under it (the Image's own opacity transition carries the crossfade).
+    /// It is also dark while an overlay is open: every overlay covers it, and a bright logo left under a
+    /// sheet that is still fading in shows straight through the badges for the first few frames.
     /// </summary>
-    public double SpotlightLogoOpacity => IsStandby ? 0 : LogoOpacity;
+    public double SpotlightLogoOpacity => IsStandby || Overlay != SecondScreenOverlayKind.None ? 0 : LogoOpacity;
 
     /// <summary>The no-artwork wordmark, likewise suppressed while standby draws its own faint copy.</summary>
     public bool ShowRestingBranding => ShowBranding && !IsStandby;
@@ -234,6 +236,18 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [ObservableProperty]
     public partial bool CanRefresh { get; set; }
 
+    /// <summary>
+    /// A refresh of the shown set is in flight. Shown by spinning the Refresh icon rather than as a status
+    /// line: a line that appears and then disappears a second later shoved the whole badge grid down and back up.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRefreshSpinning))]
+    public partial bool IsAchievementsRefreshing { get; set; }
+
+    /// <summary>The Refresh icon spins only while the panel is actually up, so a closed (still mounted) sheet
+    /// never keeps a perpetual animation running behind the spotlight.</summary>
+    public bool IsRefreshSpinning => IsAchievementsRefreshing && IsAchievementsOpen;
+
     // The tapped badge, whose title/description/meta the panel shows beneath the grid. A touch surface has
     // no hover, so this replaces the grid's (useless) per-tile tooltip. Its IsFocused drives the tile's
     // accent ring (reusing the gamepad row's logical-focus flag; the companion has its own row instances).
@@ -285,9 +299,9 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Raised when gamepad navigation moves the selection, carrying the flat badge index so the view can
-    /// scroll that badge's row into view. Touch selection doesn't raise it — the tapped tile is already
-    /// visible — so it fires only for D-pad moves.
+    /// Raised when the selection moves somewhere the grid may not be showing — a D-pad move, or a new set
+    /// landing on its first badge — carrying the flat badge index so the view can scroll that badge's row
+    /// into view. Touch selection doesn't raise it: the tapped tile is already visible.
     /// </summary>
     public event Action<int>? SelectionScrolledTo;
 
@@ -434,16 +448,65 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     [ObservableProperty]
     public partial double AchievementTileSize { get; set; } = 72;
 
-    /// <summary>Replaces the badge set (disposing the previous one's bitmaps) and re-slices it into rows.</summary>
+    /// <summary>
+    /// How many badges of a newly shown set are loaded up front, all together (the rest load as their rows
+    /// scroll in). A RetroAchievements badge is a 64px PNG, ~16 KB decoded, so this is a few MB at most, and it
+    /// covers the whole set for nearly every game — so scrolling never runs into blank placeholder tiles.
+    /// </summary>
+    internal const int EagerBadgeCount = 160;
+
+    /// <summary>How long the first badge batch waits for stragglers before publishing what is ready. Shorter
+    /// than the sheet's own fade-in, so a cached set is complete by the time the panel is opaque.</summary>
+    internal static readonly TimeSpan FirstBadgeBatchWindow = TimeSpan.FromMilliseconds(120);
+
+    private CancellationTokenSource? _badgeLoad;
+
+    /// <summary>
+    /// Replaces the badge set (disposing the previous one's bitmaps) and re-slices it into rows. A badge the
+    /// previous set had already decoded is handed straight to its replacement row, so a refresh of the set on
+    /// screen keeps every badge up instead of blanking the grid back to placeholders and re-loading it; and if
+    /// the selected achievement is still in the set, it stays selected (and the grid stays where it was
+    /// scrolled). A different set starts at its first badge, scrolled to the top.
+    /// </summary>
     public void SetAchievements(IReadOnlyList<AchievementRowViewModel> achievements)
     {
+        var previousSelection = SelectedAchievement?.AchievementId;
+        var carried = new Dictionary<string, Bitmap>(StringComparer.Ordinal);
+        foreach (var previous in _achievements)
+        {
+            if (!string.IsNullOrEmpty(previous.BadgeName) && !carried.ContainsKey(previous.BadgeName) &&
+                previous.DetachBadge() is { } badge)
+            {
+                carried[previous.BadgeName] = badge;
+            }
+        }
+
         DisposeAchievements();
         _achievements.AddRange(achievements);
+        foreach (var row in _achievements)
+        {
+            if (row.BadgeName is { Length: > 0 } name && carried.Remove(name, out var badge) && !row.AdoptBadge(badge))
+                badge.Dispose();
+        }
+        foreach (var unused in carried.Values)
+            unused.Dispose();
+
+        // Before the first selection below: its LoadBadgeWindow (and each tile as it attaches) would otherwise
+        // start the same badges one by one, and they would pop in on separate frames.
+        _badgeLoad = new CancellationTokenSource();
+        _ = AchievementRowViewModel.LoadBadgesTogetherAsync(
+            _achievements.Take(EagerBadgeCount).ToList(), FirstBadgeBatchWindow, _badgeLoad.Token);
+
         RaiseAchievementCountDependents();
         RebuildAchievementRows();
-        // Land on the first badge so the title/subtitle strip is populated the moment the panel opens (and
-        // after every game-change follow), rather than sitting blank until the user taps.
-        SelectAchievement(_achievements.Count > 0 ? _achievements[0] : null);
+        // Land on a badge so the title/subtitle strip is populated the moment the panel opens (and after every
+        // game-change follow), rather than sitting blank until the user taps.
+        var kept = previousSelection is null
+            ? null
+            : _achievements.FirstOrDefault(row => row.AchievementId == previousSelection);
+        SelectAchievement(kept ?? (_achievements.Count > 0 ? _achievements[0] : null));
+        if (kept is null && _achievements.Count > 0)
+            SelectionScrolledTo?.Invoke(0);
     }
 
     /// <summary>
@@ -472,6 +535,9 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         // Drop the selection before disposing the rows it points at, so the detail strip never binds a
         // disposed badge bitmap.
         SelectedAchievement = null;
+        _badgeLoad?.Cancel();
+        _badgeLoad?.Dispose();
+        _badgeLoad = null;
         foreach (var achievement in _achievements)
             achievement.Dispose();
         _achievements.Clear();
@@ -522,6 +588,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         OnPropertyChanged(nameof(IsDrawerOpen));
         OnPropertyChanged(nameof(IsAchievementsOpen));
         OnPropertyChanged(nameof(IsAchievementsGridRealized));
+        OnPropertyChanged(nameof(IsRefreshSpinning));
     }
 
     partial void OnAchievementsStatusChanged(string? value)

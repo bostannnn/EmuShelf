@@ -92,9 +92,19 @@ public interface IRetroAchievementsStore
     IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames();
 
     /// <summary>
-    /// Records the outcome of resolving a hash against a fresh catalogue: a matched RA game id and
-    /// whether it has achievements, or (null, false) for a fresh miss. Leave unresolved (do not
-    /// call) when the catalogue was stale, so a miss never becomes a false "no".
+    /// Records the outcomes of resolving hashes against a fresh catalogue, as one write. Leave a game
+    /// out when the catalogue was stale, so a miss never becomes a false "no". Batched because a
+    /// library sync resolves every hashed game, and one commit per game is seconds of stall on
+    /// Android's shared storage.
     /// </summary>
-    void SaveCatalogueMatch(long gameId, int? retroAchievementsGameId, bool? hasAchievements);
+    void SaveCatalogueMatches(IReadOnlyCollection<RetroAchievementsCatalogueResolution> resolutions);
 }
+
+/// <summary>
+/// The catalogue outcome for one local game: a matched RA game id and whether it has achievements,
+/// or (null, false) for a fresh miss.
+/// </summary>
+public sealed record RetroAchievementsCatalogueResolution(
+    long GameId,
+    int? RetroAchievementsGameId,
+    bool? HasAchievements);

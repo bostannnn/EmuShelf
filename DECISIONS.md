@@ -12279,6 +12279,77 @@ Steam's resting companion surface now restricts backgrounds to fanart in both ca
 
 This supersedes the earlier Steam selection-time enrichment behavior. The companion resolves selected local fanart and wheel media once, regardless of platform; covers/screenshots are gallery content. Steam enrichment runs only through explicit fetch or the existing opt-in import pipeline. The existing Fetch missing metadata action now includes Steam games whose cover/title are complete but fanart, logo or screenshots are absent. Results are durable GameMediaAssets under Covers/Media with Steam provenance, preserving existing media selections and user artwork. Previously cached preview artwork is migrated locally without provider requests. Video descriptors may be read from an already-cached manifest; video bytes remain on-demand when Play is pressed. No second bulk-scrape button is introduced.
 
+## 2026-10-28 — RetroAchievements cache writes are batched, never one commit per game
+
+On the Thor, EmuShelf was sluggish for roughly the first 20 seconds of every cold launch. Cause: the
+startup RetroAchievements progress refresh (runs whenever the last one is over 15 minutes old, so
+effectively every real cold launch) saved each of ~800 games as its own SQLite commit. `library.db`
+lives on Android shared storage, which is FUSE-backed by MediaProvider. Each commit there creates and
+deletes the rollback journal file, and each create/delete is a MediaProvider round trip, so every
+commit cost ~20 ms (measured: 809 MediaProvider deletes over 15.6 s, ending on the
+"progress refresh: updated 807 of 807 games" log line). On a desktop SSD the same loop is a few
+hundred milliseconds, which is why it went unnoticed.
+
+Measured on the Thor (v1.8.7, AOT Release), cold launch, d-pad press every ~1.5 s, time from injecting
+the press to the next frame on screen: 600–1200 ms while the refresh ran, ~100 ms immediately after,
+and ~100 ms from the first second when the refresh was skipped (relaunching inside the 15-minute
+window). EmuShelf's UI thread was never blocked during the storm (longest sleep 53 ms, longest I/O
+block 3 ms in `/proc/<pid>/task/<tid>/sched`). Part of the delay is therefore Android's own services
+queueing behind the flood of storage operations, not EmuShelf's code path. Either way it disappears
+when the flood does.
+
+Fix: `IRetroAchievementsProgressStore.SaveProgress` gains a collection overload that writes one API
+batch (≤100 games) in a single transaction. `IRetroAchievementsStore.SaveCatalogueMatch` is replaced
+by `SaveCatalogueMatches`, called once per console. The startup refresh goes from 807 commits to 9. A
+full library sync (identify → match → progress) goes from ~1,700 commits to about twenty (one per
+console plus one per progress batch). Partial-failure behaviour is unchanged: a failed later batch
+still keeps the batches already saved.
+
+Follow-up the same day: the refresh no longer rewrites games whose numbers did not move. Between two
+launches usually only the games just played change, yet every row was rewritten because its per-game
+"refreshed at" time changed, and nothing reads that time (tiles use only the counts, and the 15-minute
+rule uses the separate summary timestamp). The service now reads the cache once, writes only games
+that differ, and reports them as `ChangedGames`. The startup path rebuilds the grid only when
+`ChangedGames > 0`, since the grid was drawn from the same cache moments earlier. A typical cold
+launch therefore makes ~9 small requests to RetroAchievements and writes nothing but the summary
+timestamp. `UpdatedGames` keeps meaning "checked with the server", which is what Settings' "N progress
+summaries refreshed" reports. The startup refresh itself stays: it is the safety net for achievements
+earned on another device or outside EmuShelf, and for the Thor, where Android often kills EmuShelf
+during play so the post-exit refresh never runs.
+
+Rule for new code: on Android every separate write to `library.db` costs ~20 ms. A loop that writes
+per row must take a collection and use one transaction (`SetAvailabilities` and `SaveDetails` already
+do). Not done: switching the journal mode. `TRUNCATE`/`PERSIST` would avoid the per-commit
+create/delete, but they leave a `-journal` sidecar beside the database, the same portability
+objection that ruled out WAL (2026-07-31). Batching removes the stall without it.
+
+## 2026-10-28 — Companion achievements panel: nothing moves, nothing pops
+
+Owner report: opening achievements on the Thor's second screen (in game or while browsing) showed
+graphical errors and felt unfinished. Recorded on the device (Screen-2 CAN be captured: `screencap -d`
+and `screenrecord --display-id` take the PHYSICAL display id from `dumpsys SurfaceFlinger --display-id`,
+not the logical id 4), the errors were all motion and loading artefacts, not corruption:
+
+- **The logo jumped.** The dock collapsed as the panel opened, so the logo re-centred a dock's height lower
+  a frame before the sheet arrived (and back up on close). The panel now spans both rows over the dock, the
+  dock fades in place (`.away`, still laid out), and `SpotlightLogoOpacity` is 0 under any open overlay.
+  The media viewer uses the same fade instead of collapsing the dock.
+- **The logo showed through the badges** while the sheet faded in. Besides the logo fading out, the sheet's
+  opacity now runs ahead of its scale (110 ms vs 200 ms) and the scrim is darker (60%).
+- **The grid jumped.** "Refreshing achievement details…" was a row above the grid that vanished a second
+  later. Refreshing is now a spinning Refresh icon (`IsAchievementsRefreshing`, spinning only while the panel
+  is open — the sheet stays mounted when closed); the remaining messages float as a pill over the grid.
+- **Badges popped in one at a time, and again after every refresh.** A set's first 160 badges now load
+  together (six ordered workers, so at most a handful of requests are in flight and a replaced set stops
+  asking) and are published in one UI update; a refresh hands decoded badges to the replacement rows and keeps
+  the selection. This partly reverses 2026-08-23's per-tile deferral: tiles still load on attach past 160.
+- **Unfinished edges.** Screen-2 is 538×468 dip (1240×1080 px at density 369), not the ~580 the 6-column
+  target assumed; at the old 80 px pitch it was five columns with a dead strip and a stray auto-hide scrollbar
+  line. Pitch is 74 (six columns), the scrollbar is hidden, tiles fill the row snapped to device pixels and
+  line up with the header text, and both grid edges fade into the sheet with plain gradients (no OpacityMask).
+  The detail strip keeps a fixed height; a hidden achievement's Reveal button shares the meta line.
+
+
 ### 2026-10-28 — Hidden indeterminate progress bars no longer keep the UI thread awake
 
 Symptom: the Android couch shell burned ~24% of a core on the Thor's UI thread at rest (v1.8.7,
