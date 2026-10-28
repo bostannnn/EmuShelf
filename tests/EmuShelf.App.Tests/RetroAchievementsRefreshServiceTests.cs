@@ -110,7 +110,11 @@ public class RetroAchievementsRefreshServiceTests
         public DateTimeOffset? LastSummaryRefreshAt { get; set; }
         public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds() => LinkedIds;
         public RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId) => null;
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() =>
+            new Dictionary<int, RetroAchievementsProgressSnapshot>();
         public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt) { }
+        public void SaveProgress(
+            IReadOnlyCollection<RetroAchievementsGameProgress> progress, DateTimeOffset refreshedAt) { }
         public DateTimeOffset? GetLastSummaryRefreshAt() => LastSummaryRefreshAt;
         public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt) => LastSummaryRefreshAt = refreshedAt;
         public void ClearProgress() => LastSummaryRefreshAt = null;
@@ -126,7 +130,7 @@ public class RetroAchievementsRefreshServiceTests
         {
             Calls++;
             return Task.FromResult(new RetroAchievementsProgressRefreshSummary(
-                1, 1, RetroAchievementsRequestStatus.Success));
+                1, 1, 1, RetroAchievementsRequestStatus.Success));
         }
         public void Clear() { }
     }

@@ -84,7 +84,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void GetHashedGames_ReturnsHashedOnly_AndSaveCatalogueMatchRoundTrips()
+    public void GetHashedGames_ReturnsHashedOnly_AndSaveCatalogueMatchesRoundTrips()
     {
         var gameId = AddGame();
         _store.SaveIdentification(
@@ -102,7 +102,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Equal("playstation2", entry.SystemId);
         Assert.Equal("abc123", entry.CanonicalHash);
 
-        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+        _store.SaveCatalogueMatches([new RetroAchievementsCatalogueResolution(gameId, 1234, HasAchievements: true)]);
         var link = _store.GetGameLink(gameId);
 
         Assert.Equal(1234, link!.RetroAchievementsGameId);
@@ -139,7 +139,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
                 "fingerprint",
                 DateTimeOffset.UtcNow,
                 null));
-        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+        _store.SaveCatalogueMatches([new RetroAchievementsCatalogueResolution(gameId, 1234, HasAchievements: true)]);
 
         Assert.Equal([1234], _store.GetLinkedRetroAchievementsGameIds());
 
@@ -165,6 +165,55 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
     }
 
     [Fact]
+    public void BatchWrites_SaveEveryRowAndOverwriteExistingOnes()
+    {
+        var matched = AddGame("matched.iso");
+        var missed = AddGame("missed.iso");
+        foreach (var gameId in new[] { matched, missed })
+        {
+            _store.SaveIdentification(
+                gameId,
+                new RetroAchievementsHashResult(
+                    RetroAchievementsIdentificationStatus.Hashed,
+                    $"hash-{gameId}",
+                    "algorithm-v1",
+                    "fingerprint",
+                    DateTimeOffset.UtcNow,
+                    null));
+        }
+
+        _store.SaveCatalogueMatches(
+        [
+            new RetroAchievementsCatalogueResolution(matched, 1234, HasAchievements: true),
+            new RetroAchievementsCatalogueResolution(missed, null, HasAchievements: false),
+        ]);
+
+        var links = _store.GetAllLinks();
+        Assert.Equal(1234, links[matched].RetroAchievementsGameId);
+        Assert.True(links[matched].HasAchievements);
+        Assert.Null(links[missed].RetroAchievementsGameId);
+        Assert.False(links[missed].HasAchievements);
+
+        var first = new DateTimeOffset(2026, 10, 28, 18, 0, 0, TimeSpan.Zero);
+        _store.SaveProgress(new RetroAchievementsGameProgress(1, 10, 1, 0), first);
+        var second = first.AddMinutes(20);
+        _store.SaveProgress(
+            Enumerable.Range(1, 250)
+                .Select(id => new RetroAchievementsGameProgress(id, 40, id % 40, 0))
+                .ToArray(),
+            second);
+
+        var progress = _store.GetAllProgress();
+        Assert.Equal(250, progress.Count);
+        Assert.Equal(40, progress[1].Progress.AchievementCount); // the earlier row was overwritten
+        Assert.Equal(second, progress[1].LastRefreshedAt);
+        Assert.Equal(250 % 40, progress[250].Progress.NumAwarded);
+
+        _store.SaveProgress(Array.Empty<RetroAchievementsGameProgress>(), second); // a no-op, not an error
+        Assert.Equal(250, _store.GetAllProgress().Count);
+    }
+
+    [Fact]
     public void GetAllLinks_AndGetAllProgress_ReturnStoredRowsForDisplay()
     {
         var gameId = AddGame();
@@ -177,7 +226,7 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
                 "fingerprint",
                 DateTimeOffset.UtcNow,
                 null));
-        _store.SaveCatalogueMatch(gameId, retroAchievementsGameId: 1234, hasAchievements: true);
+        _store.SaveCatalogueMatches([new RetroAchievementsCatalogueResolution(gameId, 1234, HasAchievements: true)]);
         _store.SaveProgress(
             new RetroAchievementsGameProgress(1234, 40, 12, 3),
             new DateTimeOffset(2026, 7, 18, 10, 0, 0, TimeSpan.Zero));
@@ -227,9 +276,9 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
         Assert.Null(_store.GetDetails(1234));
     }
 
-    private long AddGame()
+    private long AddGame(string fileName = "game.iso")
     {
-        var path = Path.Combine(BaseDirectory, "game.iso");
+        var path = Path.Combine(BaseDirectory, fileName);
         _library.AddGames([
             new Game
             {
@@ -239,6 +288,6 @@ public class SqliteRetroAchievementsStoreTests : TempAppDirectoryTestBase
                 DateAdded = DateTimeOffset.UtcNow,
             },
         ]);
-        return _library.GetGames().Single().Id;
+        return _library.GetGames().Single(game => Path.GetFileName(game.Path) == fileName).Id;
     }
 }

@@ -90,6 +90,9 @@ public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchin
                 var lookup = await _catalogue.GetLookupAsync(
                     consoleId, credentials, forceRefreshCatalogues, cancellationToken);
 
+                // Saved once per console rather than per game: one commit each for ~900 games stalled
+                // the Thor's shared storage for most of a minute.
+                var resolutions = new List<RetroAchievementsCatalogueResolution>(games.Count);
                 foreach (var game in games)
                 {
                     progress?.Report(new RetroAchievementsLibrarySyncProgress(
@@ -107,12 +110,12 @@ public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchin
                         var match = lookup.Find(game.CanonicalHash);
                         if (match is not null)
                         {
-                            _store.SaveCatalogueMatch(game.GameId, match.GameId, hasAchievements: true);
+                            resolutions.Add(new(game.GameId, match.GameId, HasAchievements: true));
                             matched++;
                         }
                         else if (lookup.IsFresh)
                         {
-                            _store.SaveCatalogueMatch(game.GameId, null, hasAchievements: false);
+                            resolutions.Add(new(game.GameId, null, HasAchievements: false));
                             noAchievements++;
                         }
                         else
@@ -127,6 +130,9 @@ public sealed class RetroAchievementsMatchingService : IRetroAchievementsMatchin
                         Completed: completed,
                         Total: total));
                 }
+
+                if (resolutions.Count > 0)
+                    _store.SaveCatalogueMatches(resolutions);
             }
 
             var summary = new RetroAchievementsMatchSummary(

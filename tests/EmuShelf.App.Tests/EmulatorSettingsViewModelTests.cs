@@ -1001,6 +1001,7 @@ public class EmulatorSettingsViewModelTests
                         new RetroAchievementsProgressRefreshSummary(
                             2,
                             2,
+                            1,
                             RetroAchievementsRequestStatus.Success)));
             });
         var viewModel = CreateViewModel(retroAchievements: context);

@@ -105,10 +105,18 @@ public class RetroAchievementsDetailsServiceTests
 
         public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds() => [];
         public RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId) => null;
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() =>
+            new Dictionary<int, RetroAchievementsProgressSnapshot>();
         public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt)
         {
             Saved = progress;
             RefreshedAt = refreshedAt;
+        }
+        public void SaveProgress(
+            IReadOnlyCollection<RetroAchievementsGameProgress> progress, DateTimeOffset refreshedAt)
+        {
+            foreach (var game in progress)
+                SaveProgress(game, refreshedAt);
         }
         public DateTimeOffset? GetLastSummaryRefreshAt() => null;
         public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt) { }

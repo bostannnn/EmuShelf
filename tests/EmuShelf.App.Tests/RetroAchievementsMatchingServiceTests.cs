@@ -86,6 +86,32 @@ public class RetroAchievementsMatchingServiceTests
     }
 
     [Fact]
+    public async Task Match_SavesEachConsoleAsOneWrite()
+    {
+        // One commit per game stalled the Thor's shared storage for most of a minute on a ~900-game
+        // library, so a console's outcomes are written together.
+        var store = new FakeStore(
+        [
+            new RetroAchievementsHashedGame(1, "playstation", "abc"),
+            new RetroAchievementsHashedGame(2, "playstation", "zzz"),
+            new RetroAchievementsHashedGame(3, "playstation", "def"),
+            new RetroAchievementsHashedGame(4, "psp", "abc"),
+            new RetroAchievementsHashedGame(5, "psp", "yyy"),
+        ]);
+        var catalogue = new FakeCatalogue(Fresh(("abc", 1234, 40), ("def", 5678, 12)));
+        var service = new RetroAchievementsMatchingService(store, catalogue);
+
+        var summary = await service.MatchAsync(Credentials, forceRefreshCatalogues: false, Token);
+
+        Assert.Equal(3, summary.Matched);
+        Assert.Equal(2, summary.NoAchievements);
+        Assert.Equal([3, 2], store.WriteSizes);
+        Assert.Equal(
+            [(1L, (int?)1234, (bool?)true), (2L, null, false), (3L, 5678, true), (4L, 1234, true), (5L, null, false)],
+            store.Matches.OrderBy(match => match.GameId));
+    }
+
+    [Fact]
     public async Task NoCatalogueAvailable_LeavesUnresolved()
     {
         var store = new FakeStore(Hashed(1, "playstation", "abc"));
@@ -124,8 +150,13 @@ public class RetroAchievementsMatchingServiceTests
 
         public IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames() => hashed;
 
-        public void SaveCatalogueMatch(long gameId, int? retroAchievementsGameId, bool? hasAchievements) =>
-            Matches.Add((gameId, retroAchievementsGameId, hasAchievements));
+        public List<int> WriteSizes { get; } = [];
+
+        public void SaveCatalogueMatches(IReadOnlyCollection<RetroAchievementsCatalogueResolution> resolutions)
+        {
+            WriteSizes.Add(resolutions.Count);
+            Matches.AddRange(resolutions.Select(r => (r.GameId, r.RetroAchievementsGameId, r.HasAchievements)));
+        }
 
         public Game? GetGame(long gameId) => null;
         public RetroAchievementsGameLink? GetGameLink(long gameId) => null;

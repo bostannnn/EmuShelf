@@ -3028,6 +3028,33 @@ public class MainViewModelTests : IDisposable
         Assert.Equal("Alpha finished", vm.StatusText);
     }
 
+    [AvaloniaTheory]
+    [InlineData(0, false)]
+    [InlineData(3, true)]
+    public async Task StartupAchievementRefresh_RebuildsTheLibraryOnlyWhenProgressChanged(
+        int changedGames,
+        bool expectRebuild)
+    {
+        // The grid was drawn from the same cache moments earlier, so a refresh that changed nothing
+        // must not throw it away and rebuild it (and re-decode every cover) on every cold launch.
+        var path = Path.Combine(_baseDirectory, "Lumines.iso");
+        File.WriteAllText(path, "psp");
+        _library.AddGames([new Game { SystemId = Psp.Id, Path = path, Title = "Lumines", IsAvailable = true }]);
+        var refresh = new RecordingRetroAchievementsRefreshService
+        {
+            StartupSummary = new RetroAchievementsProgressRefreshSummary(
+                807, 807, changedGames, RetroAchievementsRequestStatus.Success),
+        };
+        var vm = CreateViewModel(retroRefresh: refresh);
+        vm.SelectedSystem = Psp;
+        await vm.ReloadGamesAsync();
+        var before = vm.Games.Single();
+
+        await vm.RefreshRetroAchievementsProgressAtStartupAsync();
+
+        Assert.Equal(expectRebuild, !ReferenceEquals(before, vm.Games.Single()));
+    }
+
     [AvaloniaFact]
     public async Task LaunchGame_SyncsSelectedSystemBeforeLaunchAndAfterTrackedExit()
     {
@@ -4748,9 +4775,11 @@ public class MainViewModelTests : IDisposable
         public Task Called => _called.Task;
         public int? GameId { get; private set; }
 
+        public RetroAchievementsProgressRefreshSummary? StartupSummary { get; init; }
+
         public Task<RetroAchievementsProgressRefreshSummary?> RefreshSummaryAtStartupIfStaleAsync(
             CancellationToken cancellationToken = default) =>
-            Task.FromResult<RetroAchievementsProgressRefreshSummary?>(null);
+            Task.FromResult(StartupSummary);
 
         public Task<RetroAchievementsResponse<RetroAchievementsDetailsSnapshot>?> RefreshAfterTrackedExitAsync(
             int retroAchievementsGameId,
@@ -4985,6 +5014,7 @@ public class MainViewModelTests : IDisposable
             return Task.FromResult(new RetroAchievementsProgressRefreshSummary(
                 1,
                 1,
+                1,
                 RetroAchievementsRequestStatus.Success));
         }
 
@@ -5009,6 +5039,7 @@ public class MainViewModelTests : IDisposable
             _started.TrySetResult();
             await _complete.Task.WaitAsync(cancellationToken);
             return new RetroAchievementsProgressRefreshSummary(
+                1,
                 1,
                 1,
                 RetroAchievementsRequestStatus.Success);

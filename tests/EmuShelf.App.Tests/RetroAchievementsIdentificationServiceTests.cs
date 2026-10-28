@@ -188,10 +188,8 @@ public class RetroAchievementsIdentificationServiceTests
 
         public IReadOnlyList<RetroAchievementsHashedGame> GetHashedGames() => [];
 
-        public void SaveCatalogueMatch(
-            long gameId,
-            int? retroAchievementsGameId,
-            bool? hasAchievements)
+        public void SaveCatalogueMatches(
+            IReadOnlyCollection<RetroAchievementsCatalogueResolution> resolutions)
         {
         }
     }
