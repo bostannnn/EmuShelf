@@ -108,28 +108,18 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
 
     public async Task LoadBadgeAsync(string badgeName, CancellationToken cancellationToken = default)
     {
-        if (Volatile.Read(ref _disposed) != 0 || _loadIcon is null || CanReveal || Badge is not null || string.IsNullOrWhiteSpace(badgeName) ||
-            Interlocked.CompareExchange(ref _badgeLoadStarted, 1, 0) != 0)
+        if (!TryBeginBadgeLoad(badgeName))
             return;
 
         try
         {
             // Badge cache lookup/download and file I/O stay on a worker. Only assigning the
             // decoded Bitmap returns to the UI context.
-            var path = await Task.Run(
-                () => _loadIcon(badgeName, cancellationToken),
-                cancellationToken);
-            if (path is null)
+            var image = await Task.Run(() => DecodeBadgeAsync(badgeName, cancellationToken), cancellationToken);
+            if (image is null)
                 return;
 
-            var image = await Task.Run(() => new Bitmap(path), cancellationToken);
-            await Dispatcher.UIThread.InvokeAsync(() =>
-            {
-                if (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0)
-                    Badge = image;
-                else
-                    image.Dispose();
-            });
+            await Dispatcher.UIThread.InvokeAsync(() => AcceptBadge(image, cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -142,9 +132,159 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            Interlocked.Exchange(ref _badgeRetryAtTicks, Badge is null ? DateTimeOffset.UtcNow.AddSeconds(30).Ticks : 0);
-            Interlocked.Exchange(ref _badgeLoadStarted, 0);
+            EndBadgeLoad();
         }
+    }
+
+    /// <summary>
+    /// Loads the badges of many rows together and publishes them in as few UI updates as possible: every badge
+    /// that is ready within <paramref name="firstBatchWindow"/> lands in ONE update, and any stragglers (a cold
+    /// cache still downloading) land together once they have all arrived. Loading row by row instead let each
+    /// badge appear on its own frame, so a freshly opened grid filled in one random tile at a time.
+    /// Rows are worked through in order by a few workers, so the first rows (the ones on screen) come first and
+    /// a cancelled set stops asking for more — at most a handful of requests are ever in flight, even for a
+    /// large set whose badges are not cached yet. Rows that already have a badge, or are already loading one,
+    /// are skipped.
+    /// </summary>
+    public static async Task LoadBadgesTogetherAsync(
+        IReadOnlyList<AchievementRowViewModel> rows,
+        TimeSpan firstBatchWindow,
+        CancellationToken cancellationToken = default)
+    {
+        var claimed = rows.Where(row => row.TryBeginBadgeLoad(row.BadgeName)).ToList();
+        if (claimed.Count == 0)
+            return;
+
+        var images = new Bitmap?[claimed.Count];
+        var finished = new bool[claimed.Count];
+        var published = new bool[claimed.Count];
+        var next = -1;
+        try
+        {
+            // TryDecodeBadgeAsync never throws, so neither do the workers; a cancelled set is handled in
+            // AcceptBadge, which disposes instead of showing.
+            var workers = Task.WhenAll(Enumerable.Range(0, Math.Min(BadgeLoadWorkers, claimed.Count)).Select(_ => Task.Run(async () =>
+            {
+                int index;
+                while (!cancellationToken.IsCancellationRequested &&
+                       (index = Interlocked.Increment(ref next)) < claimed.Count)
+                {
+                    images[index] = await claimed[index].TryDecodeBadgeAsync(cancellationToken).ConfigureAwait(false);
+                    Volatile.Write(ref finished[index], true);
+                }
+            })));
+            await Task.WhenAny(workers, Task.Delay(firstBatchWindow, cancellationToken)).ConfigureAwait(false);
+            await PublishAsync().ConfigureAwait(false);
+            if (!workers.IsCompleted)
+            {
+                await workers.ConfigureAwait(false);
+                await PublishAsync().ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            // Only reachable with unpublished bitmaps if the dispatcher itself failed; never leak them.
+            var orphans = Enumerable.Range(0, claimed.Count)
+                .Where(index => Volatile.Read(ref finished[index]) && !published[index] && images[index] is not null)
+                .Select(index => images[index]!)
+                .ToList();
+            if (orphans.Count > 0)
+                Dispatcher.UIThread.Post(() => orphans.ForEach(orphan => orphan.Dispose()));
+            foreach (var row in claimed)
+                row.EndBadgeLoad();
+        }
+
+        Task PublishAsync() =>
+            Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                for (var index = 0; index < claimed.Count; index++)
+                {
+                    if (published[index] || !Volatile.Read(ref finished[index]))
+                        continue;
+                    published[index] = true;
+                    if (images[index] is { } bitmap)
+                        claimed[index].AcceptBadge(bitmap, cancellationToken);
+                }
+            }).GetTask();
+    }
+
+    // Enough to decode a cached set in a few tens of milliseconds; a cold cache is throttled further by the
+    // badge cache's own download limit.
+    private const int BadgeLoadWorkers = 6;
+
+    private bool TryBeginBadgeLoad(string badgeName) =>
+        Volatile.Read(ref _disposed) == 0 && _loadIcon is not null && !CanReveal && Badge is null &&
+        !string.IsNullOrWhiteSpace(badgeName) && Interlocked.CompareExchange(ref _badgeLoadStarted, 1, 0) == 0;
+
+    private void EndBadgeLoad()
+    {
+        Interlocked.Exchange(ref _badgeRetryAtTicks, Badge is null ? DateTimeOffset.UtcNow.AddSeconds(30).Ticks : 0);
+        Interlocked.Exchange(ref _badgeLoadStarted, 0);
+    }
+
+    private async Task<Bitmap?> DecodeBadgeAsync(string badgeName, CancellationToken cancellationToken)
+    {
+        var path = await _loadIcon!(badgeName, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        return path is null ? null : new Bitmap(path);
+    }
+
+    // The batch's per-row decode: a missing or unreadable badge is just a placeholder, never a failed batch.
+    private async Task<Bitmap?> TryDecodeBadgeAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await DecodeBadgeAsync(BadgeName, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // UI thread. A badge handed over from a replaced row (AdoptBadge) may already be showing, so a late load
+    // for the same row is dropped rather than swapped in.
+    private void AcceptBadge(Bitmap image, CancellationToken cancellationToken)
+    {
+        if (!cancellationToken.IsCancellationRequested && Volatile.Read(ref _disposed) == 0 && !CanReveal && Badge is null)
+            Badge = image;
+        else
+            image.Dispose();
+    }
+
+    private bool _handingOffBadge;
+
+    /// <summary>
+    /// Releases this row's decoded badge WITHOUT disposing it, so a replacement row for the same achievement can
+    /// show it straight away (see <see cref="AdoptBadge"/>). The caller owns the returned bitmap.
+    /// </summary>
+    public Bitmap? DetachBadge()
+    {
+        var badge = Badge;
+        if (badge is null)
+            return null;
+        _handingOffBadge = true;
+        try
+        {
+            Badge = null;
+        }
+        finally
+        {
+            _handingOffBadge = false;
+        }
+        return badge;
+    }
+
+    /// <summary>
+    /// Takes ownership of an already-decoded badge (from <see cref="DetachBadge"/> on the row this one replaces).
+    /// Returns false — and leaves the bitmap with the caller to dispose — when this row cannot show it.
+    /// </summary>
+    public bool AdoptBadge(Bitmap badge)
+    {
+        if (Volatile.Read(ref _disposed) != 0 || CanReveal || Badge is not null)
+            return false;
+        Badge = badge;
+        return true;
     }
 
     /// <summary>Preloads a bounded window around controller focus, independent of native attachment events.</summary>
@@ -159,7 +299,7 @@ public partial class AchievementRowViewModel : ObservableObject, IDisposable
 
     partial void OnBadgeChanging(Bitmap? value)
     {
-        if (!ReferenceEquals(Badge, value))
+        if (!_handingOffBadge && !ReferenceEquals(Badge, value))
             Badge?.Dispose();
     }
 

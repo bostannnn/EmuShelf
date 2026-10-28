@@ -607,9 +607,13 @@ internal sealed class SecondScreenController
     private void RenderRestingSurface()
     {
         // Closing an overlay returns to the resting spotlight, which is already loaded — don't reload it
-        // (that would re-run the crossfade). Fresh art loads only on focus/running-game changes.
+        // (that would re-run the crossfade). Fresh art loads only on focus/running-game changes. A refresh
+        // still in flight is dropped when it lands (the surface revision moved on), so its spinner stops here.
         if (_presentation is { } presentation)
+        {
             presentation.Model.Overlay = SecondScreenOverlayKind.None;
+            presentation.Model.IsAchievementsRefreshing = false;
+        }
     }
 
     private void SavedArtworkChanged(long gameId) => RunOnMain(() =>
@@ -888,13 +892,11 @@ internal sealed class SecondScreenController
             ShowAchievementsSnapshot(
                 title,
                 cached,
-                credentials is null
-                    ? "Reconnect RetroAchievements to refresh these cached details."
-                    : willRefresh
-                        ? "Refreshing achievement details…"
-                        // Normal, up-to-date case: no status line — the grid speaks for itself.
-                        : null,
-                canRefresh: credentials is not null);
+                // A refresh in flight shows as the spinning Refresh icon, not a status line: the normal case
+                // has no status at all — the grid speaks for itself.
+                credentials is null ? "Reconnect RetroAchievements to refresh these cached details." : null,
+                canRefresh: credentials is not null,
+                refreshing: willRefresh);
         }
         else
         {
@@ -905,7 +907,8 @@ internal sealed class SecondScreenController
                     : willRefresh
                         ? "Loading achievement details…"
                         : "Press Refresh to load achievement details.",
-                canRefresh: credentials is not null && !willRefresh);
+                canRefresh: credentials is not null && !willRefresh,
+                refreshing: willRefresh);
         }
 
         if (!willRefresh)
@@ -954,12 +957,18 @@ internal sealed class SecondScreenController
                 cached is not null && DateTimeOffset.UtcNow - cached.RefreshedAt < DetailRefreshAge))) return;
             _steamRefreshAccount = account;
             Interlocked.Increment(ref _steamRefreshCount);
+            RunOnMain(() =>
+            {
+                if (IsAchievementRequestCurrent(revision, gameId, title) && _presentation is { } presentation)
+                    presentation.Model.IsAchievementsRefreshing = true;
+            });
             try
             {
                 var result = await steam.RefreshAsync(reference, manual: forceRefresh);
                 RunOnMain(() =>
                 {
                     if (!IsAchievementRequestCurrent(revision, gameId, title) || account != steam.AccountId) return;
+                    if (_presentation is { } refreshed) refreshed.Model.IsAchievementsRefreshing = false;
                     if (result.Snapshot is { } snapshot) ShowSteamSnapshot(title, snapshot, steam);
                     if (!result.IsSuccess && _presentation is { } presentation)
                         presentation.Model.AchievementsStatus = "Steam progress is unavailable. Reconnect or refresh later.";
@@ -972,7 +981,7 @@ internal sealed class SecondScreenController
             RunOnMain(() =>
             {
                 if (IsAchievementRequestCurrent(revision, gameId, title))
-                    ShowAchievementsMessage(title, "Steam achievements could not be loaded.", steam.IsConnected);
+                    ShowAchievementsMessage(title, "Steam achievements could not be loaded.", steam.IsConnected, refreshing: false);
             });
         }
     }
@@ -983,6 +992,7 @@ internal sealed class SecondScreenController
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = snapshot.ProgressKnown ? null : "Progress is private or unavailable.";
         presentation.Model.CanRefresh = steam.IsConnected;
+        presentation.Model.IsAchievementsRefreshing = false;
         presentation.Model.AchievementsSummary = snapshot.ProgressKnown ?
             $"Steam · {snapshot.Achievements.Count(a => a.IsUnlocked == true)} / {snapshot.Achievements.Count} unlocked" : "Steam · Progress unavailable";
         presentation.Model.SetAchievements(snapshot.Achievements.Select(a => new AchievementRowViewModel(a, steam, loadBadge: false)).ToArray());
@@ -1040,7 +1050,8 @@ internal sealed class SecondScreenController
         string title,
         RetroAchievementsDetailsSnapshot snapshot,
         string? status,
-        bool canRefresh)
+        bool canRefresh,
+        bool refreshing = false)
     {
         if (_presentation is not { } presentation)
             return;
@@ -1048,6 +1059,7 @@ internal sealed class SecondScreenController
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = status;
         presentation.Model.CanRefresh = canRefresh;
+        presentation.Model.IsAchievementsRefreshing = refreshing;
         // Compact progress line for the header: softcore unlocked / total · earned points.
         var details = snapshot.Details;
         presentation.Model.AchievementsSummary =
@@ -1064,7 +1076,7 @@ internal sealed class SecondScreenController
         presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;
     }
 
-    private void ShowAchievementsMessage(string title, string message, bool canRefresh)
+    private void ShowAchievementsMessage(string title, string message, bool canRefresh, bool refreshing = false)
     {
         if (_presentation is not { } presentation)
             return;
@@ -1072,6 +1084,7 @@ internal sealed class SecondScreenController
         presentation.Model.AchievementsTitle = title;
         presentation.Model.AchievementsStatus = message;
         presentation.Model.CanRefresh = canRefresh;
+        presentation.Model.IsAchievementsRefreshing = refreshing;
         presentation.Model.AchievementsSummary = null;
         presentation.Model.ClearAchievements();
         presentation.Model.Overlay = SecondScreenOverlayKind.Achievements;

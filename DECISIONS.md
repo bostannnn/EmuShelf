@@ -12278,3 +12278,29 @@ Steam's resting companion surface now restricts backgrounds to fanart in both ca
 ### 2026-09-13 — One saved-artwork path for every companion platform
 
 This supersedes the earlier Steam selection-time enrichment behavior. The companion resolves selected local fanart and wheel media once, regardless of platform; covers/screenshots are gallery content. Steam enrichment runs only through explicit fetch or the existing opt-in import pipeline. The existing Fetch missing metadata action now includes Steam games whose cover/title are complete but fanart, logo or screenshots are absent. Results are durable GameMediaAssets under Covers/Media with Steam provenance, preserving existing media selections and user artwork. Previously cached preview artwork is migrated locally without provider requests. Video descriptors may be read from an already-cached manifest; video bytes remain on-demand when Play is pressed. No second bulk-scrape button is introduced.
+
+## 2026-10-28 — Companion achievements panel: nothing moves, nothing pops
+
+Owner report: opening achievements on the Thor's second screen (in game or while browsing) showed
+graphical errors and felt unfinished. Recorded on the device (Screen-2 CAN be captured: `screencap -d`
+and `screenrecord --display-id` take the PHYSICAL display id from `dumpsys SurfaceFlinger --display-id`,
+not the logical id 4), the errors were all motion and loading artefacts, not corruption:
+
+- **The logo jumped.** The dock collapsed as the panel opened, so the logo re-centred a dock's height lower
+  a frame before the sheet arrived (and back up on close). The panel now spans both rows over the dock, the
+  dock fades in place (`.away`, still laid out), and `SpotlightLogoOpacity` is 0 under any open overlay.
+  The media viewer uses the same fade instead of collapsing the dock.
+- **The logo showed through the badges** while the sheet faded in. Besides the logo fading out, the sheet's
+  opacity now runs ahead of its scale (110 ms vs 200 ms) and the scrim is darker (60%).
+- **The grid jumped.** "Refreshing achievement details…" was a row above the grid that vanished a second
+  later. Refreshing is now a spinning Refresh icon (`IsAchievementsRefreshing`, spinning only while the panel
+  is open — the sheet stays mounted when closed); the remaining messages float as a pill over the grid.
+- **Badges popped in one at a time, and again after every refresh.** A set's first 160 badges now load
+  together (six ordered workers, so at most a handful of requests are in flight and a replaced set stops
+  asking) and are published in one UI update; a refresh hands decoded badges to the replacement rows and keeps
+  the selection. This partly reverses 2026-08-23's per-tile deferral: tiles still load on attach past 160.
+- **Unfinished edges.** Screen-2 is 538×468 dip (1240×1080 px at density 369), not the ~580 the 6-column
+  target assumed; at the old 80 px pitch it was five columns with a dead strip and a stray auto-hide scrollbar
+  line. Pitch is 74 (six columns), the scrollbar is hidden, tiles fill the row snapped to device pixels and
+  line up with the header text, and both grid edges fade into the sheet with plain gradients (no OpacityMask).
+  The detail strip keeps a fixed height; a hidden achievement's Reveal button shares the meta line.
