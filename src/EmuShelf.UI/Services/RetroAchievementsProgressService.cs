@@ -3,9 +3,14 @@ using EmuShelf.Core.Diagnostics;
 
 namespace EmuShelf.App.Services;
 
+/// <param name="RequestedGames">Linked RA games the refresh asked about.</param>
+/// <param name="UpdatedGames">Games whose current progress the server returned.</param>
+/// <param name="ChangedGames">Of those, games whose numbers differed from the cache and were saved.
+/// Zero means the library already shows the latest progress and nothing needs redrawing.</param>
 public sealed record RetroAchievementsProgressRefreshSummary(
     int RequestedGames,
     int UpdatedGames,
+    int ChangedGames,
     RetroAchievementsRequestStatus Status);
 
 /// <summary>
@@ -94,10 +99,14 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
             Total: ids.Count));
         if (ids.Count == 0)
             return new RetroAchievementsProgressRefreshSummary(
-                0, 0, RetroAchievementsRequestStatus.Success);
+                0, 0, 0, RetroAchievementsRequestStatus.Success);
 
+        // Between two launches usually only the games just played have moved, so compare with the
+        // cache and write only what differs. A launch with nothing new then writes nothing at all.
+        var cached = _store.GetAllProgress();
         var refreshedAt = _timeProvider.GetUtcNow();
         var updated = 0;
+        var changed = 0;
         var completed = 0;
         var status = RetroAchievementsRequestStatus.Success;
 
@@ -117,11 +126,14 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
                 break;
             }
 
-            foreach (var gameProgress in response.Value!)
-            {
-                _store.SaveProgress(gameProgress, refreshedAt);
-                updated++;
-            }
+            var differing = response.Value!
+                .Where(game => !cached.TryGetValue(game.GameId, out var snapshot) || snapshot.Progress != game)
+                .ToArray();
+            // Changed games in one write, never one per game (see the store's batch overload).
+            if (differing.Length > 0)
+                _store.SaveProgress(differing, refreshedAt);
+            updated += response.Value!.Count;
+            changed += differing.Length;
 
             completed += batch.Length;
             progress?.Report(new RetroAchievementsLibrarySyncProgress(
@@ -134,8 +146,9 @@ public sealed class RetroAchievementsProgressService : IRetroAchievementsProgres
             _store.SaveLastSummaryRefreshAt(_timeProvider.GetUtcNow());
 
         _logger.Information(
-            $"RetroAchievements progress refresh: updated {updated} of {ids.Count} games ({status}).");
-        return new RetroAchievementsProgressRefreshSummary(ids.Count, updated, status);
+            $"RetroAchievements progress refresh: updated {updated} of {ids.Count} games, " +
+            $"{changed} changed ({status}).");
+        return new RetroAchievementsProgressRefreshSummary(ids.Count, updated, changed, status);
     }
 
     public void Clear()

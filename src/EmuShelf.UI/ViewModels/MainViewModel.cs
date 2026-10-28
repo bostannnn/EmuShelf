@@ -6367,7 +6367,8 @@ public partial class MainViewModel : ViewModelBase
     /// <summary>
     /// Startup's only RetroAchievements refresh path. It shares the account pipeline with
     /// connect/disconnect work and leaves the current library display untouched when the cached
-    /// summary is still within its fifteen-minute freshness window.
+    /// summary is still within its fifteen-minute freshness window, or when the refresh finds no
+    /// game's progress changed.
     /// </summary>
     public async Task RefreshRetroAchievementsProgressAtStartupAsync()
     {
@@ -6377,8 +6378,10 @@ public partial class MainViewModel : ViewModelBase
         await _retroAchievementsPipeline.WaitAsync();
         try
         {
+            // Rebuild the grid only when a number actually moved: the library was drawn from the same
+            // cache moments ago, so an unchanged refresh has nothing to show.
             var refreshed = await _retroRefresh.RefreshSummaryAtStartupIfStaleAsync();
-            if (refreshed is not null)
+            if (refreshed is { ChangedGames: > 0 })
                 await ReloadGamesAsync();
         }
         catch (Exception ex)

@@ -53,6 +53,65 @@ public class RetroAchievementsProgressServiceTests
     }
 
     [Fact]
+    public async Task RefreshAll_SavesEachResponseBatchAsOneWrite()
+    {
+        // A per-game write loop here was the Thor's ~16 s post-launch stall: every separate commit is
+        // a ~20 ms MediaProvider round trip on Android shared storage.
+        var store = new FakeProgressStore();
+        store.LinkedIds.AddRange(Enumerable.Range(1, (RetroAchievementsApi.MaxUserProgressBatchSize * 2) + 50));
+        var service = new RetroAchievementsProgressService(store, new FakeClient());
+
+        var summary = await service.RefreshAllAsync(Credentials, Token);
+
+        Assert.Equal(
+            [RetroAchievementsApi.MaxUserProgressBatchSize, RetroAchievementsApi.MaxUserProgressBatchSize, 50],
+            store.BatchSizes);
+        Assert.Equal(0, store.SingleSaves);
+        Assert.Equal(store.LinkedIds.Count, summary.UpdatedGames);
+        Assert.Equal(store.LinkedIds, store.Saved.Select(progress => progress.GameId));
+    }
+
+    [Fact]
+    public async Task RefreshAll_WritesOnlyGamesWhoseProgressChanged()
+    {
+        var store = new FakeProgressStore { LinkedIds = { 1, 2, 3, 4 } };
+        var earlier = new DateTimeOffset(2026, 10, 28, 18, 0, 0, TimeSpan.Zero);
+        // FakeClient answers (id, 40, 1, 0) for every id: 1 and 3 are already cached with exactly that,
+        // 2 has moved on the server since, and 4 has never been cached.
+        store.Cached[1] = new(new RetroAchievementsGameProgress(1, 40, 1, 0), earlier);
+        store.Cached[2] = new(new RetroAchievementsGameProgress(2, 40, 0, 0), earlier);
+        store.Cached[3] = new(new RetroAchievementsGameProgress(3, 40, 1, 0), earlier);
+        var service = new RetroAchievementsProgressService(store, new FakeClient());
+
+        var summary = await service.RefreshAllAsync(Credentials, Token);
+
+        Assert.Equal([2, 4], store.Saved.Select(progress => progress.GameId));
+        Assert.Equal([2], store.BatchSizes);
+        Assert.Equal(4, summary.UpdatedGames);
+        Assert.Equal(2, summary.ChangedGames);
+    }
+
+    [Fact]
+    public async Task RefreshAll_NothingChanged_WritesNoProgressButRecordsTheRefresh()
+    {
+        // The common cold launch: nothing was earned since the last refresh. No progress rows are
+        // rewritten, yet the refresh still counts as done so the next launch does not ask again.
+        var store = new FakeProgressStore { LinkedIds = { 1, 2 } };
+        var earlier = new DateTimeOffset(2026, 10, 28, 18, 0, 0, TimeSpan.Zero);
+        store.Cached[1] = new(new RetroAchievementsGameProgress(1, 40, 1, 0), earlier);
+        store.Cached[2] = new(new RetroAchievementsGameProgress(2, 40, 1, 0), earlier);
+        var service = new RetroAchievementsProgressService(store, new FakeClient());
+
+        var summary = await service.RefreshAllAsync(Credentials, Token);
+
+        Assert.Empty(store.Saved);
+        Assert.Empty(store.BatchSizes);
+        Assert.Equal(2, summary.UpdatedGames);
+        Assert.Equal(0, summary.ChangedGames);
+        Assert.NotNull(store.LastSummaryRefreshAt);
+    }
+
+    [Fact]
     public async Task RefreshAll_RequestFailure_StopsAndReportsStatusKeepingCache()
     {
         var store = new FakeProgressStore();
@@ -90,9 +149,22 @@ public class RetroAchievementsProgressServiceTests
         public DateTimeOffset? LastSummaryRefreshAt { get; private set; }
 
         public IReadOnlyList<int> GetLinkedRetroAchievementsGameIds() => LinkedIds;
+        public Dictionary<int, RetroAchievementsProgressSnapshot> Cached { get; } = [];
         public RetroAchievementsProgressSnapshot? GetProgress(int retroAchievementsGameId) => null;
-        public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt) =>
+        public IReadOnlyDictionary<int, RetroAchievementsProgressSnapshot> GetAllProgress() => Cached;
+        public List<int> BatchSizes { get; } = [];
+        public int SingleSaves { get; private set; }
+        public void SaveProgress(RetroAchievementsGameProgress progress, DateTimeOffset refreshedAt)
+        {
+            SingleSaves++;
             Saved.Add(progress);
+        }
+        public void SaveProgress(
+            IReadOnlyCollection<RetroAchievementsGameProgress> progress, DateTimeOffset refreshedAt)
+        {
+            BatchSizes.Add(progress.Count);
+            Saved.AddRange(progress);
+        }
         public DateTimeOffset? GetLastSummaryRefreshAt() => LastSummaryRefreshAt;
         public void SaveLastSummaryRefreshAt(DateTimeOffset refreshedAt) => LastSummaryRefreshAt = refreshedAt;
         public void ClearProgress()
