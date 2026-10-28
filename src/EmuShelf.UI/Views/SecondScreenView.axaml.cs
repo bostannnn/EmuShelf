@@ -76,9 +76,9 @@ public partial class SecondScreenView : UserControl
             _boundModel.SelectionScrolledTo += OnSelectionScrolledTo;
     }
 
-    // Gamepad navigation moves the selection on the view model; bring the newly selected badge's row into
-    // view so the highlight never runs off-screen. The ListBox items are rows, so scroll the row that holds
-    // the flat badge index.
+    // Gamepad navigation (or a new set landing on its first badge) moves the selection on the view model; bring
+    // the newly selected badge's row into view so the highlight never runs off-screen. The ListBox items are
+    // rows, so scroll the row that holds the flat badge index.
     private void OnSelectionScrolledTo(int badgeIndex)
     {
         if (this.FindControl<ListBox>("AchievementsBadgeList") is not { } list ||
@@ -87,7 +87,11 @@ public partial class SecondScreenView : UserControl
 
         var columns = Math.Max(1, viewModel.AchievementColumnCount);
         var rowIndex = badgeIndex / columns;
-        if (rowIndex >= 0 && rowIndex < list.ItemCount)
+        // The top row is set directly: a new set arrives while the grid may still be hidden (the panel is
+        // opening), where ScrollIntoView does nothing and the previous game's scroll position would survive.
+        if (rowIndex == 0 && list.Scroll is ScrollViewer scroller)
+            scroller.Offset = scroller.Offset.WithY(0);
+        else if (rowIndex >= 0 && rowIndex < list.ItemCount)
             list.ScrollIntoView(rowIndex);
     }
 
@@ -119,16 +123,11 @@ public partial class SecondScreenView : UserControl
             viewModel.CloseOverlayCommand.Execute(null);
     }
 
-    // The target pitch (tile edge + both margins) the column count is derived from. Matches the pre-redesign
-    // dense grid — a 70px tile with a 5px margin each side — so the Thor's panel lands on ~6 columns again
-    // instead of the 3 the oversized (118px) tiles gave. Keep TileMargin in sync with the tile Margin in
-    // the AXAML.
-    private const double TargetBadgePitch = 80;
+    // The target pitch (tile edge + both margins) the column count is derived from. The Thor's Screen-2 is
+    // 1240×1080 px at density 369, i.e. 538×468 dip, which leaves the grid ~462 dip — six columns of ~67 dip
+    // tiles at this pitch. Keep TileMargin in sync with the tile Margin in the AXAML.
+    private const double TargetBadgePitch = 74;
     private const double TileMargin = 5;
-    // Headroom for the auto vertical scrollbar. Column count is derived from the FULL width (so a set that
-    // fits without a scrollbar still gets the full column count), but the tile size fills width MINUS this,
-    // so when the scrollbar does show the rightmost tile isn't clipped by it (horizontal scroll is off).
-    private const double ScrollbarAllowance = 14;
 
     private void OnAchievementsBadgeListSizeChanged(object? sender, SizeChangedEventArgs e)
     {
@@ -136,11 +135,22 @@ public partial class SecondScreenView : UserControl
             return;
 
         var columns = Math.Max(1, (int)(e.NewSize.Width / TargetBadgePitch));
-        // Grow each tile to fill the row exactly for that column count, so no strip is left on the right.
-        var fillWidth = Math.Max(TargetBadgePitch, e.NewSize.Width - ScrollbarAllowance);
-        var tileSize = Math.Max(1, (fillWidth / columns) - (2 * TileMargin));
-        viewModel.AchievementTileSize = tileSize;
+        // Grow each tile to fill the row for that column count, so no strip is left on the right. The scrollbar
+        // is hidden, so the full width is usable. Snap DOWN to whole device pixels: a fractional tile edge
+        // rounds up on some tiles, and six of those overflow the row and clip the last tile.
+        var scale = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1;
+        var tileSize = Math.Floor(((e.NewSize.Width / columns) - (2 * TileMargin)) * scale) / scale;
+        viewModel.AchievementTileSize = Math.Max(1, tileSize);
         viewModel.AchievementColumnCount = columns;
+    }
+
+    // The grid's top edge fades under the header only once it has been scrolled; at rest the first row sits
+    // fully clear of it.
+    private void OnAchievementsBadgeListScrollChanged(object? sender, ScrollChangedEventArgs e)
+    {
+        if (sender is ListBox { Scroll: ScrollViewer scroller } &&
+            this.FindControl<Border>("AchievementsGridTopFade") is { } fade)
+            fade.Classes.Set("scrolled", scroller.Offset.Y > 0.5);
     }
 
     // Touch has no hover, so a tapped badge selects itself: the view model moves the accent ring to it and

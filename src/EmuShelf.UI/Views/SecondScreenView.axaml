@@ -108,8 +108,9 @@
          are driven by an .open class (bound to IsDrawerOpen / IsAchievementsOpen) so opening reads as a
          soft dissolve + scale-in rather than a hard cut. Hit testing is gated on the same class so a
          closed overlay never swallows a tap on the resting surface. -->
+    <!-- Dark enough that the fan art reads as "behind" the sheet rather than competing with its edges. -->
     <Style Selector="Border.ss-scrim">
-      <Setter Property="Background" Value="#66000000" />
+      <Setter Property="Background" Value="#99000000" />
       <Setter Property="Opacity" Value="0" />
       <Setter Property="IsHitTestVisible" Value="False" />
       <Setter Property="Transitions">
@@ -131,11 +132,14 @@
       <Setter Property="Opacity" Value="0" />
       <Setter Property="IsHitTestVisible" Value="False" />
       <Setter Property="RenderTransformOrigin" Value="50%,50%" />
-      <Setter Property="RenderTransform" Value="scale(0.97)" />
+      <Setter Property="RenderTransform" Value="scale(0.96)" />
+      <!-- The opacity runs ahead of the scale: a sheet that is still half see-through over the art reads as a
+           glitch (the logo used to show through the badges), so it turns solid fast and finishes settling
+           into place after. -->
       <Setter Property="Transitions">
         <Transitions>
-          <DoubleTransition Property="Opacity" Duration="0:0:0.16" Easing="CubicEaseOut" />
-          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.16" Easing="CubicEaseOut" />
+          <DoubleTransition Property="Opacity" Duration="0:0:0.11" Easing="CubicEaseOut" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
         </Transitions>
       </Setter>
     </Style>
@@ -143,6 +147,48 @@
       <Setter Property="Opacity" Value="1" />
       <Setter Property="IsHitTestVisible" Value="True" />
       <Setter Property="RenderTransform" Value="none" />
+    </Style>
+
+    <!-- The grid's top fade (under the header) is off at rest and eases in once the grid is scrolled. -->
+    <Style Selector="Border.ss-edge-fade">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ss-edge-fade.scrolled">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
+    <!-- The dock bar leaves by fading, never by collapsing, so nothing above it moves (see CompanionDock). -->
+    <Style Selector="Border.ss-dock">
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.14" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ss-dock.away">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+
+    <!-- The Refresh icon turns while a refresh is in flight. Bound to IsRefreshSpinning, which is only true
+         while the panel is up, so this infinite animation never runs behind a closed sheet. -->
+    <Style Selector="PathIcon.ss-spin">
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Style.Animations>
+        <Animation Duration="0:0:0.9" IterationCount="Infinite">
+          <KeyFrame Cue="0%">
+            <Setter Property="RotateTransform.Angle" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="RotateTransform.Angle" Value="360" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
     </Style>
 
     <!-- ===================== Soft controls =====================
@@ -213,7 +259,8 @@
       <!-- ...and the logo on top, faded in after the art (the background never animates, so no blink).
            SpotlightLogoOpacity, not LogoOpacity: it drops to zero while the standby wash is up, because
            that wash paints its own faint copy of this logo over the whole surface and the two centres
-           differ by half the dock bar — which is what made the logo look doubled on the companion. -->
+           differ by half the dock bar — which is what made the logo look doubled on the companion. It is
+           also zero under any open overlay, so it cannot show through a sheet that is still fading in. -->
       <Image Source="{Binding WheelImage}" Stretch="Uniform" MaxWidth="720" MaxHeight="300" Margin="72"
              HorizontalAlignment="Center" VerticalAlignment="Center"
              Opacity="{Binding SpotlightLogoOpacity}" IsVisible="{Binding HasWheel}">
@@ -277,146 +324,6 @@
         </Grid>
       </Border>
 
-      <!-- Achievements overlay (square Thor panel, touch): one header row carries the game name, the
-           progress summary, and the Refresh / Close icon buttons; the badge grid fills the middle; and —
-           because touch has no hover tooltip — the tapped badge's title/subtitle/points sit in a detail
-           strip beneath it. The app dock bar is hidden while this is up (see the bottom bar's IsVisible),
-           giving the grid the full panel height. Locked badges are dimmed; hardcore unlocks get the gold
-           ring; the tapped one gets the accent ring — see the styles at the top of this view. -->
-      <Border Classes="ss-scrim" Classes.open="{Binding IsAchievementsOpen}" Tapped="OnOverlayScrimTapped" />
-      <Border Classes="ss-sheet" Classes.open="{Binding IsAchievementsOpen}" Margin="16">
-        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="26,18,26,14">
-
-          <!-- Header: game name (left), progress summary, and Refresh / Close as icon buttons. This is the
-               only chrome — the old bottom footer is gone, so the grid + detail own the rest of the panel. -->
-          <Grid Grid.Row="0" x:Name="AchievementsHeader" ColumnDefinitions="*,Auto,Auto,Auto"
-                ColumnSpacing="10" Margin="0,0,0,12">
-            <TextBlock Grid.Column="0" Text="{Binding AchievementsTitle}" FontSize="18" FontWeight="SemiBold"
-                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
-                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            <TextBlock Grid.Column="1" Text="{Binding AchievementsSummary}" FontSize="13"
-                       IsVisible="{Binding HasSummary}" VerticalAlignment="Center"
-                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-            <Button Grid.Column="2" Classes="ss-icon" Width="42" Height="42" Padding="0"
-                    VerticalAlignment="Center" ToolTip.Tip="Refresh"
-                    IsVisible="{Binding CanRefresh}" Command="{Binding RefreshCommand}">
-              <PathIcon Width="18" Height="18" Data="{DynamicResource EmuRefreshGeometry}"
-                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            </Button>
-            <Button Grid.Column="3" Classes="ss-icon" Width="42" Height="42" Padding="0"
-                    VerticalAlignment="Center" ToolTip.Tip="Close"
-                    Command="{Binding CloseOverlayCommand}">
-              <PathIcon Width="16" Height="16" Data="{DynamicResource EmuCloseGeometry}"
-                        Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            </Button>
-          </Grid>
-
-          <!-- Transient status over a loaded grid ("Refreshing…", offline, an error). Hidden in the normal
-               loaded case (the controller leaves status null) and for empty states (the centered message
-               below handles those). -->
-          <TextBlock Grid.Row="1" Text="{Binding AchievementsStatus}" IsVisible="{Binding HasInlineStatus}"
-                     FontSize="13" Margin="0,0,0,8" TextTrimming="CharacterEllipsis"
-                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-
-          <!-- Row-virtualized badge grid: a ListBox realizes one ROW per line (a vertical
-               VirtualizingStackPanel), each row an ItemsControl of AchievementColumnCount tiles, so a
-               400-badge set only realizes its on-screen rows. The column count is driven from the
-               viewport width (SizeChanged) so the row stride matches what is rendered. The ListBox is a
-               passive renderer — its own selection/focus visuals are styled away; the tapped badge is
-               tracked on the view model (SelectAchievement) and shown by the .selected accent ring. -->
-          <ListBox Grid.Row="2" x:Name="AchievementsBadgeList" IsVisible="{Binding IsAchievementsGridRealized}"
-                   ItemsSource="{Binding AchievementRows}"
-                   Background="Transparent" BorderThickness="0" Padding="0"
-                   SizeChanged="OnAchievementsBadgeListSizeChanged"
-                   AutoScrollToSelectedItem="False"
-                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                   ScrollViewer.VerticalScrollBarVisibility="Auto">
-            <ListBox.ItemsPanel>
-              <ItemsPanelTemplate>
-                <VirtualizingStackPanel Orientation="Vertical" />
-              </ItemsPanelTemplate>
-            </ListBox.ItemsPanel>
-            <ListBox.Styles>
-              <Style Selector="ListBoxItem">
-                <Setter Property="Padding" Value="0" />
-                <Setter Property="Margin" Value="0" />
-                <Setter Property="MinHeight" Value="0" />
-                <Setter Property="Background" Value="Transparent" />
-                <Setter Property="FocusAdorner" Value="{x:Null}" />
-              </Style>
-              <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
-                               ListBoxItem:pointerover /template/ ContentPresenter">
-                <Setter Property="Background" Value="Transparent" />
-              </Style>
-            </ListBox.Styles>
-            <ListBox.ItemTemplate>
-              <DataTemplate>
-                <ItemsControl ItemsSource="{Binding}">
-                  <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                      <StackPanel Orientation="Horizontal" />
-                    </ItemsPanelTemplate>
-                  </ItemsControl.ItemsPanel>
-                  <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="vm:AchievementRowViewModel">
-                      <!-- The tile size is computed to fill the row (SizeChanged → AchievementTileSize) so a
-                           dense ~6-column grid packs the panel with no dead space on the right. The 5px
-                           margin here must match the code-behind's TileMargin so the column math lines up. -->
-                      <Border Width="{Binding DataContext.AchievementTileSize, ElementName=Root}"
-                              Height="{Binding DataContext.AchievementTileSize, ElementName=Root}"
-                              Margin="5" CornerRadius="12" ClipToBounds="True"
-                              Classes="ss-badge" Classes.hardcore="{Binding IsHardcore}"
-                              Classes.selected="{Binding IsFocused}"
-                              Background="{DynamicResource EmuCoverWellBrush}"
-                              Tapped="OnAchievementBadgeTapped"
-                              AttachedToVisualTree="OnAchievementBadgeAttached"
-                              DataContextChanged="OnAchievementBadgeDataContextChanged">
-                        <Grid Classes="ss-badge-inner" Classes.locked="{Binding IsLocked}">
-                          <PathIcon Width="28" Height="28" IsVisible="{Binding !HasBadge}"
-                                    Data="{DynamicResource AchievementTrophyGeometry}"
-                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-                          <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill" />
-                        </Grid>
-                      </Border>
-                    </DataTemplate>
-                  </ItemsControl.ItemTemplate>
-                </ItemsControl>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-
-          <!-- Empty / message state (no set linked, not connected, loading, "select a game first"),
-               centered in the grid area so the panel never reads as blank when there are no badges. -->
-          <TextBlock Grid.Row="2" IsVisible="{Binding !HasAchievements}"
-                     Text="{Binding AchievementsStatus}" TextWrapping="Wrap" TextAlignment="Center"
-                     HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="520" FontSize="16"
-                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-
-          <!-- Selected badge: title, description, and a compact "points · Earned date" line (Variant 2 —
-               lock/hardcore state is omitted, the tile's dimming/gold ring already show it). This is the
-               touch answer to the grid's missing hover tooltip. Auto-populated with the first badge.
-               FIXED HEIGHT so navigating badges never resizes this strip (and, since the grid above is the
-               "*" row, never reflows the grid either): the title is pinned to one line and the description
-               reserves exactly two lines via an explicit LineHeight × Height. A shorter description leaves
-               the second line blank; a longer one ellipsizes at the second line. -->
-          <StackPanel Grid.Row="3" x:Name="AchievementsDetail" Margin="0,14,0,0" Spacing="3"
-                      IsVisible="{Binding HasSelectedAchievement}">
-            <TextBlock Text="{Binding SelectedAchievement.Title}" FontSize="19" FontWeight="SemiBold"
-                       MaxLines="1" TextTrimming="CharacterEllipsis"
-                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
-            <!-- LineHeight × MaxLines == Height, so the box is always exactly two lines tall regardless of
-                 how many lines the text actually fills. -->
-            <TextBlock Text="{Binding SelectedAchievement.Description}" FontSize="14"
-                       TextWrapping="Wrap" MaxLines="2" LineHeight="20" Height="40"
-                       TextTrimming="CharacterEllipsis"
-                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
-            <Button Content="Reveal hidden achievement" Command="{Binding SelectedAchievement.RevealCommand}" IsVisible="{Binding SelectedAchievement.CanReveal}" />
-            <TextBlock Text="{Binding SelectedAchievementMeta}" FontSize="12"
-                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
-          </StackPanel>
-        </Grid>
-      </Border>
-
       <Button Classes="media-control" Width="40" Height="40" Margin="16"
               HorizontalAlignment="Right" VerticalAlignment="Top" Command="{Binding OpenMediaCommand}"
               IsVisible="{Binding IsSpotlight}" AutomationProperties.Name="Open photos and videos">
@@ -424,10 +331,12 @@
                   Data="F0 M2,3 H22 V21 H2 Z M4,5 V19 H20 V5 Z M5,17 L9,12 L12,15 L15,11 L19,17 Z M6,7 H9 V10 H6 Z" />
       </Button>
     </Panel>
-    <!-- Bottom bar:  ☰  |  five dock slots  |  trophy. Hidden while the achievements overlay is open so the
-         badge grid + detail strip own the full square panel; Close (or Back) returns to it. -->
+    <!-- Bottom bar:  ☰  |  five dock slots  |  trophy. Fades away (but keeps its place in the layout) while the
+         achievements panel or the media viewer is up; Close (or Back) brings it back. Collapsing it instead
+         re-centred the game logo in the taller spotlight row, so the logo visibly jumped down a dock's height
+         every time the panel opened, and back up when it closed. -->
     <Border x:Name="CompanionDock" Grid.Row="1" Height="80" Margin="12,0,12,12" Background="{DynamicResource EmuToolbarBrush}"
-            IsVisible="{Binding IsDockVisible}"
+            Classes="ss-dock" Classes.away="{Binding !IsDockVisible}"
             CornerRadius="24" BoxShadow="0 4 16 0 #33000000">
       <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,0">
 
@@ -481,7 +390,184 @@
       </Grid>
     </Border>
 
-    <!-- A dedicated full-display viewer. The dock is removed from layout while this is open. -->
+    <!-- Achievements overlay (square Thor panel, touch). It covers BOTH rows — spotlight and dock — as one
+         floating sheet, so opening it moves nothing underneath: the dock fades away in place and the logo fades
+         out (see SpotlightLogoOpacity) instead of the layout reflowing under a half-transparent sheet.
+         One header row carries the game name, the progress summary, and the Refresh / Close icon buttons; the
+         badge grid fills the middle; and — because touch has no hover tooltip — the tapped badge's
+         title/subtitle/points sit in a fixed-height detail strip beneath it. Locked badges are dimmed;
+         hardcore unlocks get the gold ring; the tapped one gets the accent ring — see the styles at the top. -->
+    <Border Grid.RowSpan="2" Classes="ss-scrim" Classes.open="{Binding IsAchievementsOpen}" Tapped="OnOverlayScrimTapped" />
+    <Border Grid.RowSpan="2" x:Name="AchievementsSheet" Classes="ss-sheet" Classes.open="{Binding IsAchievementsOpen}" Margin="16">
+      <Grid RowDefinitions="Auto,*,Auto" Margin="24,16,24,14">
+
+        <!-- Header: game name (left), progress summary, and Refresh / Close as icon buttons. While a refresh is
+             in flight the Refresh icon spins — the old "Refreshing achievement details…" line that appeared and
+             vanished above the grid shoved every badge down and back up. -->
+        <Grid Grid.Row="0" x:Name="AchievementsHeader" ColumnDefinitions="*,Auto,Auto,Auto"
+              ColumnSpacing="10" Margin="0,0,0,10">
+          <TextBlock Grid.Column="0" Text="{Binding AchievementsTitle}" FontSize="18" FontWeight="SemiBold"
+                     VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+          <TextBlock Grid.Column="1" Text="{Binding AchievementsSummary}" FontSize="13"
+                     IsVisible="{Binding HasSummary}" VerticalAlignment="Center"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+          <Button Grid.Column="2" Classes="ss-icon" Width="42" Height="42" Padding="0"
+                  VerticalAlignment="Center" ToolTip.Tip="Refresh" AutomationProperties.Name="Refresh achievements"
+                  IsVisible="{Binding CanRefresh}" Command="{Binding RefreshCommand}">
+            <PathIcon x:Name="AchievementsRefreshIcon" Width="18" Height="18" Data="{DynamicResource EmuRefreshGeometry}"
+                      Classes.ss-spin="{Binding IsRefreshSpinning}"
+                      Foreground="{DynamicResource EmuTextPrimaryBrush}">
+              <PathIcon.RenderTransform>
+                <RotateTransform />
+              </PathIcon.RenderTransform>
+            </PathIcon>
+          </Button>
+          <Button Grid.Column="3" Classes="ss-icon" Width="42" Height="42" Padding="0"
+                  VerticalAlignment="Center" ToolTip.Tip="Close" AutomationProperties.Name="Close achievements"
+                  Command="{Binding CloseOverlayCommand}">
+            <PathIcon Width="16" Height="16" Data="{DynamicResource EmuCloseGeometry}"
+                      Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+          </Button>
+        </Grid>
+
+        <Panel Grid.Row="1">
+          <!-- Row-virtualized badge grid: a ListBox realizes one ROW per line (a vertical
+               VirtualizingStackPanel), each row an ItemsControl of AchievementColumnCount tiles, so a
+               400-badge set only realizes its on-screen rows. The column count and tile size are driven from
+               the viewport width (SizeChanged) so the tiles fill the row exactly. The -5 side margin cancels
+               the tiles' own 5px margin, so the outer tiles line up with the header and detail text above and
+               below. No scrollbar: on a touch panel it was only ever a stray line beside the last column, and
+               the part-visible bottom row already says the grid scrolls. The ListBox is a passive renderer —
+               its own selection/focus visuals are styled away; the tapped badge is tracked on the view model
+               (SelectAchievement) and shown by the .selected accent ring. -->
+          <ListBox x:Name="AchievementsBadgeList" IsVisible="{Binding IsAchievementsGridRealized}"
+                   ItemsSource="{Binding AchievementRows}" Margin="-5,0"
+                   Background="Transparent" BorderThickness="0" Padding="0"
+                   SizeChanged="OnAchievementsBadgeListSizeChanged"
+                   ScrollViewer.ScrollChanged="OnAchievementsBadgeListScrollChanged"
+                   AutoScrollToSelectedItem="False"
+                   ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                   ScrollViewer.VerticalScrollBarVisibility="Hidden">
+            <ListBox.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel Orientation="Vertical" />
+              </ItemsPanelTemplate>
+            </ListBox.ItemsPanel>
+            <ListBox.Styles>
+              <Style Selector="ListBoxItem">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinHeight" Value="0" />
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="FocusAdorner" Value="{x:Null}" />
+              </Style>
+              <Style Selector="ListBoxItem:selected /template/ ContentPresenter,
+                               ListBoxItem:pointerover /template/ ContentPresenter">
+                <Setter Property="Background" Value="Transparent" />
+              </Style>
+            </ListBox.Styles>
+            <ListBox.ItemTemplate>
+              <DataTemplate>
+                <ItemsControl ItemsSource="{Binding}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                      <!-- The tile size is computed to fill the row (SizeChanged → AchievementTileSize). The 5px
+                           margin here must match the code-behind's TileMargin so the column math lines up. -->
+                      <Border Width="{Binding DataContext.AchievementTileSize, ElementName=Root}"
+                              Height="{Binding DataContext.AchievementTileSize, ElementName=Root}"
+                              Margin="5" CornerRadius="12" ClipToBounds="True"
+                              Classes="ss-badge" Classes.hardcore="{Binding IsHardcore}"
+                              Classes.selected="{Binding IsFocused}"
+                              Background="{DynamicResource EmuCoverWellBrush}"
+                              Tapped="OnAchievementBadgeTapped"
+                              AttachedToVisualTree="OnAchievementBadgeAttached"
+                              DataContextChanged="OnAchievementBadgeDataContextChanged">
+                        <Grid Classes="ss-badge-inner" Classes.locked="{Binding IsLocked}">
+                          <PathIcon Width="26" Height="26" IsVisible="{Binding !HasBadge}"
+                                    Data="{DynamicResource AchievementTrophyGeometry}"
+                                    Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                          <Image Source="{Binding Badge}" IsVisible="{Binding HasBadge}" Stretch="UniformToFill"
+                                 RenderOptions.BitmapInterpolationMode="HighQuality" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+
+          <!-- Soft edges: the part-visible last row fades into the sheet instead of being sliced off flat
+               against the detail title, and — once the grid is scrolled — the first row fades under the header
+               the same way (the top fade is shown from code-behind, off at rest so it never dims the first row).
+               Plain gradients in the sheet's own colour, deliberately NOT an OpacityMask (that forces an
+               offscreen layer on every scrolled frame on the Thor). -->
+          <Border x:Name="AchievementsGridTopFade" Height="14" VerticalAlignment="Top" IsHitTestVisible="False"
+                  Classes="ss-edge-fade" IsVisible="{Binding IsAchievementsGridRealized}"
+                  Background="{Binding #AchievementsSheet.Background, Converter={x:Static vm:BrushConverters.FadeInFromTransparent}}">
+            <Border.RenderTransform>
+              <ScaleTransform ScaleY="-1" />
+            </Border.RenderTransform>
+          </Border>
+          <Border x:Name="AchievementsGridFade" Height="30" VerticalAlignment="Bottom" IsHitTestVisible="False"
+                  IsVisible="{Binding IsAchievementsGridRealized}"
+                  Background="{Binding #AchievementsSheet.Background, Converter={x:Static vm:BrushConverters.FadeInFromTransparent}}" />
+
+          <!-- Empty / message state (no set linked, not connected, loading, "select a game first"),
+               centered in the grid area so the panel never reads as blank when there are no badges. -->
+          <TextBlock IsVisible="{Binding !HasAchievements}"
+                     Text="{Binding AchievementsStatus}" TextWrapping="Wrap" TextAlignment="Center"
+                     HorizontalAlignment="Center" VerticalAlignment="Center" MaxWidth="420" FontSize="16"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+
+          <!-- Transient status over a loaded grid (offline, an error, reconnect): a small pill floating over the
+               bottom of the grid, so it never moves the badges. Hidden in the normal loaded case (the
+               controller leaves status null) and for empty states (the centered message above handles those). -->
+          <Border x:Name="AchievementsStatusPill" IsVisible="{Binding HasInlineStatus}"
+                  HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="12,0,12,10" MaxWidth="420"
+                  Padding="14,7" CornerRadius="16" BorderThickness="1"
+                  Background="{DynamicResource EmuToolbarBrush}" BorderBrush="{DynamicResource EmuStrongBorderBrush}"
+                  BoxShadow="0 4 14 0 #55000000">
+            <TextBlock Text="{Binding AchievementsStatus}" FontSize="13" TextWrapping="Wrap" MaxLines="2"
+                       TextAlignment="Center" TextTrimming="CharacterEllipsis"
+                       Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+          </Border>
+        </Panel>
+
+        <!-- Selected badge: title, description, and a compact "points · Earned date" line (lock/hardcore state
+             is omitted, the tile's dimming/gold ring already show it). This is the touch answer to the grid's
+             missing hover tooltip. Auto-populated with the first badge. FIXED HEIGHT so moving between badges
+             never resizes this strip (and, since the grid above is the "*" row, never reflows the grid): the
+             title is one line, the description reserves exactly two lines (LineHeight × MaxLines == Height),
+             and a hidden achievement's Reveal button shares the meta line instead of adding a row. -->
+        <StackPanel Grid.Row="2" x:Name="AchievementsDetail" Margin="0,10,0,0" Spacing="2"
+                    IsVisible="{Binding HasSelectedAchievement}">
+          <TextBlock Text="{Binding SelectedAchievement.Title}" FontSize="18" FontWeight="SemiBold"
+                     MaxLines="1" TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextPrimaryBrush}" />
+          <TextBlock Text="{Binding SelectedAchievement.Description}" FontSize="14"
+                     TextWrapping="Wrap" MaxLines="2" LineHeight="20" Height="40"
+                     TextTrimming="CharacterEllipsis"
+                     Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+          <Grid ColumnDefinitions="*,Auto" Height="30">
+            <TextBlock Text="{Binding SelectedAchievementMeta}" FontSize="12" VerticalAlignment="Center"
+                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+            <Button Grid.Column="1" Classes="toolbar-button" Content="Reveal" Height="30" Padding="14,0"
+                    FontSize="12" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                    IsVisible="{Binding SelectedAchievement.CanReveal, FallbackValue=False}"
+                    Command="{Binding SelectedAchievement.RevealCommand}" />
+          </Grid>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- A dedicated full-display viewer. The dock fades away under it while this is open. -->
     <Panel x:Name="MediaGallery" Grid.RowSpan="2" Background="#080A0D" Classes="media-gallery" Classes.open="{Binding IsMediaOpen}"
            ClipToBounds="True" PointerPressed="OnMediaPointerPressed" PointerReleased="OnMediaPointerReleased">
       <Panel x:Name="MediaViewport">

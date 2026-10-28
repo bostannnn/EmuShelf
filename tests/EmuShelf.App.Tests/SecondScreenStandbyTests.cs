@@ -71,8 +71,12 @@ public class SecondScreenStandbyTests
         vm.IsGameRunning = true;
         Assert.Equal(0, vm.SpotlightLogoOpacity);
 
-        // An overlay lifts the standby wash, so the resting spotlight — and its logo — is back.
+        // An overlay lifts the standby wash, but the overlay's own sheet now covers the logo — which stays dark
+        // so it cannot show through the sheet while it fades in. Closing the overlay brings it back.
         vm.Overlay = SecondScreenOverlayKind.Achievements;
+        Assert.Equal(0, vm.SpotlightLogoOpacity);
+        vm.IsGameRunning = false;
+        vm.Overlay = SecondScreenOverlayKind.None;
         Assert.Equal(1, vm.SpotlightLogoOpacity);
     }
 

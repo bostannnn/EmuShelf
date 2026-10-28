@@ -38,8 +38,10 @@ public class SecondScreenMediaTests
             var viewport = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Panel>(view, "MediaViewport")!;
             Assert.Equal(538, viewport.Bounds.Width, 1);
             Assert.Equal(468, viewport.Bounds.Height, 1);
+            // The dock fades away under the viewer but keeps its place, so nothing behind it reflows.
             var dock = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Border>(view, "CompanionDock")!;
-            Assert.False(dock.IsVisible);
+            Assert.Contains("away", dock.Classes);
+            Assert.False(dock.IsHitTestVisible);
             Assert.DoesNotContain(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(view).OfType<EmuShelf.App.Controls.CompanionVideoHost>(), host => host.IsEffectivelyVisible);
             using var frame = Avalonia.Headless.HeadlessWindowExtensions.CaptureRenderedFrame(window);
             var output = Environment.GetEnvironmentVariable("EMUSHELF_MEDIA_PREVIEW");
