@@ -186,13 +186,21 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .st-apps img{width:11cqh;height:11cqh;border-radius:26%;display:block;box-shadow:0 .4cqh 1cqh rgba(28,32,80,.18)}
 .st-empty{width:34cqh;height:34cqh;border-radius:26%;border:.6cqh dashed var(--dot);display:grid;place-items:center;color:var(--ui-muted)}
 .st-empty svg{width:34%;height:34%}
-.st-plate{position:absolute;left:50%;bottom:5cqh;transform:translateX(-50%);min-width:38cqh;max-width:52cqw;padding:1.8cqh 4.4cqh;border-radius:2.8cqh;background:var(--card);box-shadow:0 .6cqh 2cqh var(--shadow),inset 0 0 0 .3cqh var(--card-line);text-align:center}
+.st-plate{position:absolute;left:50%;bottom:5cqh;transform:translateX(-50%);min-width:38cqh;max-width:42cqw;padding:1.8cqh 4.4cqh;border-radius:2.8cqh;background:var(--card);box-shadow:0 .6cqh 2cqh var(--shadow),inset 0 0 0 .3cqh var(--card-line);text-align:center}
 .st-title{font-weight:900;font-size:5.2cqh;line-height:1.12;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-wrap:balance}
 .st-sub{font:700 2.8cqh/1.3 var(--f-chrome);color:var(--ui-muted);margin-top:.5cqh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* Corner pills: status top-right (Wii Menu keeps time in the chrome, Cocoon puts it here),
    achievements bottom-left, button hints bottom-right. */
-.st-ach,.st-hint,.st-status{position:absolute;display:flex;align-items:center;gap:1.2cqh;padding:1cqh 1.8cqh;border-radius:3cqh;background:var(--card);font:800 2.8cqh/1 var(--f-chrome);color:var(--ui-ink);box-shadow:0 .4cqh 1.4cqh var(--shadow);font-variant-numeric:tabular-nums;z-index:4}
+.st-ach,.st-hint,.st-status{position:absolute;display:flex;align-items:center;gap:1.1cqh;padding:1cqh 1.6cqh;border-radius:3cqh;background:var(--card);font:800 2.6cqh/1 var(--f-chrome);color:var(--ui-ink);box-shadow:0 .4cqh 1.4cqh var(--shadow);font-variant-numeric:tabular-nums;z-index:4;white-space:nowrap}
 .st-ach{left:3.4cqh;bottom:5.4cqh}.st-hint{right:3.4cqh;bottom:5.4cqh}.st-status{right:3.4cqh;top:3.4cqh;gap:1.6cqh}
+.st-hint .btn,.st-ach .btn{width:4cqh;height:4cqh;font-size:2.3cqh}
+/* On the narrow 1240×1080 screen (after a swap) the bottom corners can't share a row with the plate,
+   so the hint and achievements pills move to the top-left, under the status pill's line. */
+#screenBottom .st-hint{left:3.4cqh;top:3.4cqh;right:auto;bottom:auto}
+#screenBottom .st-ach{left:3.4cqh;top:10.4cqh;bottom:auto}
+#screenBottom .st-plate{max-width:84cqw}
+#screenBottom .st-logo{width:62cqw;height:36cqh;top:16cqh}
+#screenBottom .st-hero-meta{max-width:80cqw}
 .st-status svg{width:3.2cqh;height:3.2cqh;color:var(--chip-ink)}
 .st-ach svg{width:3.4cqh;height:3.4cqh;color:#E39A12}
 .st-ach .bar{width:10cqh;height:1cqh;border-radius:1cqh;background:var(--dot);overflow:hidden}
@@ -210,7 +218,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .fly{position:relative;width:100%;height:100%}
 .slot.focused{z-index:5}
 .tile{position:relative;width:100%;height:100%;border-radius:24%;transform-origin:50% 60%;transition:transform calc(var(--k)*220ms) cubic-bezier(.34,1.42,.64,1),box-shadow calc(var(--k)*220ms)}
-.slot.focused .tile{transform:translateY(-5%) scale(1.13)}
+.slot.focused .tile{transform:translateY(-4%) scale(1.1)}
 .slot.focused .tile.game{box-shadow:0 calc(var(--s)*.12) calc(var(--s)*.22) rgba(40,40,120,.38)}
 .tile.game{overflow:hidden;background:#c9cde0;box-shadow:0 calc(var(--s)*.03) 0 rgba(30,35,70,.10),0 calc(var(--s)*.07) calc(var(--s)*.16) rgba(30,35,70,.2)}
 .tile.game img{width:100%;height:100%;object-fit:cover;object-position:50% 16%;display:block;pointer-events:none}
@@ -233,11 +241,11 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .slot.merge::after{content:"";position:absolute;inset:-5%;border-radius:30%;border:calc(var(--s)*.035) dashed var(--sel);box-shadow:0 0 calc(var(--s)*.2) var(--sel-glow)}
 .sel{position:absolute;left:0;top:0;width:var(--s);height:var(--s);transition:opacity calc(var(--k)*160ms);pointer-events:none;z-index:9;will-change:transform}
 .sel.off{opacity:0}
-.sel-off{position:absolute;inset:0;transform:translateY(-5%) scale(1.13)}
+.sel-off{position:absolute;inset:0;transform:translateY(-4%) scale(1.1)}
 .sel-bump{position:absolute;inset:0}
 /* Selector: a thick violet frame with a white keyline on both sides and a pulsing glow behind,
    so it reads on any folder colour and on the pale background alike. */
-.sel-ring{position:absolute;inset:-11%;border-radius:32%;border:calc(var(--s)*.075) solid var(--sel);box-shadow:inset 0 0 0 calc(var(--s)*.03) #fff,0 0 0 calc(var(--s)*.025) #fff;animation:breathe calc(var(--k)*1.2s) ease-in-out infinite alternate}
+.sel-ring{position:absolute;inset:-10%;border-radius:32%;border:calc(var(--s)*.065) solid var(--sel);box-shadow:inset 0 0 0 calc(var(--s)*.025) #fff,0 0 0 calc(var(--s)*.022) #fff;animation:breathe calc(var(--k)*1.2s) ease-in-out infinite alternate}
 .sel-ring::after{content:"";position:absolute;inset:-14%;border-radius:36%;box-shadow:0 0 calc(var(--s)*.28) calc(var(--s)*.04) var(--sel-glow);animation:glow calc(var(--k)*1.2s) ease-in-out infinite alternate;z-index:-1}
 @keyframes breathe{from{transform:scale(1)}to{transform:scale(1.035)}}
 @keyframes glow{from{opacity:.45}to{opacity:1}}
@@ -332,12 +340,12 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .kb-c{width:6cqh;height:6cqh;border-radius:50%;border:0;padding:0;background:var(--c);cursor:pointer;box-shadow:inset 0 -.5cqh 0 rgba(0,0,0,.14);display:grid;place-items:center;color:#fff;transition:transform calc(var(--k)*220ms) cubic-bezier(.34,1.42,.64,1),box-shadow calc(var(--k)*200ms)}
 .kb-c svg{width:55%;height:55%;opacity:0}.kb-c.on svg{opacity:1}
 .kb-c.focused{transform:scale(1.2);box-shadow:0 0 0 .5cqh #fff,0 0 0 1.2cqh var(--sel),0 0 3cqh var(--sel-glow)}
-.kb-rows{flex:1;display:flex;flex-direction:column;justify-content:center;gap:1.2cqh;min-height:0}
-.kb-row{display:flex;justify-content:center;gap:1.2cqh}
+.kb-rows{flex:1;display:flex;flex-direction:column;justify-content:center;gap:1.6cqh;min-height:0}
+.kb-row{display:flex;justify-content:center;gap:1.5cqh}
 .kb-k{width:8.6cqh;height:9cqh;border:0;border-radius:2cqh;background:var(--card-solid);color:var(--ui-ink);font:800 3.6cqh/1 var(--f-ui);box-shadow:0 .35cqh 0 var(--shadow);cursor:pointer;display:grid;place-items:center;flex:none;transition:transform calc(var(--k)*180ms) cubic-bezier(.34,1.42,.64,1),box-shadow calc(var(--k)*180ms)}
 .kb-k.w{width:14cqh;font:800 2.5cqh/1 var(--f-chrome)}.kb-k.sp{width:34cqh}.kb-k.done{background:var(--acc);color:#fff}
 .kb-k svg{width:3.4cqh;height:3.4cqh}
-.kb-k.focused{transform:translateY(-6%) scale(1.12);box-shadow:0 0 0 .5cqh #fff,0 0 0 1.2cqh var(--sel),0 0 3cqh var(--sel-glow)}
+.kb-k.focused{transform:translateY(-6%) scale(1.1);box-shadow:0 0 0 .4cqh #fff,0 0 0 1cqh var(--sel),0 0 3cqh var(--sel-glow)}
 .kb-hint{display:flex;justify-content:center;gap:2.4cqh;font:800 2.4cqh/1 var(--f-chrome);color:var(--ui-muted);flex:none;margin-top:1.2cqh;align-items:center}
 
 /* ---------- App drawer (shared by launcher and companion) ---------- */
@@ -346,7 +354,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .dr-head{display:flex;align-items:center;gap:1.6cqh;height:9cqh;flex:none}
 .dr-title{flex:1;min-width:0;font-weight:900;font-size:4.2cqh;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .comp .hchip{background:rgba(255,255,255,.1);color:#EEF0FA;box-shadow:none}
-.dr-grid{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2.6cqh 1.6cqh;align-content:start;padding-top:2.4cqh}
+.dr-grid{flex:1;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:2.6cqh 1.6cqh;align-content:start;padding-top:3.6cqh}
 .dr-app{display:flex;flex-direction:column;align-items:center;gap:1.1cqh;background:none;border:0;padding:0;color:inherit;cursor:pointer;font:800 2.5cqh/1.1 var(--f-ui);min-width:0}
 .dr-app span:last-child{max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .app-ic{width:10.5cqh;height:10.5cqh;border-radius:27%;display:grid;place-items:center;color:#fff;background:linear-gradient(160deg,color-mix(in srgb,var(--tint) 62%,white),var(--tint));box-shadow:0 .5cqh 1.2cqh rgba(30,35,80,.18);transition:transform calc(var(--k)*220ms) cubic-bezier(.34,1.42,.64,1),box-shadow calc(var(--k)*200ms)}
@@ -438,13 +446,14 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .ca-tab{padding:1cqh 2.2cqh;border-radius:3cqh;background:rgba(255,255,255,.08);font-weight:800;font-size:2.7cqh;transition:background calc(var(--k)*200ms),color calc(var(--k)*200ms)}
 .ca-tab.on{background:#EEF0FA;color:#1B1E30}
 .ca-tabs .tip{margin-left:auto;font-weight:800;font-size:2.4cqh;color:#8A90AE}
-.ca-grid{position:relative;flex:1;overflow:hidden;margin-top:2cqh}
-.ca-track{position:absolute;left:0;top:0;right:0;transition:transform calc(var(--k)*320ms) cubic-bezier(.25,.8,.25,1)}
+/* The badge track sits inset from the clipping box so the selector ring and its glow never get cut. */
+.ca-grid{position:relative;flex:1;overflow:hidden;margin-top:1cqh}
+.ca-track{position:absolute;left:2.8cqh;top:2.6cqh;right:2.8cqh;transition:transform calc(var(--k)*320ms) cubic-bezier(.25,.8,.25,1)}
 .ca-b{position:absolute;left:0;top:0;width:var(--bs);height:var(--bs);transform:translate(var(--x),var(--y));transition:transform calc(var(--k)*300ms) cubic-bezier(.3,1.3,.5,1),opacity calc(var(--k)*200ms)}
 .ca-b img{width:100%;height:100%;border-radius:22%;display:block}
 .ca-b.locked img{filter:grayscale(1) brightness(.5)}
 .ca-sel{position:absolute;left:0;top:0;width:var(--bs);height:var(--bs);pointer-events:none;will-change:transform}
-.ca-sel::before{content:"";position:absolute;inset:-12%;border-radius:30%;border:.9cqh solid var(--sel);box-shadow:0 0 3cqh var(--sel-glow),inset 0 0 0 .35cqh #fff,0 0 0 .35cqh #fff;animation:breathe calc(var(--k)*1.2s) ease-in-out infinite alternate}
+.ca-sel::before{content:"";position:absolute;inset:-10%;border-radius:30%;border:.8cqh solid var(--sel);box-shadow:0 0 3cqh var(--sel-glow),inset 0 0 0 .35cqh #fff,0 0 0 .35cqh #fff;animation:breathe calc(var(--k)*1.2s) ease-in-out infinite alternate}
 .ca-detail{flex:none;height:18cqh;display:flex;gap:2.2cqh;align-items:center;border-top:.3cqh solid rgba(255,255,255,.08)}
 .ca-detail img{height:12cqh;width:12cqh;border-radius:22%;flex:none}
 .ca-detail.locked img{filter:grayscale(1) brightness(.5)}
@@ -1029,10 +1038,11 @@ function buildLauncher(){
 function measure(){
   const W=L.root.clientWidth,H=L.root.clientHeight;
   const barH=H*.15,topPad=H*.06,dotsH=H*.065,availH=H-barH-topPad-dotsH,availW=W*.9;
-  const t=Math.floor(Math.min(availH/4.54,availW/5.72)),g=Math.round(t*.18);
+  // Gaps are wider than the selector ring's reach (10% inset + keylines), so the ring never sits on a neighbour.
+  const t=Math.floor(Math.min(availH/4.69,availW/5.92)),g=Math.round(t*.23);
   const gridW=5*t+4*g,gridH=4*t+3*g;
   const hdrH=H*.16,fAvailH=H-hdrH-barH-H*.035;
-  const ft=Math.floor(Math.min(fAvailH/3.36,(W*.86)/4.5)),fg=Math.round(ft*.16);
+  const ft=Math.floor(Math.min(fAvailH/3.44,(W*.86)/4.66)),fg=Math.round(ft*.22);
   const fox=Math.round(W*.06),foy=Math.round(hdrH+(fAvailH-(3*ft+2*fg))/2);
   M={W,H,t,g,ox:Math.round((W-gridW)/2),oy:Math.round(topPad+(availH-gridH)/2),pageW:W,ft,fg,fox,foy,fVisible:Math.max(1,Math.floor((W-fox*1.2+fg)/(ft+fg)))};
   L.root.style.setProperty("--t",t+"px");L.root.style.setProperty("--ft",ft+"px");
@@ -1652,7 +1662,7 @@ function openAch(){
 }
 function achList(){const st=S.playing.ach,l=achievementsFor(S.playing.g).list;return st.tab==="all"?l:l.filter(a=>st.tab==="locked"?!a.unlocked:a.unlocked);}
 function layoutAch(instant){
-  const st=S.playing.ach,grid=$(".ca-grid",st.el),track=$(".ca-track",st.el),W=grid.clientWidth,cols=7,gap=Math.round(W*.022),bs=Math.floor((W-(cols-1)*gap)/cols);
+  const st=S.playing.ach,grid=$(".ca-grid",st.el),track=$(".ca-track",st.el),W=track.clientWidth,cols=7,gap=Math.round(W*.06),bs=Math.floor((W-(cols-1)*gap)/cols);
   Object.assign(st,{cols,gap,bs});track.style.setProperty("--bs",bs+"px");
   const list=achList(),ids=new Set(list.map(a=>a.i)),pos=k=>({x:(k%cols)*(bs+gap),y:Math.floor(k/cols)*(bs+gap)});
   list.forEach((a,k)=>{let b=st.els.get(a.i);if(!b){b=el("div","ca-b"+(a.unlocked?"":" locked"),`<img alt="" src="${badgeURL(a)}">`);b.addEventListener("click",()=>{st.idx=achList().findIndex(x=>x.i===a.i);applyAchSel(false);sfx("move");});st.els.set(a.i,b);track.append(b);place(b,pos(k),true);}b.hidden=false;place(b,pos(k),instant);});
@@ -1665,7 +1675,7 @@ function applyAchSel(instant){
   sel.hidden=!list.length;
   if(!list.length){$(".cad-t",det).textContent="Nothing here yet";$(".cad-d",det).textContent=st.tab==="unlocked"?"Unlock an achievement in the game and it shows up here.":"Everything is unlocked.";$(".cad-m",det).textContent="";$("img",det).style.visibility="hidden";return;}
   const k=st.idx,a=list[k],pitch=st.bs+st.gap;moveSel(sel,{x:(k%st.cols)*pitch,y:Math.floor(k/st.cols)*pitch},instant);
-  const rows=Math.max(1,Math.floor((grid.clientHeight+st.gap)/pitch)),row=Math.floor(k/st.cols);
+  const rows=Math.max(1,Math.floor((grid.clientHeight-track.offsetTop*2+st.gap)/pitch)),row=Math.floor(k/st.cols);
   if(row<st.scroll)st.scroll=row;if(row>st.scroll+rows-1)st.scroll=row-rows+1;
   if(instant)track.classList.add("noanim");track.style.transform=`translateY(${-st.scroll*pitch}px)`;if(instant){void track.offsetWidth;track.classList.remove("noanim");}
   const img=$("img",det);img.style.visibility="visible";img.src=badgeURL(a);det.classList.toggle("locked",!a.unlocked);
