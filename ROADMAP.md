@@ -2257,3 +2257,113 @@ See `docs/android-production-readiness.md` for evidence and remaining acceptance
       fades, controls, loading feedback and video posters; 61 focused tests passed.
 
 - [x] Unify companion fanart/logo rendering across platforms; move Steam enrichment to explicit/import fetch, save shared media records, migrate preview cache locally, and extend Fetch missing metadata to missing Steam artwork.
+
+## M45 — Handheld mode: a dual-screen home menu for the Thor (planned)
+
+A third interface mode beside Desktop and Gamepad, for dual-screen Android handhelds: the bottom
+screen is a 3DS-style launcher you arrange, the top screen shows what is selected. The spec is
+[HANDHELD-MODE.md](HANDHELD-MODE.md) (product decisions 1–16, screen anatomy, controls, motion
+spec, the map of what already exists). The visual contract is the interactive mockup in
+[docs/prototypes/handheld-mode/](docs/prototypes/handheld-mode/) (`index.html`, version 5): every
+screen below has a **Jump to** scene there, and the build must match it. The reasoning is in
+`docs/prototypes/handheld-mode/REVIEW.md`; the baseline is recorded in `DECISIONS.md` (2026-11-06).
+
+**How to work it.** One sub-milestone per session: `/milestone M45 H<n>`. Each is ordered so the
+app is usable at its exit, each ends with a check on the Thor (Screen-2 is `FLAG_SECURE`, so that
+means hands on the device plus `adb logcat`, not screenshots), and each gets one `M45 H<n>: …`
+commit. The Android head stays outside `EmuShelf.slnx`; every model, store and view model lives in
+`EmuShelf.Core` / `EmuShelf.UI` so the macOS suite (`EmuShelf.App.Tests`,
+`EmuShelf.Infrastructure.Tests`) covers it. Copy the ideas, never the assets: no Nintendo or Cocoon
+artwork, glyphs, sounds or exact layouts. Don't re-open decisions 1–16; when a choice is genuinely
+open, pick the simplest option, record it in `DECISIONS.md`, and keep going.
+
+**What already exists (reuse, don't duplicate).** Launching, choosers, save sync, achievements,
+scraping, settings pages, the on-screen keyboard, the companion and its dock, the setup wizard —
+all of it is logic behind `MainViewModel`, `SecondScreenViewModel`, `GamepadSettingsViewModel`,
+`SecondScreenController` and friends; the spec's "What already exists, and what is new" table maps
+each feature to its owner. Fan art and logos are scraped and stored (`GameMediaKind.Fanart`,
+`GameMediaKind.Wheel`) and already drawn by the Gamepad spotlight hero. The artwork palette engine
+(`ArtworkPaletteFactory`, `ArtworkPaletteExtractor`, `AppThemeService.ApplyArtworkPalette`) is
+built and tested. Play data (`Game.LastPlayedAt`, `Playtime`, `PlayCount`) feeds M38's Recently
+Played. Pad input already reaches one dispatcher from both displays
+(`MainActivity.DispatchKeyEvent`, `ThorSecondScreenPresentation` → `DispatchGamepadAction`).
+
+- [ ] **H0 — device spike** (throwaway code is fine; nothing from it needs to be kept). On the Thor:
+      both Avalonia surfaces animating at once (the `MainActivity` view and the
+      `ThorSecondScreenPresentation` `AvaloniaView`); a selector gliding over 20 cover tiles on the
+      bottom while the top crossfades; the two views re-hosted between displays; the pad routed from
+      either display to one view model. Record frame times for both surfaces in `DECISIONS.md`.
+      **Exit:** both screens animate smoothly enough to commit to Avalonia for both. **Kill
+      criterion:** if the Presentation can't hold the selector glide at the panel's refresh rate with
+      20 decoded tiles, stop and redesign before H1 (for example a lighter Launcher, or fewer live
+      animations) rather than pushing on.
+- [ ] **H1 — mode and skeleton.** `InterfaceMode.Handheld` in Core; `AndroidInterfaceModeService`
+      offers it only when a presentation display exists and persists the choice in `AppSettings`;
+      every mode's Start/Settings menu can switch to it and back. `HandheldShellViewModel`
+      (`EmuShelf.UI`) owns all state: home layout, open folder, selection, zones (grid / header /
+      dock), overlays. `HandheldStageView` and `HandheldLauncherView` are pure views onto it; the
+      Android host shows the Stage in `MainActivity`'s view and the Launcher in the Presentation
+      while browsing. Platform folders are created automatically in the default order; the home grid
+      is 5×4 with visible empty slots and page dots; a folder is a 4×3 grid scrolling by column with
+      a header (Back, name, count, sort chip); the dock is today's companion dock with the D-pad
+      reaching it. Tiles decode at tile size off the UI thread through the existing thumbnail
+      pipeline. The Stage shows the focused folder or game with the name plate, the corner pills and
+      the status pill (time, Wi-Fi, battery). Plain transitions only. Tests: default layout
+      generation, grid navigation including empty slots and paging, folder sorts. **Exit:** from a
+      cold start you can open a folder, scroll it, pick a game (launching temporarily via the
+      existing path), press B back, and switch to Gamepad mode and back.
+- [ ] **H2 — Title page.** A on a game opens the Title page on the Launcher: cover, title, platform
+      and emulator, last played, play time, which screen it runs on, disc, achievement count; the
+      buttons Play, Disc (multi-disc only) and Achievements; Y the full actions sheet; B back. The
+      disc chooser and the launch-screen chooser (`LaunchScreenResolver`'s Ask / Built-in /
+      External, with "Always use this screen") are states of this page, as is the save-sync blocking
+      panel; Play then runs the existing launch core (factor the shared part of
+      `MainViewModel.LaunchGameCoreAsync` into a service both view models call rather than copying
+      it). The Stage shows the hero: fan art full-bleed with the logo and a meta line, cover on a
+      tinted backdrop as fallback; the browsing backdrop is the fan art. Returning from the game lands
+      on the grid. **Exit:** every launch goes through the Title page, including both choosers and
+      the sync panel; a game with no fan art still looks finished.
+- [ ] **H3 — motion pass.** Implement the spec's motion section with compositor animations,
+      transform and opacity only, pre-rendered shadows, no per-frame blur. Selector spring (the
+      spring keeps its speed when retargeted), focus lift, breathing glow, edge bump, folder focus /
+      open / close, the top-screen centre pop with the held-direction debounce, page slides, the
+      bottom-to-top launch (cover lifts off the Launcher, lands on the Stage, zooms into the
+      emulator). Start from the mockup's constants and tune on the device; write the final numbers
+      into the spec. **Exit:** judged by feel on the Thor by the owner, not by checklist. The
+      selector is visible on the first frame of every transition.
+- [ ] **H4 — arranging home.** `HandheldHomeLayout` in Core (pages of slots holding a platform
+      folder, a user folder, a game pin, or a system tile; user folders with name, colour, ordered
+      ids and sort mode) and `IHandheldHomeLayoutStore` → portable `Settings/handheld-home.json`,
+      the same pattern as `FileSecondScreenDockStore`. Reconciliation: new platform appended with a
+      "New" ribbon, platform without games removed with its slot left empty, removed games dropped
+      from every folder and pin, missing files dimmed. A game may be in several places at once
+      (decision 12). Move mode with pad and touch; dropping a game on a game makes a folder, on a
+      user folder adds it. Create a folder from an empty slot, from the merge, or from Y → Add to
+      folder…; naming on the bottom screen through `AndroidOnScreenKeyboardService` while the Stage
+      shows the folder, with colour chips. Rename, recolour, delete (games kept, confirmation says
+      so). Pin to home, remove from home, with every "Remove" naming its place. The Recent folder,
+      made for you from the Recently Played source, newest first, sort chip hidden. The empty-folder
+      state. Sort chip Manual / A–Z / Last played / Most played. Tests cover the model, store and
+      reconciliation on macOS. **Exit:** the layout survives a cold start and a reinstall-style
+      restore of `Settings/`.
+- [ ] **H5 — screen swap.** X re-hosts the Stage and Launcher between displays with the slide
+      (precedent: `MainScreenCompanion` re-hosting in `SecondScreenController`). Selection, open
+      folder and scroll position survive; `IsSwapped` is remembered. On the narrow screen the Stage
+      moves its hint and achievement pills to the top-left and widens the plate, as in the mockup;
+      the Launcher on the 16:9 screen gets a layout of its own (7×3 at the same tile size with the
+      page label in the spare height — decide and record), not the centred 5×4.
+- [ ] **H6 — companion, actions, system, idle and sound.** The in-game companion restyled on the
+      Launcher's dark palette with every feature kept (resting dim, one panel at a time with
+      Achievements / Photos on LB/RB, full badge grid with All / Locked / Unlocked, photo viewer,
+      dock) and the D-pad reaching all of it. The Y sheet with every Gamepad action plus the new
+      ones. The Start menu as a page of tiles (Search, Add games, Achievements, Settings, Switch
+      mode, Sounds). Settings as master-detail across the screens: sections and rows on the bottom
+      using today's row kinds from `GamepadSettingsViewModel`, the focused row's description and
+      value on the top. Search with the keyboard below and results above. Idle drift: after fifteen
+      seconds the Stage drifts through recent games on a slow crossfade, the first press only wakes
+      it. Five original sound effects (move, open, close, confirm, back) with an off switch. Dock
+      icons loaded at about 512 px with one colour picked per app. **Exit:** nothing a Gamepad-mode
+      user can do is missing in Handheld mode.
+- **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
+      single-screen fallback; other dual-screen devices; whether the companion steps aside for
+      DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).

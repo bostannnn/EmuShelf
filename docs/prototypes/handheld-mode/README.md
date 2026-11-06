@@ -1,10 +1,11 @@
 # Handheld mode: interactive mockup and handoff
 
-**Status (2026-11-06): exploration, not approved.** After four rounds Andrew's verdict was "not
-completely sold yet, it still feels very unfinished." An independent review
-([`REVIEW.md`](REVIEW.md)) found the cause to be missing rules rather than missing polish, and
-round 5 built its five-item list. Nothing has been built in the app. Nothing is in `ROADMAP.md`
-or `DECISIONS.md` yet.
+**Status (2026-11-06): baseline agreed, nothing built yet.** After four rounds Andrew's verdict
+was "not completely sold yet, it still feels very unfinished." An independent review
+([`REVIEW.md`](REVIEW.md)) found the cause to be missing rules rather than missing polish, round 5
+built its five-item list, and two polish passes followed. The build plan is `ROADMAP.md` → M45
+(sub-milestones H0–H6, one per session); the decisions are in `DECISIONS.md` under 2026-11-06.
+This mockup is the visual contract for that build.
 
 This folder holds everything produced so far, so another person or agent can pick it up, review it
 or push it further.

@@ -1,8 +1,8 @@
 # Handheld Mode — a third, dual-screen interface
 
-Status: proposal (2026-11-06), still in design. After four mockup rounds the owner is not sold yet:
-"it still feels very unfinished". Nothing is built. It is not yet in `ROADMAP.md`; once agreed, add
-a milestone there and record the non-obvious calls in `DECISIONS.md`.
+Status: baseline agreed (2026-11-06) after five mockup rounds and a review. Nothing is built yet.
+The build plan is `ROADMAP.md` M45 (sub-milestones H0–H6); the decisions are recorded in
+`DECISIONS.md` under 2026-11-06.
 
 **Handoff:** [docs/prototypes/handheld-mode/](docs/prototypes/handheld-mode/) has the interactive
 mockup (`index.html`), Andrew's Cocoon reference photos, the round-by-round feedback log, an honest
@@ -408,6 +408,10 @@ file picker and Desktop mode.
   are handled.
 
 ## Phases
+
+**The build plan is `ROADMAP.md` → M45**, which turns these phases into sub-milestones H0–H6 with
+exit criteria and the code each one touches; run one per session with `/milestone M45 H<n>`. The
+phases below are kept as the original sketch.
 
 Each phase must be usable and checked on the Thor before the next one starts. Screen-2 is
 `FLAG_SECURE`, so checking it on the device means hands on the device plus logs, not screenshots.

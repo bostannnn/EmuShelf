@@ -12392,3 +12392,46 @@ handed off. They fail without the guard (hide cases) or with the non-sticky vers
 case). Thor re-measure is pending: the Thor runs Andrew's CI 1.8.7, and sideloading means an
 uninstall. Recipe: `/proc/<pid>/task/<pid>/sched` `sum_exec_runtime` and `nr_voluntary_switches`
 over 20 s, settled on the grid. Expect <1% and roughly 0 wakeups/s.
+
+## 2026-11-06 — Handheld mode baseline
+
+A third interface mode for dual-screen Android handhelds (the AYN Thor) beside Desktop and Gamepad:
+a 3DS-style launcher you arrange on the bottom screen, the selected thing shown large on the top.
+Designed through five mockup rounds and an independent review; the spec is `HANDHELD-MODE.md`,
+the mockup and review are in `docs/prototypes/handheld-mode/`, the build plan is `ROADMAP.md` M45.
+The owner's verdict after round 5: a baseline to start building from.
+
+The decisions that shape the build, in the spec's numbering:
+
+1–10. A third mode, Android dual-screen only; you arrange home; current cover art on tiles; monogram
+folder faces, no console art; the dock is today's companion dock; the bottom screen is today's
+companion while a game runs; every core feature stays.
+
+11. Home is a place with slots. All forty slots are drawn faintly, the selector lands on any of
+them, and A on an empty slot makes a folder there. Why: the 3DS gesture is the discoverable way to
+make a folder; a sub-menu of a sub-menu was the reason "how do I make folders" kept coming up.
+
+12. A game can be in several places at once: always in its platform folder, optionally pinned to
+home and in any of your folders. Pins and your folders are references, never moves, so platform
+folders stay complete. Every "Remove" names the place it means; "Remove from library" stays a
+separate action.
+
+13. A on a game opens its Title page; Play is a second press. The disc chooser, the launch-screen
+chooser and the save-sync panel are states of that page, not overlays on a launch that already
+started. Why: launching means starting an external emulator after several choices; the Wii channel
+page and the 3DS banner are the model.
+
+14. A Recent folder is made for you, like the platform folders. After fifteen seconds idle the top
+screen drifts through recent games; the first press only wakes it.
+
+15. Fan art and logos on the top screen from day one. They are already scraped (`Fanart`, `Wheel`)
+and drawn by the Gamepad spotlight hero; the artwork palette engine tints the selector glow, the
+Title page and the backdrop. The selector frame itself stays the app's indigo.
+
+16. Look: a light, airy white-and-grey default on the theme catalogue's indigo, with a dark variant
+from the dark theme. Nunito for names and plates; the system face for chrome. One screen-edge
+margin wide enough for a focused element's ring and glow.
+
+Also fixed by the review: anything that travels uses a real spring; the top screen changes once
+per move; the selector never disappears across a transition; nothing on the top screen moves
+unless the bottom screen caused it, the idle drift excepted.
