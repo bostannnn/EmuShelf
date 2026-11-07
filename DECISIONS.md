@@ -12925,3 +12925,45 @@ anything animates, ~10 ms of UI thread per GL frame around `OpenGlControlBase`),
   The top screen is now cheap; what is left on the render thread is the Launcher (bottom screen), which
   still redraws at 120 Hz while its selector, lift and column track animate. The UI thread now also takes
   the pictures (centre and plate once per move, ~10 points while scrolling home).
+
+## 2026-11-07 — M45 H4: the Handheld Launcher draws natively on Android too
+
+After the native Stage, what was left on Avalonia's render thread was the Launcher redrawing at 120 Hz while
+its selector, lift and tracks animated. The owner chose to do the bottom screen the same way.
+
+- **Same split as the Stage.** `LauncherCompositor` (`EmuShelf.Rendering/Stage`) draws pictured sprites in
+  groups (background, home, page dots, folder, dock) and runs all the Launcher's motion on its own GL thread:
+  the home page and folder column tracks (250/31.5 springs that keep their speed, the column held to one
+  column of lag), the focus lift (1.13× on cubic-bezier(.34, 1.42, .64, 1), with the game tile's deeper
+  pre-rendered shadow fading in), the selector (560/43 springs in position, size and corner radius toward
+  the focused ring at its lifted size, riding the target's track), its glow (the same `HandheldShadow`
+  bitmap, pictured once per size, breathing 8 half cycles after a move), the edge bump and the Zoom through
+  (the closing folder's sprites are kept and shrunk, as the Avalonia ghost was). The selector's bands are a
+  rounded-rect distance shader (radii r, r−4, r−18, r−22, as the nested Borders), since its size and radius
+  change every frame and cannot be one picture. `LauncherMotion` mirrors `HandheldMotion`'s numbers; a test
+  keeps them equal.
+- **The feed** (`HandheldNativeLauncherFeed`) walks the realized containers after layout and pictures a
+  piece only when its content key changes (cover, title, peek covers, sort label, icon). Sprites rest where
+  layout puts them with the tracks at zero (folder tiles at their absolute column, the window's shift added
+  back); the native side adds the tracks' offsets. Wrappers (`Border.shot`, padding with an equal negative
+  margin) keep layout identical. While native, the hidden Avalonia Launcher neither lifts nor animates
+  (`Panel.native` styles, `frozen` folder art) and `HandheldLauncherMotion.IsOnScreen` stops its ticking.
+- **One Android host for both screens**: `NativeSceneSurface` (generalised from the Stage's), retaining the
+  latest command per `StageCommand.RetainKey` to rebuild a lost context. The Presentation attaches the
+  Launcher's and hides it while Screen-2 shows the companion.
+- **Still on Avalonia:** the Title page, the menu and the All apps drawer (the feed hands the screen back
+  while one is open), the launch lift (it starts on the Title page), and the folder flap's glide (the home
+  tile's peek changes at once, as on the Stage).
+- **Measured on the Thor** (Release, JIT, same suite; "old" is ca82c07, both screens on Avalonia; CPU in % of
+  one core; "GL" is the two native threads together):
+
+  | Case | Avalonia render | UI | GL | Total | GPU |
+  |---|---|---|---|---|---|
+  | Idle on home, old → new | 6% → 0% | 6% → 1% | 2% | 12% → 3% | 0% → 0% |
+  | Idle on a game, old → new | 11% → 0% | 25% → 16% | 3% | 36% → 19% | 8% → 3% |
+  | Scrolling home (5/s), old → new | 69% → 3% | 22% → 32% | 23% | 91% → 58% | 12% → 13% |
+  | Scrolling a folder (6/s), old → new | 92% → 0% | 38% → 33% | 24% | 130% → 57% | 32% → 12% |
+  | Holding right, old → new | 67% → 4% | 49% → 44% | 17% | 116% → 65% | 26% → 12% |
+
+  What is left is mostly the UI thread: the shell's own work per press, the pictures of new pieces (a GPU
+  round trip each on Android), and on a game the medium's 20 Hz sway timer.

@@ -18,7 +18,7 @@ namespace EmuShelf.Rendering.Stage;
 /// Not thread-safe: the host applies commands and draws on its render thread. <paramref name="requestRender"/>
 /// may be called from any thread (a shell finished loading).
 /// </remarks>
-public sealed class StageCompositor : IDisposable
+public sealed class StageCompositor : INativeScene
 {
     public const float CanvasWidth = 1920f;
     public const float CanvasHeight = 1080f;
@@ -74,7 +74,7 @@ public sealed class StageCompositor : IDisposable
     }
 
     /// <summary>The backdrop's step interval while it has something moving; null when it is still.</summary>
-    public float? DriftStepMilliseconds => _backdrop?.Backdrop is { Tile: not null } or { Quad: not null }
+    public float? NextFrameMilliseconds => _backdrop?.Backdrop is { Tile: not null } or { Quad: not null }
         ? _backdrop.Backdrop.StepMilliseconds
         : null;
 

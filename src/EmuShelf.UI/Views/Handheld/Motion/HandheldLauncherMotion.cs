@@ -103,13 +103,61 @@ internal sealed class HandheldLauncherMotion
         view.AttachedToVisualTree += (_, _) =>
         {
             // A fresh composition visual (first show, or a re-host) starts breathing again.
-            Breathe();
+            if (_onScreen)
+                Breathe();
             _selectorShown = false;
             _lastFrame = null;
             RequestTick();
         };
         view.DetachedFromVisualTree += (_, _) => _ticking = false;
         view.LayoutUpdated += (_, _) => RequestTick();
+    }
+
+    /// <summary>
+    /// False while the native Launcher draws Screen-2 (this view is then only pictured): no spring ticks, no
+    /// compositor animations, the tracks at rest and the selector hidden. True again hands the screen back.
+    /// </summary>
+    public bool IsOnScreen
+    {
+        get => _onScreen;
+        set
+        {
+            if (_onScreen == value)
+                return;
+            _onScreen = value;
+            _selectorLayer.IsVisible = value;
+            if (!value)
+            {
+                _ticking = false;
+                _pageShift.X = 0;
+                _indicatorShift.X = 0;
+                _folderShift.X = 0;
+                _homeLayer.Opacity = _shell?.OpenFolder is null ? 1 : 0;
+                return;
+            }
+            _pagePlaced = false;
+            _selectorShown = false;
+            _lastFrame = null;
+            _homeLayer.Opacity = _shell?.OpenFolder is null ? 1 : 0;
+            RequestTick();
+        }
+    }
+
+    private bool _onScreen = true;
+
+    /// <summary>The element that holds the focus now (the most recently focused one still on screen).</summary>
+    public Control? FocusedAnchor()
+    {
+        for (var i = _anchors.Count - 1; i >= 0; i--)
+        {
+            var anchor = _anchors[i];
+            if (anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible && HandheldSelectorAnchor.GetIsFocused(anchor) &&
+                !_titleLayer.IsVisualAncestorOf(anchor))
+            {
+                return anchor;
+            }
+        }
+        return null;
     }
 
     private T Find<T>(string name) where T : Control =>
@@ -146,7 +194,8 @@ internal sealed class HandheldLauncherMotion
         if (isFocused)
         {
             _anchors.Add(anchor);
-            Breathe();
+            if (_onScreen)
+                Breathe();
         }
         RequestTick();
     }
@@ -177,6 +226,8 @@ internal sealed class HandheldLauncherMotion
 
     private void OnBumped(HandheldDirection direction)
     {
+        if (!_onScreen)
+            return;
         _bumpDirection = direction;
         _bumpStart = null; // stamped on the next frame
         _bumpPending = true;
@@ -234,6 +285,11 @@ internal sealed class HandheldLauncherMotion
 
     private void ApplyColumn()
     {
+        if (!_onScreen)
+        {
+            _folderShift.X = 0;
+            return;
+        }
         var behind = _folder is { } folder ? folder.FirstVisibleColumn - folder.WindowFirstColumn : 0;
         _folderShift.X = (-behind * ColumnPitch) + _column.Value;
     }
@@ -246,6 +302,8 @@ internal sealed class HandheldLauncherMotion
         // hidden until the page has landed.
         var zoom = ++_zoom;
         _folderOrigin = HomeSlotCentre(folder.HomeSlot) ?? new Point(PageWidth / 2, 400);
+        if (!_onScreen)
+            return;
         HideSelector();
         var ease = HandheldMotion.ZoomEase();
         if (HomeSlotContainer(folder.HomeSlot) is { } slot)
@@ -279,6 +337,8 @@ internal sealed class HandheldLauncherMotion
         // The reverse. The page is about to go, so picture it whole and shrink the picture back into the
         // folder's place while home fades in and the tile comes back from 2.6× with its flap closing.
         ++_zoom;
+        if (!_onScreen)
+            return;
         HideSelector();
         var origin = HomeSlotCentre(folder.HomeSlot) ?? _folderOrigin;
         var page = Ghost(_folderPage);
@@ -384,6 +444,8 @@ internal sealed class HandheldLauncherMotion
 
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
+        if (!_onScreen)
+            return;
         Dispatcher.UIThread.Post(() =>
         {
             var total = HandheldMotion.PressMilliseconds + HandheldMotion.LaunchLiftMilliseconds;
@@ -402,7 +464,7 @@ internal sealed class HandheldLauncherMotion
 
     private void RequestTick()
     {
-        if (_ticking || TopLevel.GetTopLevel(_view) is not { } top)
+        if (!_onScreen || _ticking || TopLevel.GetTopLevel(_view) is not { } top)
             return;
         _ticking = true;
         top.RequestAnimationFrame(OnFrame);

@@ -56,3 +56,46 @@ public class StageCompositorMathTests
         Assert.Equal(Vector2.Zero, StageCompositor.DriftOffset(backdrop, 22000));
     }
 }
+
+/// <summary>The native Launcher moves by the same numbers as the Avalonia Launcher.</summary>
+public class LauncherMotionNumbersTests
+{
+    [Fact]
+    public void NativeNumbers_MatchTheAvaloniaLaunchers()
+    {
+        Assert.Equal(LauncherMotion.SelectorStiffness, HandheldMotion.Selector.Stiffness);
+        Assert.Equal(LauncherMotion.SelectorDamping, HandheldMotion.Selector.Damping);
+        Assert.Equal(LauncherMotion.TrackStiffness, HandheldMotion.Track.Stiffness);
+        Assert.Equal(LauncherMotion.TrackDamping, HandheldMotion.Track.Damping);
+        Assert.Equal(LauncherMotion.LiftScale, HandheldMotion.LiftScale, 5);
+        Assert.Equal(LauncherMotion.LiftMilliseconds, HandheldMotion.LiftMilliseconds);
+        Assert.Equal(LauncherMotion.BreathHalfCycleMilliseconds, HandheldMotion.BreathHalfCycleMilliseconds);
+        Assert.Equal(LauncherMotion.BreathHalfCycles, HandheldMotion.BreathHalfCycles);
+        Assert.Equal(LauncherMotion.BumpFraction, HandheldMotion.BumpFraction, 5);
+        Assert.Equal(LauncherMotion.ZoomTileScale, HandheldMotion.ZoomTileScale, 5);
+        Assert.Equal(LauncherMotion.ZoomSheetFromScale, HandheldMotion.ZoomSheetFromScale, 5);
+        Assert.Equal(LauncherMotion.ZoomSheetInMilliseconds, HandheldMotion.ZoomSheetInMilliseconds);
+        Assert.Equal(LauncherMotion.ZoomSheetOutMilliseconds, HandheldMotion.ZoomSheetOutMilliseconds);
+        Assert.Equal(LauncherMotion.ZoomTileInMilliseconds, HandheldMotion.ZoomTileInMilliseconds);
+        Assert.Equal(LauncherMotion.ZoomSelectorHiddenMilliseconds, HandheldMotion.ZoomSelectorHiddenMilliseconds);
+    }
+
+    [Fact]
+    public void Breathing_StartsAndEndsAtFullStrength()
+    {
+        Assert.Equal(1f, LauncherMotion.Breath(0), 3);
+        Assert.Equal(LauncherMotion.BreathLow, LauncherMotion.Breath(600), 3);
+        Assert.Equal(1f, LauncherMotion.Breath(4800), 3);
+        Assert.Equal(1f, LauncherMotion.Breath(10000), 3);
+    }
+
+    [Fact]
+    public void TrackSpring_CanBeHeldToOneColumnOfLag()
+    {
+        var spring = new SceneSpring(LauncherMotion.TrackStiffness, LauncherMotion.TrackDamping);
+        spring.Snap(0);
+        spring.Retarget(-264 * 3);
+        spring.Limit(264);
+        Assert.Equal(-264 * 2, spring.Value, 3);
+    }
+}

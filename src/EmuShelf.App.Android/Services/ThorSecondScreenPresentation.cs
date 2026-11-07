@@ -72,10 +72,15 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         if (handheld is null)
         {
             IsShowingLauncher = false;
+            NativeSceneSurface.Launcher.SetAllowed(false);
             if (!ReferenceEquals(_avaloniaView.Content, _companionView))
                 _avaloniaView.Content = _companionView;
             return;
         }
+        // The Launcher draws natively over the Avalonia view (M45 H4, option 5); the view lends it pictures.
+        NativeSceneSurface.Launcher.AttachTo(this, Context, view => AddContentView(view,
+            new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)));
+        NativeSceneSurface.Launcher.SetAllowed(true);
         _launcherView ??= new global::EmuShelf.App.Views.HandheldLauncherView();
         _launcherView.DataContext = handheld;
         IsShowingLauncher = true;
@@ -154,6 +159,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         if (_released)
             return;
         _released = true;
+        NativeSceneSurface.Launcher.SetAllowed(false);
         // Dispose the fan-art/logo bitmaps and the achievement badge bitmaps the model owns (all loaded
         // per focus, not shared), so tearing the presentation down — e.g. the second screen being
         // unplugged — does not leak them.

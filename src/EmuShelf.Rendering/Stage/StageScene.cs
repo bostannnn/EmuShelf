@@ -32,27 +32,68 @@ public sealed record StageBackdrop(
 /// <summary>A game's physical medium drawn by <see cref="MediaShellRenderer"/> into its own texture.</summary>
 public sealed record StageMedium(MediaShell Shell, Vector3 LinearAccent, float X, float Y, float Width, float Height);
 
-/// <summary>Everything the native Stage is told, posted from the UI thread and applied on the render thread.</summary>
-public abstract record StageCommand;
+/// <summary>
+/// Everything a native scene is told, posted from the UI thread and applied on the render thread. A command
+/// with a <see cref="RetainKey"/> is state: the host keeps the latest one per key and replays it (as
+/// <see cref="ForReplay"/>, without its animation) into a rebuilt context. A command without one is a moment
+/// (a pop, a bump) that a rebuilt context does not need.
+/// </summary>
+public abstract record StageCommand
+{
+    public virtual string? RetainKey => null;
+
+    /// <summary>True when the command takes its piece away (the host forgets that key).</summary>
+    public virtual bool Removes => false;
+
+    public virtual StageCommand ForReplay() => this;
+}
+
+/// <summary>A scene a native surface draws on its render thread (the Stage, the Launcher).</summary>
+public interface INativeScene : IDisposable
+{
+    void Apply(StageCommand command, float now);
+
+    /// <summary>Draws a frame into the bound default framebuffer; returns whether something still animates.</summary>
+    bool Draw(float now, int surfaceWidth, int surfaceHeight);
+
+    /// <summary>When nothing animates: how soon the scene wants another frame (a stepped drift), or null.</summary>
+    float? NextFrameMilliseconds { get; }
+}
 
 /// <summary>A new (or no) backdrop; it crossfades over the old one.</summary>
-public sealed record StageBackdropCommand(StageBackdrop? Backdrop) : StageCommand;
+public sealed record StageBackdropCommand(StageBackdrop? Backdrop) : StageCommand
+{
+    public override string? RetainKey => "backdrop";
+}
 
 /// <summary>
 /// What the centre shows (a picture, or the medium) and the name plate. <paramref name="Pop"/> plays the
 /// focus change: the centre grows from 0.72× on the spring, the plate from 0.94×. Without it the pictures
 /// are simply replaced (a cover that finished loading, a folder flap that settled).
 /// </summary>
-public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop) : StageCommand;
+public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop) : StageCommand
+{
+    public override string? RetainKey => "centre";
+    public override StageCommand ForReplay() => this with { Pop = false };
+}
 
 /// <summary>The medium's pose, in radians.</summary>
-public sealed record StageMediumPoseCommand(float Yaw, float Pitch) : StageCommand;
+public sealed record StageMediumPoseCommand(float Yaw, float Pitch) : StageCommand
+{
+    public override string? RetainKey => "pose";
+}
 
 /// <summary>The cover printed on the medium (straight-alpha RGBA, as the renderer uploads it).</summary>
-public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand;
+public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand
+{
+    public override string? RetainKey => "cover";
+}
 
 /// <summary>A corner pill or toast, by name; null removes it.</summary>
-public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCommand;
+public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCommand
+{
+    public override string? RetainKey => "chrome:" + Key;
+}
 
 /// <summary>
 /// The Stage's motion curves, the same numbers as the Avalonia Stage (HANDHELD-MODE.md, Numbers as built):

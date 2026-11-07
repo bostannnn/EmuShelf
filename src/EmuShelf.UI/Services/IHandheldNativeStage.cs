@@ -26,5 +26,9 @@ public interface IHandheldNativeStage
 /// <summary>Where the platform head registers its native Stage, if it has one.</summary>
 public static class HandheldNativeStage
 {
+    /// <summary>The top screen's native surface.</summary>
     public static IHandheldNativeStage? Host { get; set; }
+
+    /// <summary>The bottom screen's (the Launcher's) native surface.</summary>
+    public static IHandheldNativeStage? Launcher { get; set; }
 }

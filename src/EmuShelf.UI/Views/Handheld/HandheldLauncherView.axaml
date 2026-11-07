@@ -77,6 +77,19 @@
       <Setter Property="Opacity" Value="1" />
     </Style>
 
+    <!--
+      Native mode (Android, M45 H4 option 5): this view is only pictured, so nothing in it animates (an invisible
+      transition still costs Avalonia frames) and nothing is lifted (the native Launcher lifts its pictures).
+    -->
+    <Style Selector="Panel.native Panel.focusable">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
+    <Style Selector="Panel.native vh|HandheldShadow.lift">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
+
     <!-- Header chips: a raised white surface with a hairline. -->
     <Style Selector="Border.chip">
       <Setter Property="Background" Value="#FFFFFF" />
@@ -174,13 +187,13 @@
     </ControlTheme>
   </UserControl.Resources>
 
-  <Panel>
+  <Panel x:Name="Root">
   <Viewbox Stretch="Uniform" ClipToBounds="False">
     <Grid x:Name="Canvas" Width="1240" Height="1080" RowDefinitions="*,144">
 
       <!-- ===== Home: every page on one track that slides on the track spring ===== -->
       <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="0,48,0,0">
-        <Panel ClipToBounds="True">
+        <Panel x:Name="HomeClip" ClipToBounds="True">
           <ItemsControl x:Name="PageTrack" ItemsSource="{Binding Pages}" HorizontalAlignment="Left" ClipToBounds="False">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
@@ -200,6 +213,8 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="vm:HandheldHomeSlotViewModel">
+                        <!-- Room for the folder's shadow when the native Launcher pictures it; layout unchanged. -->
+                        <Border Classes="shot" Padding="48" Margin="-48">
                         <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}"
                                Width="176" Height="176" Margin="24,10">
                           <!-- A platform folder: its flap tilts while focused so the first covers peek out. -->
@@ -209,6 +224,7 @@
                                   Background="#40FFFFFF" />
                           <Border Classes="ring" CornerRadius="68" Margin="-24" />
                         </Panel>
+                        </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
@@ -220,7 +236,7 @@
 
         <!-- Page dots, with the current-page pill riding the track's position. -->
         <Panel Grid.Row="1" IsVisible="{Binding HasMultiplePages}" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <ItemsControl ItemsSource="{Binding PageDots}">
+          <ItemsControl x:Name="PageDots" ItemsSource="{Binding PageDots}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="12" />
@@ -249,6 +265,7 @@
       <Grid RowDefinitions="Auto,*" Margin="16,40,0,0">
         <!-- Header: Back, the folder's name and count, the sort chip; aligned to the grid's left edge. -->
         <Grid x:Name="FolderHeader" ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0">
+          <Border x:Name="BackShot" Classes="shot" Padding="24" Margin="-24">
           <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsBackFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
             <Border Classes="chip">
               <StackPanel Orientation="Horizontal" Spacing="8">
@@ -260,7 +277,8 @@
               <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
             </Border>
           </Panel>
-          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
+          </Border>
+          <StackPanel x:Name="FolderTitle" Grid.Column="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
                       VerticalAlignment="Center">
             <Border Width="20" Height="20" CornerRadius="10" Background="{Binding OpenFolder.AccentBrush}"
                     VerticalAlignment="Center" />
@@ -269,7 +287,8 @@
             <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="24" Foreground="#5B6176"
                        VerticalAlignment="Center" FontFeatures="+tnum" />
           </StackPanel>
-          <Panel Grid.Column="2" Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
+          <Border x:Name="SortShot" Grid.Column="2" Classes="shot" Padding="24" Margin="-24">
+          <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
             <Border Classes="chip">
               <TextBlock Classes="chip-text" Text="{Binding OpenFolder.SortLabel}" />
             </Border>
@@ -277,6 +296,7 @@
               <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
             </Border>
           </Panel>
+          </Border>
         </Grid>
 
         <!--
@@ -293,6 +313,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldGameTileViewModel">
+              <Border Classes="shot" Padding="48" Margin="-48" HorizontalAlignment="Left" VerticalAlignment="Center">
               <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
                      HorizontalAlignment="Left" VerticalAlignment="Center">
                 <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" />
@@ -316,12 +337,13 @@
                   <Border CornerRadius="76"><Border CornerRadius="64" /></Border>
                 </Border>
               </Panel>
+              </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
 
         <!-- Empty folder: say so rather than show nothing. -->
-        <StackPanel Grid.Row="1" IsVisible="{Binding OpenFolder.IsEmpty}" HorizontalAlignment="Center"
+        <StackPanel x:Name="FolderEmpty" Grid.Row="1" IsVisible="{Binding OpenFolder.IsEmpty}" HorizontalAlignment="Center"
                     VerticalAlignment="Center" Spacing="8" Margin="0,0,48,0">
           <TextBlock Text="This folder is empty" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
                      HorizontalAlignment="Center" />
@@ -332,12 +354,12 @@
       </Panel>
 
       <!-- ===== Dock: All apps, the five pinned apps, the menu button ===== -->
-      <vh:HandheldShadow Grid.Row="1" Margin="28,0,28,6" Height="152" Radius="40" Blur="20" Color="#14000000"
+      <vh:HandheldShadow x:Name="DockShadow" Grid.Row="1" Margin="28,0,28,6" Height="152" Radius="40" Blur="20" Color="#14000000"
                          VerticalAlignment="Bottom" />
-      <Border Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#C7FFFFFF"
+      <Border x:Name="DockPill" Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#C7FFFFFF"
               BorderBrush="#141C2033" BorderThickness="1" ClipToBounds="False"
               VerticalAlignment="Bottom">
-        <ItemsControl ItemsSource="{Binding DockItems}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+        <ItemsControl x:Name="DockItems" ItemsSource="{Binding DockItems}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                       ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -346,6 +368,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldDockItemViewModel">
+              <Border Classes="shot" Padding="16" Margin="-16">
               <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="80" Height="80">
                 <!-- System buttons are quiet: a raised surface and a muted glyph, never a dark block. -->
                 <Border CornerRadius="24" Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1"
@@ -368,6 +391,7 @@
                   <Border CornerRadius="36"><Border CornerRadius="24" /></Border>
                 </Border>
               </Panel>
+              </Border>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
