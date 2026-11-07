@@ -1,0 +1,584 @@
+<title>Handheld Folder Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&family=Figtree:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: a Thor-shaped stack (top screen over bottom screen) on the left, the two option rails and notes on the right; stacks to one column on a phone. */
+:root {
+  --page: #ECEEF3;
+  --panel: #FFFFFF;
+  --ink: #1C2033;
+  --muted: #5B6176;
+  --line: #1C20331F;
+  --accent: #5B58D9;
+  --accent-ink: #FFFFFF;
+  --shell: #2A2D38;
+  --f-ui: "Figtree", "Segoe UI", system-ui, sans-serif;
+  --f-device: "Nunito", "Figtree", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #14161D; --panel: #1E212B; --ink: #E9EBF2; --muted: #A2A8BC; --line: #E9EBF21F; --accent: #8C89F2; --accent-ink: #14161D; --shell: #0B0C10; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --page: #14161D; --panel: #1E212B; --ink: #E9EBF2; --muted: #A2A8BC; --line: #E9EBF21F; --accent: #8C89F2; --accent-ink: #14161D; --shell: #0B0C10; color-scheme: dark }
+
+body { background: var(--page); color: var(--ink); font-family: var(--f-ui); font-size: 15px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 40px; }
+.wrap { max-width: 1240px; margin: 0 auto; display: grid; gap: 20px; }
+header h1 { font-size: 26px; line-height: 1.15; margin: 0; text-wrap: balance; font-weight: 700; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 68ch; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+/* ---------- Device ---------- */
+.device { background: var(--shell); border-radius: 28px; padding: 14px; display: grid; gap: 10px; justify-items: center; }
+.stage-host { width: 100%; aspect-ratio: 960 / 540; position: relative; }
+.launch-host { width: 64.6%; aspect-ratio: 620 / 540; position: relative; }
+.scr { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; border-radius: 6px; font-family: var(--f-device); color: #1C2033; }
+#top { width: 960px; height: 540px; background: #EEF0F5; }
+#bot { width: 620px; height: 540px; background: linear-gradient(#FAFBFD, #E4E8EF); }
+.hint-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; width: 100%; }
+.pad { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.pad button { font: 600 13px/1 var(--f-ui); min-width: 40px; height: 34px; padding: 0 10px; border-radius: 17px; border: 1px solid #FFFFFF26; background: #FFFFFF14; color: #E9EBF2; cursor: pointer; }
+.pad button:hover { background: #FFFFFF26; }
+.pad button:focus-visible { outline: 2px solid #8C89F2; outline-offset: 2px; }
+.pad .a { background: #5B58D9; border-color: transparent; }
+.pad .b { background: #C24A57; border-color: transparent; }
+
+/* ---------- Controls ---------- */
+.side { display: grid; gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 16px; display: grid; gap: 10px; min-width: 0; }
+.card h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 700; }
+.opts { display: grid; gap: 6px; }
+.opt { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 2px 10px; align-items: start; text-align: left; padding: 9px 10px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--ink); cursor: pointer; font: inherit; }
+.opt:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.opt[aria-pressed="true"] { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.opt .k { grid-row: span 2; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font: 700 13px/1 var(--f-ui); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.opt[aria-pressed="true"] .k { background: var(--accent); color: var(--accent-ink); }
+.opt b { font-weight: 650; font-size: 14.5px; }
+.opt span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btn { font: 600 13px/1 var(--f-ui); height: 32px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+.btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.note { color: var(--muted); font-size: 13px; margin: 0; }
+kbd { font: 600 12px/1 var(--f-ui); padding: 2px 6px; border-radius: 5px; border: 1px solid var(--line); background: color-mix(in srgb, var(--ink) 5%, transparent); }
+
+/* ---------- Bottom screen (Launcher) ---------- */
+.layer { position: absolute; inset: 0; }
+.tile { position: absolute; width: 88px; height: 88px; }
+.tile .lift { position: absolute; inset: 0; transition: transform 220ms cubic-bezier(.34,1.42,.64,1); }
+.tile.focus .lift { transform: scale(1.1); }
+.empty { position: absolute; inset: 0; border-radius: 22px; border: 1.5px solid #46508829; background: #FFFFFF40; }
+.fold { position: absolute; inset: -4px; }
+.fold .back { position: absolute; left: 3%; right: 3%; top: 13%; bottom: 4%; border-radius: 19%; background: var(--c); box-shadow: 0 6px 14px #00000024; }
+.fold .back::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: #14183047; }
+.fold .peek { position: absolute; left: 8%; right: 8%; top: 4%; height: 66%; }
+.fold .peek i { position: absolute; left: 32%; top: 6%; width: 36%; aspect-ratio: .71; border-radius: 8%; transform: translate(var(--dx), 46%) rotate(var(--r)); transition: transform 360ms cubic-bezier(.34,1.3,.64,1); box-shadow: 0 1px 3px #0005; }
+.fold .front { position: absolute; left: 3%; right: 3%; bottom: 4%; top: 27%; border-radius: 18%; background: linear-gradient(180deg, color-mix(in srgb, var(--c) 58%, white), var(--c) 78%); transform-origin: 50% 100%; transition: transform 300ms cubic-bezier(.34,1.3,.64,1); box-shadow: inset 0 2px 0 #FFFFFF73; display: grid; place-items: center; color: #fff; font-weight: 900; font-size: 1.25em; letter-spacing: -.01em; }
+.fold.peeking .front { transform: scaleY(.86); }
+.fold.peeking .peek i { transform: translate(var(--dx), 4%) rotate(var(--r)); }
+.fold.open .front { transform: scaleY(.5); }
+.fold.open .peek i { transform: translate(var(--dx), -14%) rotate(var(--r)); }
+.cover { border-radius: 14px; overflow: hidden; position: relative; background: var(--g); color: #fff; }
+.cover::before { content: ""; position: absolute; inset: 0; background: linear-gradient(160deg, #FFFFFF38, #FFFFFF00 45%), radial-gradient(120% 70% at 80% 110%, #0007, #0000 60%); }
+.cover em { position: absolute; left: 8%; right: 8%; bottom: 9%; font: 900 15px/1.05 var(--f-device); font-style: normal; text-wrap: balance; text-shadow: 0 1px 2px #0006; }
+.cover .band { position: absolute; left: 0; right: 0; top: 0; height: 10%; background: #0006; }
+.gtile { position: absolute; width: 116px; height: 116px; }
+.gtile .lift { position: absolute; inset: 0; transition: transform 220ms cubic-bezier(.34,1.42,.64,1); }
+.gtile.focus .lift { transform: scale(1.1); }
+.gtile .cover { position: absolute; inset: 0; border-radius: 26px; box-shadow: 0 5px 12px #00000026; }
+.gtile .cover em { font-size: 13px; }
+.fheader { position: absolute; left: 24px; right: 24px; top: 18px; height: 40px; display: flex; align-items: center; gap: 12px; }
+.chip { height: 34px; padding: 0 14px; border-radius: 17px; background: #fff; box-shadow: 0 1px 4px #0001, inset 0 0 0 1px #1C203314; display: flex; align-items: center; gap: 6px; font: 800 14px/1 var(--f-device); }
+.fname { flex: 1; display: flex; gap: 10px; align-items: center; justify-content: center; font: 800 17px/1 var(--f-device); }
+.fname i { width: 11px; height: 11px; border-radius: 50%; background: var(--c); }
+.fname small { font: 700 13px/1 var(--f-device); color: #5B6176; }
+.dock { position: absolute; left: 24px; right: 24px; bottom: 14px; height: 56px; border-radius: 20px; background: #FFFFFFC7; box-shadow: 0 3px 10px #00000014, inset 0 0 0 1px #1C203314; display: flex; gap: 14px; justify-content: center; align-items: center; }
+.dock span { width: 40px; height: 40px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px #1C203314; }
+.dock span:nth-child(2) { background: linear-gradient(160deg, #6FD691, #2E9E5B); }
+.dock span:nth-child(3) { background: linear-gradient(160deg, #F2AE2E, #D2741C); }
+.dock span:nth-child(4) { background: linear-gradient(160deg, #6AA8F0, #2F64C9); }
+.sel { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 20; }
+.sel .glow { position: absolute; inset: -10px; border-radius: 34px; box-shadow: 0 0 22px 6px #5B58D9AA; animation: breathe 1.2s ease-in-out infinite alternate; }
+.sel .ring { position: absolute; inset: 0; border-radius: 30px; border: 7px solid #5B58D9; box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #fff; }
+@keyframes breathe { from { opacity: .45 } to { opacity: 1 } }
+.panel { position: absolute; border-radius: 28px; background: var(--c); transform-origin: 0 0; }
+
+/* ---------- Top screen (Stage) ---------- */
+.bd { position: absolute; inset: 0; overflow: hidden; }
+.bd-layer { position: absolute; inset: 0; }
+.st-centre { position: absolute; left: 0; right: 0; top: 0; bottom: 80px; display: grid; place-items: center; }
+.st-art { position: absolute; display: grid; place-items: center; }
+.big-fold { position: relative; width: 210px; height: 210px; font-size: 44px; }
+.big-fold .fold { inset: 0; }
+.big-fold .fold .back, .big-fold .fold .front { border-radius: 22%; }
+.big-cover { width: 200px; height: 282px; border-radius: 12px; box-shadow: 0 14px 30px #0004, 0 0 0 4px #FFFFFFD9; }
+.big-cover em { font-size: 26px; }
+.plate { position: absolute; left: 50%; bottom: 30px; transform: translateX(-50%); min-width: 280px; max-width: 560px; padding: 10px 26px; border-radius: 16px; background: #FFFFFFF2; box-shadow: 0 3px 12px #00000014, inset 0 0 0 1px #1C203314; text-align: center; }
+.plate b { display: block; font: 800 26px/1.15 var(--f-device); }
+.plate small { display: block; font: 700 14px/1.3 var(--f-device); color: #5B6176; }
+.pill { position: absolute; top: 22px; right: 22px; height: 30px; padding: 0 12px; border-radius: 15px; background: #FFFFFFE6; display: flex; align-items: center; gap: 10px; font: 800 13px/1 var(--f-device); box-shadow: 0 2px 8px #00000014; }
+.slow-badge { position: absolute; top: 22px; left: 22px; height: 26px; padding: 0 10px; border-radius: 13px; background: #1C2033CC; color: #fff; font: 800 12px/26px var(--f-device); }
+@media (prefers-reduced-motion: reduce) { .sel .glow { animation: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Handheld folder lab</h1>
+    <p>Four calmer ways to open and close a folder, and five backgrounds for the top screen behind it, on a two-screen frame shaped like the Thor. Try each one with the pad below the screens or the keyboard. Covers and titles are made up.</p>
+  </header>
+
+  <div class="main">
+    <section class="device" aria-label="Thor mockup">
+      <div class="stage-host"><div class="scr" id="top"></div></div>
+      <div class="launch-host"><div class="scr" id="bot"></div></div>
+      <div class="pad" role="group" aria-label="Pad">
+        <button id="kL" aria-label="Left">◀</button><button id="kU" aria-label="Up">▲</button><button id="kD" aria-label="Down">▼</button><button id="kR" aria-label="Right">▶</button>
+        <button id="kA" class="a">A · open</button><button id="kB" class="b">B · back</button>
+      </div>
+    </section>
+
+    <aside class="side">
+      <div class="card">
+        <h2>Folder open and close</h2>
+        <div class="opts" id="motionOpts"></div>
+      </div>
+      <div class="card">
+        <h2>Top-screen background</h2>
+        <div class="opts" id="bgOpts"></div>
+      </div>
+      <div class="card">
+        <h2>Playback</h2>
+        <div class="row">
+          <button class="btn" id="slow" aria-pressed="false">Slow motion ×4</button>
+          <button class="btn" id="demo">Play open and close</button>
+        </div>
+        <p class="note">Keys: <kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> move, <kbd>Enter</kbd> or <kbd>A</kbd> opens, <kbd>Esc</kbd> or <kbd>B</kbd> goes back, <kbd>1</kbd>–<kbd>5</kbd> pick an opening, <kbd>Q</kbd>–<kbd>Y</kbd> pick a background.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ---------------- Data ----------------
+  const PLATFORMS = [
+    { id: "ps2", mono: "PS2", name: "PlayStation 2", c: "#2B4BA8" },
+    { id: "gc", mono: "GC", name: "GameCube", c: "#6A3FB3" },
+    { id: "wii", mono: "Wii", name: "Wii", c: "#1F98C2" },
+    { id: "nes", mono: "NES", name: "Nintendo Entertainment System", c: "#9A7B6A" },
+    { id: "snes", mono: "SNES", name: "Super Nintendo", c: "#8A63C4" },
+    { id: "gba", mono: "GBA", name: "Game Boy Advance", c: "#3D5FB8" },
+    { id: "ps1", mono: "PS1", name: "PlayStation", c: "#757B8C" },
+  ];
+  const TITLES = ["Moss Knight", "Starfall Rally", "Tidebreaker", "Lantern Road", "Ghost Orchard", "Copper Skies", "Night Ferry",
+    "Paper Comet", "Iron Lullaby", "Echo Valley", "Sunken Bell", "Velvet Circuit", "Maple Drift", "Glass Harbor", "Ember Tail", "Quiet Planet"];
+  const HUES = [8, 28, 46, 150, 190, 212, 262, 300, 340];
+  PLATFORMS.forEach((p, pi) => {
+    p.games = TITLES.map((t, i) => {
+      const h = (HUES[i % HUES.length] + pi * 23 + Math.floor(i / HUES.length) * 17) % 360;
+      return { title: t, g: `linear-gradient(155deg, hsl(${h} 70% 58%), hsl(${(h + 40) % 360} 62% 34%))`, h };
+    }).slice(0, 12 + (pi % 3) * 2);
+  });
+
+  const MOTIONS = [
+    { k: "1", id: "now", name: "Today (H3)", desc: "Every game flies out of the tile on its own path; home shrinks behind. For comparison." },
+    { k: "2", id: "zoom", name: "Zoom through", desc: "The folder grows toward you and the games appear as one sheet in its place. iPadOS and Cocoon-style: one object, one motion." },
+    { k: "3", id: "push", name: "Push", desc: "Home slides away to the left and the folder slides in from the right on the track spring, like turning a page. B pushes back." },
+    { k: "4", id: "rise", name: "Rise", desc: "3DS-style: home dims away and the games rise into place row by row (three rows, not fifteen tiles)." },
+    { k: "5", id: "unfold", name: "Unfold", desc: "The tile becomes a panel in the folder's colour that fills the grid; the games fade in inside it and it folds back on B." },
+  ];
+  const BACKDROPS = [
+    { k: "Q", id: "flat", name: "Today (flat)", desc: "The light grey wash from H2. For comparison." },
+    { k: "W", id: "aurora", name: "Aurora", desc: "Three big soft blobs in the folder's colour and its neighbours, drifting slowly. Pre-blurred, moved by transform only." },
+    { k: "E", id: "pattern", name: "Pattern drift", desc: "A 3DS-theme-style tiled pattern of rounded shapes in the folder's tint, scrolling diagonally." },
+    { k: "R", id: "wall", name: "Cover wall", desc: "The folder's own covers as a tilted, faded wall that scrolls very slowly. Cocoon-style art behind the hero." },
+    { k: "T", id: "waves", name: "Waves", desc: "Layered soft wave bands in the folder's colour sliding sideways at different speeds, like a console settings screen." },
+    { k: "Y", id: "spot", name: "Stage light", desc: "A soft pool of the folder's colour under the folder with slow bokeh dots rising through it." },
+  ];
+
+  // ---------------- State ----------------
+  const S = { motion: "zoom", bg: "aurora", K: 1, zone: "home", home: 0, folder: null, fIdx: 0, busy: false };
+  const ms = (x) => x * S.K;
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+  const esc = (t) => t.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  // ---------------- Scaling the two screens into their hosts ----------------
+  const top = $("#top"), bot = $("#bot");
+  function fit() {
+    for (const [scr, w] of [[top, 960], [bot, 620]]) {
+      const host = scr.parentElement;
+      scr.style.transform = `scale(${host.clientWidth / w})`;
+    }
+  }
+  new ResizeObserver(fit).observe(document.querySelector(".device"));
+
+  // ---------------- Springs (keep their speed when retargeted) ----------------
+  const springs = new Set(); let last = 0, running = false;
+  function tick(now) {
+    const dt = Math.min(0.034, (now - last) / 1000) / S.K; last = now;
+    for (const sp of springs) {
+      let done = true;
+      for (const key in sp.target) {
+        const a = -sp.k * (sp.cur[key] - sp.target[key]) - sp.c * sp.vel[key];
+        sp.vel[key] += a * dt; sp.cur[key] += sp.vel[key] * dt;
+        if (Math.abs(sp.cur[key] - sp.target[key]) > 0.05 || Math.abs(sp.vel[key]) > 0.5) done = false;
+      }
+      if (done) { Object.assign(sp.cur, sp.target); for (const key in sp.vel) sp.vel[key] = 0; springs.delete(sp); }
+      sp.apply(sp.cur);
+    }
+    if (springs.size) requestAnimationFrame(tick); else running = false;
+  }
+  function spring(sp, target, instant) {
+    if (!sp.cur || instant || reduced) { sp.cur = { ...target }; sp.vel = Object.fromEntries(Object.keys(target).map((k) => [k, 0])); sp.target = { ...target }; springs.delete(sp); sp.apply(sp.cur); return; }
+    sp.target = { ...target }; springs.add(sp);
+    if (!running) { running = true; last = performance.now(); requestAnimationFrame(tick); }
+  }
+
+  // ---------------- Bottom screen ----------------
+  const HOME = { x0: 42, y0: 30, px: 112, py: 98, cols: 5, rows: 4 };
+  const FOLD = { x0: 28, y0: 82, px: 132, py: 128, rows: 3 };
+  const slotPos = (i) => ({ x: HOME.x0 + (i % HOME.cols) * HOME.px, y: HOME.y0 + Math.floor(i / HOME.cols) * HOME.py });
+  const gamePos = (i) => ({ x: FOLD.x0 + Math.floor(i / FOLD.rows) * FOLD.px, y: FOLD.y0 + (i % FOLD.rows) * FOLD.py });
+
+  function folderArt(p, cls = "") {
+    const g = p.games.slice(0, 3);
+    const peeks = [[-28, -10], [28, 10], [0, 0]].map(([dx, r], i) => `<i style="--dx:${dx}%;--r:${r}deg;background:${g[[1, 2, 0][i]].g}"></i>`).join("");
+    return `<div class="fold ${cls}" style="--c:${p.c}"><div class="back"></div><div class="peek">${peeks}</div><div class="front">${esc(p.mono)}</div></div>`;
+  }
+  function coverHTML(game, cls = "") {
+    return `<div class="cover ${cls}" style="--g:${game.g}"><div class="band"></div><em>${esc(game.title)}</em></div>`;
+  }
+
+  const homeLayer = el("div", "layer"); const folderLayer = el("div", "layer"); folderLayer.hidden = true;
+  const dock = el("div", "dock", "<span></span><span></span><span></span><span></span><span></span>");
+  const sel = el("div", "sel", '<div class="glow"></div><div class="ring"></div>');
+  bot.append(homeLayer, folderLayer, dock, sel);
+
+  const homeTiles = [];
+  for (let i = 0; i < 20; i++) {
+    const p = PLATFORMS[i];
+    const t = el("div", "tile"); const pos = slotPos(i);
+    t.style.left = pos.x + "px"; t.style.top = pos.y + "px";
+    t.innerHTML = `<div class="lift">${p ? folderArt(p) : '<div class="empty"></div>'}</div>`;
+    homeLayer.append(t); homeTiles.push(t);
+  }
+
+  const selSpring = { apply: (v) => { sel.style.transform = `translate(${v.x}px,${v.y}px)`; sel.style.width = v.w + "px"; sel.style.height = v.h + "px"; } };
+  function moveSelector(instant) {
+    let r;
+    if (S.zone === "home") { const p = slotPos(S.home); const g = 88 * 0.1 / 2 + 7; r = { x: p.x - g, y: p.y - g, w: 88 + 2 * g, h: 88 + 2 * g }; }
+    else { const p = gamePos(S.fIdx); const g = 116 * 0.1 / 2 + 7; r = { x: p.x - g - S.fFirst * FOLD.px, y: p.y - g, w: 116 + 2 * g, h: 116 + 2 * g }; }
+    spring(selSpring, r, instant);
+  }
+  function setSelectorVisible(v, delay = 0) { sel.animate([{ opacity: v ? 0 : 1 }, { opacity: v ? 1 : 0 }], { duration: ms(140), delay: ms(delay), fill: "forwards" }); }
+  function markHome() {
+    homeTiles.forEach((t, i) => { t.classList.toggle("focus", S.zone === "home" && i === S.home); $(".fold", t)?.classList.toggle("peeking", S.zone === "home" && i === S.home); });
+  }
+
+  // Folder view: header + a grid that scrolls by column on the track spring.
+  let fGrid, fHead, fTiles = [];
+  const trackSpring = { apply: (v) => { if (fGrid) fGrid.style.transform = `translateX(${v.x}px)`; } };
+  function buildFolder(p) {
+    folderLayer.innerHTML = "";
+    fHead = el("div", "fheader", `<div class="chip">‹ Back</div><div class="fname" style="--c:${p.c}"><i></i>${esc(p.name)}<small>${p.games.length} games</small></div><div class="chip">A–Z</div>`);
+    fGrid = el("div", "layer"); fTiles = [];
+    p.games.forEach((g, i) => {
+      const t = el("div", "gtile"); const pos = gamePos(i);
+      t.style.left = pos.x + "px"; t.style.top = pos.y + "px";
+      t.innerHTML = `<div class="lift">${coverHTML(g)}</div>`;
+      fGrid.append(t); fTiles.push(t);
+    });
+    folderLayer.append(fGrid, fHead);
+    S.fFirst = 0; spring(trackSpring, { x: 0 }, true);
+  }
+  function markFolder() { fTiles.forEach((t, i) => t.classList.toggle("focus", S.zone === "folder" && i === S.fIdx)); }
+
+  // ---------------- Top screen ----------------
+  const bdBox = el("div", "bd"); const centre = el("div", "st-centre"); const plateHost = el("div", "layer");
+  const pill = el("div", "pill", "<span>Wi‑Fi</span><span>80%</span><span>12:26</span>");
+  const slowBadge = el("div", "slow-badge", "Slow motion ×4"); slowBadge.hidden = true;
+  top.append(bdBox, centre, plateHost, pill, slowBadge);
+
+  let curKey = null, lastNav = 0, navTimer = null, peekTimer = null;
+  function focusedItem() {
+    if (S.zone === "folder") { const g = S.folder.games[S.fIdx]; return { key: "g" + S.folder.id + S.fIdx, kind: "game", game: g, p: S.folder, title: g.title, sub: `${S.folder.name} · Not played yet` }; }
+    const p = PLATFORMS[S.home];
+    return p ? { key: "f" + p.id + (S.folderOpenOnTop ? "o" : ""), kind: "folder", p, title: p.name, sub: `Folder · ${p.games.length} games` }
+             : { key: "e" + S.home, kind: "empty", title: "Empty space", sub: "Folders you make will go here" };
+  }
+  const POP = (() => { const out = []; let x = .72, v = 0; const dt = 1 / 120; for (let i = 0; i < 180; i++) { for (let j = 0; j < 2; j++) { const a = -190 * (x - 1) - 17 * v; v += a * dt / 2; x += v * dt / 2; } out.push(x); if (i > 20 && Math.abs(x - 1) < .0015 && Math.abs(v) < .02) break; } out.push(1); return out; })();
+
+  function updateStage(dir) {
+    const now = performance.now(); const held = !!dir && now - lastNav < 150; if (dir) lastNav = now;
+    clearTimeout(navTimer);
+    const go = () => stageShow(focusedItem());
+    if (held) navTimer = setTimeout(go, ms(140)); else go();
+  }
+  function stageShow(item) {
+    setBackdrop(item.p);
+    if (item.key === curKey) return; curKey = item.key;
+    clearTimeout(peekTimer);
+    centre.querySelectorAll(".st-art:not(.leaving)").forEach((o) => {
+      o.classList.add("leaving");
+      const a = o.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.86)" }], { duration: ms(150), easing: "cubic-bezier(.4,0,1,1)", fill: "forwards" });
+      a.onfinish = () => o.remove();
+    });
+    const art = el("div", "st-art");
+    if (item.kind === "folder") {
+      art.innerHTML = `<div class="big-fold">${folderArt(item.p, S.folderOpenOnTop ? "open" : "")}</div>`;
+      if (!S.folderOpenOnTop) peekTimer = setTimeout(() => $(".fold", art)?.classList.add("peeking"), ms(200));
+    } else if (item.kind === "game") {
+      art.innerHTML = coverHTML(item.game, "big-cover");
+    } else {
+      art.innerHTML = `<div style="width:170px;height:170px;border-radius:44px;background:#fff;box-shadow:0 8px 20px #0002;display:grid;place-items:center;font:900 72px/1 var(--f-device);color:#5B6176">+</div>`;
+    }
+    centre.append(art);
+    if (!reduced) {
+      art.animate(POP.map((s) => ({ transform: `scale(${s})` })), { duration: ms(POP.length * 1000 / 120), easing: "linear" });
+      art.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(170), easing: "ease-out" });
+    }
+    plateHost.innerHTML = `<div class="plate"><b>${esc(item.title)}</b><small>${esc(item.sub)}</small></div>`;
+    if (!reduced) $(".plate", plateHost).animate([{ opacity: 0, transform: "translateX(-50%) scale(.94)" }, { opacity: 1, transform: "translateX(-50%) scale(1)" }], { duration: ms(240), easing: "cubic-bezier(.22,1.1,.36,1)" });
+  }
+
+  // ---------------- Backdrops: one layer per colour, crossfaded; motion is transform-only ----------------
+  let bdKey = null;
+  const hsl = (hex) => { const n = parseInt(hex.slice(1), 16); let r = (n >> 16) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255; const mx = Math.max(r, g, b), mn = Math.min(r, g, b); let h = 0, s = 0; const l = (mx + mn) / 2; if (mx !== mn) { const d = mx - mn; s = l > .5 ? d / (2 - mx - mn) : d / (mx + mn); h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; h *= 60; } return [Math.round(h), Math.round(s * 100), Math.round(l * 100)]; };
+  function drift(node, frames, seconds) { if (!reduced) node.animate(frames, { duration: seconds * 1000 * S.K, iterations: Infinity, direction: "alternate", easing: "ease-in-out" }); }
+  function loop(node, frames, seconds) { if (!reduced) node.animate(frames, { duration: seconds * 1000 * S.K, iterations: Infinity, easing: "linear" }); }
+  function buildBackdrop(p) {
+    const layer = el("div", "bd-layer");
+    const c = p ? p.c : "#8A90A6"; const [h, s] = hsl(c);
+    const tint = (dh, sat, lit, a = 1) => `hsl(${(h + dh + 360) % 360} ${sat}% ${lit}% / ${a})`;
+    switch (S.bg) {
+      case "flat":
+        layer.style.background = `linear-gradient(#F5F6F9, #E1E5EC)`;
+        layer.append(Object.assign(el("div", "layer"), { style: `background: radial-gradient(70% 90% at 50% 42%, ${tint(0, s, 55, .2)}, transparent 70%)` }));
+        break;
+      case "aurora": {
+        layer.style.background = `linear-gradient(160deg, ${tint(0, 40, 94)}, ${tint(20, 35, 88)})`;
+        [[-10, 70, 62, "-12%", "-30%", 70], [40, 75, 70, "48%", "18%", 62], [-45, 65, 66, "8%", "40%", 58]].forEach(([dh, sat, lit, x, y, size], i) => {
+          const b = el("div"); Object.assign(b.style, { position: "absolute", left: x, top: y, width: size + "%", aspectRatio: "1", borderRadius: "50%", background: `radial-gradient(circle, ${tint(dh, sat, lit, .75)} 0%, ${tint(dh, sat, lit, 0)} 68%)` });
+          layer.append(b);
+          drift(b, [{ transform: "translate(0,0) scale(1)" }, { transform: `translate(${[60, -70, 50][i]}px, ${[30, 40, -45][i]}px) scale(${[1.12, .92, 1.08][i]})` }], [14, 17, 19][i]);
+        });
+        break;
+      }
+      case "pattern": {
+        layer.style.background = `linear-gradient(${tint(0, 45, 93)}, ${tint(0, 40, 87)})`;
+        const svg = encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><rect x='14' y='14' width='34' height='34' rx='11' fill='${tint(0, 55, 60, .22)}'/><circle cx='90' cy='90' r='15' fill='${tint(25, 60, 62, .2)}'/><rect x='80' y='22' width='18' height='18' rx='6' fill='${tint(-20, 55, 62, .18)}'/></svg>`);
+        const pat = el("div"); Object.assign(pat.style, { position: "absolute", inset: "-120px", backgroundImage: `url("data:image/svg+xml,${svg}")`, backgroundSize: "120px 120px" });
+        layer.append(pat); loop(pat, [{ transform: "translate(0,0)" }, { transform: "translate(120px,120px)" }], 16);
+        layer.append(Object.assign(el("div", "layer"), { style: `background: radial-gradient(60% 75% at 50% 45%, ${tint(0, 40, 96, .85)}, transparent 75%)` }));
+        break;
+      }
+      case "wall": {
+        layer.style.background = tint(0, 30, 90);
+        const wall = el("div"); Object.assign(wall.style, { position: "absolute", left: "-20%", top: "-40%", width: "140%", height: "180%", display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: "14px", transform: "rotate(-12deg)", opacity: ".55", filter: "saturate(.45)" });
+        const games = (p ? p.games : PLATFORMS[0].games);
+        for (let i = 0; i < 9 * 7; i++) { const c2 = el("div"); c2.innerHTML = coverHTML(games[i % games.length]); Object.assign(c2.firstChild.style, { width: "100%", aspectRatio: ".71", borderRadius: "10px" }); $("em", c2).style.fontSize = "11px"; wall.append(c2); }
+        const mover = el("div", "layer"); mover.append(wall); layer.append(mover);
+        loop(mover, [{ transform: "translateY(0)" }, { transform: "translateY(-180px)" }], 40);
+        layer.append(Object.assign(el("div", "layer"), { style: `background: linear-gradient(${tint(0, 35, 92, .55)}, ${tint(0, 35, 88, .7)}), radial-gradient(55% 70% at 50% 45%, ${tint(0, 30, 97, .9)}, transparent 80%)` }));
+        break;
+      }
+      case "waves": {
+        layer.style.background = `linear-gradient(${tint(0, 40, 95)}, ${tint(0, 38, 90)})`;
+        [[300, .18, 0, 22, 60], [360, .22, 25, 30, 72], [420, .26, -20, 38, 84]].forEach(([y, a, dh, sec, amp], i) => {
+          const path = `M0 ${y} ` + Array.from({ length: 9 }, (_, k) => `Q ${k * 240 + 120} ${y + (k % 2 ? amp : -amp)} ${(k + 1) * 240} ${y}`).join(" ") + " V540 H0 Z";
+          const svg = encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='2160' height='540'><path d='${path}' fill='${tint(dh, 60, 58, a)}'/></svg>`);
+          const w = el("div"); Object.assign(w.style, { position: "absolute", left: 0, top: 0, width: "2160px", height: "540px", backgroundImage: `url("data:image/svg+xml,${svg}")` });
+          layer.append(w); loop(w, [{ transform: "translateX(0)" }, { transform: "translateX(-480px)" }], sec);
+        });
+        break;
+      }
+      case "spot": {
+        layer.style.background = `radial-gradient(80% 110% at 50% 100%, ${tint(0, 25, 86)}, ${tint(0, 30, 95)} 70%)`;
+        const pool = el("div"); Object.assign(pool.style, { position: "absolute", left: "15%", right: "15%", top: "8%", bottom: "-10%", background: `radial-gradient(50% 50% at 50% 50%, ${tint(0, 70, 62, .55)}, transparent 70%)` });
+        layer.append(pool); drift(pool, [{ transform: "scale(1)", opacity: .85 }, { transform: "scale(1.06)", opacity: 1 }], 6);
+        for (let i = 0; i < 16; i++) {
+          const d = el("div"); const size = 10 + (i * 7) % 26;
+          Object.assign(d.style, { position: "absolute", left: (5 + (i * 61) % 90) + "%", top: "100%", width: size + "px", height: size + "px", borderRadius: "50%", background: tint((i % 3 - 1) * 25, 70, 70, .35) });
+          layer.append(d); if (!reduced) d.animate([{ transform: "translateY(0)" }, { transform: `translateY(-${620 + i * 10}px)` }], { duration: (16 + (i * 5) % 14) * 1000 * S.K, delay: -i * 1300 * S.K, iterations: Infinity, easing: "linear" });
+        }
+        break;
+      }
+    }
+    return layer;
+  }
+  function setBackdrop(p, force) {
+    const key = S.bg + (p ? p.id : "-") + S.K;
+    if (key === bdKey && !force) return; bdKey = key;
+    bdBox.querySelectorAll(".bd-layer:not(.leaving)").forEach((o) => { o.classList.add("leaving"); const a = o.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(450), fill: "forwards" }); a.onfinish = () => o.remove(); });
+    const layer = buildBackdrop(p); bdBox.prepend(layer);
+    layer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(450), easing: "ease-out" });
+  }
+
+  // ---------------- Folder open / close variants ----------------
+  const wait = (t) => new Promise((r) => setTimeout(r, t));
+  const SPRINGY = "cubic-bezier(.22,1.1,.36,1)", EASE = "cubic-bezier(.4,0,.2,1)", OUT = "cubic-bezier(.22,.8,.3,1)";
+
+  async function openFolder() {
+    const p = PLATFORMS[S.home]; if (!p || S.busy) return;
+    S.busy = true; S.folder = p; S.fIdx = 0;
+    const slot = homeTiles[S.home], sp = slotPos(S.home), origin = { x: sp.x + 44, y: sp.y + 44 };
+    buildFolder(p);
+    // The top screen: the big folder's flap swings open and is held there while the games appear.
+    S.folderOpenOnTop = true; stageShow(focusedItem());
+    $(".fold", slot)?.classList.add("open");
+    const m = S.motion; const anims = [];
+    folderLayer.hidden = false;
+
+    if (m === "now") {
+      anims.push(homeLayer.animate([{ opacity: 1, transform: "scale(1)" }, { opacity: 0, transform: "scale(.94)" }], { duration: ms(260), easing: EASE, fill: "forwards" }));
+      const order = fTiles.map((t, i) => ({ t, i, d: Math.hypot(gamePos(i).x + 58 - origin.x, gamePos(i).y + 58 - origin.y) })).sort((a, b) => a.d - b.d);
+      order.forEach((o, rank) => { const gp = gamePos(o.i); anims.push(o.t.animate([{ transform: `translate(${origin.x - gp.x - 58}px,${origin.y - gp.y - 58}px) scale(.35)`, opacity: 0 }, { opacity: 1, offset: .3 }, { transform: "none", opacity: 1 }], { duration: ms(440), delay: ms(Math.min(rank * 14, 180)), easing: SPRINGY, fill: "backwards" })); });
+      anims.push(fHead.animate([{ opacity: 0, transform: "translateY(-30%)" }, { opacity: 1, transform: "none" }], { duration: ms(300), delay: ms(120), easing: OUT, fill: "backwards" }));
+    } else if (m === "zoom") {
+      // The folder grows toward you and fades; the games arrive as one sheet growing from where it was.
+      anims.push(slot.animate([{ transform: "scale(1)", opacity: 1 }, { transform: "scale(2.6)", opacity: 0 }], { duration: ms(300), easing: EASE, fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(240), delay: ms(40), easing: EASE, fill: "forwards" }));
+      folderLayer.style.transformOrigin = `${origin.x}px ${origin.y}px`;
+      anims.push(folderLayer.animate([{ transform: "scale(.55)", opacity: 0 }, { opacity: 1, offset: .45 }, { transform: "scale(1)", opacity: 1 }], { duration: ms(380), delay: ms(60), easing: SPRINGY, fill: "backwards" }));
+    } else if (m === "push") {
+      anims.push(homeLayer.animate([{ transform: "translateX(0)", opacity: 1 }, { transform: "translateX(-38%)", opacity: 0 }], { duration: ms(320), easing: EASE, fill: "forwards" }));
+      anims.push(folderLayer.animate([{ transform: "translateX(38%)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }], { duration: ms(360), easing: OUT, fill: "backwards" }));
+    } else if (m === "rise") {
+      anims.push(homeLayer.animate([{ opacity: 1, filter: "brightness(1)" }, { opacity: 0 }], { duration: ms(160), easing: EASE, fill: "forwards" }));
+      fTiles.forEach((t, i) => { const row = i % FOLD.rows; anims.push(t.animate([{ transform: "translateY(46px)", opacity: 0 }, { transform: "none", opacity: 1 }], { duration: ms(340), delay: ms(90 + row * 45), easing: OUT, fill: "backwards" })); });
+      anims.push(fHead.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(220), delay: ms(80), fill: "backwards" }));
+    } else if (m === "unfold") {
+      const panel = el("div", "panel"); panel.style.setProperty("--c", p.c);
+      Object.assign(panel.style, { left: sp.x + "px", top: sp.y + "px", width: "88px", height: "88px", background: `linear-gradient(180deg, color-mix(in srgb, ${p.c} 16%, white), color-mix(in srgb, ${p.c} 30%, white))` });
+      bot.insertBefore(panel, folderLayer);
+      const tx = 14 - sp.x, ty = 10 - sp.y, sx = (620 - 28) / 88, sy = (540 - 96) / 88;
+      anims.push(panel.animate([{ transform: "none", borderRadius: "22px" }, { transform: `translate(${tx}px,${ty}px) scale(${sx},${sy})`, borderRadius: "5px" }], { duration: ms(340), easing: SPRINGY, fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(200), fill: "forwards" }));
+      anims.push(folderLayer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(220), delay: ms(200), fill: "backwards" }));
+      S.panel = panel;
+    }
+    setSelectorVisible(false);
+    S.zone = "folder"; markHome(); markFolder(); moveSelector(true);
+    setSelectorVisible(true, m === "now" ? 380 : 260);
+    await Promise.all(anims.map((a) => a.finished));
+    homeLayer.hidden = true; anims.forEach((a) => a.cancel()); slot.getAnimations().forEach((a) => a.cancel());
+    if (S.panel) { S.panel.getAnimations().forEach((a) => a.cancel()); Object.assign(S.panel.style, { left: "14px", top: "10px", width: (620 - 28) + "px", height: (540 - 96) + "px", borderRadius: "5px" }); }
+    await wait(ms(Math.max(0, 300 - 260)));
+    S.folderOpenOnTop = false; stageShow(focusedItem());
+    S.busy = false;
+  }
+
+  async function closeFolder() {
+    if (S.busy || S.zone !== "folder") return;
+    S.busy = true;
+    const p = S.folder, slot = homeTiles[S.home], sp = slotPos(S.home), origin = { x: sp.x + 44, y: sp.y + 44 };
+    const m = S.motion; const anims = [];
+    homeLayer.hidden = false;
+    setSelectorVisible(false);
+    if (m === "now") {
+      const order = fTiles.map((t, i) => ({ t, i, d: Math.hypot(gamePos(i).x + 58 - origin.x, gamePos(i).y + 58 - origin.y) })).sort((a, b) => b.d - a.d);
+      order.forEach((o, rank) => { const gp = gamePos(o.i); anims.push(o.t.animate([{ transform: "none", opacity: 1 }, { opacity: 1, offset: .7 }, { transform: `translate(${origin.x - gp.x - 58}px,${origin.y - gp.y - 58}px) scale(.35)`, opacity: 0 }], { duration: ms(280), delay: ms(Math.min(rank * 10, 120)), easing: EASE, fill: "forwards" })); });
+      anims.push(fHead.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(180), fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 0, transform: "scale(.94)" }, { opacity: 1, transform: "scale(1)" }], { duration: ms(320), delay: ms(80), easing: OUT, fill: "backwards" }));
+    } else if (m === "zoom") {
+      folderLayer.style.transformOrigin = `${origin.x}px ${origin.y}px`;
+      anims.push(folderLayer.animate([{ transform: "scale(1)", opacity: 1 }, { opacity: 0, offset: .7 }, { transform: "scale(.55)", opacity: 0 }], { duration: ms(260), easing: EASE, fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(240), delay: ms(60), fill: "backwards" }));
+      anims.push(slot.animate([{ transform: "scale(2.6)", opacity: 0 }, { transform: "scale(1)", opacity: 1 }], { duration: ms(320), delay: ms(40), easing: SPRINGY, fill: "backwards" }));
+    } else if (m === "push") {
+      anims.push(folderLayer.animate([{ transform: "translateX(0)", opacity: 1 }, { transform: "translateX(38%)", opacity: 0 }], { duration: ms(300), easing: EASE, fill: "forwards" }));
+      anims.push(homeLayer.animate([{ transform: "translateX(-38%)", opacity: 0 }, { transform: "translateX(0)", opacity: 1 }], { duration: ms(340), easing: OUT, fill: "backwards" }));
+    } else if (m === "rise") {
+      fTiles.forEach((t, i) => { const row = FOLD.rows - 1 - (i % FOLD.rows); anims.push(t.animate([{ transform: "none", opacity: 1 }, { transform: "translateY(40px)", opacity: 0 }], { duration: ms(200), delay: ms(row * 35), easing: EASE, fill: "forwards" })); });
+      anims.push(fHead.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(160), fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(240), delay: ms(140), fill: "backwards" }));
+    } else if (m === "unfold" || S.panel) {
+      const panel = S.panel || el("div", "panel");
+      anims.push(folderLayer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms(140), fill: "forwards" }));
+      const tx = 14 - sp.x, ty = 10 - sp.y, sx = (620 - 28) / 88, sy = (540 - 96) / 88;
+      Object.assign(panel.style, { left: sp.x + "px", top: sp.y + "px", width: "88px", height: "88px", borderRadius: "22px" });
+      anims.push(panel.animate([{ transform: `translate(${tx}px,${ty}px) scale(${sx},${sy})`, borderRadius: "5px", opacity: 1 }, { transform: "none", borderRadius: "22px", opacity: 1, offset: .85 }, { transform: "none", opacity: 0 }], { duration: ms(340), delay: ms(80), easing: EASE, fill: "forwards" }));
+      anims.push(homeLayer.animate([{ opacity: 0 }, { opacity: 1 }], { duration: ms(220), delay: ms(160), fill: "backwards" }));
+    }
+    $(".fold", slot)?.classList.remove("open");
+    S.zone = "home"; markHome(); moveSelector(true); setSelectorVisible(true, 200);
+    updateStage(null);
+    await Promise.all(anims.map((a) => a.finished));
+    anims.forEach((a) => a.cancel()); folderLayer.hidden = true; folderLayer.style.transform = "";
+    if (S.panel) { S.panel.remove(); S.panel = null; }
+    S.busy = false;
+  }
+
+  // ---------------- Input ----------------
+  function move(dir) {
+    if (S.busy) return;
+    if (S.zone === "home") {
+      const c = S.home % 5, r = Math.floor(S.home / 5);
+      const n = { left: c > 0 ? S.home - 1 : -1, right: c < 4 ? S.home + 1 : -1, up: r > 0 ? S.home - 5 : -1, down: r < 3 ? S.home + 5 : -1 }[dir];
+      if (n < 0) return bump(dir);
+      S.home = n; markHome();
+    } else {
+      const total = S.folder.games.length, rows = FOLD.rows;
+      const col = Math.floor(S.fIdx / rows), row = S.fIdx % rows;
+      let n = -1;
+      if (dir === "up" && row > 0) n = S.fIdx - 1; if (dir === "down" && row < rows - 1 && S.fIdx + 1 < total) n = S.fIdx + 1;
+      if (dir === "left" && col > 0) n = S.fIdx - rows; if (dir === "right" && S.fIdx + rows < total) n = S.fIdx + rows;
+      if (n < 0) return bump(dir);
+      S.fIdx = n; markFolder();
+      const ncol = Math.floor(n / rows);
+      if (ncol < S.fFirst) S.fFirst = ncol; if (ncol > S.fFirst + 3) S.fFirst = ncol - 3;
+      spring(trackSpring, { x: -S.fFirst * FOLD.px });
+      const p = gamePos(n); const g = 116 * .1 / 2 + 7;
+      spring(selSpring, { x: p.x - g - S.fFirst * FOLD.px, y: p.y - g, w: 116 + 2 * g, h: 116 + 2 * g });
+      return updateStage(dir);
+    }
+    moveSelector(); updateStage(dir);
+  }
+  function bump(dir) {
+    const v = { left: [-1, 0], right: [1, 0], up: [0, -1], down: [0, 1] }[dir];
+    if (!reduced) $(".ring", sel).parentElement.animate([{ translate: "0 0" }, { translate: `${v[0] * 7}px ${v[1] * 7}px`, offset: .35 }, { translate: "0 0" }], { duration: ms(300), easing: "ease-out" });
+  }
+  const act = () => (S.zone === "home" ? openFolder() : null);
+  const back = () => (S.zone === "folder" ? closeFolder() : null);
+  const KEYS = { ArrowLeft: () => move("left"), ArrowRight: () => move("right"), ArrowUp: () => move("up"), ArrowDown: () => move("down"), Enter: act, a: act, A: act, Escape: back, b: back, B: back, Backspace: back };
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest && e.target.closest("button") && e.key === "Enter") return;
+    const mi = "12345".indexOf(e.key); if (mi >= 0) return pickMotion(MOTIONS[mi].id);
+    const bi = "qwerty".indexOf(e.key.toLowerCase()); if (bi >= 0 && !e.metaKey && !e.ctrlKey) return pickBg(BACKDROPS[bi].id);
+    const f = KEYS[e.key]; if (f) { e.preventDefault(); f(); }
+  });
+  [["kL", "left"], ["kR", "right"], ["kU", "up"], ["kD", "down"]].forEach(([id, d]) => $("#" + id).addEventListener("click", () => move(d)));
+  $("#kA").addEventListener("click", act); $("#kB").addEventListener("click", back);
+
+  // ---------------- Option rails ----------------
+  function rail(host, items, current, pick) {
+    host.innerHTML = "";
+    for (const it of items) {
+      const b = el("button", "opt", `<span class="k">${it.k}</span><b>${esc(it.name)}</b><span>${esc(it.desc)}</span>`);
+      b.id = "opt-" + it.id; b.setAttribute("aria-pressed", String(it.id === current)); b.addEventListener("click", () => pick(it.id));
+      host.append(b);
+    }
+  }
+  function pickMotion(id) { S.motion = id; rail($("#motionOpts"), MOTIONS, id, pickMotion); try { localStorage.setItem("hfl-motion", id); } catch (e) {} }
+  function pickBg(id) { S.bg = id; rail($("#bgOpts"), BACKDROPS, id, pickBg); setBackdrop(focusedItem().p, true); try { localStorage.setItem("hfl-bg", id); } catch (e) {} }
+  try { S.motion = localStorage.getItem("hfl-motion") || S.motion; S.bg = localStorage.getItem("hfl-bg") || S.bg; } catch (e) {}
+  rail($("#motionOpts"), MOTIONS, S.motion, pickMotion); rail($("#bgOpts"), BACKDROPS, S.bg, pickBg);
+
+  $("#slow").addEventListener("click", (e) => { S.K = S.K === 1 ? 4 : 1; e.currentTarget.setAttribute("aria-pressed", String(S.K > 1)); slowBadge.hidden = S.K === 1; setBackdrop(focusedItem().p, true); });
+  $("#demo").addEventListener("click", async () => {
+    if (S.busy) return;
+    if (S.zone === "folder") { await closeFolder(); await wait(ms(500)); }
+    await openFolder(); await wait(ms(900));
+    move("right"); await wait(ms(500)); move("down"); await wait(ms(800));
+    await closeFolder();
+  });
+
+  // ---------------- Start ----------------
+  fit(); markHome(); moveSelector(true); stageShow(focusedItem());
+})();
+</script>
