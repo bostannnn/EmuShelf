@@ -8,6 +8,8 @@
   <!-- INTERNET is harmless and lets the metadata/achievement HttpClients that the shared composition
        root builds exist without a runtime surprise later. -->
   <uses-permission android:name="android.permission.INTERNET" />
+  <!-- Handheld mode's status pill reads whether Wi-Fi is connected (a normal, install-time permission). -->
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
   <!-- In-app update: the applier hands a downloaded, checksum-verified EmuShelf APK to the system package
        installer (AndroidUpdateApplier). Sideload self-update needs this permission; the OS still shows the
        user an install confirmation, and the first time also an "allow unknown apps" prompt. See the About →

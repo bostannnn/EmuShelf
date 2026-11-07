@@ -53,7 +53,10 @@ public sealed class WindowInterfaceModeService : IInterfaceModeService
         _settings = settings;
         _window = window;
         IsCommandLineOverride = interfaceModeOverride is not null;
-        Current = interfaceModeOverride ?? settings.InterfaceMode;
+        // Handheld mode only exists on a dual-screen Android handheld. A portable data folder carried from
+        // one to a desktop opens in Desktop mode rather than a mode this head cannot show.
+        Current = interfaceModeOverride
+            ?? (settings.InterfaceMode == InterfaceMode.Handheld ? InterfaceMode.Desktop : settings.InterfaceMode);
 
         if (Current == InterfaceMode.Gamepad)
         {

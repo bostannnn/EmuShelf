@@ -14,7 +14,15 @@ namespace EmuShelf.App.Android.Services;
 internal sealed class ThorSecondScreenPresentation : Presentation
 {
     private readonly global::Avalonia.Android.AvaloniaView _avaloniaView;
+    private readonly global::EmuShelf.App.Views.SecondScreenView _companionView;
+    private global::EmuShelf.App.Views.HandheldLauncherView? _launcherView;
     private bool _released;
+
+    /// <summary>
+    /// True while Screen-2 shows Handheld mode's Launcher rather than the companion. The pad then belongs to
+    /// the shared shell (the one view model both screens drive), so keys and motion are forwarded to it.
+    /// </summary>
+    public bool IsShowingLauncher { get; private set; }
 
     public SecondScreenViewModel Model { get; } = new();
 
@@ -37,9 +45,10 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         // Screen-2. It shares Application.Current's styles/resources, so the app palette and Inter font
         // apply without any per-view theming. Proven to render on the Thor before this replaced the
         // hand-rolled native surface.
+        _companionView = new global::EmuShelf.App.Views.SecondScreenView { DataContext = Model };
         _avaloniaView = new global::Avalonia.Android.AvaloniaView(Context)
         {
-            Content = new global::EmuShelf.App.Views.SecondScreenView { DataContext = Model },
+            Content = _companionView,
         };
         SetContentView(_avaloniaView);
     }
@@ -51,12 +60,35 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // embedded AvaloniaView, so mapping it here intercepts before Avalonia's default focus navigation would
     // otherwise wander the ring onto the Refresh/Close chrome and the invisible, still-focusable closed
     // overlays. Mirrors MainActivity.DispatchKeyEvent, which is the same pattern for the couch on Screen 1.
+    /// <summary>
+    /// Shows Handheld mode's Launcher bound to <paramref name="handheld"/>, or the companion when null. Both
+    /// views live in this one top level, so swapping the content here is safe; moving a view to the other
+    /// display's top level is not (DECISIONS 2026-11-07).
+    /// </summary>
+    internal void ShowLauncher(global::EmuShelf.App.ViewModels.HandheldShellViewModel? handheld)
+    {
+        if (_released)
+            return;
+        if (handheld is null)
+        {
+            IsShowingLauncher = false;
+            if (!ReferenceEquals(_avaloniaView.Content, _companionView))
+                _avaloniaView.Content = _companionView;
+            return;
+        }
+        _launcherView ??= new global::EmuShelf.App.Views.HandheldLauncherView();
+        _launcherView.DataContext = handheld;
+        IsShowingLauncher = true;
+        if (!ReferenceEquals(_avaloniaView.Content, _launcherView))
+            _avaloniaView.Content = _launcherView;
+    }
+
     public override bool DispatchKeyEvent(KeyEvent? e)
     {
         // While the main screen has Settings or the setup wizard open, the pad belongs to it even though
         // this window is the focused one (the user touched Screen-2, or a settings page opened here).
         // Forward instead of handling: buttons on key-down, Back on key-up as the shell's Back edge.
-        if (e is not null && AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true)
+        if (e is not null && (IsShowingLauncher || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true))
         {
             if (e.KeyCode == Keycode.Back)
             {
@@ -93,7 +125,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // direction. Otherwise motion belongs to nobody here: the companion is driven by key events.
     public override bool DispatchGenericMotionEvent(MotionEvent? e)
     {
-        if (AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true && AndroidGamepadInput.TryFeedMotion(e))
+        if ((IsShowingLauncher || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true) && AndroidGamepadInput.TryFeedMotion(e))
             return true;
 
         // The binding types the base parameter non-null, but Android may pass null; forward as-is.
@@ -106,6 +138,12 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // drawer appears" bug). Mirrors NeoStation, whose Screen-2 Presentation never finishes on Back.
     public override void OnBackPressed()
     {
+        // The Launcher is the shell's: Back closes what it has open (never the Presentation itself).
+        if (IsShowingLauncher)
+        {
+            AndroidGamepadInput.DispatchBack?.Invoke();
+            return;
+        }
         if (Model.Overlay != SecondScreenOverlayKind.None)
             Model.CloseOverlayCommand.Execute(null);
         // else: swallow.
@@ -125,5 +163,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         // Detach the embedded Avalonia top level before the Presentation window is torn down, so its
         // render loop and input handlers do not outlive the display.
         _avaloniaView.Content = null;
+        if (_launcherView is not null)
+            _launcherView.DataContext = null;
     }
 }

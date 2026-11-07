@@ -14,6 +14,12 @@ public interface IInterfaceModeService
     /// </summary>
     bool SupportsDesktopMode { get; }
 
+    /// <summary>
+    /// Whether <see cref="InterfaceMode.Handheld"/> can run here: true only on a dual-screen Android
+    /// handheld with a presentation display. Every mode's menu offers the switch only when this is true.
+    /// </summary>
+    bool SupportsHandheldMode => false;
+
     event EventHandler<InterfaceMode>? ModeChanged;
     Task SetModeAsync(InterfaceMode mode, CancellationToken cancellationToken = default);
 }

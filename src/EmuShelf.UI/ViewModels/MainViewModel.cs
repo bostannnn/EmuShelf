@@ -1720,11 +1720,12 @@ public partial class MainViewModel : ViewModelBase
             _interfaceModeService.ModeChanged += (_, mode) =>
             {
                 IsGamepadMode = mode == InterfaceMode.Gamepad;
+                IsHandheldMode = mode == InterfaceMode.Handheld;
                 // Gamepad mode renders tiles, so it forces a grid. Returning to Desktop puts the
                 // user's own view choice back: leaving the forced grid in place would both strand
                 // a list-view user in a grid and, on their next unrelated change, persist that
                 // grid over the preference they never changed.
-                IsGridView = IsGamepadMode || _libraryViewState.Current.IsGridView;
+                IsGridView = IsGamepadMode || IsHandheldMode || _libraryViewState.Current.IsGridView;
                 if (IsGamepadMode)
                     CoerceCouchLibraryState();
                 else
@@ -1893,6 +1894,8 @@ public partial class MainViewModel : ViewModelBase
 
         InitializeColumns();
         RestoreLibraryViewState();
+        // Last, so the Handheld shell's first library read sees the fully built view model.
+        IsHandheldMode = interfaceModeService?.Current == InterfaceMode.Handheld;
     }
 
     /// <summary>
@@ -2030,6 +2033,7 @@ public partial class MainViewModel : ViewModelBase
         }
 
         UpdateGamepadPlatformState();
+        RefreshHandheldHome();
     }
 
     /// <summary>
@@ -2142,6 +2146,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasStatusMessage));
         OnPropertyChanged(nameof(ShowGamepadStatusToast));
         ScheduleStatusDismiss();
+        // Handheld mode has no Gamepad toast on screen; its Stage shows the same message.
+        Handheld?.ShowStatus(value);
     }
 
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
@@ -3079,6 +3085,10 @@ public partial class MainViewModel : ViewModelBase
 
     public bool DispatchGamepadAction(GamepadAction action)
     {
+        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing.
+        if (IsHandheldMode)
+            return IsGamepadInputSuspended || (Handheld?.DispatchGamepadAction(action) ?? false);
+
         if (!IsGamepadMode)
             return false;
 
@@ -3131,6 +3141,9 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public bool DispatchBackButton()
     {
+        if (IsHandheldMode)
+            return Handheld?.DispatchBack() ?? false;
+
         if (!IsGamepadMode)
             return false;
 
@@ -3512,6 +3525,8 @@ public partial class MainViewModel : ViewModelBase
                 AddOption("Settings", RequestSettingsFromGamepadCommand, icon: GamepadOptionIcons.Settings);
                 if (SupportsDesktopMode)
                     AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand, icon: GamepadOptionIcons.Desktop);
+                if (SupportsHandheldMode)
+                    AddOption("Switch to Handheld mode", SwitchToHandheldModeCommand, icon: GamepadOptionIcons.Desktop);
                 AddOption("Quit EmuShelf", RequestQuitFromGamepadCommand, true, icon: GamepadOptionIcons.Quit);
                 break;
             case GamepadOverlayKind.Settings:
@@ -4835,29 +4850,7 @@ public partial class MainViewModel : ViewModelBase
                         continue;
 
                     artworkBySystem.TryGetValue(game.SystemId, out var artwork);
-                    var viewModel = new GameViewModel(
-                        game,
-                        gameSystem.Name,
-                        gameSystem.ShortName,
-                        gameSystem.AccentColor,
-                        LaunchGameCommand,
-                        SaveGameTitleCommand,
-                        SetGameCoverCommand,
-                        LoadGameCoverCommand,
-                        artwork,
-                        gameSystem.CoverAspectRatio,
-                        OpenAchievementDetailsCommand,
-                        RemoveSelectedGamesCommand,
-                        ScrapeSelectedGamesCommand,
-                        titleSet.Discs,
-                        titleSet.SelectedDisc,
-                        titleSet.DisplayTitle,
-                        titleSet.SelectionKey,
-                        LaunchSelectedDiscFromLibraryAsync,
-                        ScrapeGameCommand,
-                        ShowGameInFolderCommand,
-                        OpenTextureFolderCommand,
-                        TexturePackProviderRegistry.Find(game.SystemId) is not null);
+                    var viewModel = CreateGameViewModel(titleSet, gameSystem, artwork);
                     viewModels.Add(viewModel);
                 }
 
@@ -6527,7 +6520,9 @@ public partial class MainViewModel : ViewModelBase
         // show. The resolver owns that rule (below); here it only lets us skip the SQLite preference read.
         var isDualScreenSystem =
             _systemsById.TryGetValue(game.SystemId, out var launchSystem) && launchSystem.IsDualScreen;
-        if (screenOverride is null && IsGamepadMode && _externalDisplays?.HasExternalDisplay == true)
+        // Handheld mode honours a system's pinned screen too; it has no chooser overlay yet (H2 puts the
+        // chooser on the Title page), so an "Ask" system launches on the built-in screen there for now.
+        if (screenOverride is null && (IsGamepadMode || IsHandheldMode) && _externalDisplays?.HasExternalDisplay == true)
         {
             // Read the preference off the UI thread: it hits SQLite, and the Android launch path keeps
             // such reads off the launch frame (Preflight) to avoid a hitch — or an ANR on slow storage.
@@ -6540,6 +6535,9 @@ public partial class MainViewModel : ViewModelBase
             {
                 case LaunchScreenDecision.External:
                     targetScreen = GameLaunchScreen.External;
+                    break;
+                case LaunchScreenDecision.Prompt when IsHandheldMode:
+                    targetScreen = GameLaunchScreen.BuiltIn;
                     break;
                 case LaunchScreenDecision.Prompt:
                     OpenLaunchScreenPrompt(game);

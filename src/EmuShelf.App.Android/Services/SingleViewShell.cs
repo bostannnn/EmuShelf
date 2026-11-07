@@ -37,7 +37,7 @@ public sealed class SingleViewShell : IPlatformShell
     {
         _singleView = singleView;
 
-        InterfaceMode = new AndroidInterfaceModeService();
+        InterfaceMode = new AndroidInterfaceModeService(boot.SettingsService, HasPresentationDisplay);
         Frontend = new AndroidFrontendController();
         // "Quit EmuShelf" from the couch menu finishes the launcher Activity and drops it from the
         // recents list — the closest thing to a desktop quit on Android. Without a requestClose the
@@ -128,8 +128,16 @@ public sealed class SingleViewShell : IPlatformShell
     // is attached and gates the launch-screen chooser/preference in the shared UI.
     public IExternalDisplayProbe? ExternalDisplays => _secondScreen;
 
+    // Whether a second (presentation) display is attached right now: what Handheld mode needs to exist.
+    private static bool HasPresentationDisplay() =>
+        global::Android.App.Application.Context.GetSystemService(global::Android.Content.Context.DisplayService)
+            is global::Android.Hardware.Display.DisplayManager manager &&
+        manager.GetDisplays(global::Android.Hardware.Display.DisplayManager.DisplayCategoryPresentation) is { Length: > 0 };
+
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
+        // Handheld mode's status pill reads the battery and Wi-Fi from the system.
+        viewModel.HandheldDeviceStatus = new AndroidDeviceStatusService(global::Android.App.Application.Context);
         _secondScreen.Start(viewModel);
         // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
         // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and

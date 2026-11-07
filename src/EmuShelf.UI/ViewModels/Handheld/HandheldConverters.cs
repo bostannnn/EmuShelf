@@ -1,0 +1,63 @@
+using Avalonia.Media;
+
+namespace EmuShelf.App.ViewModels;
+
+/// <summary>Vector glyphs for the Handheld chrome (no emoji: device fonts cannot be relied on for them).</summary>
+public static class HandheldIcons
+{
+    public static readonly Geometry Wifi = Geometry.Parse(
+        "M12 21l3.6-4.8a6 6 0 0 0-7.2 0zM1 9l2 2c5-5 13-5 18 0l2-2C16.9 2.9 7.1 2.9 1 9zm4 4l2 2c2.8-2.8 7.2-2.8 10 0l2-2c-3.9-3.9-10.1-3.9-14 0z");
+
+    public static readonly Geometry Charging = Geometry.Parse("M7 2v11h3v9l7-12h-4l4-8z");
+
+    public static readonly Geometry Trophy = GamepadOptionIcons.Achievements;
+
+    public static readonly Geometry AllApps = Geometry.Parse(
+        "M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z");
+
+    public static readonly Geometry Menu = Geometry.Parse("M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z");
+
+    public static readonly Geometry Back = Geometry.Parse("M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z");
+
+    public static readonly Geometry Plus = Geometry.Parse("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z");
+
+    public static readonly Geometry Sort = Geometry.Parse("M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z");
+}
+
+/// <summary>Small view-only mappings for the Handheld views.</summary>
+public static class HandheldViewConverters
+{
+    private static readonly IBrush Selector = new SolidColorBrush(Color.Parse("#5B58D9"));
+    private static readonly IBrush Dot = new SolidColorBrush(Color.Parse("#38465088"));
+    private static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1E2235"));
+
+    /// <summary>A <see cref="HandheldGlyph"/> as the vector the views draw.</summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter GlyphGeometry =
+        new Avalonia.Data.Converters.FuncValueConverter<HandheldGlyph, Geometry?>(glyph => glyph switch
+        {
+            HandheldGlyph.AllApps => HandheldIcons.AllApps,
+            HandheldGlyph.Menu => HandheldIcons.Menu,
+            HandheldGlyph.Plus => HandheldIcons.Plus,
+            HandheldGlyph.Back => HandheldIcons.Back,
+            HandheldGlyph.Sort => HandheldIcons.Sort,
+            _ => null,
+        });
+
+    public static readonly Avalonia.Data.Converters.IValueConverter FocusZIndex =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, int>(focused => focused ? 1 : 0);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter DotWidth =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? 52 : 18);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter DotBrush =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? Selector : Dot);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter UnavailableOpacity =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(unavailable => unavailable ? 0.4 : 1);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter MenuRowBrush =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Selector : Brushes.Transparent);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter MenuRowText =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Ink);
+}

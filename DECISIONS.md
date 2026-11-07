@@ -12490,3 +12490,55 @@ Facts H1–H5 must build on:
 - **The 120 Hz in-app "over 1.5× budget" percentages are not usable** for a swapping run: the
   spike labels each surface's totals with the last display that hosted it. The p95/p99 figures
   above stand.
+
+## 2026-11-07 — M45 H1: Handheld mode skeleton
+
+- **The Handheld shell hangs off `MainViewModel`.** `MainViewModel.IsHandheldMode` creates a
+  `HandheldShellViewModel` (and disposes it on the way out), and `MainViewModel.DispatchGamepadAction` /
+  `DispatchBackButton` forward to it in Handheld mode. Why: every pad path already ends there: the
+  Activity's keys, Screen-2's keys (the Presentation forwards them while it shows the Launcher), and the
+  shared poll loop that reads the Thor's hat-axis D-pad. So there is no new input plumbing, and the
+  hidden Gamepad shell gets nothing while Handheld mode is up. `GamepadInputService` now runs in both
+  controller modes.
+- **The shell browses through `IHandheldLibrary`**, which `MainViewModel` implements over the real library,
+  disc-set grouping, thumbnail service and `LaunchGameCommand`. The shell itself is tested on macOS with a
+  fake. The game view model constructor call moved into `MainViewModel.CreateGameViewModel`, shared by the
+  Gamepad scopes and Handheld folders.
+- **A folder realizes only its visible window**: the four columns on screen plus the one peeking in (15
+  tiles at most), with covers decoded at tile size for that window plus one column either side and
+  released beyond it. This is the virtualization the project rules ask for, done in the view model,
+  because the folder scrolls a column at a time rather than by pixels.
+- **Platform folders follow navigation order** (`Systems`, filtered to platforms with games). Folder
+  counts are title sets, so a multi-disc game is one game. "Manual" sort in a platform folder is the
+  library's title order.
+- **Screen-2's content is swapped inside its own top level** (`ThorSecondScreenPresentation.ShowLauncher`):
+  the Launcher while browsing in Handheld mode, the companion while a game runs or while the companion's
+  drawer (reached from the dock's All apps) is open. This is never a move between top levels (H0).
+- **Android persists the mode** in `AppSettings.InterfaceMode` and only offers Handheld with a
+  presentation display attached; a saved Handheld choice starts in Gamepad if the second screen is
+  missing. `AndroidInterfaceModeService` is no longer reported as a command-line override, because nothing
+  forces the mode there (`SupportsDesktopMode` keeps the Desktop affordances hidden). A desktop head that
+  opens a data folder saved in Handheld mode starts in **Desktop** mode.
+- **The views draw on fixed canvases** (Stage 1920×1080, Launcher 1240×1080) fitted with `Stretch="Uniform"`,
+  never cropped. Screen-2's window is 1240×1025, not the panel's 1240×1080, and the first build's
+  crop-to-fill cut off the top row's selector ring. The focused tile is raised on its **item container**
+  (`ContentPresenter`), not on the tile: siblings paint in order, so a ZIndex on the tile itself let the
+  tiles after it cover the ring. And every tile list (`ItemsControl`, its panel, the dock pill) is
+  `ClipToBounds="False"`: the list clipped the ring to its own bounds, so the top row, the dock's first and
+  last buttons and the folder's edge columns all lost part of their selector on the device.
+- **Handheld honours a system's pinned launch screen** (`External` / `BuiltIn`), as Gamepad mode does; a
+  system set to "Ask" launches on the built-in screen until H2 puts the chooser on the Title page. The
+  Stage mirrors the app's status line (launching, failures), since the Gamepad toast is hidden.
+- **Polish pass (owner-requested unslop, polish mode).** One 48 px edge margin on both canvases, all
+  sizes on a 4 px grid, ring radii that nest (tile radius + the ring's reach). The folder grid (232 px
+  tiles) is centred between its header and the dock and aligned to the Back chip; the first build left a
+  ~120 px dead band under the header. Covers fill their tile cropped from the top (`ImageBrush`,
+  `AlignmentY=Top`), where a box's title and art usually sit. Weights stop at SemiBold, shadows are
+  neutral (no indigo tint), numbers are tabular, and the dock's All apps and menu buttons are quiet white
+  keys rather than dark blocks. The selector stays the one accent, exactly as the spec draws it.
+  Glyphs are an enum on the view model (`HandheldGlyph`) mapped to vectors in the view, so the view model
+  never builds geometry (that needs the render platform, which the unit tests do not have).
+- **No Nunito yet.** The spec's face for names and plates is not bundled; H1 uses the app's default UI
+  face. Adding it (OFL, with its licence in `THIRD-PARTY-NOTICES.md`) belongs to the look work in H3.
+- **The status pill** reads battery and charging from `BatteryManager` and Wi-Fi from `ConnectivityManager`
+  (new `ACCESS_NETWORK_STATE` permission, install-time) behind Core's `IDeviceStatusService`.

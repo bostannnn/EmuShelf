@@ -219,6 +219,7 @@ internal sealed class SecondScreenController
             _runningGameTitle = title;
             _navigation = _navigation.StartGame();
             ResetAchievementTarget();
+            UpdateHandheldSurface();
             // The game took Screen-2: hand the companion's view model to the built-in panel (MainView hosts
             // it as an overlay) and hide the Presentation so the game is visible underneath. The spotlight
             // update below then renders on the built-in panel through the same model.
@@ -272,6 +273,7 @@ internal sealed class SecondScreenController
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
+            UpdateHandheldSurface();
             // If a game had taken Screen-2, swap the companion back before touching its overlay/spotlight,
             // so the restored surface renders on the second screen it now owns again.
             RestoreCompanionToSecondScreen();
@@ -463,6 +465,10 @@ internal sealed class SecondScreenController
         {
             _presentation = new ThorSecondScreenPresentation(_activity, display);
             WireModel(_presentation.Model);
+            _presentation.Model.PropertyChanged += CompanionPropertyChanged;
+            if (_viewModel is not null)
+                _viewModel.HandheldCompanion = _presentation.Model;
+            UpdateHandheldSurface();
             _presentation.Show();
             _logger.Information($"Second-screen Presentation attached: {Describe(display)}.");
             EnsureAppsLoadedAsync();
@@ -1145,6 +1151,12 @@ internal sealed class SecondScreenController
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainViewModel.Handheld))
+        {
+            UpdateHandheldSurface();
+            return;
+        }
+
         if (e.PropertyName != nameof(MainViewModel.FocusedGame) || _runningGameId is not null)
             return;
 
@@ -1208,6 +1220,9 @@ internal sealed class SecondScreenController
         if (_presentation is not { } presentation)
             return;
         _presentation = null;
+        presentation.Model.PropertyChanged -= CompanionPropertyChanged;
+        if (_viewModel is not null && ReferenceEquals(_viewModel.HandheldCompanion, presentation.Model))
+            _viewModel.HandheldCompanion = null;
         ++_spotlightGeneration;
         _spotlightLoad?.Cancel();
         StopKeepAlive();
@@ -1241,6 +1256,28 @@ internal sealed class SecondScreenController
         {
             presentation.Dispose();
         }
+    }
+
+    // The companion's drawer (All apps) opening or closing flips Screen-2 between it and the Launcher.
+    private void CompanionPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(SecondScreenViewModel.Overlay))
+            UpdateHandheldSurface();
+    }
+
+    /// <summary>
+    /// In Handheld mode (M45) Screen-2 is the Launcher while browsing. It is today's companion while a game
+    /// runs, and while the companion's own drawer is open over it (All apps, reached from the Handheld dock).
+    /// In Gamepad mode it is always the companion.
+    /// </summary>
+    private void UpdateHandheldSurface()
+    {
+        if (_presentation is not { } presentation)
+            return;
+        var handheld = _viewModel?.Handheld;
+        var showLauncher = handheld is not null && _runningGameId is null &&
+            presentation.Model.Overlay == SecondScreenOverlayKind.None;
+        presentation.ShowLauncher(showLauncher ? handheld : null);
     }
 
     private void DetachDisplayManager()

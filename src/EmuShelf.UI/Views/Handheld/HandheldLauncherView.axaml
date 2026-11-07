@@ -1,0 +1,301 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.HandheldLauncherView"
+             x:DataType="vm:HandheldShellViewModel">
+
+  <!--
+    Handheld mode's bottom screen: home (5×4 slots, empty ones drawn faintly, page dots), an open folder
+    (header bar + a 3-row grid scrolling by column), and the dock. A pure view onto
+    HandheldShellViewModel, drawn on a fixed 1240×1080 canvas (the Thor's bottom panel) and fitted, never
+    cropped. The colour lives in the covers and the platform folders; the chrome stays grey, and the one
+    accent is the selector (a thick indigo frame with white keylines). H1 moves it with plain state
+    changes; the motion pass (H3) makes it spring.
+
+    Rhythm: a 48 px edge margin on every side (room for the selector ring and its future glow), a 4 px grid
+    for every size, and radii that nest (a ring's radius is the tile's radius plus the ring's reach).
+  -->
+
+  <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
+  <UserControl.Background>
+    <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+      <GradientStop Offset="0" Color="#FAFBFD" />
+      <GradientStop Offset="1" Color="#E4E8EF" />
+    </LinearGradientBrush>
+  </UserControl.Background>
+
+  <UserControl.Styles>
+    <!-- The selector ring around whatever is focused: white keyline, indigo frame, white keyline. -->
+    <Style Selector="Border.ring">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="Border.ring > Border">
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BorderThickness" Value="12" />
+    </Style>
+    <Style Selector="Border.ring > Border > Border">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="4" />
+    </Style>
+    <Style Selector="Panel.focusable.focused > Border.ring">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Panel.focusable.focused">
+      <Setter Property="RenderTransform" Value="scale(1.1)" />
+    </Style>
+
+    <!-- Header chips: a raised white surface with a hairline. -->
+    <Style Selector="Border.chip">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="Height" Value="56" />
+      <Setter Property="Padding" Value="24,0" />
+      <Setter Property="BoxShadow" Value="0 2 8 0 #0F000000" />
+    </Style>
+    <Style Selector="TextBlock.chip-text">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.Resources>
+    <!--
+      Each item sits in a ContentPresenter container, and siblings paint in order, so a ZIndex on the
+      tile itself does nothing and the tiles after the focused one cover its ring. Raise the container.
+    -->
+    <ControlTheme x:Key="HandheldTileContainer" TargetType="ContentPresenter">
+      <Setter Property="ZIndex" Value="{ReflectionBinding IsFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}" />
+    </ControlTheme>
+  </UserControl.Resources>
+
+  <Panel>
+  <Viewbox Stretch="Uniform" ClipToBounds="False">
+    <Grid Width="1240" Height="1080" RowDefinitions="*,144">
+
+      <!-- ===== Home ===== -->
+      <Grid IsVisible="{Binding IsHomeVisible}" RowDefinitions="*,40" Margin="0,48,0,0">
+        <!-- 5×4 slots: 176 px tiles on a 224 × 196 pitch, centred in the space above the dock. -->
+        <ItemsControl ItemsSource="{Binding CurrentPage.Slots}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+                      ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="5" Rows="4" ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldHomeSlotViewModel">
+              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="176" Height="176" Margin="24,10">
+                <!-- A platform folder: tinted in the platform colour, with its monogram face. -->
+                <Border IsVisible="{Binding IsFolder}" CornerRadius="44" Background="{Binding AccentBrush}"
+                        BoxShadow="0 8 20 0 #24000000">
+                  <Grid>
+                    <!-- A tone shift inside the platform colour, the folder's soft top light. -->
+                    <Border CornerRadius="44">
+                      <Border.Background>
+                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                          <GradientStop Offset="0" Color="#47FFFFFF" />
+                          <GradientStop Offset="0.6" Color="#00FFFFFF" />
+                        </LinearGradientBrush>
+                      </Border.Background>
+                    </Border>
+                    <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="20,0">
+                      <TextBlock Text="{Binding Monogram}" FontSize="44" FontWeight="SemiBold" Foreground="White" />
+                    </Viewbox>
+                  </Grid>
+                </Border>
+                <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out. -->
+                <Border IsVisible="{Binding IsEmpty}" CornerRadius="44" BorderBrush="#29465088" BorderThickness="2"
+                        Background="#40FFFFFF" />
+                <Border Classes="ring" CornerRadius="68" Margin="-24">
+                  <Border CornerRadius="64">
+                    <Border CornerRadius="52" />
+                  </Border>
+                </Border>
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Page dots. -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding PageDots}" IsVisible="{Binding HasMultiplePages}"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="12" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldPageDotViewModel">
+              <Border Height="16" CornerRadius="8"
+                      Width="{Binding IsCurrent, Converter={x:Static vm:HandheldViewConverters.DotWidth}}"
+                      Background="{Binding IsCurrent, Converter={x:Static vm:HandheldViewConverters.DotBrush}}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Grid>
+
+      <!-- ===== An open folder ===== -->
+      <Grid IsVisible="{Binding IsFolderOpen}" RowDefinitions="Auto,*" Margin="48,40,0,0">
+        <!-- Header: Back, the folder's name and count, the sort chip; aligned to the grid's left edge. -->
+        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0">
+          <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsBackFocused}">
+            <Border Classes="chip">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <TextBlock Classes="chip-text" Text="Back" />
+              </StackPanel>
+            </Border>
+            <Border Classes="ring" CornerRadius="44" Margin="-16">
+              <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
+            </Border>
+          </Panel>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
+                      VerticalAlignment="Center">
+            <Border Width="20" Height="20" CornerRadius="10" Background="{Binding OpenFolder.AccentBrush}"
+                    VerticalAlignment="Center" />
+            <TextBlock Text="{Binding OpenFolder.Name}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="520" />
+            <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="24" Foreground="#5B6176"
+                       VerticalAlignment="Center" FontFeatures="+tnum" />
+          </StackPanel>
+          <Panel Grid.Column="2" Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}">
+            <Border Classes="chip">
+              <TextBlock Classes="chip-text" Text="{Binding OpenFolder.SortLabel}" />
+            </Border>
+            <Border Classes="ring" CornerRadius="44" Margin="-16">
+              <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
+            </Border>
+          </Panel>
+        </Grid>
+
+        <!--
+          The games: three rows of 232 px tiles on a 264 × 256 pitch, filled column by column, centred
+          between the header and the dock. Only the visible window (four columns plus the one peeking in at
+          the right edge) is realized.
+        -->
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding OpenFolder.VisibleTiles}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+                      ClipToBounds="False" VerticalAlignment="Center" IsVisible="{Binding OpenFolder.HasGames}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <WrapPanel Orientation="Vertical" Height="768" ItemWidth="264" ItemHeight="256" ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldGameTileViewModel">
+              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="232" Height="232"
+                     HorizontalAlignment="Left" VerticalAlignment="Center">
+                <!-- Covers crop from the top, where a box's title and art usually are. -->
+                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4" BoxShadow="0 8 20 0 #24000000"
+                        Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
+                  <Panel>
+                    <TextBlock Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="24" FontWeight="SemiBold"
+                               Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center" Margin="24"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" MaxLines="4"
+                               TextTrimming="CharacterEllipsis" />
+                    <Border IsVisible="{Binding HasCover}">
+                      <Border.Background>
+                        <ImageBrush Source="{Binding Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                      </Border.Background>
+                    </Border>
+                  </Panel>
+                </Border>
+                <Border Classes="ring" CornerRadius="80" Margin="-24">
+                  <Border CornerRadius="76"><Border CornerRadius="64" /></Border>
+                </Border>
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Empty folder: say so rather than show nothing. -->
+        <StackPanel Grid.Row="1" IsVisible="{Binding OpenFolder.IsEmpty}" HorizontalAlignment="Center"
+                    VerticalAlignment="Center" Spacing="8" Margin="0,0,48,0">
+          <TextBlock Text="This folder is empty" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+                     HorizontalAlignment="Center" />
+          <TextBlock Text="Games you add to this platform appear here" FontSize="24" Foreground="#5B6176"
+                     HorizontalAlignment="Center" />
+        </StackPanel>
+      </Grid>
+
+      <!-- ===== Dock: All apps, the five pinned apps, the menu button ===== -->
+      <Border Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#C7FFFFFF"
+              BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 20 0 #14000000" ClipToBounds="False"
+              VerticalAlignment="Bottom">
+        <ItemsControl ItemsSource="{Binding DockItems}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+                      ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="32" ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldDockItemViewModel">
+              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="80" Height="80">
+                <!-- System buttons are quiet: a raised surface and a muted glyph, never a dark block. -->
+                <Border CornerRadius="24" Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1"
+                        IsVisible="{Binding !IsApp}">
+                  <Panel>
+                    <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="36" Height="36" Foreground="#4B5274"
+                              IsVisible="{Binding IsAllApps}" />
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="36" Height="36" Foreground="#4B5274"
+                              IsVisible="{Binding IsMenu}" />
+                  </Panel>
+                </Border>
+                <Panel IsVisible="{Binding IsApp}">
+                  <Border CornerRadius="24" BorderBrush="#29465088" BorderThickness="2" Background="#40FFFFFF"
+                          IsVisible="{Binding Slot.IsEmpty}" />
+                  <Border CornerRadius="24" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon}">
+                    <Image Source="{Binding Slot.Icon}" Stretch="Uniform" />
+                  </Border>
+                </Panel>
+                <Border Classes="ring" CornerRadius="40" Margin="-16">
+                  <Border CornerRadius="36"><Border CornerRadius="24" /></Border>
+                </Border>
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+    </Grid>
+  </Viewbox>
+
+  <!-- The menu's scrim covers the whole window, letterbox bands included. -->
+      <Border IsVisible="{Binding IsMenuOpen}" Background="#521C2033">
+        <Viewbox Stretch="Uniform">
+        <Border Width="1240" Height="1080" Background="Transparent">
+        <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" CornerRadius="40"
+                Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+          <StackPanel Spacing="8">
+            <TextBlock Text="Menu" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" Margin="24,8,0,8" />
+            <ItemsControl ItemsSource="{Binding MenuItems}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="8" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldMenuItemViewModel">
+                  <!-- Card radius 40 − padding 24 = 16 for the rows inside it. -->
+                  <Border CornerRadius="16" Height="80" Padding="24,0"
+                          Background="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
+                    <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                               Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        </Border>
+        </Viewbox>
+      </Border>
+  </Panel>
+</UserControl>

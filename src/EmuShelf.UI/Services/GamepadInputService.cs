@@ -60,11 +60,15 @@ public sealed class GamepadInputService : IDisposable
             _pushSource.InputReceived += OnInputReceived;
 
         _modeService.ModeChanged += OnModeChanged;
-        SetActive(_modeService.Current == InterfaceMode.Gamepad);
+        SetActive(IsCouchMode(_modeService.Current));
     }
 
     private void OnModeChanged(object? sender, InterfaceMode mode) =>
-        SetActive(mode == InterfaceMode.Gamepad);
+        SetActive(IsCouchMode(mode));
+
+    // Handheld mode is driven by the pad too (the Thor's D-pad is a hat axis, read through this loop), so
+    // the loop runs in both controller modes; MainViewModel routes each action to the active shell.
+    private static bool IsCouchMode(InterfaceMode mode) => mode is InterfaceMode.Gamepad or InterfaceMode.Handheld;
 
     private void SetActive(bool active)
     {

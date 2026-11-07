@@ -1,0 +1,169 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.HandheldStageView"
+             x:DataType="vm:HandheldShellViewModel">
+
+  <!--
+    Handheld mode's top screen: whatever the Launcher has focused, shown large, with the name plate and
+    the corner pills (status top-right, achievements bottom-left, button hints bottom-right). A pure view
+    onto HandheldShellViewModel.Stage, drawn on a fixed 1920×1080 canvas and fitted, never cropped. The
+    cover art and the folder faces carry the colour; the plate and pills are quiet white surfaces. H1 uses
+    plain transitions; the motion pass (H3) brings the centre pop and the drifting pattern.
+  -->
+
+  <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
+  <UserControl.Background>
+    <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+      <GradientStop Offset="0" Color="#F5F6F9" />
+      <GradientStop Offset="1" Color="#E1E5EC" />
+    </LinearGradientBrush>
+  </UserControl.Background>
+
+  <UserControl.Styles>
+    <!-- Corner pills: one height, one padding, one type size. -->
+    <Style Selector="Border.pill">
+      <Setter Property="Background" Value="#E6FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="32" />
+      <Setter Property="Height" Value="64" />
+      <Setter Property="Padding" Value="24,0" />
+      <Setter Property="BoxShadow" Value="0 4 16 0 #14000000" />
+    </Style>
+    <Style Selector="TextBlock.pill-text">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <Style Selector="Border.button-glyph">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Background" Value="#4B5274" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <Viewbox Stretch="Uniform">
+    <Grid Width="1920" Height="1080">
+
+      <!-- Centre: a folder, a game's cover, an app icon, or a glyph card; it sits above the plate. -->
+      <Panel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,160">
+        <Border IsVisible="{Binding Stage.IsFolder}" Width="416" Height="416" CornerRadius="100"
+                Background="{Binding Stage.AccentBrush}" BoxShadow="0 24 56 0 #2E000000">
+          <Grid>
+            <!-- A tone shift inside the platform colour, the folder's soft top light. -->
+            <Border CornerRadius="100">
+              <Border.Background>
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
+                  <GradientStop Offset="0" Color="#47FFFFFF" />
+                  <GradientStop Offset="0.6" Color="#00FFFFFF" />
+                </LinearGradientBrush>
+              </Border.Background>
+            </Border>
+            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="48,0">
+              <TextBlock Text="{Binding Stage.Monogram}" FontSize="112" FontWeight="SemiBold" Foreground="White" />
+            </Viewbox>
+          </Grid>
+        </Border>
+
+        <Panel IsVisible="{Binding Stage.IsGame}">
+          <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="24" ClipToBounds="True"
+                  BoxShadow="0 28 64 0 #33000000" MaxHeight="640" MaxWidth="960">
+            <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
+          </Border>
+          <!-- No cover yet (or none at all): a finished-looking card with the title, not an empty hole. -->
+          <Border IsVisible="{Binding !Stage.HasArt}" Width="448" Height="608" CornerRadius="24"
+                  Background="#D5D9E4" BoxShadow="0 28 64 0 #29000000">
+            <TextBlock Text="{Binding Stage.Title}" FontSize="40" FontWeight="SemiBold" Foreground="#5B6176"
+                       TextWrapping="Wrap" TextAlignment="Center" Margin="40"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+        </Panel>
+
+        <Border IsVisible="{Binding Stage.IsApp}" Width="384" Height="384" CornerRadius="96" ClipToBounds="True"
+                Background="#FFFFFF" BoxShadow="0 24 56 0 #2E000000">
+          <Image Source="{Binding Stage.AppIcon}" Stretch="Uniform" Margin="32" />
+        </Border>
+
+        <!-- All apps, the menu, an empty slot, the folder header: a quiet card with what it is. -->
+        <Border IsVisible="{Binding Stage.IsGlyph}" Width="384" Height="384" CornerRadius="96"
+                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 16 40 0 #1F000000">
+          <PathIcon Data="{Binding Stage.Glyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                    Width="144" Height="144" Foreground="#5B6176" />
+        </Border>
+      </Panel>
+
+      <!-- Name plate. -->
+      <Border IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+              Margin="0,0,0,64" MinWidth="560" MaxWidth="1080" Padding="48,20" CornerRadius="32"
+              Background="#F2FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 24 0 #14000000">
+        <StackPanel Spacing="4">
+          <TextBlock Text="{Binding Stage.Title}" FontSize="52" FontWeight="SemiBold" Foreground="#1C2033"
+                     TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding Stage.Subtitle}" FontSize="28" Foreground="#5B6176" FontFeatures="+tnum"
+                     TextAlignment="Center" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </Border>
+
+      <!-- The app's status message (launching, a failure), which Gamepad mode shows as a toast. -->
+      <Border Classes="pill" IsVisible="{Binding HasStatusMessage}" HorizontalAlignment="Center"
+              VerticalAlignment="Top" Margin="0,48,0,0" MaxWidth="1080">
+        <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+      </Border>
+
+      <!-- Status pill: Wi-Fi, battery, time. -->
+      <Border Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,48,48,0">
+        <StackPanel Orientation="Horizontal" Spacing="20">
+          <!-- Wi-Fi: solid when connected, faded when not. -->
+          <PathIcon Data="{x:Static vm:HandheldIcons.Wifi}" Width="32" Height="32" Foreground="#4B5274"
+                    IsVisible="{Binding HasWifiState}" Opacity="{Binding WifiOpacity}" />
+          <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasBattery}">
+            <PathIcon Data="{x:Static vm:HandheldIcons.Charging}" Width="28" Height="28" Foreground="#4B5274"
+                      IsVisible="{Binding IsCharging}" />
+            <TextBlock Classes="pill-text" Text="{Binding BatteryText}" />
+          </StackPanel>
+          <TextBlock Classes="pill-text" Text="{Binding TimeText}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Achievements pill (games with RetroAchievements data). -->
+      <Border Classes="pill" IsVisible="{Binding Stage.HasAchievements}"
+              HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="48,0,0,76">
+        <StackPanel Orientation="Horizontal" Spacing="12">
+          <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
+          <TextBlock Classes="pill-text" Text="{Binding Stage.AchievementText}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Button hints. -->
+      <Border Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,48,76">
+        <ItemsControl ItemsSource="{Binding Hints}" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="24" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldHint">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Classes="button-glyph">
+                  <Panel>
+                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasIcon}" />
+                    <PathIcon Data="{Binding Icon, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                              Width="24" Height="24" Foreground="White" IsVisible="{Binding HasIcon}" />
+                  </Panel>
+                </Border>
+                <TextBlock Classes="pill-text" Text="{Binding Label}" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+    </Grid>
+  </Viewbox>
+</UserControl>

@@ -22,6 +22,14 @@
         <views:GamepadShellView />
 
         <!--
+          Handheld mode (M45): this screen is the Stage, the Launcher is on Screen-2. GamepadShellView hides
+          itself outside Gamepad mode, so only one of the two is ever shown.
+        -->
+        <Panel IsVisible="{Binding IsHandheldMode}">
+            <views:HandheldStageView DataContext="{Binding Handheld}" />
+        </Panel>
+
+        <!--
           While a game runs on the external screen, the second-screen companion swaps onto this built-in
           panel (SecondScreenController.SwapCompanionToMainScreen sets MainScreenCompanion). It is a
           full-bleed overlay over the library so the player looks down at the running game's spotlight and

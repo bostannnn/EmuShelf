@@ -2298,7 +2298,8 @@ Played. Pad input already reaches one dispatcher from both displays
       criterion:** if the Presentation can't hold the selector glide at the panel's refresh rate with
       20 decoded tiles, stop and redesign before H1 (for example a lighter Launcher, or fewer live
       animations) rather than pushing on.
-- [ ] **H1 — mode and skeleton.** `InterfaceMode.Handheld` in Core; `AndroidInterfaceModeService`
+- [x] **H1 — mode and skeleton.** ✅ (2026-11-07; checked on the Thor by the owner, choices in
+      `DECISIONS.md` 2026-11-07.) `InterfaceMode.Handheld` in Core; `AndroidInterfaceModeService`
       offers it only when a presentation display exists and persists the choice in `AppSettings`;
       every mode's Start/Settings menu can switch to it and back. `HandheldShellViewModel`
       (`EmuShelf.UI`) owns all state: home layout, open folder, selection, zones (grid / header /
