@@ -13017,3 +13017,34 @@ the dock pill is translucent).
   out; on top, the hero crossfading in and back to the medium. Not checked on the device: Play (the screen
   chooser, the launching panel, the lift-off and the landing), because it starts an emulator.
 - **Still on Avalonia:** the menu and the All apps drawer.
+
+## 2026-11-07 — An Avalonia DispatcherTimer costs ~19% of the UI thread on Android while it runs
+
+Resting on a game still cost ≈ 19% of the UI thread with both screens native. Narrowed on the Thor by
+switching parts off: with the medium's idle sway off it fell to 2%; with the sway on but no pose posted, and
+then with the timer ticking but doing nothing at all, it stayed at 19%. The cost is Avalonia's `DispatcherTimer`
+itself on Android (moving it from Render to Background priority changed nothing), and the sway's 50 ms timer
+was the one timer that runs for as long as a game rests on the Stage. It also only managed ~10 ticks a second.
+The medium's clock is now a thread-pool `System.Threading.Timer` that posts one tick at a time to the UI thread
+(a busy UI thread skips ticks rather than queueing them): resting on a game is 2% of the UI thread, and the sway
+runs at its intended 20 Hz. The other Handheld timers are one-shots or the 15 s status clock, which measure as
+nothing at idle. Avoid long-running DispatcherTimers on Android.
+
+**Where the Handheld screens stand** (Thor, Release with JIT, both screens native; "start" is f6af72c before the
+performance work; total = the app's busy threads, % of one core):
+
+| Case | Total, start → now | GPU busy, start → now |
+|---|---|---|
+| Idle on home | 51% → 3% | 16% → 0% |
+| Scrolling home (5/s) | 132% → 53% | 30% → 14% |
+| Idle on a game | 75% → 12% | 24% → 3% |
+| Scrolling a folder (6/s) | 149% → 49% | 36% → 12% |
+| Holding right in a folder | 153% → 68% | 29% → 12% |
+| Idle on a Title page | — → 3% | — → 0% |
+| Moving on a Title page (5/s) | — → 19% | — → 3% |
+
+What is left while moving: the UI thread (16–29%: the shell's work per press and pictures of new pieces, each
+a GPU round trip on Android), the thread pool decoding covers (9–17% while scrolling a folder), and the two GL
+threads at 12–15% each while something animates at 120 Hz. The shipping build is AOT-compiled, which the
+repo's earlier measurements found roughly halves managed CPU; these numbers are JIT (the NDK is not installed
+on the build Mac).

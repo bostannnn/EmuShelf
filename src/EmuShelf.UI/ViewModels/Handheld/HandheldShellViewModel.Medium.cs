@@ -13,8 +13,15 @@ public sealed partial class HandheldShellViewModel
     private static readonly TimeSpan SwayInterval = TimeSpan.FromMilliseconds(50);
 
     private readonly HandheldMediumMotion _medium = new();
-    private DispatcherTimer? _mediumTimer;
     private long _mediumTickTimestamp;
+
+    // A thread-pool timer that posts each tick, not a DispatcherTimer: on Android an Avalonia DispatcherTimer
+    // kept the UI thread about 19% busy for as long as it ran (measured with the tick doing nothing at all),
+    // and the idle sway runs for as long as a game rests on the Stage.
+    private System.Threading.Timer? _mediumTimer;
+    private TimeSpan _mediumInterval;
+    private bool _mediumRunning;
+    private int _mediumTickQueued;
 
     /// <summary>The medium's pose, exposed for tests.</summary>
     public HandheldMediumMotion MediumMotion => _medium;
@@ -58,24 +65,27 @@ public sealed partial class HandheldShellViewModel
             return;
         }
         var interval = _medium.IsSettling ? SettleInterval : SwayInterval;
-        if (_mediumTimer is null)
+        _mediumTimer ??= new System.Threading.Timer(_ =>
         {
-            _mediumTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = interval };
-            _mediumTimer.Tick += (_, _) => TickMedium();
-        }
-        else if (_mediumTimer.Interval != interval)
-        {
-            _mediumTimer.Interval = interval;
-        }
-        if (!_mediumTimer.IsEnabled)
-        {
+            // One tick queued at a time: a busy UI thread skips ticks rather than piling them up.
+            if (System.Threading.Interlocked.Exchange(ref _mediumTickQueued, 1) == 0)
+                Dispatcher.UIThread.Post(TickMedium, DispatcherPriority.Render);
+        });
+        if (!_mediumRunning)
             _mediumTickTimestamp = _clock.GetTimestamp();
-            _mediumTimer.Start();
+        if (!_mediumRunning || interval != _mediumInterval)
+        {
+            _mediumInterval = interval;
+            _mediumRunning = true;
+            _mediumTimer.Change(interval, interval);
         }
     }
 
     private void TickMedium()
     {
+        System.Threading.Interlocked.Exchange(ref _mediumTickQueued, 0);
+        if (!_mediumRunning)
+            return;
         var now = _clock.GetTimestamp();
         var elapsed = _clock.GetElapsedTime(_mediumTickTimestamp, now).TotalMilliseconds;
         _mediumTickTimestamp = now;
@@ -86,6 +96,7 @@ public sealed partial class HandheldShellViewModel
 
     private void StopMediumTimer()
     {
-        _mediumTimer?.Stop();
+        _mediumRunning = false;
+        _mediumTimer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
     }
 }

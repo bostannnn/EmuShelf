@@ -1301,6 +1301,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _disposed = true;
         StopStatusUpdates();
         StopMediumTimer();
+        _mediumTimer?.Dispose();
+        _mediumTimer = null;
         _stageTimer?.Stop();
         CloseTitle();
         CloseFolder();
