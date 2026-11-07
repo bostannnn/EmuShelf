@@ -139,6 +139,16 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
+
+    // The first three covers peeking out of a focused folder (owned by the shell's peek cache, shared with the Stage).
+    [ObservableProperty]
+    public partial Bitmap? PeekA { get; set; }
+
+    [ObservableProperty]
+    public partial Bitmap? PeekB { get; set; }
+
+    [ObservableProperty]
+    public partial Bitmap? PeekC { get; set; }
 }
 
 public sealed class HandheldHomePageViewModel(int index, IReadOnlyList<HandheldHomeSlotViewModel> slots)
@@ -232,6 +242,16 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     [ObservableProperty]
     public partial int FirstVisibleColumn { get; set; }
 
+    /// <summary>The tiles are being replaced by a sort or a re-read: a column change now is a jump, not a scroll.</summary>
+    public bool IsResorting { get; internal set; }
+
+    /// <summary>
+    /// The first column realized in <see cref="VisibleTiles"/>: one behind <see cref="FirstVisibleColumn"/>
+    /// when there is one, sitting just off the left edge so a scroll slides it out rather than dropping it.
+    /// </summary>
+    [ObservableProperty]
+    public partial int WindowFirstColumn { get; set; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsBackFocused))]
     [NotifyPropertyChangedFor(nameof(IsSortFocused))]
@@ -309,6 +329,16 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string Monogram { get; set; } = string.Empty;
+
+    // A focused folder's first three covers, peeking out once its flap tilts. Owned by the shell's peek cache.
+    [ObservableProperty]
+    public partial Bitmap? PeekA { get; set; }
+
+    [ObservableProperty]
+    public partial Bitmap? PeekB { get; set; }
+
+    [ObservableProperty]
+    public partial Bitmap? PeekC { get; set; }
 
     [ObservableProperty]
     public partial IBrush AccentBrush { get; set; } = Brushes.Gray;

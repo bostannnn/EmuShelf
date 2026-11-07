@@ -306,6 +306,24 @@ The motions:
 - **Sounds** (Phase 5): soft original effects for move, open, close, swap and launch, and an off
   switch in Settings. They must be self-made or CC0-licensed. No Nintendo sounds.
 
+**Numbers as built (M45 H3, 2026-11-07).** One table, in code as `HandheldMotion`; the device tuning edits
+both. They are still the mockup's values: the owner's feel check on the Thor is what moves them.
+
+| Motion | Value |
+|---|---|
+| Selector spring | stiffness 560, damping 43 (ratio ≈ 0.91); position, size and corner radius all ride it |
+| Track spring (home pages, folder columns) | stiffness 250, damping 31.5 (ratio ≈ 1.0) |
+| Focus lift | 1.13× in 220 ms, cubic-bezier(.34, 1.42, .64, 1), with a deeper pre-rendered shadow fading in |
+| Glow breathing | opacity 0.55 ↔ 1, 600 ms each way (1.2 s cycle) |
+| Edge bump | 7% of the selector's size toward the wall, out in the first 35% of 300 ms, eased back |
+| Top-screen pop | old art (pictured beneath the new; a 3D medium just gives way) 0.86× and fading, 150 ms; new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fading in over 170 ms; plate 0.94× → 1 in 240 ms |
+| Held direction | presses under 150 ms apart; the top screen updates 140 ms after the last one |
+| Folder focus | flap tilts 200 ms after the folder takes the top screen (300 ms transition); the home tile tilts at once |
+| Folder open | tile 1 → 1.1 → 1; home 0.94× and fading, 260 ms; games spill from 0.35× at the folder, 440 ms each, 14 ms apart (capped at 180 ms); header fades in after 120 ms over 300 ms; the top screen holds the open folder 300 ms |
+| Folder close | games gather to 0.35× at the folder, 280 ms, farthest first, 10 ms apart (capped at 120 ms); home returns after 80 ms over 320 ms |
+| Launch | Launcher cover presses to 0.94×, pops to 1.1× (260 ms) and lifts off (420 ms); the Stage's cover lands from below after 140 ms (520 ms) and zooms to 1.7× fading (460 ms); the emulator starts as it lands (660 ms after Play) |
+
+
 ## What already exists, and what is new
 
 This comes from a read of the code on 2026-11-06 covering Gamepad mode (`MainViewModel`, the

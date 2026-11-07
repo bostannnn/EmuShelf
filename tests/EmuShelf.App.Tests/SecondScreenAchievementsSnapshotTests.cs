@@ -61,7 +61,7 @@ public class SecondScreenAchievementsSnapshotTests
                     context.FillRectangle(new SolidColorBrush(Color.FromRgb((byte)(40 + i * 17), 90, (byte)(200 - i * 13))), new Rect(0, 0, 64, 64));
                     context.FillRectangle(Brushes.Goldenrod, new Rect(8, 46, 48, 10));
                 }
-                bitmap.Save(path);
+                bitmap.Save(path, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
             }
             files.Add(path);
         }

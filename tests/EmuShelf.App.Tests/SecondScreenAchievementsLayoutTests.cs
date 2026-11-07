@@ -306,7 +306,7 @@ public class SecondScreenAchievementsLayoutTests
         // time. A set's badges now load together and are published in one go.
         var path = Path.Combine(Path.GetTempPath(), $"emushelf-badge-{Guid.NewGuid():N}.png");
         using (var source = new WriteableBitmap(new PixelSize(16, 16), new Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888))
-            source.Save(path);
+            source.Save(path, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
         try
         {
             var cache = new StubBadgeCache(path);

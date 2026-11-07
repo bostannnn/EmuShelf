@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
              xmlns:controls="using:EmuShelf.App.Controls"
+             xmlns:vh="using:EmuShelf.App.Views.Handheld"
              x:Class="EmuShelf.App.Views.HandheldStageView"
              x:DataType="vm:HandheldShellViewModel">
 
@@ -9,8 +10,8 @@
     Handheld mode's top screen: whatever the Launcher has focused, shown large, with the name plate and
     the corner pills (status top-right, achievements bottom-left, button hints bottom-right). A pure view
     onto HandheldShellViewModel.Stage, drawn on a fixed 1920×1080 canvas and fitted, never cropped. The
-    cover art and the folder faces carry the colour; the plate and pills are quiet white surfaces. H1 uses
-    plain transitions; the motion pass (H3) brings the centre pop and the drifting pattern.
+    cover art and the folder faces carry the colour; the plate and pills are quiet white surfaces. The motion
+    (the centre pop, the folder's flap, the launch landing) is HandheldStageMotion.
   -->
 
   <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
@@ -62,7 +63,7 @@
       </RadialGradientBrush>
     </Border.OpacityMask>
   </Border>
-  <Panel IsVisible="{Binding Stage.IsHeroArt}">
+  <Panel x:Name="HeroBackdrop" IsVisible="{Binding Stage.IsHeroArt}">
     <Image Source="{Binding Stage.Fanart}" Stretch="UniformToFill" />
     <Border>
       <Border.Background>
@@ -86,6 +87,14 @@
   <Viewbox Stretch="Uniform">
     <Grid Width="1920" Height="1080">
 
+      <!--
+        The outgoing centre art, pictured, shrinking away beneath the new one as it grows. Only the art: the
+        old plate gives way at once, so two names never overlap.
+      -->
+      <vh:HandheldPicture x:Name="StageGhost" IsVisible="False" Margin="0,0,0,160" />
+
+      <!-- What changes with the focus: the hero, the centre art and the plate. -->
+      <Panel x:Name="StageContent">
       <!-- The Title page hero over the fan art: the logo (or the title set in type), then the meta line. -->
       <Panel IsVisible="{Binding Stage.IsHeroArt}">
         <Panel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="112,128,0,0" Width="808" Height="560">
@@ -114,25 +123,16 @@
         </StackPanel>
       </Panel>
 
-      <!-- Centre: a folder, a game's cover, an app icon, or a glyph card; it sits above the plate. -->
-      <Panel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,160" IsVisible="{Binding Stage.IsCentreVisible}">
-        <Border IsVisible="{Binding Stage.IsFolder}" Width="416" Height="416" CornerRadius="100"
-                Background="{Binding Stage.AccentBrush}" BoxShadow="0 24 56 0 #2E000000">
-          <Grid>
-            <!-- A tone shift inside the platform colour, the folder's soft top light. -->
-            <Border CornerRadius="100">
-              <Border.Background>
-                <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                  <GradientStop Offset="0" Color="#47FFFFFF" />
-                  <GradientStop Offset="0.6" Color="#00FFFFFF" />
-                </LinearGradientBrush>
-              </Border.Background>
-            </Border>
-            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="48,0">
-              <TextBlock Text="{Binding Stage.Monogram}" FontSize="112" FontWeight="SemiBold" Foreground="White" />
-            </Viewbox>
-          </Grid>
-        </Border>
+      <!--
+        Centre: a folder, a game's cover, an app icon, or a glyph card; it sits above the plate. The wrapper
+        fills the canvas above the plate, so the pop always grows from the same middle.
+      -->
+      <Panel x:Name="CentreWrap" Margin="0,0,0,160">
+      <Panel HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding Stage.IsCentreVisible}">
+        <!-- A folder: after a beat its flap tilts so the first covers peek out; it swings open with the folder. -->
+        <Panel IsVisible="{Binding Stage.IsFolder}">
+          <vh:HandheldFolderArt x:Name="StageFolder" DataContext="{Binding Stage}" Width="448" Height="448" />
+        </Panel>
 
         <Panel IsVisible="{Binding Stage.IsGame}">
           <!--
@@ -173,8 +173,10 @@
                     Width="144" Height="144" Foreground="#5B6176" />
         </Border>
       </Panel>
+      </Panel>
 
       <!-- Name plate. -->
+      <Panel x:Name="PlateWrap">
       <Border IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
               Margin="0,0,0,64" MinWidth="560" MaxWidth="1080" Padding="48,20" CornerRadius="32"
               Background="#F2FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 24 0 #14000000">
@@ -184,6 +186,16 @@
           <TextBlock Text="{Binding Stage.Subtitle}" FontSize="28" Foreground="#5B6176" FontFeatures="+tnum"
                      TextAlignment="Center" TextTrimming="CharacterEllipsis" />
         </StackPanel>
+      </Border>
+      </Panel>
+      </Panel>
+
+
+      <!-- Launch: the cover that lifted off the Launcher lands here, then zooms into the emulator. -->
+      <Border x:Name="LaunchFly" IsVisible="False" Width="448" Height="632" CornerRadius="28" ClipToBounds="True"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Background="#D5D9E4"
+              BorderBrush="#D9FFFFFF" BorderThickness="8" IsHitTestVisible="False">
+        <Image x:Name="LaunchFlyImage" Stretch="UniformToFill" />
       </Border>
 
       <!-- The app's status message (launching, a failure), which Gamepad mode shows as a toast. -->

@@ -154,7 +154,7 @@ public sealed class GamepadSettingsSetupModeTests
         // survive, but SetupCompleted stays false so the host offers the wizard again next launch.
         Assert.True(vm.Dispatch(GamepadAction.Cancel));
         for (var attempt = 0; attempt < 100 && closed is null; attempt++)
-            await Task.Delay(20);
+            await Task.Delay(20, TestContext.Current.CancellationToken);
         Assert.NotNull(closed);
         Assert.False(vm.SetupCompleted);
     }
@@ -213,7 +213,7 @@ public sealed class GamepadSettingsSetupModeTests
         Assert.True(vm.Dispatch(GamepadAction.Menu));
         // Finish runs the ordinary (async) save; it reports back through CloseRequested(saved: true).
         for (var attempt = 0; attempt < 100 && closed is null; attempt++)
-            await Task.Delay(20);
+            await Task.Delay(20, TestContext.Current.CancellationToken);
 
         Assert.True(closed);
         // Only this path records the wizard as walked; leaving early also saves but must not.

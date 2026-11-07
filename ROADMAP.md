@@ -2327,7 +2327,10 @@ Played. Pad input already reaches one dispatcher from both displays
       tinted backdrop as fallback; the browsing backdrop is the fan art. Returning from the game lands
       on the grid. **Exit:** every launch goes through the Title page, including both choosers and
       the sync panel; a game with no fan art still looks finished.
-- [ ] **H3 — motion pass.** Implement the spec's motion section with compositor animations,
+- [x] **H3 — motion pass.** ✅ (2026-11-07; checked on the Thor over adb — top screen recorded through folder
+      focus, open, browsing, a held run, close and a launch — and frame by frame headlessly on macOS for
+      the Launcher, which is `FLAG_SECURE`. The feel is the owner's call. Numbers in the spec's Motion section; choices in `DECISIONS.md` 2026-11-07
+      "M45 H3".) Implement the spec's motion section with compositor animations,
       transform and opacity only, pre-rendered shadows, no per-frame blur. Selector spring (the
       spring keeps its speed when retargeted), focus lift, breathing glow, edge bump, folder focus /
       open / close, the top-screen centre pop with the held-direction debounce, page slides, the

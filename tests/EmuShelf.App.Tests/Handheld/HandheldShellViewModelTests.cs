@@ -13,13 +13,14 @@ using Xunit;
 
 namespace EmuShelf.App.Tests.Handheld;
 
-public class HandheldShellViewModelTests
+public partial class HandheldShellViewModelTests
 {
     private sealed class FakeLibrary : IHandheldLibrary
     {
         public List<HandheldPlatform> Platforms { get; } = [];
         public Dictionary<string, List<HandheldGameEntry>> Games { get; } = new();
         public List<long> CoverRequests { get; } = [];
+        public List<long> PeekRequests { get; } = [];
         public List<long> Launched { get; } = [];
         public List<GameLaunchScreen> LaunchScreens { get; } = [];
         public List<(string SystemId, GameLaunchScreen Screen)> Remembered { get; } = [];
@@ -52,8 +53,10 @@ public class HandheldShellViewModelTests
 
         public Task<Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, CancellationToken cancellationToken)
         {
-            if (!fullSize)
+            if (!fullSize && decodeWidth == HandheldShellViewModel.TileDecodeWidth)
                 CoverRequests.Add(game.Id);
+            if (decodeWidth == HandheldShellViewModel.PeekDecodeWidth)
+                PeekRequests.Add(game.Id);
             return Task.FromResult<Bitmap?>(null);
         }
 
@@ -99,7 +102,11 @@ public class HandheldShellViewModelTests
     private static void Press(HandheldShellViewModel shell, GamepadAction action, int times = 1)
     {
         for (var i = 0; i < times; i++)
+        {
             Assert.True(shell.DispatchGamepadAction(action));
+            // Presses here come microseconds apart, a held direction: let the Stage settle as the timer would.
+            shell.SettleStage();
+        }
     }
 
     [Fact]
@@ -167,7 +174,10 @@ public class HandheldShellViewModelTests
 
         Assert.Equal(12, folder.SelectedIndex);
         Assert.Equal(1, folder.FirstVisibleColumn);
-        Assert.Equal(3, folder.VisibleTiles[0].Index);
+        // The column that scrolled out stays realized just off the left edge, so it can slide out.
+        Assert.Equal(0, folder.WindowFirstColumn);
+        Assert.Equal(0, folder.VisibleTiles[0].Index);
+        Assert.Equal(18, folder.VisibleTiles.Count);
         Assert.True(folder.VisibleTiles.Single(tile => tile.Index == 12).IsFocused);
         // Covers were only asked for the window and its one-column margin, never the whole folder.
         Assert.DoesNotContain(library.Games["ps2"][27].Id, library.CoverRequests);
@@ -205,13 +215,14 @@ public class HandheldShellViewModelTests
         Press(shell, GamepadAction.NavigateRight);
         Press(shell, GamepadAction.Confirm);
         Assert.Equal("GC System", shell.OpenFolder!.Name);
+        var releasedBefore = library.Released;
 
         Press(shell, GamepadAction.Cancel);
 
         Assert.False(shell.IsFolderOpen);
         Assert.Equal(1, shell.HomePosition.Slot);
         Assert.Equal("GC System", shell.Stage.Title);
-        Assert.Equal(4, library.Released);
+        Assert.Equal(releasedBefore + 4, library.Released);
     }
 
     [Fact]
@@ -600,8 +611,8 @@ public class HandheldShellStatusTests
         var library = new GatedLibrary();
         var shell = new HandheldShellViewModel(library);
 
-        var first = shell.InitializeAsync();
-        var second = shell.InitializeAsync();
+        var first = shell.InitializeAsync(TestContext.Current.CancellationToken);
+        var second = shell.InitializeAsync(TestContext.Current.CancellationToken);
         // The newer read lands first with two platforms; the older, slower one then lands with none.
         library.Reads[1].SetResult([new HandheldPlatform("a", "A", "A", "#000000", 1), new HandheldPlatform("b", "B", "B", "#000000", 1)]);
         await second;

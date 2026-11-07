@@ -76,6 +76,7 @@ public partial class MainViewModel
             var handheld = new HandheldShellViewModel(new HandheldLibrary(this), _handheldDeviceStatus)
             {
                 Companion = _handheldCompanion,
+                LaunchLead = HandheldMotion.LaunchLead,
             };
             Handheld = handheld;
             handheld.ShowStatus(StatusText);

@@ -1,0 +1,107 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vh="using:EmuShelf.App.Views.Handheld"
+             x:Class="EmuShelf.App.Views.Handheld.HandheldFolderArt"
+             x:CompileBindings="False">
+
+  <!--
+    A platform (or, from H4, a user) folder: a back plate, the first three covers tucked inside, and the
+    front flap with the folder's face. Drawn at 416 px and scaled to fit (a home tile is 176 px, the Stage's
+    big folder 416). Its states are classes set by whoever shows it: `peek` tilts the flap so the covers peek
+    out (focus), `open` swings it open (A). Transform-only transitions on the flap and the covers.
+    DataContext: anything with AccentBrush, Monogram, PeekA, PeekB, PeekC (a home slot, the Stage).
+  -->
+
+  <UserControl.Styles>
+    <Style Selector="Border.front">
+      <Setter Property="RenderTransformOrigin" Value="50%,100%" />
+      <Setter Property="RenderTransform" Value="scaleY(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.3">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.34" Y1="1.3" X2="0.64" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="vh|HandheldFolderArt.peek Border.front">
+      <Setter Property="RenderTransform" Value="scaleY(0.86)" />
+    </Style>
+    <Style Selector="vh|HandheldFolderArt.open Border.front">
+      <Setter Property="RenderTransform" Value="scaleY(0.5)" />
+    </Style>
+
+    <Style Selector="Border.peek-cover">
+      <Setter Property="Width" Value="148" />
+      <Setter Property="Height" Value="208" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="#D5D9E4" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="0,24,0,0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.36">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.34" Y1="1.3" X2="0.64" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
+    </Style>
+    <!-- Closed, each cover sits low behind the flap; a peek lifts them; open lifts them clear. -->
+    <Style Selector="Border.peek-cover.left"><Setter Property="RenderTransform" Value="translate(-64px,84px) rotate(-9deg)" /></Style>
+    <Style Selector="Border.peek-cover.middle"><Setter Property="RenderTransform" Value="translate(0px,80px)" /></Style>
+    <Style Selector="Border.peek-cover.right"><Setter Property="RenderTransform" Value="translate(64px,84px) rotate(9deg)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.peek Border.peek-cover.left"><Setter Property="RenderTransform" Value="translate(-64px,8px) rotate(-9deg)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.peek Border.peek-cover.middle"><Setter Property="RenderTransform" Value="translate(0px,0px)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.peek Border.peek-cover.right"><Setter Property="RenderTransform" Value="translate(64px,8px) rotate(9deg)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.left"><Setter Property="RenderTransform" Value="translate(-72px,-28px) rotate(-12deg)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.middle"><Setter Property="RenderTransform" Value="translate(0px,-36px)" /></Style>
+    <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.right"><Setter Property="RenderTransform" Value="translate(72px,-28px) rotate(12deg)" /></Style>
+  </UserControl.Styles>
+
+  <!-- Not clipped: the shadow spills past the folder's own square. -->
+  <Viewbox Stretch="Uniform" ClipToBounds="False">
+    <Panel Width="416" Height="416" ClipToBounds="False">
+      <vh:HandheldShadow Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" />
+      <!-- Back plate: the platform colour, darker. -->
+      <Border Margin="12,54,12,16" CornerRadius="76" Background="{Binding AccentBrush}">
+        <Border CornerRadius="76" Background="#47141830" />
+      </Border>
+      <!-- The covers inside (none drawn until they are decoded). -->
+      <Panel Margin="34,16,34,0" Height="276" VerticalAlignment="Top">
+        <Border Classes="peek-cover left" IsVisible="{Binding PeekB, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Image Source="{Binding PeekB}" Stretch="UniformToFill" />
+        </Border>
+        <Border Classes="peek-cover right" IsVisible="{Binding PeekC, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Image Source="{Binding PeekC}" Stretch="UniformToFill" />
+        </Border>
+        <Border Classes="peek-cover middle" IsVisible="{Binding PeekA, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <Image Source="{Binding PeekA}" Stretch="UniformToFill" />
+        </Border>
+      </Panel>
+      <!-- Front flap: the folder's face, hinged at the bottom. -->
+      <Border Classes="front" Margin="12,112,12,16" CornerRadius="72" Background="{Binding AccentBrush}">
+        <Grid>
+          <Border CornerRadius="72">
+            <Border.Background>
+              <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+                <GradientStop Offset="0" Color="#5CFFFFFF" />
+                <GradientStop Offset="0.75" Color="#00FFFFFF" />
+              </LinearGradientBrush>
+            </Border.Background>
+          </Border>
+          <!-- The flap's top edge catches the light. -->
+          <Border CornerRadius="72" BorderBrush="#73FFFFFF" BorderThickness="0,3,0,0" />
+          <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="48,24">
+            <TextBlock Text="{Binding Monogram}" FontSize="112" FontWeight="SemiBold" Foreground="White" />
+          </Viewbox>
+        </Grid>
+      </Border>
+    </Panel>
+  </Viewbox>
+</UserControl>

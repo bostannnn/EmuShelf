@@ -56,6 +56,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _library = library;
         DeviceStatus = deviceStatus ?? UnknownDeviceStatusService.Instance;
         _clock = clock ?? TimeProvider.System;
+        _heldDirection = new HandheldHeldDirection(_clock);
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
@@ -150,6 +151,27 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>Raised when a move runs into a wall, for the view's edge bump.</summary>
     public event Action<HandheldDirection>? Bumped;
 
+    /// <summary>
+    /// Raised just before the Stage moves on to a different thing (the view keeps a picture of the outgoing
+    /// art for the centre pop), and right after, once the new thing is in place.
+    /// </summary>
+    public event Action? StageChanging;
+
+    /// <inheritdoc cref="StageChanging"/>
+    public event Action? StageChanged;
+
+    /// <summary>Raised before an open folder is torn down, while its tiles are still on screen (the gather).</summary>
+    public event Action<HandheldFolderViewModel>? FolderClosing;
+
+    /// <summary>Raised when Play starts a launch from the Title page, before the lead-in (the cover's flight).</summary>
+    public event Action<HandheldTitlePageViewModel>? LaunchStarting;
+
+    /// <summary>
+    /// How long a launch waits after Play for its motion (the cover lifting off the Launcher and landing on
+    /// the Stage) before the emulator starts. The host sets <see cref="HandheldMotion.LaunchLead"/>; zero in tests.
+    /// </summary>
+    public TimeSpan LaunchLead { get; set; } = TimeSpan.Zero;
+
     /// <summary>The home position the selection is on (or returns to from a folder or the dock).</summary>
     public HandheldHomePosition HomePosition => _home;
 
@@ -189,6 +211,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         foreach (var platform in platforms)
             _platforms[platform.SystemId] = platform;
         _layout = HandheldHomeLayout.CreateDefault(platforms.Select(platform => platform.SystemId));
+        // A library change may have changed which games come first; the peek covers are read again.
+        ReleasePeekCovers();
         BuildPages();
 
         // Keep the selection where it was if it still exists (a library refresh), else start at the top.
@@ -305,6 +329,21 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     private void Move(HandheldDirection direction)
+    {
+        // The top screen changes once per move: a held direction waits until it settles (Motion spec).
+        _stageHold = null;
+        _stageDefer = _heldDirection.Press() ? HandheldMotion.HeldDirectionSettle : null;
+        try
+        {
+            MoveCore(direction);
+        }
+        finally
+        {
+            _stageDefer = null;
+        }
+    }
+
+    private void MoveCore(HandheldDirection direction)
     {
         switch (Zone)
         {
@@ -505,6 +544,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         var folder = new HandheldFolderViewModel(platform, homeSlot);
         OpenFolder = folder;
         Zone = HandheldZone.Grid;
+        // The top screen stays on the open folder while the games spill out, then moves on to the first one.
+        _stageHold = _clock.GetTimestamp();
         UpdateFocus();
 
         var cancellation = new CancellationTokenSource();
@@ -533,6 +574,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             folder.FocusedHeaderItem = HandheldHeaderItem.Back;
         }
         UpdateFocus();
+        _stageHold = null;
     }
 
     /// <summary>
@@ -572,6 +614,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         // A Title page belongs to its folder's entries, which are released below.
         CloseTitle();
+        _stageHold = null;
+        FolderClosing?.Invoke(folder);
         _folderLoad?.Cancel();
         _folderLoad?.Dispose();
         _folderLoad = null;
@@ -601,6 +645,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             game => game.PlayCount);
         folder.Items = sorted.Select((entry, index) => new HandheldGameTileViewModel(index, entry)).ToList();
         folder.Sort = sort;
+        folder.IsResorting = true;
         // A re-read keeps the scroll window where it was (clamped by the selection); a re-sort starts at the left.
         folder.FirstVisibleColumn = keepColumn;
         // Re-sorting keeps the same game selected; the first open starts at the first game.
@@ -610,6 +655,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         folder.SelectedIndex = -1;
         if (folder.Items.Count > 0)
             SelectInFolder(folder, index, updateFocus: false);
+        folder.IsResorting = false;
         OnPropertyChanged(nameof(OpenFolder));
         UpdateFocus();
     }
@@ -635,7 +681,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void RealizeWindow(HandheldFolderViewModel folder)
     {
         const int rows = HandheldFolderNavigation.Rows;
-        var firstIndex = folder.FirstVisibleColumn * rows;
+        // One column behind the window stays realized too, so a column scroll slides the leaving column
+        // out instead of dropping it.
+        folder.WindowFirstColumn = Math.Max(0, folder.FirstVisibleColumn - 1);
+        var firstIndex = folder.WindowFirstColumn * rows;
         var lastIndex = Math.Min(folder.Items.Count, (folder.FirstVisibleColumn + HandheldFolderNavigation.VisibleColumns + 1) * rows);
         folder.VisibleTiles.Clear();
         for (var i = firstIndex; i < lastIndex; i++)
@@ -818,11 +867,72 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         for (var i = 0; i < DockItems.Count; i++)
             DockItems[i].IsFocused = Zone == HandheldZone.Dock && i == DockIndex;
 
-        UpdateStage();
+        UpdateHomePeek();
+        if (StageDelay() is { } delay)
+            ScheduleStage(delay);
+        else
+            UpdateStage();
         UpdateHints();
     }
 
+    // ---- The top screen's timing: once per move, and the open folder held while its games spill out ----
+
+    private readonly HandheldHeldDirection _heldDirection;
+    private TimeSpan? _stageDefer;
+    private long? _stageHold;
+    private DispatcherTimer? _stageTimer;
+
+    /// <summary>The Stage is waiting for a held direction to settle (or for a folder's games to land).</summary>
+    public bool IsStagePending { get; private set; }
+
+    /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
+    public void SettleStage()
+    {
+        if (IsStagePending)
+            UpdateStage();
+    }
+
+    private TimeSpan? StageDelay()
+    {
+        if (_stageDefer is { } defer)
+            return defer;
+        if (_stageHold is { } since && OpenFolder is { SelectedTile: not null } && Zone == HandheldZone.Grid && TitlePage is null)
+        {
+            var remaining = HandheldMotion.FolderOpenStageHold - _clock.GetElapsedTime(since);
+            if (remaining > TimeSpan.Zero)
+                return remaining;
+        }
+        return null;
+    }
+
+    private void ScheduleStage(TimeSpan delay)
+    {
+        IsStagePending = true;
+        if (_disposed)
+            return;
+        if (_stageTimer is null)
+        {
+            _stageTimer = new DispatcherTimer(DispatcherPriority.Input);
+            _stageTimer.Tick += (_, _) =>
+            {
+                _stageTimer?.Stop();
+                SettleStage();
+            };
+        }
+        _stageTimer.Stop();
+        _stageTimer.Interval = delay;
+        _stageTimer.Start();
+    }
+
     private void UpdateStage()
+    {
+        IsStagePending = false;
+        _stageTimer?.Stop();
+        UpdateStageCore();
+        RaiseStageChanged();
+    }
+
+    private void UpdateStageCore()
     {
         if (TitlePage is { } title)
         {
@@ -885,6 +995,34 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false)
     {
+        // A different thing on the Stage gets the centre pop; a refresh of the same thing does not.
+        var changing = kind != Stage.Kind || !string.Equals(title, Stage.Title, StringComparison.Ordinal);
+        if (changing)
+            StageChanging?.Invoke();
+        try
+        {
+            ShowStageCore(kind, title, subtitle, keepArt);
+        }
+        finally
+        {
+            if (changing)
+                _stageChangedPending = true;
+        }
+    }
+
+    // StageChanged is raised once the whole update is in place (art, medium, tint), not halfway through it.
+    private bool _stageChangedPending;
+
+    private void RaiseStageChanged()
+    {
+        if (!_stageChangedPending)
+            return;
+        _stageChangedPending = false;
+        StageChanged?.Invoke();
+    }
+
+    private void ShowStageCore(HandheldStageKind kind, string title, string subtitle, bool keepArt)
+    {
         CancelStageArt(keepArt);
         Stage.Kind = kind;
         Stage.Title = title;
@@ -894,6 +1032,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.AppIcon = null;
         Stage.Tint = Brushes.Gray;
         Stage.Medium = null;
+        Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
         Stage.Glyph = kind switch
         {
             HandheldStageKind.AllApps => HandheldGlyph.AllApps,
@@ -909,6 +1048,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Folder, platform.Name, subtitle);
         Stage.Monogram = platform.ShortName;
         Stage.AccentBrush = Color.TryParse(platform.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        ApplyPeek(platform.SystemId, Stage);
     }
 
     private long _stageGameId = -1;
@@ -1127,8 +1267,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _disposed = true;
         StopStatusUpdates();
         StopMediumTimer();
+        _stageTimer?.Stop();
         CloseTitle();
         CloseFolder();
         CancelStageArt();
+        ReleasePeekCovers();
     }
 }

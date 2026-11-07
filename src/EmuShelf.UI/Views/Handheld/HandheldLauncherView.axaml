@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:vh="using:EmuShelf.App.Views.Handheld"
              x:Class="EmuShelf.App.Views.HandheldLauncherView"
              x:DataType="vm:HandheldShellViewModel">
 
@@ -10,7 +11,8 @@
     HandheldShellViewModel, drawn on a fixed 1240×1080 canvas (the Thor's bottom panel) and fitted, never
     cropped. The colour lives in the covers and the platform folders; the chrome stays grey, and the one
     accent is the selector (a thick indigo frame with white keylines). H1 moves it with plain state
-    changes; the motion pass (H3) makes it spring.
+    changes; H3 made it travel: one selector (the layer at the end) springs between the focused elements,
+    whose `Border.ring` children only say where it goes. The motion lives in HandheldLauncherMotion.
 
     Rhythm: a 48 px edge margin on every side (room for the selector ring and its future glow), a 4 px grid
     for every size, and radii that nest (a ring's radius is the tile's radius plus the ring's reach).
@@ -26,25 +28,53 @@
 
   <UserControl.Styles>
     <!-- The selector ring around whatever is focused: white keyline, indigo frame, white keyline. -->
+    <!--
+      Each focusable element's ring is an invisible anchor: its bounds and corner radius are where the one
+      travelling selector frames it. The selector itself is drawn by the selector layer.
+    -->
     <Style Selector="Border.ring">
-      <Setter Property="BorderBrush" Value="White" />
-      <Setter Property="BorderThickness" Value="4" />
-      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
       <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
-    <Style Selector="Border.ring > Border">
-      <Setter Property="BorderBrush" Value="#5B58D9" />
-      <Setter Property="BorderThickness" Value="12" />
-    </Style>
-    <Style Selector="Border.ring > Border > Border">
+    <Style Selector="Border.selector-ring">
       <Setter Property="BorderBrush" Value="White" />
       <Setter Property="BorderThickness" Value="4" />
     </Style>
-    <Style Selector="Panel.focusable.focused > Border.ring">
-      <Setter Property="IsVisible" Value="True" />
+    <Style Selector="Border.selector-ring > Border">
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BorderThickness" Value="14" />
+    </Style>
+    <Style Selector="Border.selector-ring > Border > Border">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="4" />
+    </Style>
+    <!-- The focus lift lives on the element itself (fly-ins and pops live on its container). -->
+    <Style Selector="Panel.focusable">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.22">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.34" Y1="1.42" X2="0.64" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
     </Style>
     <Style Selector="Panel.focusable.focused">
-      <Setter Property="RenderTransform" Value="scale(1.1)" />
+      <Setter Property="RenderTransform" Value="scale(1.13)" />
+    </Style>
+    <!-- A lifted tile casts a deeper shadow: a second pre-rendered shadow fades in under it. -->
+    <Style Selector="vh|HandheldShadow.lift">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.22" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.focusable.focused > vh|HandheldShadow.lift">
+      <Setter Property="Opacity" Value="1" />
     </Style>
 
     <!-- Header chips: a raised white surface with a hairline. -->
@@ -146,75 +176,77 @@
 
   <Panel>
   <Viewbox Stretch="Uniform" ClipToBounds="False">
-    <Grid Width="1240" Height="1080" RowDefinitions="*,144">
+    <Grid x:Name="Canvas" Width="1240" Height="1080" RowDefinitions="*,144">
 
-      <!-- ===== Home ===== -->
-      <Grid IsVisible="{Binding IsHomeVisible}" RowDefinitions="*,40" Margin="0,48,0,0">
-        <!-- 5×4 slots: 176 px tiles on a 224 × 196 pitch, centred in the space above the dock. -->
-        <ItemsControl ItemsSource="{Binding CurrentPage.Slots}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
-                      ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <UniformGrid Columns="5" Rows="4" ClipToBounds="False" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:HandheldHomeSlotViewModel">
-              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="176" Height="176" Margin="24,10">
-                <!-- A platform folder: tinted in the platform colour, with its monogram face. -->
-                <Border IsVisible="{Binding IsFolder}" CornerRadius="44" Background="{Binding AccentBrush}"
-                        BoxShadow="0 8 20 0 #24000000">
-                  <Grid>
-                    <!-- A tone shift inside the platform colour, the folder's soft top light. -->
-                    <Border CornerRadius="44">
-                      <Border.Background>
-                        <LinearGradientBrush StartPoint="0%,0%" EndPoint="100%,100%">
-                          <GradientStop Offset="0" Color="#47FFFFFF" />
-                          <GradientStop Offset="0.6" Color="#00FFFFFF" />
-                        </LinearGradientBrush>
-                      </Border.Background>
-                    </Border>
-                    <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="20,0">
-                      <TextBlock Text="{Binding Monogram}" FontSize="44" FontWeight="SemiBold" Foreground="White" />
-                    </Viewbox>
-                  </Grid>
-                </Border>
-                <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out. -->
-                <Border IsVisible="{Binding IsEmpty}" CornerRadius="44" BorderBrush="#29465088" BorderThickness="2"
-                        Background="#40FFFFFF" />
-                <Border Classes="ring" CornerRadius="68" Margin="-24">
-                  <Border CornerRadius="64">
-                    <Border CornerRadius="52" />
-                  </Border>
-                </Border>
-              </Panel>
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+      <!-- ===== Home: every page on one track that slides on the track spring ===== -->
+      <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="0,48,0,0">
+        <Panel ClipToBounds="True">
+          <ItemsControl x:Name="PageTrack" ItemsSource="{Binding Pages}" HorizontalAlignment="Left" ClipToBounds="False">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" ClipToBounds="False" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldHomePageViewModel">
+                <!-- 5×4 slots: 176 px tiles on a 224 × 196 pitch, centred in the space above the dock. -->
+                <Panel Width="1240">
+                  <ItemsControl ItemsSource="{Binding Slots}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+                                ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <UniformGrid Columns="5" Rows="4" ClipToBounds="False" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:HandheldHomeSlotViewModel">
+                        <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}"
+                               Width="176" Height="176" Margin="24,10">
+                          <!-- A platform folder: its flap tilts while focused so the first covers peek out. -->
+                          <vh:HandheldFolderArt IsVisible="{Binding IsFolder}" Classes.peek="{Binding IsFocused}" Margin="-8" />
+                          <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out. -->
+                          <Border IsVisible="{Binding IsEmpty}" CornerRadius="44" BorderBrush="#29465088" BorderThickness="2"
+                                  Background="#40FFFFFF" />
+                          <Border Classes="ring" CornerRadius="68" Margin="-24" />
+                        </Panel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Panel>
 
-        <!-- Page dots. -->
-        <ItemsControl Grid.Row="1" ItemsSource="{Binding PageDots}" IsVisible="{Binding HasMultiplePages}"
-                      HorizontalAlignment="Center" VerticalAlignment="Center">
-          <ItemsControl.ItemsPanel>
-            <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="12" />
-            </ItemsPanelTemplate>
-          </ItemsControl.ItemsPanel>
-          <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:HandheldPageDotViewModel">
-              <Border Height="16" CornerRadius="8"
-                      Width="{Binding IsCurrent, Converter={x:Static vm:HandheldViewConverters.DotWidth}}"
-                      Background="{Binding IsCurrent, Converter={x:Static vm:HandheldViewConverters.DotBrush}}" />
-            </DataTemplate>
-          </ItemsControl.ItemTemplate>
-        </ItemsControl>
+        <!-- Page dots, with the current-page pill riding the track's position. -->
+        <Panel Grid.Row="1" IsVisible="{Binding HasMultiplePages}" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <ItemsControl ItemsSource="{Binding PageDots}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="12" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldPageDotViewModel">
+                <Border Width="18" Height="16" CornerRadius="8" Background="#38465088" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border x:Name="PageIndicator" Width="52" Height="16" CornerRadius="8" Background="#5B58D9"
+                  HorizontalAlignment="Left" />
+        </Panel>
       </Grid>
 
       <!-- ===== An open folder ===== -->
-      <Grid IsVisible="{Binding IsFolderOpen}" RowDefinitions="Auto,*" Margin="48,40,0,0">
+      <!--
+        Clipped 32 px in from the canvas edge: the column behind the window waits out of sight there, and the
+        lifted left column (1.13×, 15 px past its 48 px margin) still fits.
+      -->
+      <Panel IsVisible="{Binding IsFolderOpen}" ClipToBounds="True" Margin="32,0,0,0">
+      <Grid RowDefinitions="Auto,*" Margin="16,40,0,0">
         <!-- Header: Back, the folder's name and count, the sort chip; aligned to the grid's left edge. -->
-        <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0">
-          <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsBackFocused}">
+        <Grid x:Name="FolderHeader" ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0">
+          <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsBackFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
             <Border Classes="chip">
               <StackPanel Orientation="Horizontal" Spacing="8">
                 <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
@@ -234,7 +266,7 @@
             <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="24" Foreground="#5B6176"
                        VerticalAlignment="Center" FontFeatures="+tnum" />
           </StackPanel>
-          <Panel Grid.Column="2" Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}">
+          <Panel Grid.Column="2" Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
             <Border Classes="chip">
               <TextBlock Classes="chip-text" Text="{Binding OpenFolder.SortLabel}" />
             </Border>
@@ -247,9 +279,9 @@
         <!--
           The games: three rows of 232 px tiles on a 264 × 256 pitch, filled column by column, centred
           between the header and the dock. Only the visible window (four columns plus the one peeking in at
-          the right edge) is realized.
+          the right edge, plus the one just behind the left edge) is realized; the track spring slides it.
         -->
-        <ItemsControl Grid.Row="1" ItemsSource="{Binding OpenFolder.VisibleTiles}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+        <ItemsControl x:Name="FolderTiles" Grid.Row="1" ItemsSource="{Binding OpenFolder.VisibleTiles}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                       ClipToBounds="False" VerticalAlignment="Center" IsVisible="{Binding OpenFolder.HasGames}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -258,10 +290,12 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldGameTileViewModel">
-              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="232" Height="232"
+              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
                      HorizontalAlignment="Left" VerticalAlignment="Center">
+                <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" />
+                <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" />
                 <!-- Covers crop from the top, where a box's title and art usually are. -->
-                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4" BoxShadow="0 8 20 0 #24000000"
+                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4"
                         Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
                   <Panel>
                     <TextBlock Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="24" FontWeight="SemiBold"
@@ -292,10 +326,13 @@
                      HorizontalAlignment="Center" />
         </StackPanel>
       </Grid>
+      </Panel>
 
       <!-- ===== Dock: All apps, the five pinned apps, the menu button ===== -->
+      <vh:HandheldShadow Grid.Row="1" Margin="28,0,28,6" Height="152" Radius="40" Blur="20" Color="#14000000"
+                         VerticalAlignment="Bottom" />
       <Border Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#C7FFFFFF"
-              BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 20 0 #14000000" ClipToBounds="False"
+              BorderBrush="#141C2033" BorderThickness="1" ClipToBounds="False"
               VerticalAlignment="Bottom">
         <ItemsControl ItemsSource="{Binding DockItems}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                       ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -306,7 +343,7 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldDockItemViewModel">
-              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" Width="80" Height="80">
+              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="80" Height="80">
                 <!-- System buttons are quiet: a raised surface and a muted glyph, never a dark block. -->
                 <Border CornerRadius="24" Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1"
                         IsVisible="{Binding !IsApp}">
@@ -333,6 +370,8 @@
         </ItemsControl>
       </Border>
 
+      <!-- Pictures of a closing folder's tiles, gathering back into it. -->
+      <Canvas x:Name="GhostLayer" Grid.RowSpan="2" IsHitTestVisible="False" />
     </Grid>
   </Viewbox>
 
@@ -341,7 +380,7 @@
     Covers the grid and the dock, as the mockup's page does; the facts on the left of a row of big buttons,
     and the disc chooser, the screen chooser, the actions sheet and the launching panel as its states.
   -->
-  <Panel IsVisible="{Binding IsTitleOpen}">
+  <Panel x:Name="TitleLayer" IsVisible="{Binding IsTitleOpen}">
     <Panel.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
         <GradientStop Offset="0" Color="#FAFBFD" />
@@ -425,7 +464,7 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HandheldTitleButtonViewModel">
-                <Panel Classes="focusable" Classes.focused="{Binding IsFocused}">
+                <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
                   <Border Classes="title-button" Classes.play="{Binding IsPlay}">
                     <StackPanel Orientation="Horizontal" Spacing="16">
                       <PathIcon Data="{x:Static vm:HandheldIcons.Play}" IsVisible="{Binding IsPlay}" />
@@ -507,7 +546,7 @@
                 <TextBlock Text="{Binding TitlePage.Title}" FontSize="26" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="48" HorizontalAlignment="Center" ClipToBounds="False">
-                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsTopScreenFocused}" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
                       <PathIcon Data="{x:Static vm:HandheldIcons.ScreenTop}" Width="96" Height="96" Foreground="#5B58D9" />
@@ -519,7 +558,7 @@
                     <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
                   </Border>
                 </Panel>
-                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" ZIndex="{Binding TitlePage.IsBottomScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsBottomScreenFocused}" ZIndex="{Binding TitlePage.IsBottomScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
                       <PathIcon Data="{x:Static vm:HandheldIcons.ScreenBottom}" Width="96" Height="96" Foreground="#5B58D9" />
@@ -533,7 +572,7 @@
                 </Panel>
               </StackPanel>
               <!-- The remember toggle: a row with a check box. -->
-              <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsRememberFocused}" HorizontalAlignment="Center">
+              <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsRememberFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsRememberFocused}" HorizontalAlignment="Center">
                 <Border Classes="chip" Height="72" CornerRadius="36" Padding="24,0">
                   <StackPanel Orientation="Horizontal" Spacing="16">
                     <Border Width="40" Height="40" CornerRadius="12" BorderBrush="#5B58D9" BorderThickness="3" VerticalAlignment="Center"
@@ -554,7 +593,7 @@
 
         <!-- State: launching — the pre-launch save sync (the blocking sync panel), then the emulator start. -->
         <StackPanel IsVisible="{Binding TitlePage.IsLaunching}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
-          <Border Width="280" Height="392" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
+          <Border x:Name="LaunchCover" Width="280" Height="392" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
                   BoxShadow="0 16 40 0 #2E000000" HorizontalAlignment="Center">
             <Border IsVisible="{Binding TitlePage.HasCover}">
               <Border.Background>
@@ -574,6 +613,23 @@
       </Grid>
     </Viewbox>
   </Panel>
+
+  <!--
+    ===== The selector =====
+    One frame for every focusable element (tiles, chips, dock buttons, Title page buttons and cards): a thick
+    violet frame between white keylines, over a pre-rendered glow that breathes. It springs from element to
+    element (HandheldLauncherMotion); the menu's scrim covers it.
+  -->
+  <Viewbox Stretch="Uniform" ClipToBounds="False" IsHitTestVisible="False">
+    <Canvas x:Name="SelectorLayer" Width="1240" Height="1080" ClipToBounds="False">
+      <vh:HandheldShadow x:Name="SelectorGlow" Blur="28" Color="#B05B58D9" Width="1" Height="1" />
+      <Panel x:Name="Selector">
+        <Border x:Name="SelectorRing" Classes="selector-ring">
+          <Border><Border /></Border>
+        </Border>
+      </Panel>
+    </Canvas>
+  </Viewbox>
 
   <!-- The menu's scrim covers the whole window, letterbox bands included. -->
       <Border IsVisible="{Binding IsMenuOpen}" Background="#521C2033">

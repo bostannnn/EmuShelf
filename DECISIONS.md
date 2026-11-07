@@ -12615,3 +12615,69 @@ platform colour replaces it. The Title page keeps its fan-art hero.
   level, untested; and the shelf's newer renderer (`MediaShelf3DControl`) knows per-platform case
   profiles (keep-case sizes, back and spine art) that this control does not. Moving to it is the upgrade
   path if the single-medium look needs them.
+
+## 2026-11-07 — M45 H3: the motion pass
+
+- **One travelling selector, drawn by the Launcher's top layer.** Every focusable element keeps its
+  `Border.ring` child, now invisible: it only says where the frame goes and how round it is. An attached
+  property (`HandheldSelectorAnchor.IsFocused`, bound to the same IsFocused as the element's look) tells the
+  Launcher which elements hold the focus; the most recently focused one that is on screen wins, and while a
+  Title page is up only its own buttons and cards count. The frame springs (560/43) in position, size and
+  corner radius toward the element's ring *as it will be once its lift has finished*, so the lift's own
+  animation never drags it. Coordinates go through the window, because the anchors and the selector sit in
+  different Viewboxes and a direct `TransformToVisual` between them dropped the selector Viewbox's scale.
+- **The selector is visible on the first frame of every transition** (the milestone's exit), so on a folder
+  open it glides from the folder to the first game while the games spill out, instead of appearing once they
+  land as the spec's step 3 said. It hides only when nothing focusable is on screen (the launching panel,
+  sheets that highlight their rows).
+- **Who moves what.** Springs (selector, home page track, folder column track) tick on
+  `TopLevel.RequestAnimationFrame` only while something moves and write `TranslateTransform`s, as the H0
+  spike proved on the Thor. One-shot effects (centre pop, plate pop, ghosts, spill, gather, home recede,
+  launch) are compositor key-frame animations of scale, opacity and offset that always end on a value the
+  control's Avalonia-side state agrees with (the H0 re-host lesson). The focus lift and the folder flap are
+  Avalonia transitions on `RenderTransform`, because those are states that must survive container recycling
+  and a re-host; they live on the element, while fly-ins and pops live on its item container (spec rule
+  "never animate one property from two places").
+- **Pictures for things that are leaving.** The view models drop the outgoing thing at once (the Stage's old
+  focus, a closing folder's tiles), so the views picture it first: the shell raises `StageChanging` /
+  `StageChanged` around a change of focus and `FolderClosing` before tearing a folder down. The Stage
+  renders its centre art into a full-resolution `RenderTargetBitmap` once per settled change (a half-resolution
+  render misplaced text) and shrinks that away; the Launcher pictures each visible tile and gathers the
+  pictures. The Stage pictures only its centre art and draws it *beneath* the new art: the first device
+  build pictured the plate too, on top, and two names overlapped for ~170 ms. The 3D medium is a GL surface
+  a `RenderTargetBitmap` cannot capture (confirmed on the Thor), so an outgoing medium is not pictured: it
+  gives way at once while the new one grows from the centre, which read cleanly in the device recording.
+  The Launcher skips the column parked off the edge.
+- **The top screen's timing lives in the shell, not the view** (`HandheldHeldDirection`, `IsStagePending`,
+  `SettleStage`): presses under 150 ms apart defer the Stage until 140 ms after the last one, and an opening
+  folder holds the open folder on the Stage for 300 ms. Unit-tested with a manual clock.
+- **The folder realizes one column behind its window** (`WindowFirstColumn`, so 18 tiles at most, not 15),
+  waiting just off the left edge (the folder layer is clipped 32 px in), so a column scroll slides the
+  leaving column out instead of dropping it.
+- **Folders became the mockup's folder object** (`HandheldFolderArt`): back plate, the platform's first three
+  covers tucked inside, a front flap hinged at the bottom. The flap's tilt is a scale about its bottom edge
+  (`scaleY` 0.86 peek, 0.5 open), not a 3D rotation — transform-only and cheap. Peek covers decode at 200 px
+  once per platform and are kept for the shell's lifetime (released on a library rebuild).
+- **The launch waits for the cover to land** (`HandheldShellViewModel.LaunchLead`, 660 ms, set by the host;
+  zero in tests), as the spec orders it: press and pop, the cover lifts off the Launcher and lands on the
+  Stage, then the emulator starts while it zooms. The Launcher sits below the Stage until H5's swap, so the
+  cover always travels upward for now.
+- **Shadows under moving things are pre-rendered** (`HandheldShadow`: a bitmap per size and colour, drawn at
+  half resolution and shared): tiles, the lift shadow, the dock pill, the folder art and the selector's glow.
+  The header chips and Title page buttons keep their `BoxShadow`s for now; the selector crosses them less
+  often. Watch the Title page row on the device.
+- **Page dots:** all dots one size, with the current-page pill riding the track's position, so it moves with
+  the slide (transform only) rather than animating widths.
+- **Verification.** On the Thor (`-t:Clean` then `-t:Install` with the `sdk_new` SDK; a plain install did
+  not repackage the APK), the top screen was screen-recorded over adb through folder focus (flap, real peek
+  covers), a folder open (flap swings open, open folder held, first game's medium), game changes, a held
+  run, a close and a launch (screen chooser → RetroArch started; the flight itself was hidden by the
+  device's anti-image-retention refresh). The Launcher is `FLAG_SECURE`, so its motion (selector travel,
+  glow, bump, spill and gather, column scroll, page slide, Title page, launch lift) was checked by hosting
+  the real views headlessly (Skia) and capturing frames; that harness was throwaway, and its render clock
+  runs springs faster than wall time. The desktop head cannot enter Handheld mode.
+- **Not done (review):** peek covers read the platform through `GetGamesAsync`, which builds a view model
+  per title just for three covers; a cover-only query would be cheaper on large platforms. The shadow cache
+  drops bitmaps without disposing them (a control may still be drawing one).
+- **Unrelated, noticed:** a Debug `dotnet run` of the desktop app fails to load
+  `AvaloniaUI.DiagnosticsSupport` (the UI project references it with `PrivateAssets="All"`); Release runs.

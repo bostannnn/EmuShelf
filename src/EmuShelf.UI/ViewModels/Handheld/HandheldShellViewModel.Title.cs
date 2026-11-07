@@ -221,10 +221,14 @@ public sealed partial class HandheldShellViewModel
     {
         page.State = HandheldTitleState.Launching;
         UpdateHints();
+        LaunchStarting?.Invoke(page);
         bool started;
         try
         {
-            started = await _library.LaunchAsync(page.Entry, screen);
+            // The cover lifts off the Launcher and lands on the Stage before the emulator takes the screen.
+            if (LaunchLead > TimeSpan.Zero)
+                await Task.Delay(LaunchLead, _clock);
+            started = ReferenceEquals(TitlePage, page) && await _library.LaunchAsync(page.Entry, screen);
         }
         catch (Exception)
         {
