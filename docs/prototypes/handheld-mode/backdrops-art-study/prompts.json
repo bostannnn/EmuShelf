@@ -1,0 +1,26 @@
+[
+  {
+    "id": "nes-coast",
+    "title": "Saltwind Coast",
+    "system": "nes",
+    "prompt": "Use case: stylized-concept. Create a full bleed 16:9 original NES-era game backdrop, 1536x864 or 1920x1080 landscape. Masterfully art-directed pixel art with conspicuously chunky consistent square pixels, visual native resolution approximately 256x144. Coastal adventure landscape: intricate windswept pine and old ivory cliffside watchtower at far left, rocky arch and sparse bushes far right, pale turquoise ocean and cream sky across the broad middle, tiny layered islands on horizon. Warm ivory, sage green, dusty turquoise, terracotta, navy shadow; restrained 12-color palette, tiled rock textures, hard pixel edges, carefully shaped clusters. Light and inviting but visually rich at edges, sophisticated authentic late-1980s game background. Centre 38–62% width and 20–65% height is quiet pale sky/sea reserved for a foreground folder; lower centre 35–65% width 80–95% height quiet sand. Fill frame, no framing. No characters, no text, no logos, no UI, no known game objects or copied level layouts, no smooth gradients, no 3D, no anti-aliasing."
+  },
+  {
+    "id": "nes-observatory",
+    "title": "Cloud Observatory",
+    "system": "nes",
+    "prompt": "Use case: stylized-concept. Original premium NES-era pixel-art game environment background, full bleed landscape 16:9 1536x864. Authentic chunky square pixel clusters, implied native 256x144 resolution, only 12 discrete colors, no anti-aliasing. A fantastical mountaintop astronomical garden in morning light: stepped pale pink stone terraces, mosaic masonry and small cypress trees arranged along bottom and far sides; an elaborate copper-and-cream open-air observatory with a large crescent-shaped mechanical instrument on left edge, small ruined arches at right edge, distant lilac peaks below buttery cream sky. Original architectural forms. Broad centre should be peaceful pale sky with just distant mountains low down, no focal object in centre. Dreamy high-quality 1980s adventure game art with readable pixel textures and meticulously designed silhouettes. Art-rich frame edges, calm central 30% for overlay and calm bottom centre for label. No characters, game sprites, familiar game buildings, text, logos, UI, borders, smooth gradients or modern 3D effects."
+  },
+  {
+    "id": "ps2-aqueduct",
+    "title": "The Quiet Aqueduct",
+    "system": "playstation2",
+    "prompt": "Use case: stylized-concept. Original full-bleed widescreen 16:9 game environment background for a PS2 library, 1536x864 landscape. Capture the soulful atmospheric look of an ambitious 2002 console adventure: modest polygon count, visibly simple faceted meshes, muted low-resolution hand-painted stone textures, pale distance fog, softly baked shadows, very restrained bloom, no modern photoreal rendering. Vast sunlit abandoned aqueduct across a tranquil shallow mineral-green lake. Massive weathered sandstone arches and tangled roots frame the far left and right foreground, distant monumental pillars recede across the lower third, worn stone steps at bottom edges. Gentle pale cream sky and atmospheric water fill centre with almost no contrast, centre 38–62% width 20–65% height reserved for folder overlay. Elegant cinematic panoramic composition with beautiful large-scale architecture, melancholic yet light, celadon, warm limestone, soft blue fog. Original world, no recognizable game landmarks, characters, logos, text, UI, HUD, frame, weapons. Detailed edges, quiet centre and bottom centre. Should feel like a carefully composed actual early-2000s console game frame, not concept painting or current-gen Unreal."
+  },
+  {
+    "id": "ps2-summer",
+    "title": "Last Lap of Summer",
+    "system": "playstation2",
+    "prompt": "Use case: stylized-concept. Full bleed original landscape 16:9 game backdrop 1536x864. Evoke a beautiful early-2000s PS2 arcade driving game environment, no cars or people. Bright coastal mountain road with white guardrails sweeping from lower left toward far right, small seaside town densely clustered at far left edge and terraced green slopes with sparse polygonal palms at far right; broad sunlit pale azure bay and hazy cream sky in middle with tiny distant sailing shapes. Quiet centre reserved for large UI folder, detailed architecture kept outer thirds; bottom centre subdued pale asphalt for title plate. Modest polygon counts, angular silhouettes, charming low-resolution hand-painted texture maps, baked lighting, slightly soft texture filtering, restrained warm bloom, optimistic summer afternoon. Beautiful clear shapes, warm ivory, faded coral, seafoam and petrol blue. Aim authentic polished 2003 console rendering, avoid photoreal raytraced modern graphics and avoid painterly concept art. No recognizable real or game landmarks, no logos, text, HUD, UI, borders, cars, characters."
+  }
+]
