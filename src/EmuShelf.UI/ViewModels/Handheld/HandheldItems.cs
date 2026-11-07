@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
+using EmuShelf.App.Services;
 using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
@@ -51,11 +52,10 @@ public sealed record HandheldTitleDetails(
         new(null, [1], 1, LaunchScreenDecision.BuiltIn, HasSecondScreen: false, IsDualScreenSystem: false);
 }
 
-/// <summary>The scraped art the Stage draws for a game: fan art for the hero, a tiny fan art for the soft browsing backdrop, the logo.</summary>
+/// <summary>The scraped art the Title page's hero draws: the fan art and the logo.</summary>
 public enum HandheldArtKind
 {
     Fanart,
-    Backdrop,
     Logo,
 }
 
@@ -294,9 +294,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsHero))]
     [NotifyPropertyChangedFor(nameof(IsHeroArt))]
     [NotifyPropertyChangedFor(nameof(IsHeroFallback))]
-    [NotifyPropertyChangedFor(nameof(HasBackdrop))]
     [NotifyPropertyChangedFor(nameof(IsCentreVisible))]
     [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
+    [NotifyPropertyChangedFor(nameof(HasMedium))]
+    [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -338,6 +339,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasPlate))]
     [NotifyPropertyChangedFor(nameof(IsCentreVisible))]
     [NotifyPropertyChangedFor(nameof(IsGame))]
+    [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
     public partial Bitmap? Fanart { get; set; }
 
@@ -347,16 +349,40 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public partial Bitmap? Logo { get; set; }
 
     /// <summary>
-    /// A focused game's fan art decoded tiny and stretched behind its cover: the browsing backdrop. The
-    /// upscale is the softening, so no blur effect runs per frame.
+    /// The quiet colour wash behind a game: the platform's colour while browsing (behind the medium), and
+    /// on a Title page without fan art the colour picked from the cover.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBackdrop))]
-    public partial Bitmap? Backdrop { get; set; }
+    public partial IBrush Tint { get; set; } = Brushes.Gray;
 
-    /// <summary>The hero fallback's backdrop colour: picked from the cover, else the platform's colour.</summary>
+    /// <summary>The focused game's physical medium (case, cartridge, card); null keeps the flat cover.</summary>
     [ObservableProperty]
-    public partial IBrush HeroTint { get; set; } = Brushes.Gray;
+    [NotifyPropertyChangedFor(nameof(HasMedium))]
+    [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    public partial EmuShelf.Rendering.Shells.MediaShell? Medium { get; set; }
+
+    /// <summary>The platform colour the medium's studio and unprinted faces take.</summary>
+    [ObservableProperty]
+    public partial Color MediumAccent { get; set; } = Colors.Gray;
+
+    /// <summary>The medium's turn (right stick, idle sway, the spring), in radians.</summary>
+    [ObservableProperty]
+    public partial double MediumYaw { get; set; } = MediaRotationModel.RestYaw;
+
+    [ObservableProperty]
+    public partial double MediumPitch { get; set; } = MediaRotationModel.RestPitch;
+
+    /// <summary>The GPU path could not start on this device; every game keeps its flat cover from then on.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMedium))]
+    [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    public partial bool IsMediumUnavailable { get; set; }
+
+    /// <summary>A browsed game is drawn as its physical medium.</summary>
+    public bool HasMedium => Kind == HandheldStageKind.Game && Medium is not null && !IsMediumUnavailable;
+
+    /// <summary>A game (or a Title page without fan art) is drawn as its flat cover.</summary>
+    public bool HasFlatCover => IsGame && !HasMedium;
 
     public bool IsHero => Kind == HandheldStageKind.Hero;
     public bool IsHeroArt => IsHero && Fanart is not null;
@@ -365,7 +391,6 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool IsHeroFallback => IsHero && Fanart is null;
 
     public bool HasLogo => Logo is not null;
-    public bool HasBackdrop => Kind == HandheldStageKind.Game && Backdrop is not null;
 
     /// <summary>The centred card (folder, cover, app, glyph) and its plate; the fan-art hero replaces both.</summary>
     public bool IsCentreVisible => !IsHeroArt;

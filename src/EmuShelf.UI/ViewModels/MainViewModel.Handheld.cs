@@ -223,12 +223,9 @@ public partial class MainViewModel
             }
         }
 
-        // Fan art is drawn full-bleed on the 1920×1080 Stage; the browsing backdrop is the same art decoded
-        // tiny and stretched, which softens it without a blur effect. Logos sit in a box about 800×560.
+        // Fan art is drawn full-bleed on the 1920×1080 Stage; logos sit in a box about 800×560.
         private const int FanartMaxWidth = 1920;
         private const int FanartMaxHeight = 1080;
-        private const int BackdropMaxWidth = 96;
-        private const int BackdropMaxHeight = 54;
         private const int LogoMaxWidth = 900;
         private const int LogoMaxHeight = 600;
 
@@ -246,7 +243,6 @@ public partial class MainViewModel
             var (path, width, height) = kind switch
             {
                 HandheldArtKind.Logo => (viewModel.WheelPath, LogoMaxWidth, LogoMaxHeight),
-                HandheldArtKind.Backdrop => (viewModel.FanartPath, BackdropMaxWidth, BackdropMaxHeight),
                 _ => (viewModel.FanartPath, FanartMaxWidth, FanartMaxHeight),
             };
             if (path is not { Length: > 0 } source)

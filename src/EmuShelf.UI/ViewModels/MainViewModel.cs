@@ -2901,6 +2901,14 @@ public partial class MainViewModel : ViewModelBase
     /// </remarks>
     public void ApplyRightStickRotation(float rightStickX, float rightStickY, double deltaMilliseconds)
     {
+        // Handheld mode turns the medium on its Stage with the same stick.
+        if (IsHandheldMode)
+        {
+            if (!IsGamepadInputSuspended)
+                Handheld?.ApplyRightStick(rightStickX, rightStickY, deltaMilliseconds);
+            return;
+        }
+
         if (!IsGamepadMode || IsGamepadInputSuspended || !ShowGamepadShelf || HasGamepadOverlay)
             return;
 

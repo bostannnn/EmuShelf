@@ -12582,3 +12582,29 @@ Facts H1–H5 must build on:
   Play on a GameCube game (system set to Ask) opened the screen chooser, top screen launched Dolphin, and
   coming back landed on the folder grid with "Played today". Screen-2 is `FLAG_SECURE`, so the Launcher's
   Title page layout is for the owner's hands-on check.
+
+## 2026-11-07 — M45 H2 follow-up: the Stage shows the game's physical medium
+
+The owner did not like the flat cover on the Stage. A browsed game is now its physical medium (spec
+decision 17), and the blurred fan-art backdrop behind it is gone ("too busy"); a soft wash of the
+platform colour replaces it. The Title page keeps its fan-art hero.
+
+- **Renderer:** `Media3DControl` (the single-medium GPU hero the shelf grew out of, unused since), fed
+  `GameViewModel.ShelfMediaShell`, the Stage's decoded cover and the platform accent. It draws on a
+  transparent background, so the Stage's own wash shows through. A device whose GL path fails sets
+  `Stage.IsMediumUnavailable` and every game falls back to the flat cover; so do platforms with no shell.
+- **Motion lives in `HandheldMediumMotion`** (pure, unit-tested): the Gamepad shelf's `MediaRotationModel`
+  for the right stick and the idle sway, plus a spring (stiffness 140, damping 17, ≈0.72 damping ratio,
+  one small overshoot, ≈0.5 s) that carries every change of pose: a new game turns in from 50° on the
+  side the selection came from; R3 swings back from wherever the stick left it. The stick drives the model
+  directly while a settle finishes underneath, so taking it mid-arrival never jumps.
+- **The clock runs only while something moves:** a `DispatcherTimer` at 16 ms while the spring travels,
+  50 ms for the sway (the shelf's sway rate), stopped for anything that is not a medium. The GL control
+  only renders when its pose or cover changes. On the Thor the turn-in ticked at ~60 fps.
+- **Input:** `MainViewModel.ApplyRightStickRotation` forwards to the shell in Handheld mode (the same poll
+  that feeds the Gamepad shelf); R3 (`ResetRotation`) recentres. Analog input cannot be injected over adb,
+  so the stick's feel is for the owner's hands-on check.
+- **Open:** the medium on the bottom screen after H5's swap means a GL control in the Presentation's top
+  level, untested; and the shelf's newer renderer (`MediaShelf3DControl`) knows per-platform case
+  profiles (keep-case sizes, back and spine art) that this control does not. Moving to it is the upgrade
+  path if the single-medium look needs them.

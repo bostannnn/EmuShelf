@@ -265,6 +265,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             case GamepadAction.Menu:
                 OpenMenu();
                 return true;
+            case GamepadAction.ResetRotation:
+                RecentreMedium();
+                return true;
             case GamepadAction.NextPlatform when OpenFolder is null:
                 TurnPage(1);
                 return true;
@@ -303,6 +306,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void Move(HandheldDirection direction)
     {
+        _lastMoveSign = direction is HandheldDirection.Left or HandheldDirection.Up ? -1 : 1;
         switch (Zone)
         {
             case HandheldZone.Dock:
@@ -886,7 +890,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.Monogram = string.Empty;
         Stage.AchievementText = null;
         Stage.AppIcon = null;
-        Stage.HeroTint = Brushes.Gray;
+        Stage.Tint = Brushes.Gray;
+        Stage.Medium = null;
         Stage.Glyph = kind switch
         {
             HandheldStageKind.AllApps => HandheldGlyph.AllApps,
@@ -913,6 +918,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
+        if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
+        {
+            Stage.MediumAccent = accent;
+            Stage.Tint = new SolidColorBrush(accent);
+        }
+        Stage.Medium = game.ViewModel?.ShelfMediaShell;
+        // The medium arrives turned toward the side the selection came from and springs to rest.
+        _medium.TurnIn(_lastMoveSign);
+        PushMediumPose();
+        UpdateMediumTimer();
         _ = LoadStageArtAsync(game, hero: false);
     }
 
@@ -928,7 +943,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
         if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
-            Stage.HeroTint = new SolidColorBrush(accent);
+            Stage.Tint = new SolidColorBrush(accent);
         _ = LoadStageArtAsync(game, hero: true);
     }
 
@@ -982,15 +997,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             var cover = await _library.LoadCoverAsync(game, StageDecodeWidth, fullSize: true, token);
             if (!Assign(cover, bitmap => Stage.Art = bitmap))
                 return;
-            if (hero)
-            {
-                if (cover is not null && await PickTintAsync(cover) is { } tint && Current())
-                    Stage.HeroTint = tint;
-                return;
-            }
-
-            var backdrop = await LoadArtSafeAsync(game, HandheldArtKind.Backdrop, token);
-            Assign(backdrop, bitmap => Stage.Backdrop = bitmap);
+            if (hero && cover is not null && await PickTintAsync(cover) is { } tint && Current())
+                Stage.Tint = tint;
         }
         catch (OperationCanceledException)
         {
@@ -1039,11 +1047,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _stageArtLoad = null;
         _stageGameId = -1;
         // Take each bitmap off the Stage before disposing it, so no frame can draw a disposed image.
-        var released = new[] { Stage.Art, Stage.Fanart, Stage.Logo, Stage.Backdrop };
+        var released = new[] { Stage.Art, Stage.Fanart, Stage.Logo };
         Stage.Art = null;
         Stage.Fanart = null;
         Stage.Logo = null;
-        Stage.Backdrop = null;
         foreach (var bitmap in released)
             bitmap?.Dispose();
     }
@@ -1091,6 +1098,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         _disposed = true;
         StopStatusUpdates();
+        StopMediumTimer();
         CloseTitle();
         CloseFolder();
         CancelStageArt();

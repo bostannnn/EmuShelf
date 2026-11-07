@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:controls="using:EmuShelf.App.Controls"
              x:Class="EmuShelf.App.Views.HandheldStageView"
              x:DataType="vm:HandheldShellViewModel">
 
@@ -49,15 +50,13 @@
 
   <Panel>
   <!--
-    Backdrops fill the whole window. Browsing a game: its fan art decoded tiny and stretched, which is the
-    softening (no blur runs per frame). The Title page with no fan art: a wash of the colour picked from the
-    cover. The Title page with fan art: the art itself, full-bleed, darkened toward the logo and meta line.
+    Backdrops fill the whole window. A game: a quiet wash of its colour (the platform's behind the medium,
+    the cover's on a Title page without fan art), so the medium and its label carry the picture. A Title
+    page with fan art: the art itself, full-bleed, darkened toward the logo and meta line.
   -->
-  <Image Source="{Binding Stage.Backdrop}" IsVisible="{Binding Stage.HasBackdrop}" Stretch="UniformToFill"
-         Opacity="0.5" RenderOptions.BitmapInterpolationMode="HighQuality" />
-  <Border IsVisible="{Binding Stage.IsHeroFallback}" Background="{Binding Stage.HeroTint}" Opacity="0.32">
+  <Border IsVisible="{Binding Stage.IsGame}" Background="{Binding Stage.Tint}" Opacity="0.24">
     <Border.OpacityMask>
-      <RadialGradientBrush Center="50%,42%" GradientOrigin="50%,42%" RadiusX="75%" RadiusY="95%">
+      <RadialGradientBrush Center="50%,42%" GradientOrigin="50%,42%" RadiusX="70%" RadiusY="90%">
         <GradientStop Offset="0" Color="#FF000000" />
         <GradientStop Offset="1" Color="#00000000" />
       </RadialGradientBrush>
@@ -136,6 +135,17 @@
         </Border>
 
         <Panel IsVisible="{Binding Stage.IsGame}">
+          <!--
+            The game's physical medium (case, cartridge, card) with its cover printed on, turned by the right
+            stick, swaying at rest, springing in when the selection changes. Platforms without an authored
+            medium, and devices whose GPU path fails, keep the flat cover below.
+          -->
+          <controls:Media3DControl x:Name="Medium" IsVisible="{Binding Stage.HasMedium}" Width="1400" Height="820"
+                                   Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}"
+                                   Accent="{Binding Stage.MediumAccent}"
+                                   Yaw="{Binding Stage.MediumYaw}" Pitch="{Binding Stage.MediumPitch}" />
+          <Border IsVisible="{Binding Stage.HasFlatCover}">
+          <Panel>
           <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="24" ClipToBounds="True"
                   BoxShadow="0 28 64 0 #33000000" MaxHeight="640" MaxWidth="960">
             <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
@@ -146,6 +156,8 @@
             <TextBlock Text="{Binding Stage.Title}" FontSize="40" FontWeight="SemiBold" Foreground="#5B6176"
                        TextWrapping="Wrap" TextAlignment="Center" Margin="40"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          </Panel>
           </Border>
         </Panel>
 

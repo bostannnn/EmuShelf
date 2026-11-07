@@ -122,6 +122,15 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
     theme catalogue, with a dark variant from the dark theme. Nunito for names and plates only;
     the system face for chrome.
 
+Added after H2 (owner, 2026-11-07):
+
+17. **A browsed game is its physical medium.** The Stage draws the focused game as its real case,
+    cartridge or card in 3D with the cover printed on it (the Gamepad shelf's models), resting at a
+    three-quarter turn and swaying gently. It springs in from the side the selection came from, the
+    right stick turns it, and R3 swings it back. Behind it is a quiet wash of the platform colour,
+    not the blurred fan art (too busy behind a medium). Platforms without an authored medium keep the
+    flat cover. The Title page keeps the fan-art hero from decision 15.
+
 ## Screen anatomy
 
 ### Bottom screen — the Launcher (default)
