@@ -66,36 +66,23 @@ internal static class HandheldComposition
         Run(visual, "Offset", animation, milliseconds, delayMilliseconds);
     }
 
-    /// <summary>The selector glow's breathing: opacity between <paramref name="low"/> and 1, forever.</summary>
-    public static void Breathe(Visual control, double low, double halfCycleMilliseconds)
+    /// <summary>
+    /// The selector glow's breathing: from full opacity down to <paramref name="low"/> and back, for an even
+    /// number of half cycles, so it always comes to rest at 1 (the control's own opacity). A glow that breathed
+    /// forever kept the whole Launcher redrawing at the panel rate while nothing else moved.
+    /// </summary>
+    public static void Breathe(Visual control, double low, double halfCycleMilliseconds, int halfCycles)
     {
         if (VisualOf(control) is not { } visual)
             return;
         var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
-        animation.InsertKeyFrame(0f, (float)low);
-        animation.InsertKeyFrame(1f, 1f, new SineEaseInOut());
+        animation.InsertKeyFrame(0f, 1f);
+        animation.InsertKeyFrame(1f, (float)low, new SineEaseInOut());
         animation.Duration = TimeSpan.FromMilliseconds(halfCycleMilliseconds);
-        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        animation.IterationBehavior = AnimationIterationBehavior.Count;
+        animation.IterationCount = Math.Max(2, halfCycles + (halfCycles % 2));
         animation.Direction = PlaybackDirection.Alternate;
         visual.StartAnimation("Opacity", animation);
-    }
-
-    /// <summary>
-    /// Slides the visual from where layout put it by <paramref name="travel"/>, linearly, then jumps back and
-    /// repeats forever: a seamless drift when the travel is one period of a tiled picture (the Stage's era
-    /// backdrop). Call after layout, so the visual's resting offset is known.
-    /// </summary>
-    public static void Loop(Visual control, Vector travel, double milliseconds)
-    {
-        if (VisualOf(control) is not { } visual)
-            return;
-        var rest = visual.Offset;
-        var animation = visual.Compositor.CreateVector3DKeyFrameAnimation();
-        animation.InsertKeyFrame(0f, rest, new LinearEasing());
-        animation.InsertKeyFrame(1f, new Vector3D(rest.X + travel.X, rest.Y + travel.Y, rest.Z), new LinearEasing());
-        animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));
-        animation.IterationBehavior = AnimationIterationBehavior.Forever;
-        visual.StartAnimation("Offset", animation);
     }
 
     private static void Run(CompositionVisual visual, string property, KeyFrameAnimation animation, double milliseconds, double delayMilliseconds)

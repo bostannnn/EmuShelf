@@ -12738,3 +12738,67 @@ H4, arranging home, is still open.)
   harness, not committed; its render clock runs faster than wall time, so it shows direction and shape,
   not timing). Not yet run on the Thor: the feel, the timings and the backdrop's cost on the device are the
   owner's check.
+
+## 2026-11-07 — M45 H4: Handheld performance pass (idle Stage stops redrawing)
+
+The owner reported the fans ramping up and slowdowns just from scrolling the grid. Five causes, fixed in order
+of cost, as the M45 H3 session measured and proposed:
+
+- **The era backdrop's drift no longer runs at the panel rate.** It was an endless compositor offset loop on a
+  full-screen layer, so the whole 1920×1080 Stage was redrawn at 120 Hz for a drift of about 0.05 px a frame.
+  Now a `DispatcherTimer` puts the moving layer where the clock says, rounded to whole pixels: the blocks 4×/s
+  (2 px across, 1–2 px down), the disc bar 6×/s. The bar's pass slowed from 9 s to 24 s so each step is
+  ~8 px of its soft 140 px gradient rather than 22 px. The timer stops while the backdrop is detached or
+  hidden, and on `IActivatableLifetime.Deactivated(Background)` (a game running), the same signal the Android
+  shell uses for its save point. Only the arriving layer moves; a leaving one stays put.
+- **Backdrop crossfades: one at a time, and once per pause.** A new change removes any layer still on its way
+  out (two layers at most, was three). A change now waits for 250 ms without another before it crossfades, so
+  scrolling across home, where every folder is a different system, fades the full screen once when the
+  scrolling stops, not on every press. Rebuilds were already skipped when colour and era are unchanged (the
+  value is a record, set once per move). This is the one place the top screen no longer changes "once per
+  move": the backdrop catches up a beat after the art.
+- **No more picture of the outgoing Stage art.** `HandheldStageMotion.OnStageChanging` rendered a
+  full-resolution `RenderTargetBitmap` (1920×920) on the UI thread on every settled change, only to shrink it
+  away. Removed with `StageGhost` and `HandheldPicture`; the old art gives way at once and the new art pops
+  from the centre, as it already did for 3D media, where the picture came out empty anyway.
+- **The selector glow rests.** Its breathing was an endless compositor animation that kept the Launcher
+  redrawing. It now breathes 8 half cycles (4.8 s) after each focus change, starting and ending at full
+  opacity, and then rests until the next move.
+- **Peek covers read three games, not the platform.** `IHandheldLibrary.GetFirstGamesAsync` takes the first
+  N title sets before any view model is built; the peek used `GetGamesAsync`, which built one per title (234
+  for PS2) to use three.
+- **Not changed:** the panel stays at 120 Hz (the owner's call). What 60 Hz would save was not measured: it
+  needs a device display setting changed, and I did not change one. While something animates, render-thread
+  work per second should roughly halve; idle is unaffected now that nothing animates at rest.
+
+**Before / after on the Thor** (adb `-s 2fd555f4`, Debug APK, same library, 120 Hz; f6af72c vs this commit,
+both measured by the same script right after relaunch and a warm-up). CPU is per thread, % of one core,
+from `/proc/<pid>/task/*/stat` over an 8 s window. "Render" sums Avalonia's `Render Thread`s, "UI" is the main
+thread. GPU is the mean of `/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage` sampled every 0.5 s. Stage fps comes
+from `dumpsys SurfaceFlinger --latency` on the Stage's `SurfaceView[…MainActivity](BLAST)` layer. Scrolling is
+`input keyevent` with 150 ms between presses (5 presses/s): home R R L L across folders, folder D D R L U U.
+
+| Case | Stage fps | Render | UI | GPU busy |
+|---|---|---|---|---|
+| Idle on home (folder focused), before | 118.7 | 58% | 1% | 16% |
+| Idle on home, after | **4.0** | **9%** | 6% | **0%** |
+| Scrolling home, before | 116.8 | 100% | 37% | 30% |
+| Scrolling home, after | 118.7 | **80%** | 35% | **13%** |
+| Scrolling in a folder, before | 114.1 | 90% | 39% | 21% |
+| Scrolling in a folder, after | 118.7 | **76%** | 40% | 25% |
+| Idle on a game (3D medium), before | 118.7 | 66% | 24% | 24% |
+| Idle on a game, after | **21.9** | **16%** | 28% | **12%** |
+
+- **What is left.** The 4 fps at idle is the backdrop's stepping. While scrolling, the Stage still presents at
+  the panel rate: every press starts the centre pop (≈ 0.5 s spring), the plate pop and the Launcher's
+  selector spring and lift, and at 5 presses/s those overlap continuously. That is the motion spec working as
+  designed; making it cheaper means 60 Hz or shorter or fewer animations, both feel decisions for the owner.
+  Idle on a game is the medium's own rest sway (the shell's `SwayInterval` timer, about 22 Stage fps and 28%
+  of the UI thread); resting the sway after a few seconds, as the glow now does, would take that to near zero.
+  The UI thread's share while scrolling did not move (~35–40%: navigation, Stage updates, selector springs).
+- **Measuring traps.** `input keyevent` in a tight loop fires about 23 presses/s, a held-direction storm,
+  which defers the Stage and makes everything look cheaper; pace it. Right after a launch the first scroll
+  includes JIT and the first peek-cover decodes; warm up first. `-t:Install` is avoided on purpose
+  (`docs/couch-idle-cpu-investigation.md`: it reinstalls under a new uid and loses the data pointer); a
+  `-t:Clean` build plus `adb install -r` keeps the library and Handheld mode, and `lastUpdateTime` confirms
+  each install.

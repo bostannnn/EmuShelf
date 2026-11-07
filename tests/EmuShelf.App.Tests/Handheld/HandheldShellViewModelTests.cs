@@ -49,6 +49,14 @@ public partial class HandheldShellViewModelTests
         public Task<IReadOnlyList<HandheldGameEntry>> GetGamesAsync(string systemId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<HandheldGameEntry>>(Games[systemId]);
 
+        public List<(string SystemId, int Count)> FirstGamesReads { get; } = [];
+
+        public Task<IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, CancellationToken cancellationToken = default)
+        {
+            FirstGamesReads.Add((systemId, count));
+            return Task.FromResult<IReadOnlyList<HandheldGameEntry>>(Games[systemId].Take(count).ToList());
+        }
+
         public void ReleaseGames(IReadOnlyList<HandheldGameEntry> games) => Released += games.Count;
 
         public Task<Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, CancellationToken cancellationToken)
@@ -627,6 +635,8 @@ public class HandheldShellStatusTests
         public virtual System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<HandheldPlatform>> GetPlatformsAsync(System.Threading.CancellationToken cancellationToken = default) =>
             System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldPlatform>>([]);
         public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>> GetGamesAsync(string systemId, System.Threading.CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>>([]);
+        public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, System.Threading.CancellationToken cancellationToken = default) =>
             System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>>([]);
         public void ReleaseGames(System.Collections.Generic.IReadOnlyList<HandheldGameEntry> games) { }
         public System.Threading.Tasks.Task<Avalonia.Media.Imaging.Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, System.Threading.CancellationToken cancellationToken) =>

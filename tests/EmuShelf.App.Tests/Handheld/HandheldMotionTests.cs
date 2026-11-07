@@ -240,6 +240,8 @@ public partial class HandheldShellViewModelTests
 
         // The fake decodes nothing, but the shell asked for exactly the first three games at peek size.
         Assert.Equal(library.Games["ps2"].Take(3).Select(game => game.Id), library.PeekRequests);
+        // Through the cheap first-three read, not a view model for every game on the platform.
+        Assert.Equal([("ps2", 3)], library.FirstGamesReads);
         Assert.Null(shell.Stage.PeekA);
     }
 }

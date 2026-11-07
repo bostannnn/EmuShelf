@@ -53,7 +53,7 @@ public sealed partial class HandheldShellViewModel
         var covers = new Bitmap?[3];
         try
         {
-            var games = await _library.GetGamesAsync(systemId);
+            var games = await _library.GetFirstGamesAsync(systemId, covers.Length);
             try
             {
                 for (var i = 0; i < covers.Length && i < games.Count && !_disposed; i++)

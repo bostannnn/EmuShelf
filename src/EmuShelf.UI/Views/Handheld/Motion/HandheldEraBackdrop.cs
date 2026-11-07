@@ -4,6 +4,7 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -20,20 +21,33 @@ namespace EmuShelf.App.Views.Handheld;
 /// system, a light field in its hue with a soft 22 px pixel grid and large blocks drifting diagonally; behind
 /// a disc system, a radial field with 2 px scanlines, a slow rolling light bar and a faint vignette. Drawn on
 /// a 1920×1080 canvas that fills the window (cropped, never letterboxed). The grid, blocks and scanlines are
-/// tiny bitmaps built once per colour and tiled; the only motion is a compositor offset loop on the blocks or
-/// the bar, so nothing is re-blurred or re-drawn per frame. A change of colour or era crossfades (450 ms).
+/// tiny bitmaps built once per colour and tiled. The only motion is the blocks or the bar, stepped a few times a
+/// second in whole pixels (a continuous animation redrew the whole Stage at the panel's 120 Hz for a drift of
+/// 0.05 px a frame), and it stops while the Stage is hidden or the app is in the background. A change of
+/// colour or era crossfades (450 ms) once navigation pauses (250 ms), with at most one layer leaving at a time.
 /// </summary>
 public sealed class HandheldEraBackdrop : Decorator
 {
     private const double CanvasWidth = 1920;
     private const double CanvasHeight = 1080;
-    private const int MaxLayers = 3;
+    private const int MaxLayers = 2;
 
     public static readonly StyledProperty<HandheldBackdrop?> BackdropProperty =
         AvaloniaProperty.Register<HandheldEraBackdrop, HandheldBackdrop?>(nameof(Backdrop));
 
     private readonly Grid _canvas = new() { Width = CanvasWidth, Height = CanvasHeight, ClipToBounds = true };
     private readonly List<Layer> _layers = [];
+    private readonly DispatcherTimer _drift = new(DispatcherPriority.Background);
+    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    private IActivatableLifetime? _lifetime;
+    private bool _backgrounded;
+    private readonly DispatcherTimer _settle = new(DispatcherPriority.Background)
+    {
+        Interval = TimeSpan.FromMilliseconds(HandheldMotion.BackdropSettleMilliseconds),
+    };
+    private HandheldBackdrop? _pending;
+    private HandheldBackdrop? _shown;
+    private bool _hasShown;
 
     static HandheldEraBackdrop()
     {
@@ -44,8 +58,47 @@ public sealed class HandheldEraBackdrop : Decorator
     public HandheldEraBackdrop()
     {
         Child = new Viewbox { Stretch = Stretch.UniformToFill, Child = _canvas };
-        // A fresh composition visual (a re-host) has lost its loops: start them again.
-        AttachedToVisualTree += (_, _) => Dispatcher.UIThread.Post(StartLoops, DispatcherPriority.Loaded);
+        _drift.Tick += (_, _) => Step();
+        _settle.Tick += (_, _) => Settle();
+        AttachedToVisualTree += (_, _) =>
+        {
+            _lifetime = Application.Current?.TryGetFeature(typeof(IActivatableLifetime)) as IActivatableLifetime;
+            if (_lifetime is not null)
+            {
+                _lifetime.Activated += OnActivated;
+                _lifetime.Deactivated += OnDeactivated;
+            }
+            UpdateDrift();
+        };
+        DetachedFromVisualTree += (_, _) =>
+        {
+            if (_lifetime is not null)
+            {
+                _lifetime.Activated -= OnActivated;
+                _lifetime.Deactivated -= OnDeactivated;
+                _lifetime = null;
+            }
+            UpdateDrift();
+        };
+        EffectiveViewportChanged += (_, _) => UpdateDrift();
+    }
+
+    private void OnActivated(object? sender, ActivatedEventArgs e)
+    {
+        if (e.Kind == ActivationKind.Background)
+        {
+            _backgrounded = false;
+            UpdateDrift();
+        }
+    }
+
+    private void OnDeactivated(object? sender, ActivatedEventArgs e)
+    {
+        if (e.Kind == ActivationKind.Background)
+        {
+            _backgrounded = true;
+            UpdateDrift();
+        }
     }
 
     public HandheldBackdrop? Backdrop
@@ -58,17 +111,48 @@ public sealed class HandheldEraBackdrop : Decorator
     {
         base.OnPropertyChanged(change);
         if (change.Property == BackdropProperty)
-            Show(change.GetNewValue<HandheldBackdrop?>());
+            Request(change.GetNewValue<HandheldBackdrop?>());
+        else if (change.Property == IsVisibleProperty)
+            UpdateDrift();
+    }
+
+    /// <summary>
+    /// The first backdrop shows at once; after that a change waits until navigation pauses, so scrolling across
+    /// home (every folder a different system) crossfades the full screen once, when it stops, not on every press.
+    /// </summary>
+    private void Request(HandheldBackdrop? backdrop)
+    {
+        _pending = backdrop;
+        _settle.Stop();
+        if (!_hasShown)
+        {
+            Show(backdrop);
+            return;
+        }
+        _settle.Start();
+    }
+
+    private void Settle()
+    {
+        _settle.Stop();
+        if (!Equals(_pending, _shown))
+            Show(_pending);
     }
 
     private void Show(HandheldBackdrop? backdrop)
     {
+        _hasShown = true;
+        _shown = backdrop;
         // The leaving layers fade out (the plain gradient behind shows through) or under the arriving one.
         var fade = HandheldMotion.BackdropCrossfadeMilliseconds;
         foreach (var leaving in _layers.ToArray())
         {
+            // A layer already on its way out goes at once: only one crossfade runs at a time.
             if (leaving.IsLeaving)
+            {
+                Remove(leaving);
                 continue;
+            }
             leaving.IsLeaving = true;
             if (backdrop is null)
             {
@@ -87,7 +171,8 @@ public sealed class HandheldEraBackdrop : Decorator
         while (_layers.Count > MaxLayers)
             Remove(_layers[0]);
         HandheldComposition.Opacity(layer.Root, 0, 1, fade, new CubicEaseOut());
-        Dispatcher.UIThread.Post(() => StartLoop(layer), DispatcherPriority.Loaded);
+        UpdateDrift();
+        Step();
     }
 
     private void Remove(Layer layer)
@@ -96,16 +181,50 @@ public sealed class HandheldEraBackdrop : Decorator
             _canvas.Children.Remove(layer.Root);
     }
 
-    private void StartLoops()
+    /// <summary>The arriving (or resting) layer, the only one that moves; leaving layers stay where they are.</summary>
+    private Layer? Moving
     {
-        foreach (var layer in _layers)
-            StartLoop(layer);
+        get
+        {
+            for (var i = _layers.Count - 1; i >= 0; i--)
+            {
+                if (!_layers[i].IsLeaving)
+                    return _layers[i];
+            }
+            return null;
+        }
     }
 
-    private static void StartLoop(Layer layer)
+    private void UpdateDrift()
     {
-        if (layer.Mover is { } mover && mover.IsAttachedToVisualTree() && mover.Bounds.Width > 0)
-            HandheldComposition.Loop(mover, layer.Travel, layer.LoopMilliseconds);
+        var run = Moving is not null && this.IsAttachedToVisualTree() && IsEffectivelyVisible && !_backgrounded;
+        if (!run)
+        {
+            _drift.Stop();
+            return;
+        }
+        var interval = TimeSpan.FromMilliseconds(Moving!.StepMilliseconds);
+        if (_drift.Interval != interval)
+            _drift.Interval = interval;
+        if (!_drift.IsEnabled)
+            _drift.Start();
+    }
+
+    /// <summary>Puts the moving layer where the clock says, in whole canvas pixels (one per panel pixel on the Thor).</summary>
+    private void Step()
+    {
+        if (Moving is not { } layer)
+        {
+            _drift.Stop();
+            return;
+        }
+        var progress = (_clock.Elapsed.TotalMilliseconds / layer.LoopMilliseconds) % 1;
+        var x = Math.Round(layer.Travel.X * progress);
+        var y = Math.Round(layer.Travel.Y * progress);
+        if (layer.Shift.X != x)
+            layer.Shift.X = x;
+        if (layer.Shift.Y != y)
+            layer.Shift.Y = y;
     }
 
     // ---- The two eras ----
@@ -135,7 +254,8 @@ public sealed class HandheldEraBackdrop : Decorator
             root.Children.Add(blocks);
             // A lighter pool in the middle, so the artwork sits on calm ground.
             root.Children.Add(Fill(Radial(0.5, 0.46, 0.55, 0.70, (Hsl(hue, 0.35, 0.97, 0.8), 0), (Hsl(hue, 0.35, 0.97, 0), 0.75))));
-            return new Layer(root, blocks, new Vector(tileWidth, tileHeight), HandheldMotion.CartridgeDriftSeconds * 1000);
+            return new Layer(root, blocks, new Vector(tileWidth, tileHeight), HandheldMotion.CartridgeDriftSeconds * 1000,
+                HandheldMotion.CartridgeDriftStepMilliseconds);
         }
 
         root.Children.Add(Fill(Radial(0.5, 0.40, 0.90, 1.20, (Hsl(hue, 0.35, 0.90), 0), (Hsl(hue, 0.30, 0.78), 1))));
@@ -160,7 +280,8 @@ public sealed class HandheldEraBackdrop : Decorator
         };
         root.Children.Add(bar);
         root.Children.Add(Fill(Radial(0.5, 0.5, 0.80, 1.0, (Hsl(hue, 0.40, 0.40, 0), 0.55), (Hsl(hue, 0.40, 0.40, 0.18), 1))));
-        return new Layer(root, bar, new Vector(0, CanvasHeight + barHeight), HandheldMotion.DiscBarSeconds * 1000);
+        return new Layer(root, bar, new Vector(0, CanvasHeight + barHeight), HandheldMotion.DiscBarSeconds * 1000,
+            HandheldMotion.DiscBarStepMilliseconds);
     }
 
     private static Border Fill(IBrush brush) => new() { Background = brush };
@@ -190,12 +311,22 @@ public sealed class HandheldEraBackdrop : Decorator
     internal static Color Hsl(double hue, double saturation, double lightness, double alpha = 1) =>
         new HslColor(alpha, ((hue % 360) + 360) % 360, saturation, lightness).ToRgb();
 
-    private sealed class Layer(Panel root, Control? mover, Vector travel, double loopMilliseconds)
+    private sealed class Layer
     {
-        public Panel Root { get; } = root;
-        public Control? Mover { get; } = mover;
-        public Vector Travel { get; } = travel;
-        public double LoopMilliseconds { get; } = loopMilliseconds;
+        public Layer(Panel root, Control mover, Vector travel, double loopMilliseconds, double stepMilliseconds)
+        {
+            Root = root;
+            Travel = travel;
+            LoopMilliseconds = loopMilliseconds;
+            StepMilliseconds = stepMilliseconds;
+            mover.RenderTransform = Shift;
+        }
+
+        public Panel Root { get; }
+        public TranslateTransform Shift { get; } = new();
+        public Vector Travel { get; }
+        public double LoopMilliseconds { get; }
+        public double StepMilliseconds { get; }
         public bool IsLeaving { get; set; }
     }
 

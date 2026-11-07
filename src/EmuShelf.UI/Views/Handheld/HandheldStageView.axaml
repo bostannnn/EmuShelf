@@ -83,12 +83,6 @@
   <Viewbox Stretch="Uniform">
     <Grid Width="1920" Height="1080">
 
-      <!--
-        The outgoing centre art, pictured, shrinking away beneath the new one as it grows. Only the art: the
-        old plate gives way at once, so two names never overlap.
-      -->
-      <vh:HandheldPicture x:Name="StageGhost" IsVisible="False" Margin="0,0,0,160" />
-
       <!-- What changes with the focus: the hero, the centre art and the plate. -->
       <Panel x:Name="StageContent">
       <!-- The Title page hero over the fan art: the logo (or the title set in type), then the meta line. -->

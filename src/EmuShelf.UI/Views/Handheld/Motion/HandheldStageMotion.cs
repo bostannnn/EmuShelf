@@ -3,7 +3,6 @@ using System.ComponentModel;
 using Avalonia;
 using Avalonia.Animation.Easings;
 using Avalonia.Controls;
-using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using EmuShelf.App.ViewModels;
 
@@ -11,7 +10,7 @@ namespace EmuShelf.App.Views.Handheld;
 
 /// <summary>
 /// The top screen's motion (HANDHELD-MODE.md Motion spec): every change of focus grows out of the centre
-/// (the old art shrinks away as a picture while the new one springs up from 0.72×, the plate pops with it),
+/// (the old art gives way at once while the new one springs up from 0.72×, the plate pops with it),
 /// the big folder's flap tilts after a beat so its covers peek out and swings open with the folder, a Title
 /// page crossfades in, and a launch lands the cover from below and zooms into the emulator. All compositor
 /// animations on fixed-size wrappers, scale and opacity only.
@@ -28,7 +27,6 @@ internal sealed class HandheldStageMotion
     private readonly Control _content;
     private readonly Control _centre;
     private readonly Control _plate;
-    private readonly HandheldPicture _ghost;
     private readonly Control _heroBackdrop;
     private readonly Control _folder;
     private readonly Border _fly;
@@ -46,7 +44,6 @@ internal sealed class HandheldStageMotion
         _content = Find<Control>("StageContent");
         _centre = Find<Control>("CentreWrap");
         _plate = Find<Control>("PlateWrap");
-        _ghost = Find<HandheldPicture>("StageGhost");
         _heroBackdrop = Find<Control>("HeroBackdrop");
         _folder = Find<Control>("StageFolder");
         _fly = Find<Border>("LaunchFly");
@@ -81,52 +78,18 @@ internal sealed class HandheldStageMotion
 
     // ---- Focus change: from the centre, never from the side ----
 
-    private void OnStageChanging()
-    {
-        _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
-        // Picture what is on screen now; the picture shrinks away while the new art grows in its place.
-        // The 3D medium is a GL surface a RenderTargetBitmap cannot capture; it simply gives way.
-        var size = _centre.Bounds.Size;
-        if (_outgoingKind == HandheldStageKind.None || _shell?.Stage.HasMedium == true ||
-            !_view.IsEffectivelyVisible || size.Width <= 0 || size.Height <= 0)
-        {
-            return;
-        }
-        try
-        {
-            // At the canvas's own resolution: a lower-DPI render misplaces text.
-            var bitmap = new RenderTargetBitmap(new PixelSize((int)Math.Ceiling(size.Width), (int)Math.Ceiling(size.Height)));
-            bitmap.Render(_centre);
-            SetGhost(bitmap);
-        }
-        catch (Exception)
-        {
-            SetGhost(null); // no picture: the old art simply gives way
-        }
-    }
+    // The old art is not pictured: rendering a full-resolution snapshot on the UI thread for every settled
+    // change cost more than it showed (the 3D medium could never be pictured anyway). It gives way at once.
+    private void OnStageChanging() => _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
 
     private void OnStageChanged()
     {
         if (_shell is not { } shell)
             return;
-        var change = ++_change;
+        _change++;
         var kind = shell.Stage.Kind;
         var crossfade = kind == HandheldStageKind.Hero || _outgoingKind == HandheldStageKind.Hero;
         var centre = new Point(CanvasWidth / 2, (CanvasHeight - 160) / 2);
-
-        if (_ghost.Source is not null)
-        {
-            _ghost.IsVisible = true;
-            var outMs = crossfade ? 300 : HandheldMotion.OutgoingMilliseconds;
-            if (!crossfade)
-                HandheldComposition.ScaleAbout(_ghost, centre, outMs, new CubicEaseIn(), 0, (0f, 1), (1f, HandheldMotion.OutgoingScale));
-            HandheldComposition.Opacity(_ghost, 1, 0, outMs, crossfade ? new CubicEaseInOut() : new CubicEaseIn());
-            DispatcherTimer.RunOnce(() =>
-            {
-                if (change == _change)
-                    SetGhost(null);
-            }, TimeSpan.FromMilliseconds(outMs + 40));
-        }
 
         if (crossfade)
         {
@@ -146,14 +109,6 @@ internal sealed class HandheldStageMotion
             HandheldComposition.Opacity(_content, 1, 1, 1);
         }
         UpdateFolderState(peekNow: false);
-    }
-
-    private void SetGhost(RenderTargetBitmap? bitmap)
-    {
-        var previous = _ghost.Source as IDisposable;
-        _ghost.Source = bitmap;
-        _ghost.IsVisible = false;
-        previous?.Dispose();
     }
 
     // ---- The big folder: the flap peeks after a beat, opens with the folder ----

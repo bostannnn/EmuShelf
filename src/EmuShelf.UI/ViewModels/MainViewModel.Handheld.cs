@@ -159,7 +159,14 @@ public partial class MainViewModel
             }, cancellationToken);
         }
 
-        public async Task<IReadOnlyList<HandheldGameEntry>> GetGamesAsync(string systemId, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<HandheldGameEntry>> GetGamesAsync(string systemId, CancellationToken cancellationToken = default) =>
+            ReadGamesAsync(systemId, int.MaxValue, cancellationToken);
+
+        public Task<IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, CancellationToken cancellationToken = default) =>
+            ReadGamesAsync(systemId, count, cancellationToken);
+
+        // Title sets are cheap; a view model per title is not, so only the first `count` get one.
+        private async Task<IReadOnlyList<HandheldGameEntry>> ReadGamesAsync(string systemId, int count, CancellationToken cancellationToken)
         {
             if (!owner._systemsById.TryGetValue(systemId, out var system))
                 return [];
@@ -167,7 +174,7 @@ public partial class MainViewModel
             return await Task.Run<IReadOnlyList<HandheldGameEntry>>(() =>
             {
                 var library = owner._library;
-                var titleSets = GameDiscSetBuilder.Build(library.GetGames(systemId), library.GetDiscSelections());
+                var titleSets = GameDiscSetBuilder.Build(library.GetGames(systemId), library.GetDiscSelections()).Take(count).ToList();
                 var viewModels = titleSets.Select(set => owner.CreateGameViewModel(set, system, artwork)).ToList();
                 owner.ApplyAchievementDisplays(viewModels);
                 owner.ApplyScrapedTitles(viewModels);

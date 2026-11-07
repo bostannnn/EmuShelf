@@ -102,8 +102,8 @@ internal sealed class HandheldLauncherMotion
 
         view.AttachedToVisualTree += (_, _) =>
         {
-            // A fresh composition visual (first show, or a re-host) needs its breathing started again.
-            HandheldComposition.Breathe(_glow, 0.55, HandheldMotion.BreathHalfCycleMilliseconds);
+            // A fresh composition visual (first show, or a re-host) starts breathing again.
+            Breathe();
             _selectorShown = false;
             _lastFrame = null;
             RequestTick();
@@ -144,9 +144,17 @@ internal sealed class HandheldLauncherMotion
     {
         _anchors.Remove(anchor);
         if (isFocused)
+        {
             _anchors.Add(anchor);
+            Breathe();
+        }
         RequestTick();
     }
+
+    // The glow breathes for a few seconds after the focus moves, then rests at full opacity, so an idle
+    // Launcher draws nothing.
+    private void Breathe() =>
+        HandheldComposition.Breathe(_glow, 0.55, HandheldMotion.BreathHalfCycleMilliseconds, HandheldMotion.BreathHalfCycles);
 
     // ---- The shell ----
 

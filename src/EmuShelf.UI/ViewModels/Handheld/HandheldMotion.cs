@@ -34,6 +34,9 @@ public static class HandheldMotion
     /// <summary>The selector's glow breathes on a 1.2 s cycle (600 ms each way).</summary>
     public const double BreathHalfCycleMilliseconds = 600;
 
+    /// <summary>After each focus change the glow breathes 4 times (4.8 s), then rests at full opacity.</summary>
+    public const int BreathHalfCycles = 8;
+
     /// <summary>The edge bump: the selector nudges 7% of its size toward the wall and eases back in 300 ms.</summary>
     public const double BumpFraction = 0.07;
     public const double BumpMilliseconds = 300;
@@ -91,16 +94,27 @@ public static class HandheldMotion
     // The Stage's era motif (M45 H4): a cartridge system's pixel grid with drifting blocks, a disc system's
     // scanlines with a rolling bar, in the focused system's colour; translate-only on pre-rendered tiles.
     public const double BackdropCrossfadeMilliseconds = 450;
+
+    /// <summary>A backdrop change waits for this much quiet, so a run of presses crossfades once, at the end.</summary>
+    public const double BackdropSettleMilliseconds = 250;
     public const double CartridgeGridPitch = 22;
     public const double CartridgeGridLine = 2;
     public const double CartridgeBlockSize = 22;
     public const double CartridgeBlockTileWidth = 176;
     public const double CartridgeBlockTileHeight = 132;
     public const double CartridgeDriftSeconds = 22;
+
+    /// <summary>The blocks step 4 times a second (2 px across, 1–2 px down), never at the panel rate.</summary>
+    public const double CartridgeDriftStepMilliseconds = 250;
     public const double DiscScanlinePitch = 5;
     public const double DiscScanlineHeight = 2;
     public const double DiscBarHeight = 140;
-    public const double DiscBarSeconds = 9;
+    /// <summary>
+    /// The bar's pass, top to bottom. Slowed from the lab's 9 s so that, stepped 6 times a second, each step is
+    /// about 8 px of a soft 140 px gradient instead of 22 px.
+    /// </summary>
+    public const double DiscBarSeconds = 24;
+    public const double DiscBarStepMilliseconds = 1000d / 6;
 
     // Launch: the tile/cover presses in (0.94×) and pops (1.1×); the cover lifts off the Launcher, lands on
     // the Stage and zooms into the emulator. The emulator starts once the cover has landed.

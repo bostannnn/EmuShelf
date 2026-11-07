@@ -79,6 +79,12 @@ public interface IHandheldLibrary
     /// <summary>A platform's games in the library's order (titles, with multi-disc sets grouped).</summary>
     Task<IReadOnlyList<HandheldGameEntry>> GetGamesAsync(string systemId, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The first <paramref name="count"/> of a platform's games in the same order, built without a view model for
+    /// the rest (the covers peeking out of a folder need three, not the whole platform). Release them as usual.
+    /// </summary>
+    Task<IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, CancellationToken cancellationToken = default);
+
     /// <summary>Releases the view models a folder held, once the folder closes.</summary>
     void ReleaseGames(IReadOnlyList<HandheldGameEntry> games);
 

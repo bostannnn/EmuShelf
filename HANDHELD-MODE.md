@@ -200,14 +200,16 @@ comfy look so it doesn't pull your eye from the game.
     22 s, and a lighter radial pool in the middle so the artwork sits on calm ground.
   - **Disc era** (PS1–PS3, PSP, GameCube, Wii, Dreamcast, Steam): a radial tint (90% at the centre,
     78% at the edges), 2 px scanlines at 9% on a 5 px pitch (2 px, not 1 px, so they do not alias on the
-    1080p panel), a 140 px light bar (35%) rolling top to bottom every 9 s, and a faint vignette.
+    1080p panel), a 140 px light bar (35%) rolling top to bottom every 24 s, and a faint vignette.
   - The era lives on the system definition (`GameSystem.Era`). A Title page without fan art keeps the
     era in the colour picked from the cover. Apps, empty slots and the menu keep the plain light gradient.
   - It crossfades over 450 ms only when the colour or era changes (moving between games of one system
-    changes nothing), and it changes with the rest of the top screen, once per move.
+    changes nothing), and only once navigation pauses for 250 ms: scrolling across home, where every
+    folder is a different system, crossfades the whole screen once when you stop, not on every press.
   - Calm and low-contrast, and never blurred per frame: the grid, blocks and scanlines are tiny bitmaps
-    built once per colour and tiled; the blocks or the bar are the only thing moving, a compositor
-    offset loop.
+    built once per colour and tiled. The blocks or the bar are the only thing moving, stepped in whole
+    pixels a few times a second (never at the panel rate), and they stop while the Stage is hidden or
+    the app is in the background.
 - **Focused folder:**
   - A large folder icon, centred.
   - A name plate: the name, plus "Folder · 42 games".
@@ -282,7 +284,8 @@ The motions:
 - **Selector.** It must be unmistakable on any folder colour (owner, mockup 3: "I don't understand
   what I selected").
   - A thick violet frame, about 7.5% of the tile wide, with a white keyline inside and out.
-  - A soft glow behind it that pulses on a 1.2 s cycle.
+  - A soft glow behind it that pulses on a 1.2 s cycle for a few seconds after each move, then rests
+    at full strength, so an idle Launcher draws nothing.
   - The focused tile lifts to 1.13× with a deeper shadow.
   - The frame springs from tile to tile.
   - Dock buttons, header chips, drawer apps and sheet rows use the same frame language.
@@ -310,7 +313,8 @@ The motions:
      later. The selector hides and returns as on open.
 - **Focus change on top (games, folders, apps): from the centre, never from the side** (owner,
   mockup 3, asking for it to feel like the 3DS and Cocoon).
-  - The old art shrinks to 0.86× and fades out (150 ms).
+  - The old art gives way at once. (Until the performance pass it was pictured and shrank to 0.86×;
+    rendering that picture on every change cost more than it showed.)
   - The new art grows from 0.72× to full size on a real spring with about 2% overshoot (stiffness
     190, damping 17, settling in about 0.45 s), fading in over the first 170 ms.
   - The name plate pops in from 0.94× at the same time.
@@ -337,14 +341,14 @@ folder lab's values: the owner's feel check on the Thor is what moves them.
 | Selector spring | stiffness 560, damping 43 (ratio ≈ 0.91); position, size and corner radius all ride it |
 | Track spring (home pages, folder columns) | stiffness 250, damping 31.5 (ratio ≈ 1.0) |
 | Focus lift | 1.13× in 220 ms, cubic-bezier(.34, 1.42, .64, 1), with a deeper pre-rendered shadow fading in |
-| Glow breathing | opacity 0.55 ↔ 1, 600 ms each way (1.2 s cycle) |
+| Glow breathing | opacity 1 ↔ 0.55, 600 ms each way, 8 half cycles (4.8 s) after each focus change, then rests at 1 |
 | Edge bump | 7% of the selector's size toward the wall, out in the first 35% of 300 ms, eased back |
-| Top-screen pop | old art (pictured beneath the new; a 3D medium just gives way) 0.86× and fading, 150 ms; new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fading in over 170 ms; plate 0.94× → 1 in 240 ms |
+| Top-screen pop | old art gives way at once (no picture); new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fading in over 170 ms; plate 0.94× → 1 in 240 ms |
 | Held direction | presses under 150 ms apart; the top screen updates 140 ms after the last one |
 | Folder focus | flap tilts 200 ms after the folder takes the top screen (300 ms transition); the home tile tilts at once |
 | Folder open (Zoom through) | tile 1 → 2.6× and fading, 300 ms, cubic-bezier(.4, 0, .2, 1); home fades out over 240 ms from 40 ms; the page (header + grid, one surface) 0.55× → 1 about the tile's centre, 380 ms from 60 ms on a 600/32 spring (≈ 2.5% over), opacity 0 → 1 over its first 45%; selector hidden until 260 ms, then fades in over 140 ms; the top screen holds the open folder 300 ms |
 | Folder close | the page's picture 1 → 0.55× about the tile's centre, 260 ms, opacity gone by 70%; home fades in over 240 ms from 60 ms; tile 2.6× → 1 on a 576/38.8 spring (≈ 1% under) and fading in, 320 ms from 40 ms; selector as on open; the Stage's folder arrives open and closes its flap after 220 ms |
-| Stage backdrop (era motif) | crossfade 450 ms on a change of colour or era. Cartridge: tint hsl(h 40% 92%) → hsl(h 38% 86%); grid 22 px pitch, 2 px lines, hsl(h 50% 60% / .10); blocks 22 px, 8 per 176×132 tile, hsl(h−20/h/h+20 55% 62% / .22), drifting (176, 132) px per 22 s; pool hsl(h 35% 97% / .8) → clear at 75% of a 55% × 70% ellipse. Disc: radial hsl(h 35% 90%) → hsl(h 30% 78%) over 90% × 120% from (50%, 40%); scanlines 2 px of 5, hsl(h 40% 30% / .09); bar 140 px, hsl(h 60% 96% / .35) at its middle, top to bottom (1220 px) every 9 s; vignette clear to 55% then hsl(h 40% 40% / .18) |
+| Stage backdrop (era motif) | a change waits for 250 ms without another, then crossfades over 450 ms (one leaving layer at most); motion stepped in whole pixels, 4×/s for the blocks and 6×/s for the bar, stopped while hidden or in the background. Cartridge: tint hsl(h 40% 92%) → hsl(h 38% 86%); grid 22 px pitch, 2 px lines, hsl(h 50% 60% / .10); blocks 22 px, 8 per 176×132 tile, hsl(h−20/h/h+20 55% 62% / .22), drifting (176, 132) px per 22 s; pool hsl(h 35% 97% / .8) → clear at 75% of a 55% × 70% ellipse. Disc: radial hsl(h 35% 90%) → hsl(h 30% 78%) over 90% × 120% from (50%, 40%); scanlines 2 px of 5, hsl(h 40% 30% / .09); bar 140 px, hsl(h 60% 96% / .35) at its middle, top to bottom (1220 px) every 24 s; vignette clear to 55% then hsl(h 40% 40% / .18) |
 | Launch | Launcher cover presses to 0.94×, pops to 1.1× (260 ms) and lifts off (420 ms); the Stage's cover lands from below after 140 ms (520 ms) and zooms to 1.7× fading (460 ms); the emulator starts as it lands (660 ms after Play) |
 
 
