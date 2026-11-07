@@ -13071,3 +13071,27 @@ pictured piece and reading it back (UI thread), and image decoding on the thread
 now (cheaper tile pictures, fewer pictured pieces, 60 Hz while animating), not the compiler. Building AOT
 needs `-p:AndroidNdkDirectory=$HOME/Library/Android/sdk_new/ndk/26.3.11579264` alongside the SDK and JDK
 properties; the Thor now runs this AOT build (installed with `adb install -r`, data kept).
+
+## 2026-11-07 — Stage backdrop design study: authored tiles and meshes before expanding the set
+
+- **Context.** The owner rejected the generated-image study and asked to revisit the earlier code-built
+  backdrop attempts, starting with ideas and concrete implementation methods. They relaxed the brief's
+  step-rate and size limits; visual quality and a meaningful connection to each console take priority.
+- **Design experiment, not a product selection.** Added
+  `docs/prototypes/handheld-mode/backdrops-code-study/`: three working proposals (NES Rooftop garden,
+  PlayStation Seaside plaza, PS2 Sunlit reservoir), ideas for all sixteen systems, and an integration plan.
+  These are not owner-approved picks and do not supersede the app's era motif. ROADMAP H4 remains open.
+- **Construction is part of the art direction.** NES uses authored tile patterns and a fixed palette;
+  PS1 uses textured meshes, affine mapping and dither; PS2 uses an extruded arch, baked light/haze and a
+  mesh reflection pass. All art and covers in the lab are original code-authored placeholders. A
+  construction view exposes the tile grid/atlas or triangle meshes. Earlier studies are preserved.
+- **Authoring and playback stay separate.** The browser rasterizer builds each scene once. Its depth
+  buffer prevents mesh faces from cutting through each other. Optional playback only swaps pre-drawn
+  water frames by opacity. Production would export the chosen bases/overlays and load them as image
+  layers; the authoring renderer would not run inside Avalonia. The app implementation remains deferred
+  until visual selection, with value-equality-controlled system changes and measured device costs.
+- **Validation.** Browser checks passed for three consoles and three display modes, construction
+  toggles, feedback persistence/export, the file entrypoint, opacity-only motion, reduced motion,
+  a simulated hidden-lifecycle pause, a 15-colour native NES palette, and page overflow at 320/736/1500px.
+  Scene and overlay screenshots were visually inspected. No app source changed; no application build
+  was required. No Thor visual/thermal check or owner approval has occurred.
