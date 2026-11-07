@@ -13048,3 +13048,26 @@ a GPU round trip on Android), the thread pool decoding covers (9–17% while scr
 threads at 12–15% each while something animates at 120 Hz. The shipping build is AOT-compiled, which the
 repo's earlier measurements found roughly halves managed CPU; these numbers are JIT (the NDK is not installed
 on the build Mac).
+
+## 2026-11-07 — The AOT build measures the same as JIT now
+
+Installed NDK 26.3.11579264 into `~/Library/Android/sdk_new` and built the shipping configuration (Release,
+`RunAOTCompilation=true`, 126 AOT libraries, 66 MB APK vs 48 MB JIT), then ran the same suite on the Thor:
+
+| Case | JIT total | AOT total |
+|---|---|---|
+| Idle on home | 3% | 2% |
+| Scrolling home (5/s) | 53% | 51% |
+| Idle on a game | 12% | 13% |
+| Scrolling a folder (6/s) | 49% | 54% |
+| Holding right in a folder | 68% | 69% |
+| Idle on a Title page | 3% | 2% |
+| Moving on a Title page (5/s) | 19% | 22% |
+
+Within run-to-run noise. The earlier finding that AOT roughly halves the cost was for the Avalonia-drawn couch,
+where managed layout and composition dominated; with both Handheld screens native, what is left is native
+work that AOT cannot speed up: the GL threads drawing at 120 Hz while something moves, Skia rendering each
+pictured piece and reading it back (UI thread), and image decoding on the thread pool. Those are the levers
+now (cheaper tile pictures, fewer pictured pieces, 60 Hz while animating), not the compiler. Building AOT
+needs `-p:AndroidNdkDirectory=$HOME/Library/Android/sdk_new/ndk/26.3.11579264` alongside the SDK and JDK
+properties; the Thor now runs this AOT build (installed with `adb install -r`, data kept).
