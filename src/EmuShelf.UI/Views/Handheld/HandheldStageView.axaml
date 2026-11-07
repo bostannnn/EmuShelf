@@ -41,6 +41,10 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
+    <!-- Room for a pill's shadow when the native Stage pictures it; the margins around it are 24 less. -->
+    <Style Selector="Border.shot">
+      <Setter Property="Padding" Value="24" />
+    </Style>
     <Style Selector="Border.button-glyph">
       <Setter Property="Width" Value="40" />
       <Setter Property="Height" Value="40" />
@@ -58,7 +62,7 @@
     empty slots and the menu keep the plain light gradient. A Title page with fan art: the art itself,
     full-bleed, darkened toward the logo and meta line.
   -->
-  <vh:HandheldEraBackdrop Backdrop="{Binding Stage.Backdrop}" />
+  <vh:HandheldEraBackdrop x:Name="EraBackdrop" Backdrop="{Binding Stage.Backdrop}" />
   <Panel x:Name="HeroBackdrop" IsVisible="{Binding Stage.IsHeroArt}">
     <Image Source="{Binding Stage.Fanart}" Stretch="UniformToFill" />
     <Border>
@@ -81,7 +85,7 @@
   </Panel>
 
   <Viewbox Stretch="Uniform">
-    <Grid Width="1920" Height="1080">
+    <Grid x:Name="StageCanvas" Width="1920" Height="1080">
 
       <!-- What changes with the focus: the hero, the centre art and the plate. -->
       <Panel x:Name="StageContent">
@@ -118,6 +122,8 @@
         fills the canvas above the plate, so the pop always grows from the same middle.
       -->
       <Panel x:Name="CentreWrap" Margin="0,0,0,160">
+      <!-- The padding leaves room for the art's shadow when the native Stage pictures it (CentreShot). -->
+      <Border x:Name="CentreShot" Padding="96" HorizontalAlignment="Center" VerticalAlignment="Center">
       <Panel HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding Stage.IsCentreVisible}">
         <!-- A folder: after a beat its flap tilts so the first covers peek out; it swings open with the folder. -->
         <Panel IsVisible="{Binding Stage.IsFolder}">
@@ -163,12 +169,14 @@
                     Width="144" Height="144" Foreground="#5B6176" />
         </Border>
       </Panel>
+      </Border>
       </Panel>
 
       <!-- Name plate. -->
       <Panel x:Name="PlateWrap">
+      <Border x:Name="PlateShot" Padding="32" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,32">
       <Border IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-              Margin="0,0,0,64" MinWidth="560" MaxWidth="1080" Padding="48,20" CornerRadius="32"
+              MinWidth="560" MaxWidth="1080" Padding="48,20" CornerRadius="32"
               Background="#F2FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 24 0 #14000000">
         <StackPanel Spacing="4">
           <TextBlock Text="{Binding Stage.Title}" FontSize="52" FontWeight="SemiBold" Foreground="#1C2033"
@@ -176,6 +184,7 @@
           <TextBlock Text="{Binding Stage.Subtitle}" FontSize="28" Foreground="#5B6176" FontFeatures="+tnum"
                      TextAlignment="Center" TextTrimming="CharacterEllipsis" />
         </StackPanel>
+      </Border>
       </Border>
       </Panel>
       </Panel>
@@ -189,13 +198,15 @@
       </Border>
 
       <!-- The app's status message (launching, a failure), which Gamepad mode shows as a toast. -->
-      <Border Classes="pill" IsVisible="{Binding HasStatusMessage}" HorizontalAlignment="Center"
-              VerticalAlignment="Top" Margin="0,48,0,0" MaxWidth="1080">
+      <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0">
+      <Border Classes="pill" IsVisible="{Binding HasStatusMessage}" MaxWidth="1080">
         <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+      </Border>
       </Border>
 
       <!-- Status pill: Wi-Fi, battery, time. -->
-      <Border Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,48,48,0">
+      <Border x:Name="StatusShot" Classes="shot" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,24,24,0">
+      <Border Classes="pill">
         <StackPanel Orientation="Horizontal" Spacing="20">
           <!-- Wi-Fi: solid when connected, faded when not. -->
           <PathIcon Data="{x:Static vm:HandheldIcons.Wifi}" Width="32" Height="32" Foreground="#4B5274"
@@ -208,18 +219,21 @@
           <TextBlock Classes="pill-text" Text="{Binding TimeText}" />
         </StackPanel>
       </Border>
+      </Border>
 
       <!-- Achievements pill (games with RetroAchievements data). -->
-      <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}"
-              HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="48,0,0,76">
+      <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,0,0,52">
+      <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}">
         <StackPanel Orientation="Horizontal" Spacing="12">
           <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
           <TextBlock Classes="pill-text" Text="{Binding Stage.AchievementText}" />
         </StackPanel>
       </Border>
+      </Border>
 
       <!-- Button hints. -->
-      <Border Classes="pill" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,48,76">
+      <Border x:Name="HintsShot" Classes="shot" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,52">
+      <Border Classes="pill">
         <ItemsControl ItemsSource="{Binding Hints}" VerticalAlignment="Center">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
@@ -242,6 +256,7 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+      </Border>
       </Border>
     </Grid>
   </Viewbox>

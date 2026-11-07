@@ -53,6 +53,12 @@ internal sealed class HandheldStageMotion
     private T Find<T>(string name) where T : Control =>
         _view.FindControl<T>(name) ?? throw new InvalidOperationException($"The Stage has no {name}.");
 
+    /// <summary>
+    /// False while the native Stage draws the top screen (this view is then only pictured): its own pops and
+    /// the launch flight stand down, while the folder's flap still follows the shell, since it is pictured.
+    /// </summary>
+    public bool IsOnScreen { get; set; } = true;
+
     public void Attach(HandheldShellViewModel? shell)
     {
         if (ReferenceEquals(shell, _shell))
@@ -87,6 +93,11 @@ internal sealed class HandheldStageMotion
         if (_shell is not { } shell)
             return;
         _change++;
+        if (!IsOnScreen)
+        {
+            UpdateFolderState(peekNow: false);
+            return;
+        }
         var kind = shell.Stage.Kind;
         var crossfade = kind == HandheldStageKind.Hero || _outgoingKind == HandheldStageKind.Hero;
         var centre = new Point(CanvasWidth / 2, (CanvasHeight - 160) / 2);
@@ -175,6 +186,8 @@ internal sealed class HandheldStageMotion
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
         var launch = ++_launch;
+        if (!IsOnScreen)
+            return;
         // No decoded cover yet: no flight (an empty card landing would read as a fault).
         if (page.Cover is null)
             return;

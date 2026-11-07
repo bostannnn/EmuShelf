@@ -41,6 +41,10 @@ public class EmuShelfAndroidApplication : AvaloniaAndroidApplication<global::Emu
         if (appPrivateFilesDir is not null)
             global::EmuShelf.App.App.SteamCredentialStoreFactory = () => new AndroidSteamCredentialStore(appPrivateFilesDir);
 
+        // Handheld mode's top screen draws natively (its own GL surface and thread); the Avalonia Stage only
+        // lends it pictures of its pieces (M45 H4, option 5).
+        global::EmuShelf.App.Services.HandheldNativeStage.Host = global::EmuShelf.App.Android.Services.NativeStageSurface.Instance;
+
         // The single-view mirror of the desktop head's App.DesktopShellFactory registration.
         global::EmuShelf.App.App.SingleViewShellFactory =
             (lifetime, boot, deps) => new SingleViewShell(lifetime, boot, deps);

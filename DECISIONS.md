@@ -12881,3 +12881,47 @@ selection rests, with a seamless swap. Investigated on the Thor (Release, JIT) a
 - **Levers that remain are feel decisions** (the owner's): animate at 60 Hz while the panel stays at 120;
   let the idle sway rest after some seconds (as the glow does); a shorter centre pop. Invisible ones are
   small: converting covers off the UI thread and reusing their buffers (~2–5% UI).
+
+## 2026-11-07 — M45 H4: the Handheld Stage draws natively on Android (option 5, first slice)
+
+The owner chose to rebuild the top screen as one GPU scene rather than tune the Avalonia Stage, after the
+measurements above showed its cost was Avalonia's per-frame work (both screens redrawn at 120 Hz while
+anything animates, ~10 ms of UI thread per GL frame around `OpenGlControlBase`), not the app's drawing.
+
+- **Shape.** `StageCompositor` (`EmuShelf.Rendering/Stage`, GL ES 3, no Avalonia) draws textured quads
+  for every 2D layer and renders the medium with the existing `MediaShellRenderer` into its own texture.
+  All Stage motion runs there: the centre pop (the same 190/17 spring, sampled), the plate pop, the
+  backdrop crossfade and the stepped drift. A pop scales the medium's texture; the medium is re-rendered
+  only when its pose or cover changes. On Android `NativeStageSurface` hosts it in a `GLSurfaceView`
+  (render-when-dirty, its own GL thread, `setZOrderMediaOverlay` over Avalonia's surface) and keeps the
+  latest of every piece to rebuild a lost context.
+- **The look comes from the existing XAML.** `HandheldStageView` stays in the tree with opacity 0 and is
+  pictured piece by piece (`HandheldNativeStageFeed`, `HandheldStageShots`): centre art, plate and pills
+  sit in padded `*Shot` borders so their soft shadows are in the picture (layout unchanged; the padding
+  comes out of the margins), and the era backdrop renders its own layers (`RenderLayers`). Pictures are
+  taken after layout (Loaded priority) and only when their content changes (a picture is a GPU round
+  trip on Android). Pixels go up as Skia keeps them (RGBA on Android; BGRA is swizzled by the texture).
+  The medium's cover is copied on the UI thread and converted on the thread pool; the new medium pops in
+  only once its cover is up, so it never shows the last game's label.
+- **Opacity 0 does not stop Avalonia drawing.** A hidden subtree still schedules composition frames: the
+  hidden medium followed every sway pose (20 Hz) and the hidden folder's flap transitions ran at 120 Hz.
+  The feed detaches the hidden medium's data context and freezes the folder art (`frozen` class).
+- **Kept on Avalonia for now:** the Title page (hero art) and the launch flight (the feed hands the screen
+  back while a Title page is open), and a fallback for the whole Stage if GL ES 3 cannot start
+  (`IHandheldNativeStage.Failed`). Gaps: the folder flap no longer glides (the native folder changes
+  state at once; it needs the folder's parts as separate layers), and the companion overlay that moves
+  onto this screen when a game runs on Screen-2 has not been checked under the native surface.
+- **Measured on the Thor** (Release, JIT, same suite as above; "old" is ca82c07's Avalonia Stage). The
+  GL thread is the native Stage's own.
+
+  | Case | Render old → new | UI old → new | GL thread | GPU old → new |
+  |---|---|---|---|---|
+  | Idle on home | 6% → ~0% | 6% → 1% | 2% | 0% → 0% |
+  | Idle on a game (sway) | 11% → 0% | 25% → 17% | 4% | 8% → 3% |
+  | Scrolling home (5/s) | 69% → 35% | 22% → 35% | 11% | 12% → 11% |
+  | Scrolling a folder (5–6/s) | 92% → 70% | 38% → 32% | 10% | 32% → 23% |
+  | Holding right in a folder | 67% → 47% | 49% → 41% | 4% | 26% → 20% |
+
+  The top screen is now cheap; what is left on the render thread is the Launcher (bottom screen), which
+  still redraws at 120 Hz while its selector, lift and column track animate. The UI thread now also takes
+  the pictures (centre and plate once per move, ~10 points while scrolling home).

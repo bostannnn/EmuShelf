@@ -431,6 +431,15 @@ file picker and Desktop mode.
   - The second screen already hosts an `AvaloniaView` inside `ThorSecondScreenPresentation`.
   - In Handheld mode, that Presentation shows the Launcher, and `MainActivity`'s single view shows
     the Stage.
+  - **On Android the Stage is drawn natively** (M45 H4, option 5): a `GLSurfaceView` over the
+    activity's Avalonia surface, with its own GL thread running `StageCompositor`
+    (`EmuShelf.Rendering/Stage`). `HandheldStageView` stays laid out but invisible and only lends
+    pictures of its pieces (centre art, plate, corner pills, the backdrop's layers), taken once per
+    change by `HandheldNativeStageFeed`; the compositor does all the motion (the pops, the backdrop
+    crossfade and drift) and renders the 3D medium into its own texture, so a pop only scales it. The
+    Title page and the launch flight still draw on the Avalonia Stage (the feed hands the screen back
+    while a Title page is open), and so does everything if GL ES 3 cannot start. Not yet native: the
+    folder flap's glide (the native folder changes state at once), and the whole Launcher.
 - **One view model, two views.**
   - `HandheldShellViewModel` owns all state: home layout, open folder, selection, move mode, swap
     state, and the overlays.

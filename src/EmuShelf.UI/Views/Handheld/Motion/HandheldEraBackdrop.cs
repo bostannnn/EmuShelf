@@ -13,6 +13,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Systems;
+using EmuShelf.Rendering.Stage;
 
 namespace EmuShelf.App.Views.Handheld;
 
@@ -227,6 +228,61 @@ public sealed class HandheldEraBackdrop : Decorator
             layer.Shift.Y = y;
     }
 
+    // ---- The native Stage: the same layers, pictured once ----
+
+    /// <summary>
+    /// The backdrop as the native Stage draws it (<see cref="StageBackdrop"/>): everything under the moving
+    /// layer pictured as one image, the moving layer (the block tile, or the light bar), and everything over
+    /// it, all from the same drawing as this control. No backdrop pictures the plain light gradient. Runs on
+    /// the UI thread, once per change of colour or era.
+    /// </summary>
+    internal static StageBackdrop RenderLayers(HandheldBackdrop? backdrop)
+    {
+        if (backdrop is null)
+        {
+            var plain = new Border
+            {
+                Width = CanvasWidth,
+                Height = CanvasHeight,
+                Background = new LinearGradientBrush
+                {
+                    StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+                    EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+                    GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+                },
+            };
+            return new StageBackdrop(HandheldStageShots.Picture(plain, 0, 0, (float)CanvasWidth, (float)CanvasHeight), null, null, null,
+                System.Numerics.Vector2.Zero, 0, 0);
+        }
+
+        var layer = Build(backdrop);
+        var children = new List<Control>(layer.Root.Children);
+        var moverIndex = children.IndexOf(layer.Mover);
+        StageImage? Picture(Func<int, bool> keep)
+        {
+            var any = false;
+            for (var i = 0; i < children.Count; i++)
+            {
+                children[i].IsVisible = keep(i);
+                any |= children[i].IsVisible;
+            }
+            return any ? HandheldStageShots.Picture(layer.Root, 0, 0, (float)CanvasWidth, (float)CanvasHeight) : null;
+        }
+
+        var under = Picture(i => i < moverIndex)!;
+        var over = Picture(i => i > moverIndex);
+        var travel = new System.Numerics.Vector2((float)layer.Travel.X, (float)layer.Travel.Y);
+        if (backdrop.Era == SystemEra.Cartridge)
+        {
+            var tile = HandheldStageShots.Pixels(TileSet.For(backdrop).Blocks);
+            return new StageBackdrop(under, over, tile, null, travel, (float)layer.LoopMilliseconds, (float)layer.StepMilliseconds);
+        }
+        Picture(i => i == moverIndex);
+        var bar = HandheldStageShots.Picture(layer.Mover, 0, -(float)HandheldMotion.DiscBarHeight, (float)CanvasWidth,
+            (float)HandheldMotion.DiscBarHeight);
+        return new StageBackdrop(under, over, null, bar, travel, (float)layer.LoopMilliseconds, (float)layer.StepMilliseconds);
+    }
+
     // ---- The two eras ----
 
     private static Layer Build(HandheldBackdrop backdrop)
@@ -316,6 +372,7 @@ public sealed class HandheldEraBackdrop : Decorator
         public Layer(Panel root, Control mover, Vector travel, double loopMilliseconds, double stepMilliseconds)
         {
             Root = root;
+            Mover = mover;
             Travel = travel;
             LoopMilliseconds = loopMilliseconds;
             StepMilliseconds = stepMilliseconds;
@@ -323,6 +380,7 @@ public sealed class HandheldEraBackdrop : Decorator
         }
 
         public Panel Root { get; }
+        public Control Mover { get; }
         public TranslateTransform Shift { get; } = new();
         public Vector Travel { get; }
         public double LoopMilliseconds { get; }

@@ -67,6 +67,9 @@
     <!-- `instant` lands a state without its transition (the Stage's folder arriving already open on a close). -->
     <Style Selector="vh|HandheldFolderArt.instant Border.front"><Setter Property="Transitions" Value="{x:Null}" /></Style>
     <Style Selector="vh|HandheldFolderArt.instant Border.peek-cover"><Setter Property="Transitions" Value="{x:Null}" /></Style>
+    <!-- `frozen`: never animated, only pictured (the native Stage draws the screen). -->
+    <Style Selector="vh|HandheldFolderArt.frozen Border.front"><Setter Property="Transitions" Value="{x:Null}" /></Style>
+    <Style Selector="vh|HandheldFolderArt.frozen Border.peek-cover"><Setter Property="Transitions" Value="{x:Null}" /></Style>
   </UserControl.Styles>
 
   <!-- Not clipped: the shadow spills past the folder's own square. -->
