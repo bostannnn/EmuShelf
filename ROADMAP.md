@@ -2258,7 +2258,7 @@ See `docs/android-production-readiness.md` for evidence and remaining acceptance
 
 - [x] Unify companion fanart/logo rendering across platforms; move Steam enrichment to explicit/import fetch, save shared media records, migrate preview cache locally, and extend Fetch missing metadata to missing Steam artwork.
 
-## M45 — Handheld mode: a dual-screen home menu for the Thor (planned)
+## M45 — Handheld mode: a dual-screen home menu for the Thor (in progress)
 
 A third interface mode beside Desktop and Gamepad, for dual-screen Android handhelds: the bottom
 screen is a 3DS-style launcher you arrange, the top screen shows what is selected. The spec is
@@ -2288,7 +2288,8 @@ built and tested. Play data (`Game.LastPlayedAt`, `Playtime`, `PlayCount`) feeds
 Played. Pad input already reaches one dispatcher from both displays
 (`MainActivity.DispatchKeyEvent`, `ThorSecondScreenPresentation` → `DispatchGamepadAction`).
 
-- [ ] **H0 — device spike** (throwaway code is fine; nothing from it needs to be kept). On the Thor:
+- [x] **H0 — device spike** ✅ (2026-11-07; passed — Avalonia for both screens, frame times and
+      the facts H1–H5 build on are in `DECISIONS.md` 2026-11-07). (throwaway code is fine; nothing from it needs to be kept). On the Thor:
       both Avalonia surfaces animating at once (the `MainActivity` view and the
       `ThorSecondScreenPresentation` `AvaloniaView`); a selector gliding over 20 cover tiles on the
       bottom while the top crossfades; the two views re-hosted between displays; the pad routed from

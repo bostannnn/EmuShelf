@@ -12435,3 +12435,58 @@ margin wide enough for a focused element's ring and glow.
 Also fixed by the review: anything that travels uses a real spring; the top screen changes once
 per move; the selector never disappears across a transition; nothing on the top screen moves
 unless the bottom screen caused it, the idle drift excepted.
+
+## 2026-11-07 — M45 H0: Avalonia on both Thor screens holds the motion; committed to Avalonia for both
+
+The H0 device spike (`src/EmuShelf.App.Android/Spike/`, Debug builds only, started over adb as
+`com.emushelf.app/.H0SpikeActivity`) ran a stand-in Stage in the Activity's view and a stand-in
+Launcher in a `Presentation`'s `AvaloniaView`, both off one model. Load: Stage = full-screen
+drifting tile pattern every frame plus the centre-pop crossfade (composition scale/opacity, spec
+spring 190/17 as an easing); Launcher = 20 real PNG covers decoded at tile size off the UI thread
+(~200–270 ms for all 20), the selector on a retargetable spring (560/43) per `RequestAnimationFrame`,
+focus lift 1.13×, breathing glow and pre-rendered shadows (no per-frame blur), edge bumps. A
+45-second autopilot (held-direction glides 90 ms apart, single presses, wall bumps, a swap per lap).
+
+Frame times (in-app = intervals between `RequestAnimationFrame` ticks while animating; SF =
+`dumpsys SurfaceFlinger --latency` present-to-present on each surface):
+
+| Panels | Surface | In-app | SF |
+|---|---|---|---|
+| 60 / 60 Hz | Stage (main) | 60.6 fps, p95 18.9, p99 22.8 ms, 0.6% > 1.5× budget | 125/125 frames at 16.7 ms |
+| 60 / 60 Hz | Launcher (Screen-2) | 62.0 fps, p95 19.0, p99 21.3 ms, 0.2% > 1.5× | p95 16.7 ms (gaps only while idle) |
+| 120 main / 60 Screen-2 | both, swapping | ~116–119 fps, p95 9.3, p99 ≤10.2 ms; max 33 ms Launcher, 162 ms Stage (during a re-host) | p50/p95 8.4 ms on both |
+
+The kill criterion (the Presentation holding the glide at its panel's rate with 20 decoded tiles)
+is passed at both settings, and the owner drove it by hand on the Thor and judged it smooth.
+Decision: **Avalonia for both screens**, as the spec assumed. No lighter Launcher needed.
+
+Facts H1–H5 must build on:
+
+- **One render clock.** Both top levels tick together on the main display's vsync (their worst
+  frames coincide, and at 120 Hz the Screen-2 surface ticks ~119 fps). So Screen-2 content renders
+  at the main panel's rate whatever its own panel runs at.
+- **Screen-2's panel stays at 60 Hz** in the HWC even when the Quick Settings "peak refresh rate"
+  tile is 120 and the window requests the 120 Hz mode (`PreferredDisplayModeId`); the framework
+  policy says 120, SurfaceFlinger's active mode stays 60. The main panel follows the tile. An app
+  request cannot exceed the tile (`peak_refresh_rate`), so do not rely on requesting 120.
+- **Re-hosting must not attach in the same pass it detaches.** Moving a control from one top level
+  to the other synchronously crashed with "Attempt to call InvalidateArrange on wrong
+  LayoutManager": the old layout manager still had it queued. Detach both, then attach on a
+  `DispatcherPriority.Background` post; the re-host then takes ~80–110 ms including relayout, and
+  selection survives. H5's swap slide has to cover that gap (or pre-render the outgoing frame).
+- **Keep one tile size across screens.** The Launcher re-decoded its 20 tiles on every swap because
+  the tile came out 206 px on one screen and 208 px on the other; H5 should snap the tile size
+  (or decode once at the larger size) so a swap never re-decodes.
+- **Animated composition values do not survive a re-host.** A re-attached control gets a new
+  composition visual, so opacity/scale set by a composition animation (the Stage's cover, the
+  focused tile's lift) fall back to the control's own values. Avalonia-side state (`Opacity`,
+  transforms) must hold the resting value, or the view must re-apply it on attach. The spike only
+  looked right because the swap re-decoded and re-showed everything.
+- **Input:** both windows' `DispatchKeyEvent` / `DispatchGenericMotionEvent` feeding one handler
+  works from either display: keys injected per display with `input -d`, and the owner's hands-on
+  run logged 12 pad events through the main display and 17 through Screen-2. The spike did not
+  count key and hat-motion events apart, so H1 should confirm on the device which path the Thor's
+  D-pad takes after Screen-2 is touched (`SetupPresentation` says it is a hat axis).
+- **The 120 Hz in-app "over 1.5× budget" percentages are not usable** for a swapping run: the
+  spike labels each surface's totals with the last display that hosted it. The p95/p99 figures
+  above stand.

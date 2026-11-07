@@ -1508,6 +1508,25 @@ device is bounded by the device, not by the work.
 
 ## Development setup
 
+**Current machine setup (2026-11-07).** The Homebrew JDK and command-line-tools cask listed below are
+no longer installed. The working chain now uses Android Studio's SDK and bundled JDK, and adb is not on
+`PATH`:
+
+| Piece | Value |
+|---|---|
+| adb | `~/Library/Android/sdk_new/platform-tools/adb` (37.0.0); the Thor is `-s 2fd555f4` |
+| `AndroidSdkDirectory` | `$HOME/Library/Android/sdk_new` (`platforms;android-36` added via `-t:InstallAndroidDependencies`) |
+| `JavaSdkDirectory` | `/Applications/Android Studio.app/Contents/jbr/Contents/Home` |
+| Workload | Updating the SDK to 10.0.301 dropped it; reinstalled with `~/.dotnet/dotnet workload install android` → 36.1.69 |
+
+Build and install on the Thor (from `src/EmuShelf.App.Android`):
+
+```bash
+~/.dotnet/dotnet build -t:Install -c Debug -p:AndroidSdkDirectory=$HOME/Library/Android/sdk_new "-p:JavaSdkDirectory=/Applications/Android Studio.app/Contents/jbr/Contents/Home" -p:AdbTarget="-s 2fd555f4"
+```
+
+The original setup, kept for history:
+
 **Done, 2026-08-15.** The full chain builds, installs, launches and renders on an AVD: .NET 10 → APK
 → Android 13 arm64. No sudo was needed at any point. Exact working configuration:
 
