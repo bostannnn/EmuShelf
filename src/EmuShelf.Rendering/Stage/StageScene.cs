@@ -71,10 +71,18 @@ public sealed record StageBackdropCommand(StageBackdrop? Backdrop) : StageComman
 /// focus change: the centre grows from 0.72× on the spring, the plate from 0.94×. Without it the pictures
 /// are simply replaced (a cover that finished loading, a folder flap that settled).
 /// </summary>
-public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop) : StageCommand
+public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop,
+    FolderArt? Folder = null, FolderArtState FolderState = FolderArtState.Closed) : StageCommand
 {
     public override string? RetainKey => "centre";
     public override StageCommand ForReplay() => this with { Pop = false };
+}
+
+/// <summary>The big folder's flap: closed, peeking or open; it glides there unless told not to.</summary>
+public sealed record StageFolderStateCommand(FolderArtState State, bool Animate) : StageCommand
+{
+    public override string? RetainKey => "folder-state";
+    public override StageCommand ForReplay() => this with { Animate = false };
 }
 
 /// <summary>The medium's pose, in radians.</summary>

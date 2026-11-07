@@ -38,14 +38,17 @@ internal sealed class HandheldNativeStageFeed
     private readonly Control _canvas;
     private readonly Control _centre;
     private readonly Control _plate;
-    private readonly Control _folder;
+    private readonly HandheldFolderArt _folder;
+    private bool _capturing;
+    private FolderArt? _folderArt;
+    private string? _folderArtKey;
+    private FolderArtState? _folderStateSent;
     private readonly HandheldEraBackdrop _backdrop;
     private readonly (string Key, Control Piece, Func<HandheldShellViewModel, string> Content)[] _chrome;
     private readonly Dictionary<string, string> _chromeSent = new(StringComparer.Ordinal);
     private string? _plateSent;
     private StageImage? _plateImage;
     private readonly DispatcherTimer _backdropSettle;
-    private readonly DispatcherTimer _folderSettle;
 
     private HandheldShellViewModel? _shell;
     private HandheldStageViewModel? _stage;
@@ -65,7 +68,7 @@ internal sealed class HandheldNativeStageFeed
         _canvas = Find("StageCanvas");
         _centre = Find("CentreShot");
         _plate = Find("PlateShot");
-        _folder = Find("StageFolder");
+        _folder = (HandheldFolderArt)Find("StageFolder");
         _backdrop = (HandheldEraBackdrop)Find("EraBackdrop");
         // Each corner piece is pictured again only when what it says changes (a picture is a GPU round trip).
         _chrome =
@@ -92,15 +95,9 @@ internal sealed class HandheldNativeStageFeed
             _backdropSettle.Stop();
             SendBackdrop();
         };
-        // The hidden folder's flap does not animate (an invisible transition still costs Avalonia frames); its
-        // new state is pictured once layout has caught up.
-        _folderSettle = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(20) };
-        _folderSettle.Tick += (_, _) =>
-        {
-            _folderSettle.Stop();
-            Schedule(centre: true, pop: false);
-        };
-        _folder.Classes.CollectionChanged += (_, _) => _folderSettle.Start();
+        // The hidden folder's flap never animates (an invisible transition still costs Avalonia frames): its
+        // state changes are passed on, and the native Stage glides its pictured parts there.
+        _folder.Classes.CollectionChanged += (_, _) => SendFolderState();
         host.Failed += () =>
         {
             _failed = true;
@@ -274,8 +271,49 @@ internal sealed class HandheldNativeStageFeed
             SendCover(stage.Art, then: new StageCentreCommand(null, medium, plate, pop));
             return;
         }
+        if (stage.IsFolder && FolderArt() is { } folder)
+        {
+            var state = HandheldFolderArtShots.StateOf(_folder);
+            _folderStateSent = state;
+            _host.Post(new StageCentreCommand(null, null, plate, pop, folder, state));
+            return;
+        }
         _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop));
     }
+
+    /// <summary>The big folder as glidable parts, captured again only when what it shows changes.</summary>
+    private FolderArt? FolderArt()
+    {
+        if (_stage is not { } stage)
+            return null;
+        var key = $"{(stage.AccentBrush as Avalonia.Media.ISolidColorBrush)?.Color}|{stage.Monogram}|{Ref(stage.PeekA)}|{Ref(stage.PeekB)}|{Ref(stage.PeekC)}";
+        if (key == _folderArtKey && _folderArt is not null)
+            return _folderArt;
+        _capturing = true;
+        try
+        {
+            _folderArt = HandheldFolderArtShots.Capture(_folder, _canvas);
+        }
+        finally
+        {
+            _capturing = false;
+        }
+        _folderArtKey = _folderArt is null ? null : key;
+        return _folderArt;
+    }
+
+    private void SendFolderState()
+    {
+        if (_capturing || !_active || _stage is not { IsFolder: true })
+            return;
+        var state = HandheldFolderArtShots.StateOf(_folder);
+        if (state == _folderStateSent)
+            return;
+        _folderStateSent = state;
+        _host.Post(new StageFolderStateCommand(state, Animate: !_folder.Classes.Contains("instant")));
+    }
+
+    private static string Ref(object? value) => value is null ? "-" : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     private void SendBackdrop()
     {

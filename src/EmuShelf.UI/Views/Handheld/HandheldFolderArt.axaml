@@ -74,26 +74,26 @@
 
   <!-- Not clipped: the shadow spills past the folder's own square. -->
   <Viewbox Stretch="Uniform" ClipToBounds="False">
-    <Panel Width="416" Height="416" ClipToBounds="False">
-      <vh:HandheldShadow Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" />
+    <Panel x:Name="ArtRoot" Width="416" Height="416" ClipToBounds="False">
+      <vh:HandheldShadow x:Name="ArtShadow" Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" />
       <!-- Back plate: the platform colour, darker. -->
-      <Border Margin="12,54,12,16" CornerRadius="76" Background="{Binding AccentBrush}">
+      <Border x:Name="ArtBack" Margin="12,54,12,16" CornerRadius="76" Background="{Binding AccentBrush}">
         <Border CornerRadius="76" Background="#47141830" />
       </Border>
       <!-- The covers inside (none drawn until they are decoded). -->
-      <Panel Margin="34,16,34,0" Height="276" VerticalAlignment="Top">
-        <Border Classes="peek-cover left" IsVisible="{Binding PeekB, Converter={x:Static ObjectConverters.IsNotNull}}">
+      <Panel x:Name="CoverPanel" Margin="34,16,34,0" Height="276" VerticalAlignment="Top">
+        <Border x:Name="CoverLeft" Classes="peek-cover left" IsVisible="{Binding PeekB, Converter={x:Static ObjectConverters.IsNotNull}}">
           <Image Source="{Binding PeekB}" Stretch="UniformToFill" />
         </Border>
-        <Border Classes="peek-cover right" IsVisible="{Binding PeekC, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Border x:Name="CoverRight" Classes="peek-cover right" IsVisible="{Binding PeekC, Converter={x:Static ObjectConverters.IsNotNull}}">
           <Image Source="{Binding PeekC}" Stretch="UniformToFill" />
         </Border>
-        <Border Classes="peek-cover middle" IsVisible="{Binding PeekA, Converter={x:Static ObjectConverters.IsNotNull}}">
+        <Border x:Name="CoverMiddle" Classes="peek-cover middle" IsVisible="{Binding PeekA, Converter={x:Static ObjectConverters.IsNotNull}}">
           <Image Source="{Binding PeekA}" Stretch="UniformToFill" />
         </Border>
       </Panel>
       <!-- Front flap: the folder's face, hinged at the bottom. -->
-      <Border Classes="front" Margin="12,112,12,16" CornerRadius="72" Background="{Binding AccentBrush}">
+      <Border x:Name="ArtFront" Classes="front" Margin="12,112,12,16" CornerRadius="72" Background="{Binding AccentBrush}">
         <Grid>
           <Border CornerRadius="72">
             <Border.Background>

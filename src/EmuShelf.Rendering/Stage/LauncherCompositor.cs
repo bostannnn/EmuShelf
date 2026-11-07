@@ -71,8 +71,10 @@ public sealed class LauncherCompositor : INativeScene
     private sealed class SpriteState(LauncherSprite sprite, uint texture, uint shadow)
     {
         public LauncherSprite Sprite { get; set; } = sprite;
+        public FolderArtState2D? Folder { get; set; }
         public uint Texture { get; set; } = texture;
         public uint Shadow { get; set; } = shadow;
+        public FolderArtState PendingState { get; set; } = FolderArtState.Closed;
         public float LiftFrom { get; set; } = 1f;
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
@@ -140,6 +142,13 @@ public sealed class LauncherCompositor : INativeScene
                         _live.Remove(state.Sprite.Id);
                 }
                 break;
+            case LauncherFolderStateCommand folderState:
+                if (_live.TryGetValue(folderState.Id, out var holder))
+                {
+                    holder.PendingState = folderState.State;
+                    holder.Folder?.SetState(folderState.State, now, folderState.Animate);
+                }
+                break;
             case LauncherBumpCommand bump:
                 _bump = new Vector2(bump.DirectionX, bump.DirectionY);
                 _bumpStart = now;
@@ -167,8 +176,16 @@ public sealed class LauncherCompositor : INativeScene
             {
                 state.LiftFrom = state.LiftTo = LauncherMotion.LiftScale;
             }
+            if (sprite.Folder is { } art)
+                state.Folder = new FolderArtState2D(_gl, art, state.PendingState);
             _live[command.Id] = state;
             return;
+        }
+        if (!ReferenceEquals(existing.Sprite.Folder, sprite.Folder))
+        {
+            var current = existing.Folder?.State ?? existing.PendingState;
+            existing.Folder?.Dispose();
+            existing.Folder = sprite.Folder is { } art ? new FolderArtState2D(_gl, art, current) : null;
         }
         if (!ReferenceEquals(existing.Sprite.Image, sprite.Image))
         {
@@ -295,7 +312,7 @@ public sealed class LauncherCompositor : INativeScene
         DrawGroup(LauncherGroup.Dock, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
 
         animating |= DrawSelector(now);
-        animating |= _live.Values.Any(s => now - s.LiftStart < LauncherMotion.LiftMilliseconds);
+        animating |= _live.Values.Any(s => now - s.LiftStart < LauncherMotion.LiftMilliseconds || s.Folder?.IsAnimating(now) == true);
 
         _gl.Disable(EnableCap.ScissorTest);
         _gl.BindVertexArray(0);
@@ -387,15 +404,20 @@ public sealed class LauncherCompositor : INativeScene
                 Quad(state.Shadow, shadow, shadowOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot);
             }
             Quad(state.Texture, sprite.Image, spriteOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot);
+            state.Folder?.Draw(now, (texture, image, affine) =>
+                Quad(texture, image, spriteOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot, affine));
         }
     }
 
     private void Quad(uint texture, StageImage image, float opacity, float scale, float pivotX, float pivotY, Vector2 offset,
-        float groupScale, Vector2 groupPivot)
+        float groupScale, Vector2 groupPivot, StageAffine? part = null)
     {
         if (opacity <= 0f)
             return;
+        var local = part ?? StageAffine.Identity;
         _gl.BindTexture(TextureTarget.Texture2D, texture);
+        _sprites.Set("uLinear", new Vector4(local.M11, local.M12, local.M21, local.M22));
+        _sprites.Set("uTranslate", new Vector2(local.M31, local.M32));
         _sprites.Set("uRect", new Vector4(image.X, image.Y, image.Width, image.Height));
         _sprites.Set("uScale", new Vector3(scale, pivotX, pivotY));
         _sprites.Set("uOffset", offset);
@@ -446,6 +468,8 @@ public sealed class LauncherCompositor : INativeScene
         _ring.Use();
         _ring.Set("uCanvas", new Vector2(_layout.CanvasWidth, _layout.CanvasHeight));
         _ring.Set("uRect", new Vector4(x, y, w, h));
+        _ring.Set("uLinear", new Vector4(1, 0, 0, 1));
+        _ring.Set("uTranslate", Vector2.Zero);
         _ring.Set("uScale", new Vector3(1, 0, 0));
         _ring.Set("uOffset", Vector2.Zero);
         _ring.Set("uGroup", new Vector3(1, 0, 0));
@@ -460,6 +484,7 @@ public sealed class LauncherCompositor : INativeScene
 
     private void Delete(SpriteState state)
     {
+        state.Folder?.Dispose();
         _gl.DeleteTexture(state.Texture);
         if (state.Shadow != 0)
             _gl.DeleteTexture(state.Shadow);

@@ -56,6 +56,7 @@ internal sealed class HandheldNativeLauncherFeed
     private readonly Dictionary<(int, int, int), StageImage> _glows = [];
     private readonly HashSet<INotifyPropertyChanged> _watched = [];
     private StageImage? _liftShadow;
+    private readonly Dictionary<string, FolderArtState> _folderStates = new(StringComparer.Ordinal);
     private LauncherFocusCommand? _focusSent;
     private (int Page, int Column)? _tracksSent;
     private HandheldShellViewModel? _shell;
@@ -134,6 +135,7 @@ internal sealed class HandheldNativeLauncherFeed
         {
             // Pictures may be stale after the Avalonia Launcher had the screen: send everything again.
             _sent.Clear();
+            _folderStates.Clear();
             _focusSent = null;
             _tracksSent = null;
             Schedule();
@@ -350,7 +352,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     // A liftable piece: its wrapper is pictured; it lifts about its focusable panel's centre.
     private void Liftable(string id, string key, Control wrapper, LauncherGroup group, LauncherTrack track, float columnShift,
-        HashSet<string> present, StageImage? liftShadow = null)
+        HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null)
     {
         if (wrapper is not Decorator { Child: Control panel } || !wrapper.IsVisible)
             return;
@@ -360,8 +362,27 @@ internal sealed class HandheldNativeLauncherFeed
             art.Classes.Set("frozen", true);
         if (_sent.TryGetValue(id, out var sent) && sent == key)
             return;
-        if (HandheldStageShots.Shot(wrapper, _canvas) is not { } image ||
-            panel.TranslatePoint(new Point(panel.Bounds.Width / 2, panel.Bounds.Height / 2), _canvas) is not { } centre)
+        // A folder's art is sent as parts that glide (its flap peeks on focus): the tile is pictured without it.
+        FolderArt? parts = null;
+        StageImage? image;
+        if (folderArt is not null)
+        {
+            parts = HandheldFolderArtShots.Capture(folderArt, _canvas);
+            folderArt.IsVisible = false;
+            try
+            {
+                image = HandheldStageShots.Shot(wrapper, _canvas);
+            }
+            finally
+            {
+                folderArt.IsVisible = true;
+            }
+        }
+        else
+        {
+            image = HandheldStageShots.Shot(wrapper, _canvas);
+        }
+        if (image is null || panel.TranslatePoint(new Point(panel.Bounds.Width / 2, panel.Bounds.Height / 2), _canvas) is not { } centre)
         {
             present.Remove(id);
             return;
@@ -372,7 +393,7 @@ internal sealed class HandheldNativeLauncherFeed
             : liftShadow with { X = (float)topLeft.X + columnShift - 32, Y = (float)topLeft.Y - 16 };
         _sent[id] = key;
         _host.Post(new LauncherSpriteCommand(id, new LauncherSprite(id, image, group, track, Liftable: true,
-            (float)centre.X + columnShift, (float)centre.Y, shadow)));
+            (float)centre.X + columnShift, (float)centre.Y, shadow, parts)));
     }
 
     private void SyncHome(HandheldShellViewModel shell, HashSet<string> present)
@@ -384,8 +405,22 @@ internal sealed class HandheldNativeLauncherFeed
                 Watch(slot);
                 if (SlotContainer(page.Index, slot.Index) is not { } wrapper)
                     continue;
-                var key = $"{slot.Platform?.SystemId}|{slot.IsFocused}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
-                Liftable($"h:{page.Index}:{slot.Index}", key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present);
+                var id = $"h:{page.Index}:{slot.Index}";
+                var art = slot.IsFolder ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
+                var key = $"{slot.Platform?.SystemId}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
+                Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art);
+                if (art is null)
+                    continue;
+                // The flap peeks while the folder is focused and swings open with its folder.
+                var open = shell.OpenFolder is { } folder && folder.HomeSlot == slot.Index && shell.CurrentPage?.Index == page.Index;
+                var state = open ? FolderArtState.Open : slot.IsFocused ? FolderArtState.Peek : FolderArtState.Closed;
+                var known = _folderStates.TryGetValue(id, out var sentState);
+                if (!known || sentState != state)
+                {
+                    _folderStates[id] = state;
+                    // A tile seen for the first time starts in its state; after that every change glides.
+                    _host.Post(new LauncherFolderStateCommand(id, state, Animate: known));
+                }
             }
         }
     }

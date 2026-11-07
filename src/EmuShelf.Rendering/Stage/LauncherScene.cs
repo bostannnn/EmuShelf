@@ -44,7 +44,15 @@ public sealed record LauncherSprite(
     bool Liftable,
     float PivotX,
     float PivotY,
-    StageImage? LiftShadow = null);
+    StageImage? LiftShadow = null,
+    FolderArt? Folder = null);
+
+/// <summary>A home folder's flap: closed, peeking (focused) or open (its folder zooming open).</summary>
+public sealed record LauncherFolderStateCommand(string Id, FolderArtState State, bool Animate) : StageCommand
+{
+    public override string? RetainKey => "fstate:" + Id;
+    public override StageCommand ForReplay() => this with { Animate = false };
+}
 
 /// <summary>Adds, replaces (null image keeps nothing) or removes a sprite.</summary>
 public sealed record LauncherSpriteCommand(string Id, LauncherSprite? Sprite) : StageCommand

@@ -12967,3 +12967,21 @@ its selector, lift and tracks animated. The owner chose to do the bottom screen 
 
   What is left is mostly the UI thread: the shell's own work per press, the pictures of new pieces (a GPU
   round trip each on Android), and on a game the medium's 20 Hz sway timer.
+
+## 2026-11-07 — M45 H4: the folder flap glides again on the native screens
+
+The native screens first pictured a folder whole, so its flap jumped between states. Now a folder's art goes
+over as parts: shadow and back plate (still), the three peeking covers and the front flap
+(`HandheldFolderArtShots`), each pictured untransformed at the size it is shown, with a canvas-space
+transform per state. Those transforms are read from Avalonia itself: the capture freezes the art, sets
+`peek`/`open` in turn and reads each part's `RenderTransform` about its origin, then puts the art back, so
+the numbers live only in the XAML. The native side (`FolderArtState2D`, used by both compositors) glides each
+part between states on the XAML transitions' curve, cubic-bezier(.34, 1.3, .64, 1), 300 ms for the flap
+and 360 ms for the covers, interpolating rotation, scale and translation separately (the parts never
+shear). The sprite shader gained a per-part transform. On the Stage the flap follows `HandheldStageMotion`'s
+classes (`instant` lands without a glide); on the Launcher a home folder peeks while focused and opens with
+its folder's zoom. A side effect: focus no longer re-pictures home tiles, so scrolling home costs less of
+the UI thread (≈ 21% of a core at 5 presses/s, was ≈ 32%).
+
+- **Not done:** the first time a shell type (cartridge, case) is shown in a session, the native Stage shows
+  an empty centre for a frame or two while the model loads; it could keep the previous centre until then.

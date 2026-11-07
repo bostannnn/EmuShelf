@@ -41,6 +41,8 @@ public sealed class StageCompositor : INativeScene
     private float _backdropFadeStart;
 
     private Layer? _art;
+    private FolderArtState2D? _folder;
+    private FolderArtState _folderState;
     private Layer? _plate;
     private float _popStart = float.NegativeInfinity;
     private readonly Dictionary<string, Layer> _chrome = new(StringComparer.Ordinal);
@@ -67,7 +69,7 @@ public sealed class StageCompositor : INativeScene
         _requestRender = requestRender;
         _program = GlProgram.Create(
             gl,
-            ShaderLibrary.Load("stage.vert", dialect, majorVersion, minorVersion),
+            ShaderLibrary.Load("sprite.vert", dialect, majorVersion, minorVersion),
             ShaderLibrary.Load("stage.frag", dialect, majorVersion, minorVersion),
             "stage");
         _vao = gl.GenVertexArray();
@@ -90,10 +92,20 @@ public sealed class StageCompositor : INativeScene
                 break;
             case StageCentreCommand centre:
                 Replace(ref _art, centre.Art, repeat: false);
+                if (!ReferenceEquals(_folder?.Art, centre.Folder))
+                {
+                    _folder?.Dispose();
+                    _folderState = centre.FolderState;
+                    _folder = centre.Folder is { } art ? new FolderArtState2D(_gl, art, centre.FolderState) : null;
+                }
                 Replace(ref _plate, centre.Plate, repeat: false);
                 SetMedium(centre.Medium);
                 if (centre.Pop)
                     _popStart = now;
+                break;
+            case StageFolderStateCommand folderState:
+                _folderState = folderState.State;
+                _folder?.SetState(folderState.State, now, folderState.Animate);
                 break;
             case StageMediumPoseCommand pose:
                 if (pose.Yaw != _yaw || pose.Pitch != _pitch)
@@ -173,6 +185,12 @@ public sealed class StageCompositor : INativeScene
             // The FBO's first row is the bottom of the picture.
             DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, 1f,
                 centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 1, 1, 0));
+        }
+        else if (_folder is { } folder)
+        {
+            folder.Draw(now, (texture, image, affine) => DrawQuad(texture, image.X, image.Y, image.Width, image.Height, 1f,
+                centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 0, 1, 1), affine));
+            animating |= folder.IsAnimating(now);
         }
         else if (_art is { } art)
         {
@@ -349,11 +367,16 @@ public sealed class StageCompositor : INativeScene
     }
 
     private void DrawQuad(uint texture, float x, float y, float width, float height, float opacity, float scale,
-        float pivotX, float pivotY, Vector4 uv)
+        float pivotX, float pivotY, Vector4 uv, StageAffine? part = null)
     {
         if (opacity <= 0f)
             return;
+        var local = part ?? StageAffine.Identity;
         _gl.BindTexture(TextureTarget.Texture2D, texture);
+        _program.Set("uLinear", new Vector4(local.M11, local.M12, local.M21, local.M22));
+        _program.Set("uTranslate", new Vector2(local.M31, local.M32));
+        _program.Set("uOffset", Vector2.Zero);
+        _program.Set("uGroup", new Vector3(1, 0, 0));
         _program.Set("uRect", new Vector4(x, y, width, height));
         _program.Set("uScale", new Vector3(scale, pivotX, pivotY));
         _program.Set("uUv", uv);
@@ -392,6 +415,8 @@ public sealed class StageCompositor : INativeScene
         _backdrop = _leavingBackdrop = null;
         Replace(ref _art, null, false);
         Replace(ref _plate, null, false);
+        _folder?.Dispose();
+        _folder = null;
         foreach (var layer in _chrome.Values)
             _gl.DeleteTexture(layer.Texture);
         _chrome.Clear();

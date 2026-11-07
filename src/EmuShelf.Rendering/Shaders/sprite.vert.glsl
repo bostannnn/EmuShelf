@@ -3,6 +3,8 @@
 // zoom). Attribute-less: four vertices as a triangle strip.
 
 uniform vec4 uRect;      // x, y, width, height on the canvas, at rest
+uniform vec4 uLinear;    // a part's own transform on the canvas (row-vector M11, M12, M21, M22) ...
+uniform vec2 uTranslate; // ... and its translation (M31, M32): a folder flap or cover between states
 uniform vec2 uCanvas;    // canvas size
 uniform vec3 uScale;     // own scale, pivot x, pivot y
 uniform vec2 uOffset;    // track offset
@@ -16,6 +18,7 @@ void main()
 {
     vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1));
     vec2 position = uRect.xy + (corner * uRect.zw);
+    position = vec2((position.x * uLinear.x) + (position.y * uLinear.z), (position.x * uLinear.y) + (position.y * uLinear.w)) + uTranslate;
     position = uScale.yz + ((position - uScale.yz) * uScale.x);
     position += uOffset;
     position = uGroup.yz + ((position - uGroup.yz) * uGroup.x);
