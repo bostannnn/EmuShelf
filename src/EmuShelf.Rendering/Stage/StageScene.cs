@@ -72,11 +72,18 @@ public sealed record StageBackdropCommand(StageBackdrop? Backdrop) : StageComman
 /// are simply replaced (a cover that finished loading, a folder flap that settled).
 /// </summary>
 public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop,
-    FolderArt? Folder = null, FolderArtState FolderState = FolderArtState.Closed) : StageCommand
+    FolderArt? Folder = null, FolderArtState FolderState = FolderArtState.Closed,
+    IReadOnlyList<StageImage>? Hero = null, bool FadeIn = false) : StageCommand
 {
     public override string? RetainKey => "centre";
-    public override StageCommand ForReplay() => this with { Pop = false };
+    public override StageCommand ForReplay() => this with { Pop = false, FadeIn = false };
 }
+
+/// <summary>
+/// The launch landing: the cover (a picture placed at rest in the middle) arrives from below, then zooms
+/// into the emulator; null takes it away (the Title page closed).
+/// </summary>
+public sealed record StageLaunchCommand(StageImage? Cover) : StageCommand;
 
 /// <summary>The big folder's flap: closed, peeking or open; it glides there unless told not to.</summary>
 public sealed record StageFolderStateCommand(FolderArtState State, bool Animate) : StageCommand

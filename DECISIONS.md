@@ -12995,3 +12995,25 @@ than the shadow around it: a pale rim hugging the folder. It was in the Avalonia
 the shape filled and blurred (`BlurEffect`), a true drop shadow; the folder art, game tiles and their lift
 shadow use it. The selector's glow and the dock stay rings (a filled glow would tint the focused tile violet;
 the dock pill is translucent).
+
+## 2026-11-07 — M45 H4: the Title page draws natively on both screens
+
+- **Launcher.** A `Title` sprite group covers everything while it is up (its pictured background is opaque, so
+  the pages under it are not drawn at all) and orders its pieces by `Z`: background, the page body (pictured
+  without its buttons), the buttons (liftable anchors, so the selector frames them), the disc/actions sheet
+  (its focused row is part of the picture: the rows highlight in place), the screen chooser's sheet and its
+  three cards, the launching panel's cover and text. The indeterminate bar is drawn natively (a 40% segment
+  sweeping the track every 1.5 s, a filled rounded rect in the selector's shader), so the hidden Avalonia bar
+  is switched to determinate while native. The cover's lift-off on Play is the Avalonia Launcher's (press to
+  0.94, pop to 1.1 in 260 ms, then up 1100 px shrinking to 0.7 and fading in 420 ms).
+- **Stage.** The hero is pictured as two layers (the full-window fan-art backdrop, mapped onto the canvas,
+  and the logo with its meta line) and, like the Avalonia Stage, a change to or from a Title page crossfades
+  over 340 ms instead of popping. The launch flight lands natively (after 140 ms from 760 px below on the pop
+  curve, 520 ms, then zooms to 1.7× and fades, 460 ms).
+- **A trap, fixed everywhere:** `TranslatePoint` between two Viewboxes drops one Viewbox's scale (the
+  Avalonia selector already worked around it). The Title page sits in its own Viewbox, so its pieces landed
+  in the wrong places; the feeds now map every point through the window (`HandheldStageShots.ToCanvas`).
+- **Checked on the Thor:** opening a Title page, moving between its buttons, the More actions sheet, backing
+  out; on top, the hero crossfading in and back to the medium. Not checked on the device: Play (the screen
+  chooser, the launching panel, the lift-off and the landing), because it starts an emulator.
+- **Still on Avalonia:** the menu and the All apps drawer.

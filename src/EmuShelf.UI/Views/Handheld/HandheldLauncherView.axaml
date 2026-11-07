@@ -85,6 +85,13 @@
       <Setter Property="RenderTransform" Value="scale(1)" />
       <Setter Property="Transitions" Value="{x:Null}" />
     </Style>
+    <Style Selector="ProgressBar.launch">
+      <Setter Property="IsIndeterminate" Value="True" />
+    </Style>
+    <!-- The native Launcher draws its own bar; a hidden indeterminate bar would still animate. -->
+    <Style Selector="Panel.native ProgressBar.launch">
+      <Setter Property="IsIndeterminate" Value="False" />
+    </Style>
     <Style Selector="Panel.native vh|HandheldShadow.lift">
       <Setter Property="Opacity" Value="0" />
       <Setter Property="Transitions" Value="{x:Null}" />
@@ -426,7 +433,7 @@
     <Viewbox Stretch="Uniform" ClipToBounds="False">
       <Grid Width="1240" Height="1080" ClipToBounds="False">
 
-        <Grid IsVisible="{Binding TitlePage.IsBrowsable}" RowDefinitions="88,*,136,56" Margin="48,40,48,32">
+        <Grid x:Name="TitleBody" IsVisible="{Binding TitlePage.IsBrowsable}" RowDefinitions="88,*,136,56" Margin="48,40,48,32">
           <!-- Header: Back and where the page came from. -->
           <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
             <Border Classes="chip">
@@ -482,7 +489,7 @@
           </Grid>
 
           <!-- The buttons: Play, Disc (multi-disc), Achievements. -->
-          <ItemsControl Grid.Row="2" ItemsSource="{Binding TitlePage.Buttons}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+          <ItemsControl x:Name="TitleButtons" Grid.Row="2" ItemsSource="{Binding TitlePage.Buttons}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                         ClipToBounds="False" VerticalAlignment="Center">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
@@ -491,6 +498,7 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HandheldTitleButtonViewModel">
+                <Border Classes="shot" Padding="32" Margin="-32">
                 <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
                   <Border Classes="title-button" Classes.play="{Binding IsPlay}">
                     <StackPanel Orientation="Horizontal" Spacing="16">
@@ -505,6 +513,7 @@
                     <Border CornerRadius="60"><Border CornerRadius="48" /></Border>
                   </Border>
                 </Panel>
+                </Border>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
@@ -529,7 +538,7 @@
         </Grid>
 
         <!-- State: the disc chooser or the actions sheet, a card over a scrim. -->
-        <Border IsVisible="{Binding TitlePage.IsOptionList}" Background="#521C2033" Margin="-400">
+        <Border x:Name="OptionSheet" IsVisible="{Binding TitlePage.IsOptionList}" Background="#521C2033" Margin="-400">
           <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="40"
                   Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
             <StackPanel Spacing="8">
@@ -564,7 +573,7 @@
         </Border>
 
         <!-- State: the launch-screen chooser — two screen cards and "Always use this screen". -->
-        <Border IsVisible="{Binding TitlePage.IsScreenChooser}" Background="#521C2033" Margin="-400">
+        <Border x:Name="ScreenSheet" IsVisible="{Binding TitlePage.IsScreenChooser}" Background="#521C2033" Margin="-400">
           <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="48"
                   Background="#F5F6F9" Padding="48,40" BoxShadow="0 20 48 0 #33000000" ClipToBounds="False">
             <StackPanel Spacing="32" ClipToBounds="False">
@@ -573,7 +582,8 @@
                 <TextBlock Text="{Binding TitlePage.Title}" FontSize="26" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="48" HorizontalAlignment="Center" ClipToBounds="False">
-                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsTopScreenFocused}" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                <Border x:Name="ScreenTopShot" Classes="shot" Padding="40" Margin="-40" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsTopScreenFocused}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
                       <PathIcon Data="{x:Static vm:HandheldIcons.ScreenTop}" Width="96" Height="96" Foreground="#5B58D9" />
@@ -585,7 +595,9 @@
                     <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
                   </Border>
                 </Panel>
-                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsBottomScreenFocused}" ZIndex="{Binding TitlePage.IsBottomScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                </Border>
+                <Border x:Name="ScreenBottomShot" Classes="shot" Padding="40" Margin="-40" ZIndex="{Binding TitlePage.IsBottomScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsBottomScreenFocused}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
                       <PathIcon Data="{x:Static vm:HandheldIcons.ScreenBottom}" Width="96" Height="96" Foreground="#5B58D9" />
@@ -597,8 +609,10 @@
                     <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
                   </Border>
                 </Panel>
+                </Border>
               </StackPanel>
               <!-- The remember toggle: a row with a check box. -->
+              <Border x:Name="RememberShot" Classes="shot" Padding="24" Margin="-24" HorizontalAlignment="Center">
               <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsRememberFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsRememberFocused}" HorizontalAlignment="Center">
                 <Border Classes="chip" Height="72" CornerRadius="36" Padding="24,0">
                   <StackPanel Orientation="Horizontal" Spacing="16">
@@ -614,12 +628,14 @@
                   <Border CornerRadius="52"><Border CornerRadius="40" /></Border>
                 </Border>
               </Panel>
+              </Border>
             </StackPanel>
           </Border>
         </Border>
 
         <!-- State: launching — the pre-launch save sync (the blocking sync panel), then the emulator start. -->
-        <StackPanel IsVisible="{Binding TitlePage.IsLaunching}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
+        <StackPanel x:Name="LaunchPanel" IsVisible="{Binding TitlePage.IsLaunching}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
+          <Border x:Name="LaunchCoverShot" Classes="shot" Padding="64" Margin="-64" HorizontalAlignment="Center">
           <Border x:Name="LaunchCover" Width="280" Height="392" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
                   BoxShadow="0 16 40 0 #2E000000" HorizontalAlignment="Center">
             <Border IsVisible="{Binding TitlePage.HasCover}">
@@ -628,13 +644,14 @@
               </Border.Background>
             </Border>
           </Border>
-          <StackPanel Spacing="8">
+          </Border>
+          <StackPanel x:Name="LaunchText" Spacing="8">
             <TextBlock Text="{Binding TitlePage.LaunchingHeading}" FontSize="40" FontWeight="SemiBold" Foreground="#1C2033"
                        HorizontalAlignment="Center" />
             <TextBlock Text="{Binding TitlePage.LaunchingDetail}" FontSize="26" Foreground="#5B6176"
                        HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="1000" />
           </StackPanel>
-          <ProgressBar IsIndeterminate="True" Width="320" Height="8" MinHeight="8" CornerRadius="4"
+          <ProgressBar x:Name="LaunchProgress" Classes="launch" Width="320" Height="8" MinHeight="8" CornerRadius="4"
                        HorizontalAlignment="Center" Background="#29465088" Foreground="#5B58D9" />
         </StackPanel>
       </Grid>

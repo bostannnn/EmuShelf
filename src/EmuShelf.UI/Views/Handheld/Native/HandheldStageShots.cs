@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -15,15 +16,43 @@ namespace EmuShelf.App.Views.Handheld;
 /// </summary>
 internal static class HandheldStageShots
 {
-    /// <summary>A piece of the live Stage where layout put it on the canvas; null when it is hidden or empty.</summary>
+    /// <summary>
+    /// A piece of the live screen where layout put it on the canvas, drawn at the canvas's resolution (a piece
+    /// outside the canvas's Viewbox, such as a full-window backdrop, is scaled to it); null when hidden or empty.
+    /// </summary>
     public static StageImage? Shot(Visual piece, Visual canvas)
     {
         if (!piece.IsVisible || piece.Bounds.Width < 1 || piece.Bounds.Height < 1 ||
-            piece.TranslatePoint(default, canvas) is not { } at)
+            HandheldStageShots.ToCanvas(piece, default(Point), canvas) is not { } at ||
+            HandheldStageShots.ToCanvas(piece, new Point(piece.Bounds.Width, piece.Bounds.Height), canvas) is not { } end)
         {
             return null;
         }
-        return Picture(piece, (float)at.X, (float)at.Y, (float)piece.Bounds.Width, (float)piece.Bounds.Height);
+        var scale = (end.X - at.X) / piece.Bounds.Width;
+        if (Math.Abs(scale - 1) < 0.001)
+            return Picture(piece, (float)at.X, (float)at.Y, (float)piece.Bounds.Width, (float)piece.Bounds.Height);
+        var pixelWidth = Math.Max(1, (int)Math.Ceiling(end.X - at.X));
+        var pixelHeight = Math.Max(1, (int)Math.Ceiling(end.Y - at.Y));
+        using var bitmap = new RenderTargetBitmap(new PixelSize(pixelWidth, pixelHeight), new Vector(96 * scale, 96 * scale));
+        bitmap.Render(piece);
+        return new StageImage(Pixels(bitmap), (float)at.X, (float)at.Y, (float)(end.X - at.X), (float)(end.Y - at.Y));
+    }
+
+    /// <summary>
+    /// Maps a point in <paramref name="visual"/> onto <paramref name="canvas"/> through the window. A direct
+    /// TranslatePoint between two Viewboxes (the Launcher's canvas and its Title page) drops one Viewbox's scale,
+    /// the same trap the Avalonia selector works around.
+    /// </summary>
+    public static Point? ToCanvas(Visual visual, Point point, Visual canvas)
+    {
+        if (TopLevel.GetTopLevel(canvas) is not Visual root)
+            return visual.TranslatePoint(point, canvas);
+        if (visual.TransformToVisual(root) is not { } toRoot || canvas.TransformToVisual(root) is not { } canvasToRoot ||
+            !canvasToRoot.TryInvert(out var rootToCanvas))
+        {
+            return null;
+        }
+        return point * toRoot * rootToCanvas;
     }
 
     /// <summary>Draws <paramref name="visual"/> into a picture placed at (x, y) on the canvas.</summary>

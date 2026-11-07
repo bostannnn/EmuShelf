@@ -90,7 +90,7 @@
       <!-- What changes with the focus: the hero, the centre art and the plate. -->
       <Panel x:Name="StageContent">
       <!-- The Title page hero over the fan art: the logo (or the title set in type), then the meta line. -->
-      <Panel IsVisible="{Binding Stage.IsHeroArt}">
+      <Panel x:Name="HeroContent" IsVisible="{Binding Stage.IsHeroArt}">
         <Panel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="112,128,0,0" Width="808" Height="560">
           <Image Source="{Binding Stage.Logo}" IsVisible="{Binding Stage.HasLogo}" Stretch="Uniform"
                  HorizontalAlignment="Left" VerticalAlignment="Center">

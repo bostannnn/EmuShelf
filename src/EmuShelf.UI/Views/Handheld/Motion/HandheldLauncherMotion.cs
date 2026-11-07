@@ -145,14 +145,18 @@ internal sealed class HandheldLauncherMotion
 
     private bool _onScreen = true;
 
-    /// <summary>The element that holds the focus now (the most recently focused one still on screen).</summary>
+    /// <summary>
+    /// The element that holds the focus now (the most recently focused one still on screen): while a Title page
+    /// is up, only its own buttons and cards.
+    /// </summary>
     public Control? FocusedAnchor()
     {
+        var title = _titleLayer.IsVisible;
         for (var i = _anchors.Count - 1; i >= 0; i--)
         {
             var anchor = _anchors[i];
             if (anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible && HandheldSelectorAnchor.GetIsFocused(anchor) &&
-                !_titleLayer.IsVisualAncestorOf(anchor))
+                _titleLayer.IsVisualAncestorOf(anchor) == title)
             {
                 return anchor;
             }

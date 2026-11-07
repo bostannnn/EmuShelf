@@ -49,6 +49,8 @@ public sealed class LauncherCompositor : INativeScene
     private string? _zoomTile;
 
     private float _lastFrame = float.NaN;
+    private StageRect? _progress;
+    private float _progressStart;
 
     public LauncherCompositor(GL gl, GlslDialect dialect, int majorVersion, int minorVersion)
     {
@@ -75,6 +77,7 @@ public sealed class LauncherCompositor : INativeScene
         public uint Texture { get; set; } = texture;
         public uint Shadow { get; set; } = shadow;
         public FolderArtState PendingState { get; set; } = FolderArtState.Closed;
+        public float LaunchStart { get; set; } = float.NegativeInfinity;
         public float LiftFrom { get; set; } = 1f;
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
@@ -148,6 +151,15 @@ public sealed class LauncherCompositor : INativeScene
                     holder.PendingState = folderState.State;
                     holder.Folder?.SetState(folderState.State, now, folderState.Animate);
                 }
+                break;
+            case LauncherProgressCommand progress:
+                if (progress.Track is not null && _progress is null)
+                    _progressStart = now;
+                _progress = progress.Track;
+                break;
+            case LauncherLaunchCommand launch:
+                if (_live.TryGetValue(launch.SpriteId, out var launching))
+                    launching.LaunchStart = now;
                 break;
             case LauncherBumpCommand bump:
                 _bump = new Vector2(bump.DirectionX, bump.DirectionY);
@@ -294,6 +306,23 @@ public sealed class LauncherCompositor : INativeScene
         var zoom = Zoom(now);
         animating |= zoom.Animating;
 
+        // A Title page covers everything under it with its own opaque background.
+        var title = _live.Values.Any(state => state.Sprite.Group == LauncherGroup.Title);
+        if (title)
+        {
+            DrawGroup(LauncherGroup.Title, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
+            animating |= DrawProgress(now);
+            animating |= _live.Values.Any(state => !float.IsNegativeInfinity(state.LaunchStart) && now - state.LaunchStart < LaunchMilliseconds);
+            animating |= DrawSelector(now);
+            animating |= _live.Values.Any(s => now - s.LiftStart < LauncherMotion.LiftMilliseconds);
+            _gl.Disable(EnableCap.ScissorTest);
+            _gl.BindVertexArray(0);
+            _gl.BindTexture(TextureTarget.Texture2D, 0);
+            if (!animating)
+                _lastFrame = float.NaN;
+            return animating;
+        }
+
         DrawGroup(LauncherGroup.Background, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
         DrawGroup(LauncherGroup.Home, now, zoom.HomeOpacity, 1f, Vector2.Zero, _layout.HomeClip, sx, sy, surfaceHeight, zoom);
         DrawGroup(LauncherGroup.Dots, now, zoom.HomeOpacity, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
@@ -363,7 +392,7 @@ public sealed class LauncherCompositor : INativeScene
         float sx, float sy, int surfaceHeight, ZoomState zoom = default)
     {
         var sprites = _live.Values.Where(s => s.Sprite.Group == group)
-            .OrderBy(s => s.Sprite.Id == _focused ? 1 : 0);
+            .OrderBy(s => s.Sprite.Z).ThenBy(s => s.Sprite.Id == _focused ? 1 : 0);
         DrawSprites(sprites, now, opacity, groupScale, pivot, clip, sx, sy, surfaceHeight, zoom);
     }
 
@@ -393,6 +422,18 @@ public sealed class LauncherCompositor : INativeScene
             var offset = new Vector2(TrackOffset(sprite.Track), 0);
             var lift = sprite.Liftable ? state.Lift(now) : 1f;
             var spriteOpacity = opacity;
+            var sinceLaunch = float.IsNegativeInfinity(state.LaunchStart) ? float.NaN : now - state.LaunchStart;
+            if (sinceLaunch >= 0 && sinceLaunch < LaunchMilliseconds)
+            {
+                var (launchScale, launchY, launchOpacity) = Launch(sinceLaunch / LaunchMilliseconds);
+                lift *= launchScale;
+                offset.Y += launchY;
+                spriteOpacity *= launchOpacity;
+            }
+            else if (sinceLaunch >= LaunchMilliseconds)
+            {
+                continue; // lifted off: gone until the page closes
+            }
             if (sprite.Id == _zoomTile && zoom.Animating)
             {
                 lift *= zoom.TileScale;
@@ -425,6 +466,66 @@ public sealed class LauncherCompositor : INativeScene
         _sprites.Set("uUv", new Vector4(0, 0, 1, 1));
         _sprites.Set("uOpacity", opacity);
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+    }
+
+    // The launch, as the Avalonia Launcher played it: press to 0.94 and pop to 1.1 in 260 ms, then lift off
+    // upward (-1100 px) shrinking to 0.7 and fading over 420 ms.
+    private const float LaunchPress = 260f;
+    private const float LaunchLift = 420f;
+    private const float LaunchMilliseconds = LaunchPress + LaunchLift;
+
+    private static (float Scale, float OffsetY, float Opacity) Launch(float t)
+    {
+        var press = LaunchPress * 0.4f / LaunchMilliseconds;
+        var pop = LaunchPress / LaunchMilliseconds;
+        static float Sine(float x) => 0.5f - (0.5f * MathF.Cos(MathF.PI * Math.Clamp(x, 0f, 1f)));
+        float scale;
+        if (t < press)
+            scale = 1f + ((0.94f - 1f) * Sine(t / press));
+        else if (t < pop)
+            scale = 0.94f + ((1.1f - 0.94f) * Sine((t - press) / (pop - press)));
+        else
+            scale = 1.1f + ((0.7f - 1.1f) * Sine((t - pop) / (1f - pop)));
+        var lift = t < pop ? 0f : (t - pop) / (1f - pop);
+        return (scale, -1100f * lift * lift * lift, t < pop ? 1f : 1f - lift);
+    }
+
+    /// <summary>The launching panel's indeterminate bar: a 40% segment sweeping across the track every 1.5 s.</summary>
+    private bool DrawProgress(float now)
+    {
+        if (_progress is not { } track)
+            return false;
+        _gl.Disable(EnableCap.ScissorTest);
+        _ring.Use();
+        _ring.Set("uCanvas", new Vector2(_layout.CanvasWidth, _layout.CanvasHeight));
+        _ring.Set("uLinear", new Vector4(1, 0, 0, 1));
+        _ring.Set("uTranslate", Vector2.Zero);
+        _ring.Set("uScale", new Vector3(1, 0, 0));
+        _ring.Set("uOffset", Vector2.Zero);
+        _ring.Set("uGroup", new Vector3(1, 0, 0));
+        _ring.Set("uUv", new Vector4(0, 0, 1, 1));
+        _ring.Set("uOpacity", 1f);
+        void Bar(float x, float width, Vector4 colour)
+        {
+            _ring.Set("uRect", new Vector4(x, track.Y, width, track.Height));
+            _ring.Set("uSize", new Vector2(width, track.Height));
+            _ring.Set("uRadius", track.Height / 2);
+            _ring.Set("uFill", colour);
+            _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+        }
+        // #29465088 and #5B58D9, premultiplied.
+        var trackAlpha = 0x29 / 255f;
+        Bar(track.X, track.Width, new Vector4(0x46 / 255f * trackAlpha, 0x50 / 255f * trackAlpha, 0x88 / 255f * trackAlpha, trackAlpha));
+        var segment = track.Width * 0.4f;
+        var phase = ((now - _progressStart) % 1500f) / 1500f;
+        var x = track.X - segment + ((track.Width + segment) * phase);
+        var left = Math.Max(track.X, x);
+        var right = Math.Min(track.X + track.Width, x + segment);
+        if (right > left)
+            Bar(left, right - left, new Vector4(0x5B / 255f, 0x58 / 255f, 0xD9 / 255f, 1f));
+        _ring.Set("uFill", Vector4.Zero);
+        _sprites.Use();
+        return true;
     }
 
     private bool DrawSelector(float now)
@@ -476,6 +577,7 @@ public sealed class LauncherCompositor : INativeScene
         _ring.Set("uUv", new Vector4(0, 0, 1, 1));
         _ring.Set("uSize", new Vector2(w, h));
         _ring.Set("uRadius", Math.Max(0f, (float)_r.Value));
+        _ring.Set("uFill", Vector4.Zero);
         _ring.Set("uOpacity", opacity);
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
         _sprites.Use();

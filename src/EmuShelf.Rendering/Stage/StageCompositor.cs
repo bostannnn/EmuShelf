@@ -41,6 +41,10 @@ public sealed class StageCompositor : INativeScene
     private float _backdropFadeStart;
 
     private Layer? _art;
+    private List<Layer> _hero = [];
+    private float _fadeStart = float.NegativeInfinity;
+    private Layer? _fly;
+    private float _flyStart;
     private FolderArtState2D? _folder;
     private FolderArtState _folderState;
     private Layer? _plate;
@@ -92,6 +96,9 @@ public sealed class StageCompositor : INativeScene
                 break;
             case StageCentreCommand centre:
                 Replace(ref _art, centre.Art, repeat: false);
+                ReplaceHero(centre.Hero);
+                if (centre.FadeIn)
+                    _fadeStart = now;
                 if (!ReferenceEquals(_folder?.Art, centre.Folder))
                 {
                     _folder?.Dispose();
@@ -102,6 +109,10 @@ public sealed class StageCompositor : INativeScene
                 SetMedium(centre.Medium);
                 if (centre.Pop)
                     _popStart = now;
+                break;
+            case StageLaunchCommand launch:
+                Replace(ref _fly, launch.Cover, repeat: false);
+                _flyStart = now;
                 break;
             case StageFolderStateCommand folderState:
                 _folderState = folderState.State;
@@ -180,30 +191,89 @@ public sealed class StageCompositor : INativeScene
         var plateScale = StageCurves.PlateScale(sincePop);
         animating |= sincePop < Math.Max(StageCurves.PopMilliseconds, StageCurves.PlatePopMilliseconds);
 
+        // A Title page crossfades in (340 ms) rather than popping: the hero, the centre and the plate together.
+        var sinceFade = now - _fadeStart;
+        var content = sinceFade >= HeroFadeMilliseconds ? 1f : EaseInOutCubic(Math.Max(0f, sinceFade) / HeroFadeMilliseconds);
+        animating |= sinceFade < HeroFadeMilliseconds;
+        foreach (var layer in _hero)
+            DrawLayer(layer, content, 1f, 0, 0);
+
         if (_medium is { } medium && _mediumTexture != 0)
         {
             // The FBO's first row is the bottom of the picture.
-            DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, 1f,
+            DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, content,
                 centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 1, 1, 0));
         }
         else if (_folder is { } folder)
         {
-            folder.Draw(now, (texture, image, affine) => DrawQuad(texture, image.X, image.Y, image.Width, image.Height, 1f,
+            folder.Draw(now, (texture, image, affine) => DrawQuad(texture, image.X, image.Y, image.Width, image.Height, content,
                 centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 0, 1, 1), affine));
             animating |= folder.IsAnimating(now);
         }
         else if (_art is { } art)
         {
-            DrawLayer(art, 1f, centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY);
+            DrawLayer(art, content, centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY);
         }
         if (_plate is { } plate)
-            DrawLayer(plate, 1f, plateScale, StageCurves.PlatePivotX, StageCurves.PlatePivotY);
+            DrawLayer(plate, content, plateScale, StageCurves.PlatePivotX, StageCurves.PlatePivotY);
+        if (_fly is { } fly)
+            animating |= DrawLaunch(fly, now);
         foreach (var chrome in _chrome.Values)
             DrawLayer(chrome, 1f, 1f, 0, 0);
 
         _gl.BindVertexArray(0);
         _gl.BindTexture(TextureTarget.Texture2D, 0);
         return animating;
+    }
+
+    private const float HeroFadeMilliseconds = 340f;
+
+    private static float EaseInOutCubic(float t) =>
+        t < 0.5f ? 4f * t * t * t : 1f - (MathF.Pow((-2f * t) + 2f, 3f) / 2f);
+
+    private void ReplaceHero(IReadOnlyList<StageImage>? hero)
+    {
+        if (hero is not null && hero.Count == _hero.Count && hero.Select((image, i) => ReferenceEquals(image, _hero[i].Image)).All(same => same))
+            return;
+        foreach (var layer in _hero)
+            _gl.DeleteTexture(layer.Texture);
+        _hero = hero?.Select(image => new Layer(image, SpriteTextures.Upload(_gl, image.Pixels, repeat: false))).ToList() ?? [];
+    }
+
+    // The launch, as the Avalonia Stage played it: after 140 ms the cover lands from 760 px below, growing
+    // from 0.45× on the pop curve (520 ms) and fading in over its first quarter; once it has landed (660 ms
+    // after the launch) it zooms to 1.7× and fades (460 ms).
+    private bool DrawLaunch(Layer fly, float now)
+    {
+        var t = now - _flyStart;
+        const float delay = 140f, land = 520f, zoom = 460f;
+        float scale, opacity, y;
+        if (t < delay)
+            return true;
+        if (t < delay + land)
+        {
+            var p = (t - delay) / land;
+            var e = StageCurves.CubicBezier(0.22f, 1.1f, 0.36f, 1f, p);
+            scale = 0.45f + (0.55f * e);
+            y = 760f * (1f - e);
+            opacity = Math.Clamp(p / 0.25f, 0f, 1f);
+        }
+        else if (t < delay + land + zoom)
+        {
+            var p = (t - delay - land) / zoom;
+            var e = p * p * p;
+            scale = 1f + (0.7f * e);
+            y = 0f;
+            opacity = 1f - e;
+        }
+        else
+        {
+            return false;
+        }
+        var image = fly.Image;
+        DrawQuad(fly.Texture, image.X, image.Y + y, image.Width, image.Height, opacity, scale,
+            image.X + (image.Width / 2), image.Y + y + (image.Height / 2), new Vector4(0, 0, 1, 1));
+        return true;
     }
 
     // ---- The medium ----
@@ -417,6 +487,8 @@ public sealed class StageCompositor : INativeScene
         Replace(ref _plate, null, false);
         _folder?.Dispose();
         _folder = null;
+        ReplaceHero(null);
+        Replace(ref _fly, null, false);
         foreach (var layer in _chrome.Values)
             _gl.DeleteTexture(layer.Texture);
         _chrome.Clear();

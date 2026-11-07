@@ -8,6 +8,7 @@ in vec2 vLocal;
 uniform vec2 uSize;
 uniform float uRadius;
 uniform float uOpacity;
+uniform vec4 uFill;      // when its alpha is set: a filled rounded rect in this (premultiplied) colour instead
 
 out vec4 fragColor;
 
@@ -29,6 +30,11 @@ void main()
     vec2 halfSize = uSize * 0.5;
     vec2 p = vLocal - halfSize;
     float i0 = inside(p, halfSize, 0.0, uRadius);
+    if (uFill.a > 0.0)
+    {
+        fragColor = uFill * i0 * uOpacity;
+        return;
+    }
     float i1 = inside(p, halfSize, 4.0, uRadius);
     float i2 = inside(p, halfSize, 18.0, uRadius);
     float i3 = inside(p, halfSize, 22.0, uRadius);

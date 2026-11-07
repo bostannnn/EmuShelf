@@ -17,6 +17,9 @@ public enum LauncherGroup
 
     /// <summary>The dock, always on top of the pages.</summary>
     Dock,
+
+    /// <summary>A game's Title page: covers everything else while it is up (its own background is opaque).</summary>
+    Title,
 }
 
 /// <summary>What moves a sprite sideways: the home page track, the folder's column track, or nothing.</summary>
@@ -45,7 +48,8 @@ public sealed record LauncherSprite(
     float PivotX,
     float PivotY,
     StageImage? LiftShadow = null,
-    FolderArt? Folder = null);
+    FolderArt? Folder = null,
+    int Z = 0);
 
 /// <summary>A home folder's flap: closed, peeking (focused) or open (its folder zooming open).</summary>
 public sealed record LauncherFolderStateCommand(string Id, FolderArtState State, bool Animate) : StageCommand
@@ -107,6 +111,15 @@ public sealed record LauncherFolderCommand(bool Open) : StageCommand
 /// of (<see cref="OriginX"/>, <see cref="OriginY"/>); on close the reverse. The selector hides meanwhile.
 /// </summary>
 public sealed record LauncherZoomCommand(bool Open, string? TileId, float OriginX, float OriginY) : StageCommand;
+
+/// <summary>The launching panel's indeterminate bar, at <paramref name="Track"/>; null removes it.</summary>
+public sealed record LauncherProgressCommand(StageRect? Track) : StageCommand
+{
+    public override string? RetainKey => "progress";
+}
+
+/// <summary>The launch: the sprite (the Title page's cover) presses in, pops and lifts off toward the top screen.</summary>
+public sealed record LauncherLaunchCommand(string SpriteId) : StageCommand;
 
 /// <summary>The edge bump: the selector nudges toward a wall and eases back.</summary>
 public sealed record LauncherBumpCommand(int DirectionX, int DirectionY) : StageCommand;

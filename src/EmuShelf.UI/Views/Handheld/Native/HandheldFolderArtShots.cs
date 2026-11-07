@@ -22,8 +22,8 @@ internal static class HandheldFolderArtShots
     public static FolderArt? Capture(HandheldFolderArt art, Visual canvas)
     {
         if (art.FindControl<Panel>("ArtRoot") is not { } root || !art.IsVisible || root.Bounds.Width <= 0 ||
-            root.TranslatePoint(default, canvas) is not { } origin ||
-            root.TranslatePoint(new Point(root.Bounds.Width, 0), canvas) is not { } right)
+            HandheldStageShots.ToCanvas(root, default(Point), canvas) is not { } origin ||
+            HandheldStageShots.ToCanvas(root, new Point(root.Bounds.Width, 0), canvas) is not { } right)
         {
             return null;
         }

@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
@@ -39,6 +40,9 @@ internal sealed class HandheldNativeStageFeed
     private readonly Control _centre;
     private readonly Control _plate;
     private readonly HandheldFolderArt _folder;
+    private readonly Control _heroBackdrop;
+    private readonly Control _heroContent;
+    private HandheldStageKind _lastKind;
     private bool _capturing;
     private FolderArt? _folderArt;
     private string? _folderArtKey;
@@ -69,6 +73,8 @@ internal sealed class HandheldNativeStageFeed
         _centre = Find("CentreShot");
         _plate = Find("PlateShot");
         _folder = (HandheldFolderArt)Find("StageFolder");
+        _heroBackdrop = Find("HeroBackdrop");
+        _heroContent = Find("HeroContent");
         _backdrop = (HandheldEraBackdrop)Find("EraBackdrop");
         // Each corner piece is pictured again only when what it says changes (a picture is a GPU round trip).
         _chrome =
@@ -120,6 +126,7 @@ internal sealed class HandheldNativeStageFeed
         {
             old.StageChanged -= OnStageChanged;
             old.PropertyChanged -= OnShellChanged;
+            old.LaunchStarting -= OnLaunchStarting;
         }
         if (_stage is { } oldStage)
             oldStage.PropertyChanged -= OnStagePropertyChanged;
@@ -129,6 +136,7 @@ internal sealed class HandheldNativeStageFeed
             return;
         shell.StageChanged += OnStageChanged;
         shell.PropertyChanged += OnShellChanged;
+        shell.LaunchStarting += OnLaunchStarting;
         shell.Stage.PropertyChanged += OnStagePropertyChanged;
         UpdateActive();
     }
@@ -137,7 +145,7 @@ internal sealed class HandheldNativeStageFeed
 
     private void UpdateActive()
     {
-        var active = !_failed && _shell is { TitlePage: null };
+        var active = !_failed && _shell is not null;
         if (active == _active)
             return;
         _active = active;
@@ -164,8 +172,9 @@ internal sealed class HandheldNativeStageFeed
     {
         switch (e.PropertyName)
         {
-            case nameof(HandheldShellViewModel.TitlePage):
-                UpdateActive();
+            case nameof(HandheldShellViewModel.TitlePage) when _shell?.TitlePage is null:
+                // The page closed: a landed launch cover goes with it.
+                _host.Post(new StageLaunchCommand(null));
                 break;
             case nameof(HandheldShellViewModel.TimeText):
             case nameof(HandheldShellViewModel.BatteryText):
@@ -205,7 +214,9 @@ internal sealed class HandheldNativeStageFeed
             case nameof(HandheldStageViewModel.PeekA):
             case nameof(HandheldStageViewModel.PeekB):
             case nameof(HandheldStageViewModel.PeekC):
-                Schedule(centre: true, pop: false);
+            case nameof(HandheldStageViewModel.Fanart):
+            case nameof(HandheldStageViewModel.Logo):
+                Schedule(centre: true, pop: false, chrome: true);
                 break;
             case nameof(HandheldStageViewModel.AchievementText):
                 Schedule(centre: false, pop: false, chrome: true);
@@ -253,6 +264,19 @@ internal sealed class HandheldNativeStageFeed
 
     private void SendCentre(HandheldStageViewModel stage, bool pop)
     {
+        // A Title page crossfades in and out rather than popping from the centre, as on the Avalonia Stage.
+        var fade = pop && (stage.Kind == HandheldStageKind.Hero || _lastKind == HandheldStageKind.Hero);
+        if (pop)
+            _lastKind = stage.Kind;
+        if (fade)
+            pop = false;
+        if (stage.IsHeroArt)
+        {
+            var hero = new[] { HandheldStageShots.Shot(_heroBackdrop, _canvas), HandheldStageShots.Shot(_heroContent, _canvas) }
+                .Where(image => image is not null).Cast<StageImage>().ToArray();
+            _host.Post(new StageCentreCommand(null, null, null, pop, Hero: hero, FadeIn: fade));
+            return;
+        }
         // The same plate is the same picture (and the same texture on the other side).
         var plateKey = $"{stage.HasPlate}|{stage.Title}|{stage.Subtitle}";
         if (plateKey != _plateSent)
@@ -268,17 +292,17 @@ internal sealed class HandheldNativeStageFeed
                 MediumWidth, MediumHeight);
             _host.Post(new StageMediumPoseCommand((float)stage.MediumYaw, (float)stage.MediumPitch));
             // The new medium pops in only once its cover is ready, so it never shows the last game's label.
-            SendCover(stage.Art, then: new StageCentreCommand(null, medium, plate, pop));
+            SendCover(stage.Art, then: new StageCentreCommand(null, medium, plate, pop, FadeIn: fade));
             return;
         }
         if (stage.IsFolder && FolderArt() is { } folder)
         {
             var state = HandheldFolderArtShots.StateOf(_folder);
             _folderStateSent = state;
-            _host.Post(new StageCentreCommand(null, null, plate, pop, folder, state));
+            _host.Post(new StageCentreCommand(null, null, plate, pop, folder, state, FadeIn: fade));
             return;
         }
-        _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop));
+        _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop, FadeIn: fade));
     }
 
     /// <summary>The big folder as glidable parts, captured again only when what it shows changes.</summary>
@@ -314,6 +338,25 @@ internal sealed class HandheldNativeStageFeed
     }
 
     private static string Ref(object? value) => value is null ? "-" : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value).ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>The launch: the cover card lands on the top screen, then zooms into the emulator (native).</summary>
+    private void OnLaunchStarting(HandheldTitlePageViewModel page)
+    {
+        if (!_active || page.Cover is not { } cover)
+            return;
+        var card = new Border
+        {
+            Width = 448,
+            Height = 632,
+            CornerRadius = new CornerRadius(28),
+            ClipToBounds = true,
+            Background = new SolidColorBrush(Color.Parse("#D5D9E4")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#D9FFFFFF")),
+            BorderThickness = new Thickness(8),
+            Child = new Image { Source = cover, Stretch = Stretch.UniformToFill },
+        };
+        _host.Post(new StageLaunchCommand(HandheldStageShots.Picture(card, (1920 - 448) / 2f, (1080 - 632) / 2f, 448, 632)));
+    }
 
     private void SendBackdrop()
     {

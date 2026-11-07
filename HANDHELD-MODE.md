@@ -437,8 +437,9 @@ file picker and Desktop mode.
     pictures of its pieces (centre art, plate, corner pills, the backdrop's layers), taken once per
     change by `HandheldNativeStageFeed`; the compositor does all the motion (the pops, the backdrop
     crossfade and drift) and renders the 3D medium into its own texture, so a pop only scales it. The
-    Title page and the launch flight still draw on the Avalonia Stage (the feed hands the screen back
-    while a Title page is open), and so does everything if GL ES 3 cannot start. A folder's art is
+    Title page's hero (fan art and logo, or the cover on its tint) is native too: pictured as layers and
+    crossfaded in and out (340 ms), and the launch flight lands natively. Everything falls back to the
+    Avalonia Stage if GL ES 3 cannot start. A folder's art is
     sent as parts (shadow, back plate, the three covers, the flap) with the transform each state gives
     them, read from the XAML's own `peek`/`open` styles, and glides between states natively on the
     same curve as the XAML transitions.
@@ -447,9 +448,11 @@ file picker and Desktop mode.
     dock button is pictured once per change (padded `shot` wrappers keep shadows in the picture) by
     `HandheldNativeLauncherFeed`; the native side does the tracks, the focus lift and its deeper shadow,
     the selector (spring in position, size and radius; its bands drawn by a shader; the glow pictured per
-    size and breathing), the edge bump and the Zoom through. The Title page, the menu and the All apps
-    drawer still draw on the Avalonia Launcher, which takes the screen back while one is open. Home
-    folders glide their flap natively too (peek on focus, open with the zoom).
+    size and breathing), the edge bump and the Zoom through. The Title page is native too (its body,
+    buttons, the disc/actions sheet, the screen chooser, the launching panel with a native indeterminate
+    bar, and the cover's lift-off). The menu and the All apps drawer still draw on the Avalonia Launcher,
+    which takes the screen back while one is open. Home folders glide their flap natively too (peek on
+    focus, open with the zoom).
 - **One view model, two views.**
   - `HandheldShellViewModel` owns all state: home layout, open folder, selection, move mode, swap
     state, and the overlays.

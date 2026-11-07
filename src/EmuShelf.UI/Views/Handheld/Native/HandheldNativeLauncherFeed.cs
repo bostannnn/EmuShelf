@@ -50,6 +50,16 @@ internal sealed class HandheldNativeLauncherFeed
     private readonly Control _dockShadow;
     private readonly Control _dockPill;
     private readonly ItemsControl _dockItems;
+    private readonly Control _titleBody;
+    private readonly ItemsControl _titleButtons;
+    private readonly Control _optionSheet;
+    private readonly Control _screenSheet;
+    private readonly Control[] _screenShots;
+    private readonly Control _launchCover;
+    private readonly Control _launchText;
+    private readonly Control _launchProgress;
+    private HandheldTitlePageViewModel? _title;
+    private bool _launchPending;
 
     private readonly Dictionary<string, string> _sent = new(StringComparer.Ordinal);
     private readonly Dictionary<Control, (string Id, LauncherTrack Track, float ColumnShift)> _anchors = [];
@@ -85,6 +95,14 @@ internal sealed class HandheldNativeLauncherFeed
         _dockShadow = Find("DockShadow");
         _dockPill = Find("DockPill");
         _dockItems = (ItemsControl)Find("DockItems");
+        _titleBody = Find("TitleBody");
+        _titleButtons = (ItemsControl)Find("TitleButtons");
+        _optionSheet = Find("OptionSheet");
+        _screenSheet = Find("ScreenSheet");
+        _screenShots = [Find("ScreenTopShot"), Find("ScreenBottomShot"), Find("RememberShot")];
+        _launchCover = Find("LaunchCoverShot");
+        _launchText = Find("LaunchText");
+        _launchProgress = Find("LaunchProgress");
         view.LayoutUpdated += (_, _) => Schedule();
         host.Failed += () =>
         {
@@ -105,6 +123,7 @@ internal sealed class HandheldNativeLauncherFeed
             old.PropertyChanged -= OnShellChanged;
             old.Bumped -= OnBumped;
             old.FolderClosing -= OnFolderClosing;
+            old.LaunchStarting -= OnLaunchStarting;
         }
         _shell = shell;
         WatchFolder(shell?.OpenFolder);
@@ -113,6 +132,7 @@ internal sealed class HandheldNativeLauncherFeed
         shell.PropertyChanged += OnShellChanged;
         shell.Bumped += OnBumped;
         shell.FolderClosing += OnFolderClosing;
+        shell.LaunchStarting += OnLaunchStarting;
         UpdateActive();
     }
 
@@ -123,7 +143,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void UpdateActive()
     {
-        var active = !_failed && _shell is { TitlePage: null, IsMenuOpen: false };
+        var active = !_failed && _shell is { IsMenuOpen: false };
         if (active == _active)
             return;
         _active = active;
@@ -148,9 +168,12 @@ internal sealed class HandheldNativeLauncherFeed
     {
         switch (e.PropertyName)
         {
-            case nameof(HandheldShellViewModel.TitlePage):
             case nameof(HandheldShellViewModel.IsMenuOpen):
                 UpdateActive();
+                break;
+            case nameof(HandheldShellViewModel.TitlePage):
+                WatchTitle(_shell?.TitlePage);
+                Schedule();
                 break;
             case nameof(HandheldShellViewModel.OpenFolder):
                 var folder = _shell?.OpenFolder;
@@ -188,6 +211,31 @@ internal sealed class HandheldNativeLauncherFeed
     }
 
     private void OnWatchedChanged(object? sender, PropertyChangedEventArgs e) => Schedule();
+
+    private void WatchTitle(HandheldTitlePageViewModel? title)
+    {
+        if (ReferenceEquals(title, _title))
+            return;
+        if (_title is { } old)
+        {
+            old.PropertyChanged -= OnWatchedChanged;
+            old.Buttons.CollectionChanged -= OnCollectionChanged;
+            old.Options.CollectionChanged -= OnCollectionChanged;
+        }
+        _title = title;
+        if (title is null)
+            return;
+        title.PropertyChanged += OnWatchedChanged;
+        title.Buttons.CollectionChanged += OnCollectionChanged;
+        title.Options.CollectionChanged += OnCollectionChanged;
+    }
+
+    // The cover lifts off once its picture is on the native side (the next sync sends it, then the lift).
+    private void OnLaunchStarting(HandheldTitlePageViewModel page)
+    {
+        _launchPending = true;
+        Schedule();
+    }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => Schedule();
 
@@ -227,7 +275,7 @@ internal sealed class HandheldNativeLauncherFeed
     private (string Id, Point Centre) HomeTile(int page, int slot)
     {
         var id = $"h:{page}:{slot}";
-        if (SlotContainer(page, slot) is { } wrapper && wrapper.TranslatePoint(new Point(wrapper.Bounds.Width / 2, wrapper.Bounds.Height / 2), _canvas) is { } centre)
+        if (SlotContainer(page, slot) is { } wrapper && HandheldStageShots.ToCanvas(wrapper, new Point(wrapper.Bounds.Width / 2, wrapper.Bounds.Height / 2), _canvas) is { } centre)
             return (id, new Point(centre.X - (page * PageWidth), centre.Y));
         return (id, new Point(PageWidth / 2, 400));
     }
@@ -279,6 +327,7 @@ internal sealed class HandheldNativeLauncherFeed
         SyncDots(shell, present);
         SyncFolder(shell, present);
         SyncDock(present);
+        SyncTitle(shell, present);
 
         foreach (var gone in _sent.Keys.Where(id => !present.Contains(id)).ToList())
         {
@@ -295,6 +344,11 @@ internal sealed class HandheldNativeLauncherFeed
             _tracksSent = tracks;
         }
         SyncFocus();
+        if (_launchPending && present.Contains("t-cover"))
+        {
+            _launchPending = false;
+            _host.Post(new LauncherLaunchCommand("t-cover"));
+        }
     }
 
     private bool _layoutSent;
@@ -312,7 +366,7 @@ internal sealed class HandheldNativeLauncherFeed
     }
 
     private StageRect? Rect(Control control) =>
-        control.Bounds.Width > 0 && control.TranslatePoint(default, _canvas) is { } at
+        control.Bounds.Width > 0 && HandheldStageShots.ToCanvas(control, default(Point), _canvas) is { } at
             ? new StageRect((float)at.X, (float)at.Y, (float)control.Bounds.Width, (float)control.Bounds.Height)
             : null;
 
@@ -330,8 +384,8 @@ internal sealed class HandheldNativeLauncherFeed
         _host.Post(new LauncherSpriteCommand(id, sprite));
     }
 
-    private static LauncherSprite? Sprite(string id, StageImage? image, LauncherGroup group, LauncherTrack track = LauncherTrack.None) =>
-        image is null ? null : new LauncherSprite(id, image, group, track, Liftable: false, 0, 0);
+    private static LauncherSprite? Sprite(string id, StageImage? image, LauncherGroup group, LauncherTrack track = LauncherTrack.None, int z = 0) =>
+        image is null ? null : new LauncherSprite(id, image, group, track, Liftable: false, 0, 0, Z: z);
 
     private LauncherSprite Background()
     {
@@ -352,7 +406,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     // A liftable piece: its wrapper is pictured; it lifts about its focusable panel's centre.
     private void Liftable(string id, string key, Control wrapper, LauncherGroup group, LauncherTrack track, float columnShift,
-        HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null)
+        HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null, int z = 0)
     {
         if (wrapper is not Decorator { Child: Control panel } || !wrapper.IsVisible)
             return;
@@ -382,18 +436,18 @@ internal sealed class HandheldNativeLauncherFeed
         {
             image = HandheldStageShots.Shot(wrapper, _canvas);
         }
-        if (image is null || panel.TranslatePoint(new Point(panel.Bounds.Width / 2, panel.Bounds.Height / 2), _canvas) is not { } centre)
+        if (image is null || HandheldStageShots.ToCanvas(panel, new Point(panel.Bounds.Width / 2, panel.Bounds.Height / 2), _canvas) is not { } centre)
         {
             present.Remove(id);
             return;
         }
         image = image with { X = image.X + columnShift };
-        var shadow = liftShadow is null || panel.TranslatePoint(default, _canvas) is not { } topLeft
+        var shadow = liftShadow is null || HandheldStageShots.ToCanvas(panel, default(Point), _canvas) is not { } topLeft
             ? null
             : liftShadow with { X = (float)topLeft.X + columnShift - 32, Y = (float)topLeft.Y - 16 };
         _sent[id] = key;
         _host.Post(new LauncherSpriteCommand(id, new LauncherSprite(id, image, group, track, Liftable: true,
-            (float)centre.X + columnShift, (float)centre.Y, shadow, parts)));
+            (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z)));
     }
 
     private void SyncHome(HandheldShellViewModel shell, HashSet<string> present)
@@ -474,6 +528,118 @@ internal sealed class HandheldNativeLauncherFeed
         }
     }
 
+    // ---- The Title page: drawn over everything while it is up ----
+
+    private void SyncTitle(HandheldShellViewModel shell, HashSet<string> present)
+    {
+        if (shell.TitlePage is not { } page)
+        {
+            if (_sent.ContainsKey("t-bg"))
+                _host.Post(new LauncherProgressCommand(null));
+            return;
+        }
+        var accent = (page.AccentBrush as ISolidColorBrush)?.Color.ToString() ?? "-";
+        Static("t-bg", accent, present, () => TitleBackground(page));
+        if (page.IsBrowsable)
+        {
+            var body = string.Join("|", page.CrumbLine, page.Title, page.PlatformLine, page.LastPlayedText, page.PlaytimeText,
+                page.ScreenText, page.DiscText, page.AchievementLine, page.AchievementRatio, Ref(page.Cover));
+            Static("t-body", body, present, () =>
+            {
+                // The page without its buttons (they lift on their own).
+                _titleButtons.IsVisible = false;
+                try
+                {
+                    return Sprite("t-body", HandheldStageShots.Shot(_titleBody, _canvas), LauncherGroup.Title, z: 1);
+                }
+                finally
+                {
+                    _titleButtons.IsVisible = true;
+                }
+            });
+            for (var i = 0; i < page.Buttons.Count; i++)
+            {
+                var button = page.Buttons[i];
+                if ((_titleButtons.ContainerFromIndex(i) as ContentPresenter)?.Child is Control wrapper)
+                    Liftable($"t-b:{i}", $"{button.Kind}|{button.Label}|{button.Note}", wrapper, LauncherGroup.Title, LauncherTrack.None, 0, present, z: 2);
+            }
+        }
+        if (page.IsOptionList)
+        {
+            // The sheet's rows highlight in place (no selector): the focused row is part of the picture.
+            foreach (var option in page.Options)
+                Watch(option);
+            var rows = string.Join("|", page.Options.Select(option => $"{option.Label}:{option.Note}:{option.IsFocused}"));
+            Static("t-sheet", $"{page.OptionsHeading}|{rows}", present,
+                () => Sprite("t-sheet", HandheldStageShots.Shot(_optionSheet, _canvas), LauncherGroup.Title, z: 3));
+        }
+        if (page.IsScreenChooser)
+        {
+            Static("t-screen", page.Title, present, () =>
+            {
+                foreach (var shot in _screenShots)
+                    shot.IsVisible = false;
+                try
+                {
+                    return Sprite("t-screen", HandheldStageShots.Shot(_screenSheet, _canvas), LauncherGroup.Title, z: 3);
+                }
+                finally
+                {
+                    foreach (var shot in _screenShots)
+                        shot.IsVisible = true;
+                }
+            });
+            Liftable("t-top", "1", _screenShots[0], LauncherGroup.Title, LauncherTrack.None, 0, present, z: 4);
+            Liftable("t-bottom", "1", _screenShots[1], LauncherGroup.Title, LauncherTrack.None, 0, present, z: 4);
+            Liftable("t-remember", $"{page.RememberScreen}|{page.RememberScreenLabel}", _screenShots[2], LauncherGroup.Title,
+                LauncherTrack.None, 0, present, z: 4);
+        }
+        if (page.IsLaunching)
+        {
+            Static("t-cover", Ref(page.Cover), present, () => Sprite("t-cover", HandheldStageShots.Shot(_launchCover, _canvas), LauncherGroup.Title, z: 1));
+            Static("t-launch-text", $"{page.LaunchingHeading}|{page.LaunchingDetail}", present,
+                () => Sprite("t-launch-text", HandheldStageShots.Shot(_launchText, _canvas), LauncherGroup.Title, z: 1));
+            if (!_sent.ContainsKey("progress") && Rect(_launchProgress) is { } track)
+            {
+                _sent["progress"] = "1";
+                _host.Post(new LauncherProgressCommand(track));
+            }
+            present.Add("progress");
+        }
+        else if (_sent.Remove("progress"))
+        {
+            _host.Post(new LauncherProgressCommand(null));
+        }
+    }
+
+    private LauncherSprite TitleBackground(HandheldTitlePageViewModel page)
+    {
+        var background = new Panel { Width = 1240, Height = 1080 };
+        background.Children.Add(new Border
+        {
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#FAFBFD"), 0), new GradientStop(Color.Parse("#E4E8EF"), 1) },
+            },
+        });
+        // The platform's colour as a soft wash from the top, as the Title layer draws it.
+        background.Children.Add(new Border
+        {
+            Background = page.AccentBrush,
+            Opacity = 0.14,
+            OpacityMask = new LinearGradientBrush
+            {
+                StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+                EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+                GradientStops = { new GradientStop(Color.Parse("#FF000000"), 0), new GradientStop(Color.Parse("#00000000"), 0.7) },
+            },
+        });
+        return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, 1240, 1080), LauncherGroup.Title,
+            LauncherTrack.None, false, 0, 0, Z: 0);
+    }
+
     private void SyncFocus()
     {
         LauncherFocusCommand focus;
@@ -500,7 +666,7 @@ internal sealed class HandheldNativeLauncherFeed
         var cx = anchor.Bounds.Width / 2;
         var cy = anchor.Bounds.Height / 2;
         var lifted = new Rect(cx + ((local.X - cx) * lift), cy + ((local.Y - cy) * lift), local.Width * lift, local.Height * lift);
-        if (anchor.TranslatePoint(lifted.TopLeft, _canvas) is not { } at)
+        if (HandheldStageShots.ToCanvas(anchor, lifted.TopLeft, _canvas) is not { } at)
             return null;
         var radius = (ring?.CornerRadius.TopLeft ?? 32) * lift;
         return new LauncherSelectorTarget((float)at.X + columnShift, (float)at.Y, (float)lifted.Width, (float)lifted.Height,
