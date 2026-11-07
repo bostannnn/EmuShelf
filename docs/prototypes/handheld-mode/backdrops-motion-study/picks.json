@@ -1,0 +1,19 @@
+{
+  "note": "Owner-approved console backdrops (rated Do on 2026-11-07, round 6). Ids refer to VARIANTS in backdrops.js. These are the set to bring into the app; each console rotates through its picks.",
+  "nes": ["nes-flow", "nes-stars", "nes-meta", "nes-raster"],
+  "snes": ["runway", "snes-mosaic-v2", "snes-lake-v2", "tiles"],
+  "gbc": ["gbc-attr", "gbc-bands", "gbc-sheen-v2", "gbc-confetti-v2"],
+  "gba": ["gba-corridor-v2", "gba-iso"],
+  "gamecube": ["gc-caustics", "gc-cubes-v3", "gc-fur", "gc-lens"],
+  "nds": ["ds-ripples", "ds-ripplefloor-v2", "ds-dots", "ds-flip"],
+  "wii": ["wii-pointer-v2", "wii-tiles"],
+  "3ds": ["3ds-tiles", "3ds-floorwave", "3ds-tapwave"],
+  "megadrive": ["md-speed-v3", "md-planes", "md-pipe-v2"],
+  "dreamcast": ["dc-fog-v3", "dc-sea-v2", "dc-checker"],
+  "playstation": ["field", "tide", "frames", "ps1-terrace-v2", "ps1-pipe"],
+  "playstation2": ["ps2-towers", "ps2-trails-v3", "ps2-sea", "ps2-orbs-v3"],
+  "psp": ["psp-field-v2"],
+  "playstation3": ["ps3-sheet", "ps3-wire", "ps3-twin"],
+  "arcade": ["arc-vector-v3", "arc-bulbs-v2", "arc-checker", "arc-plating"],
+  "steam": ["steam-wall-v2", "steam-mesh", "steam-grid-v2"]
+}

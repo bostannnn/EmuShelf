@@ -16,13 +16,15 @@ namespace EmuShelf.App.ViewModels;
 
 /// <summary>A platform that has games, as a home folder shows it.</summary>
 public sealed record HandheldPlatform(string SystemId, string Name, string ShortName, string AccentColor, int GameCount,
-    SystemEra Era = SystemEra.Disc);
+    SystemEra Era = SystemEra.Disc, IReadOnlyList<string>? Backdrops = null);
 
 /// <summary>
 /// The Stage's era backdrop: a pixel grid (cartridge) or scanlines (disc), in one colour. Value equality, so
 /// the view crossfades only when the colour or the era actually changes, never on a move within a system.
+/// <paramref name="Animated"/> is the system's animated backdrops (the same list instance for every move
+/// within a system), which the Thor's native Stage draws instead of the era motif (M45 H7).
 /// </summary>
-public sealed record HandheldBackdrop(Color Color, SystemEra Era);
+public sealed record HandheldBackdrop(Color Color, SystemEra Era, IReadOnlyList<string>? Animated = null);
 
 /// <summary>
 /// One game in a Handheld folder: the facts the tiles, the Stage and the sorts need, plus the shared
@@ -415,6 +417,22 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial double MediumPitch { get; set; } = MediaRotationModel.RestPitch;
+
+    /// <summary>Whether the last pose was a step of the idle sway (not the stick or the spring).</summary>
+    public bool MediumPoseIsSway { get; private set; }
+
+    /// <summary>Counts pose updates: the native Stage takes one per update, not one per angle.</summary>
+    [ObservableProperty]
+    public partial long MediumPoseVersion { get; private set; }
+
+    /// <summary>Sets the medium's pose in one update.</summary>
+    public void SetMediumPose(double yaw, double pitch, bool sway)
+    {
+        MediumPoseIsSway = sway;
+        MediumYaw = yaw;
+        MediumPitch = pitch;
+        MediumPoseVersion++;
+    }
 
     /// <summary>The GPU path could not start on this device; every game keeps its flat cover from then on.</summary>
     [ObservableProperty]

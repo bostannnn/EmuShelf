@@ -123,8 +123,15 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             }
         }
         _queue.Enqueue(command);
+        // A sway step while the scene is drawing anyway (an animated backdrop's step, an animation) waits for
+        // that frame instead of adding one; the sway and a backdrop together then post 30 frames a second, not 50.
+        if (command is StageMediumPoseCommand { Sway: true } && _frameComing)
+            return;
         _view?.RequestRender();
     }
+
+    // Whether the GL thread will draw again soon without being asked: it is animating, or a drift step is due.
+    private volatile bool _frameComing;
 
     /// <summary>The activity paused or resumed; a GLSurfaceView must be told.</summary>
     public void OnPause() => _view?.OnPause();
@@ -189,6 +196,7 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
 
     public void OnSurfaceChanged(IGL10? gl, int width, int height)
     {
+        _vote = -1f; // a new surface has no hint yet
         _width = width;
         _height = height;
     }
@@ -203,16 +211,39 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             while (_queue.TryDequeue(out var command))
                 compositor.Apply(command, now);
             var animating = compositor.Draw(now, _width, _height);
+            var next = animating ? null : compositor.NextFrameMilliseconds;
+            VoteFrameRate(next is { } step ? 1000f / step : 0f);
+            _frameComing = animating || (next is not null && _active);
             if (animating)
             {
                 _view?.RequestRender();
                 return;
             }
-            ScheduleDrift(compositor.NextFrameMilliseconds);
+            ScheduleDrift(next);
         }
         catch (Exception ex)
         {
             Fail(ex);
+        }
+    }
+
+    private float _vote = -1f;
+
+    // Tells Android the rate this surface is posting at while only a stepped backdrop moves (30 Hz), and takes
+    // the hint back (0) while something animates at the panel's rate or nothing moves, so the compositor and
+    // display can pace for it instead of the 120 Hz panel rate.
+    private void VoteFrameRate(float rate)
+    {
+        if (rate == _vote || !OperatingSystem.IsAndroidVersionAtLeast(30))
+            return;
+        _vote = rate;
+        try
+        {
+            _view?.Holder?.Surface?.SetFrameRate(rate, (int)SurfaceFrameRateCompatibility.Default);
+        }
+        catch (Exception)
+        {
+            // Only a hint; a surface that is going away can refuse it.
         }
     }
 

@@ -60,8 +60,12 @@ public interface INativeScene : IDisposable
     float? NextFrameMilliseconds { get; }
 }
 
-/// <summary>A new (or no) backdrop; it crossfades over the old one.</summary>
-public sealed record StageBackdropCommand(StageBackdrop? Backdrop) : StageCommand
+/// <summary>
+/// A new (or no) backdrop; it crossfades over the old one. <paramref name="Animated"/> is the system's animated
+/// backdrops (M45 H7, ids into <see cref="Backdrops.BackdropCatalog"/>): when one can be drawn it replaces the
+/// pictured layers, which stay as the fallback. The same list again keeps the running backdrop going.
+/// </summary>
+public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null) : StageCommand
 {
     public override string? RetainKey => "backdrop";
 }
@@ -93,7 +97,11 @@ public sealed record StageFolderStateCommand(FolderArtState State, bool Animate)
 }
 
 /// <summary>The medium's pose, in radians.</summary>
-public sealed record StageMediumPoseCommand(float Yaw, float Pitch) : StageCommand
+/// <summary>
+/// The medium's pose. <paramref name="Sway"/> marks a step of the idle sway: while the Stage is drawing anyway (an
+/// animated backdrop's 30 Hz step), it rides along on the next frame instead of asking for one of its own.
+/// </summary>
+public sealed record StageMediumPoseCommand(float Yaw, float Pitch, bool Sway = false) : StageCommand
 {
     public override string? RetainKey => "pose";
 }
@@ -108,6 +116,35 @@ public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand
 public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
+}
+
+/// <summary>
+/// How the Stage rests (M45 H7, the fan): a minute after the last navigation its idle motion (the animated
+/// backdrop, the medium's sway) eases to a stop and the Stage stops drawing, so an untouched Stage costs nothing;
+/// the next navigation brings the motion back. The motion's own clock slows rather than the picture freezing,
+/// so nothing jumps either way.
+/// </summary>
+public static class StageRest
+{
+    /// <summary>How long the Stage goes without navigation before its idle motion starts to rest.</summary>
+    public const float AfterMilliseconds = 60_000f;
+
+    /// <summary>How long the motion takes to ease to a stop.</summary>
+    public const float SlowMilliseconds = 2_000f;
+
+    /// <summary>How long it takes to get going again.</summary>
+    public const float WakeMilliseconds = 500f;
+
+    /// <summary>
+    /// The motion's next speed (0–1, linear; <see cref="Eased"/> shapes it): toward 0 while resting, toward 1
+    /// otherwise, by <paramref name="deltaMilliseconds"/> of real time.
+    /// </summary>
+    public static float Next(float speed, float deltaMilliseconds, bool resting) => resting
+        ? Math.Max(0f, speed - (deltaMilliseconds / SlowMilliseconds))
+        : Math.Min(1f, speed + (deltaMilliseconds / WakeMilliseconds));
+
+    /// <summary>The clock's rate at a linear speed: eased in and out, so it never lurches.</summary>
+    public static float Eased(float speed) => speed * speed * (3f - (2f * speed));
 }
 
 /// <summary>
@@ -154,6 +191,13 @@ public static class StageCurves
         var t = Math.Clamp(milliseconds / BackdropFadeMilliseconds, 0f, 1f);
         var u = 1f - t;
         return 1f - (u * u * u);
+    }
+
+    /// <summary>Cubic ease-in-out of a 0–1 progress (clamped), for one backdrop handing over to the next.</summary>
+    public static float EaseInOut(float progress)
+    {
+        var t = Math.Clamp(progress, 0f, 1f);
+        return t < 0.5f ? 4f * t * t * t : 1f - (MathF.Pow((-2f * t) + 2f, 3f) / 2f);
     }
 
     /// <summary>A spring's step response from 0 to 1, sampled at 240 Hz until it settles.</summary>

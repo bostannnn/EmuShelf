@@ -1,5 +1,6 @@
 using System;
 using EmuShelf.App.Services;
+using EmuShelf.Rendering.Stage;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -24,6 +25,11 @@ public sealed class HandheldMediumMotion
     private float _yawVelocity;
     private float _pitchVelocity;
 
+    // The sway rests like the Stage's backdrop (StageRest): a minute after the medium was last moved or a new
+    // game arrived, its clock eases to a stop, the shell's sway timer stops, and the Stage stops drawing.
+    private double _untouchedMilliseconds;
+    private float _swaySpeed = 1f;
+
     public float Yaw => _rotation.Yaw + _yawOffset;
     public float Pitch => _rotation.Pitch + _pitchOffset;
 
@@ -31,7 +37,16 @@ public sealed class HandheldMediumMotion
     public bool IsSettling => _yawOffset != 0f || _pitchOffset != 0f || _yawVelocity != 0f || _pitchVelocity != 0f;
 
     /// <summary>A resting medium sways (slowly; the shell ticks it at a lower rate than a settle).</summary>
-    public bool IsSwaying => !IsSettling && _rotation.IdleSwayEnabled && _rotation.IsAtRest;
+    public bool IsSwaying => !IsSettling && _rotation.IdleSwayEnabled && _rotation.IsAtRest && _swaySpeed > 0f;
+
+    /// <summary>The sway has eased to a stop (StageRest); a new game, R3 or the stick starts it again.</summary>
+    public bool IsSwayResting => _swaySpeed <= 0f;
+
+    private void WakeSway()
+    {
+        _untouchedMilliseconds = 0d;
+        _swaySpeed = 1f;
+    }
 
     /// <summary>
     /// Retargets the spring at the resting pose, starting from exactly the pose on screen and keeping its
@@ -41,6 +56,7 @@ public sealed class HandheldMediumMotion
     /// </summary>
     public bool Recentre()
     {
+        WakeSway();
         var yaw = Yaw;
         var pitch = Pitch;
         _rotation.Recentre();
@@ -59,8 +75,13 @@ public sealed class HandheldMediumMotion
     /// One tick of right-stick input. The stick turns the medium directly; a turn-in still settling keeps
     /// settling underneath it, so taking the stick mid-arrival never jumps.
     /// </summary>
-    public bool ApplyStick(float x, float y, double deltaMilliseconds) =>
-        _rotation.Update(x, y, deltaMilliseconds);
+    public bool ApplyStick(float x, float y, double deltaMilliseconds)
+    {
+        if (!_rotation.Update(x, y, deltaMilliseconds))
+            return false;
+        WakeSway();
+        return true;
+    }
 
     /// <summary>Advances the spring and the idle sway. Returns whether the pose changed.</summary>
     public bool Tick(double deltaMilliseconds)
@@ -78,9 +99,14 @@ public sealed class HandheldMediumMotion
             Step(ref _pitchOffset, ref _pitchVelocity, step);
             changed = true;
         }
-        // The sway only starts once the medium is at rest (the model's own rule), after its delay.
-        if (!IsSettling)
-            changed |= _rotation.AdvanceSway(deltaMilliseconds);
+        // The sway only starts once the medium is at rest (the model's own rule), after its delay, and slows
+        // to a stop once the medium has been left alone for a while.
+        if (!IsSettling && _swaySpeed > 0f)
+        {
+            _untouchedMilliseconds += deltaMilliseconds;
+            _swaySpeed = StageRest.Next(_swaySpeed, (float)deltaMilliseconds, _untouchedMilliseconds >= StageRest.AfterMilliseconds);
+            changed |= _rotation.AdvanceSway(deltaMilliseconds * StageRest.Eased(_swaySpeed));
+        }
         return changed;
     }
 

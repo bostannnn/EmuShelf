@@ -104,6 +104,15 @@ var gl = GL.GetApi(new LamdaNativeContext(resolve));
 Console.WriteLine($"  renderer: {gl.GetStringS(StringName.Renderer)}");
 Console.WriteLine($"  version : {gl.GetStringS(StringName.Version)}");
 
+// The Handheld Stage's animated backdrops (M45 H7), through the app's own renderer.
+if (args.Contains("--backdrops"))
+{
+    var moments = (ArgumentValue("--times") ?? "3,8,14").Split(',').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+    var onlyIds = ArgumentValue("--only")?.Split(',');
+    BackdropPreview.Run(gl, ArgumentValue("--out") ?? "artifacts/backdrops", moments, onlyIds);
+    return;
+}
+
 // A surfaceless context has no default framebuffer, so the renderer is given one of ours to
 // resolve into — the same contract Avalonia's OpenGlControlBase uses when it hands over its FBO.
 var target = CreateTargetFramebuffer(gl, (uint)width, (uint)height);

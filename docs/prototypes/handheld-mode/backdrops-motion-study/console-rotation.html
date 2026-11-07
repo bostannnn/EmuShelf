@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Console Backdrop Rotation</title>
+<style>
+:root{--bg:#f3f4f2;--ink:#263845;--muted:#586775;--line:#c6ced2;--btn:#fafbf8;--on:#263c4b;--on-ink:#fff;--track:#dfe4e6}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#161c21;--ink:#e1eaf0;--muted:#afbec9;--line:#48535d;--btn:#25313b;--on:#dae6ef;--on-ink:#20313c;--track:#2b3640}}
+:root[data-theme=dark]{--bg:#161c21;--ink:#e1eaf0;--muted:#afbec9;--line:#48535d;--btn:#25313b;--on:#dae6ef;--on-ink:#20313c;--track:#2b3640}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font:700 20px/1.2 system-ui;margin:0 0 4px}
+.lede{margin:0 0 14px;color:var(--muted);max-width:75ch}
+.row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:10px 0}
+.row .label{color:var(--muted);font-size:13px;min-width:78px}
+.stage{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:#e8e7ec;isolation:isolate}
+.stage:fullscreen{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;background:#000}
+.screen{position:absolute;width:1920px;height:1080px;transform-origin:0 0;--accent:#2f44d6;color:#28333e}
+canvas{position:absolute;inset:0;width:1920px;height:1080px}
+canvas.pixel{image-rendering:pixelated}
+canvas[hidden]{display:none}
+.folder{position:absolute;left:736px;top:236px;width:448px;height:448px}
+.shadow{position:absolute;inset:160px -35px -70px;background:radial-gradient(ellipse,#24354a32,transparent 65%)}
+.back{position:absolute;inset:58px 13px 17px;border-radius:82px;background:color-mix(in srgb,var(--accent) 70%,#202a41)}
+.cover{position:absolute;top:44px;left:145px;width:159px;height:224px;border-radius:12px;background:linear-gradient(145deg,#e9c794 0 40%,#3f777b 40% 67%,#254558 67%);box-shadow:0 5px 14px #0003}
+.cover.a{transform:translateX(-67px) rotate(-9deg);background:linear-gradient(145deg,#e0c7b8 0 38%,#905a68 38% 60%,#594c68 60%)}
+.cover.b{transform:translateX(67px) rotate(9deg);background:linear-gradient(150deg,#ebcf9b 0 42%,#80a590 42% 64%,#416867 64%)}
+.front{position:absolute;left:13px;right:13px;bottom:17px;height:283px;border-radius:82px;background:linear-gradient(color-mix(in srgb,var(--accent) 62%,white),var(--accent));box-shadow:inset 0 2px #ffffff70;color:#fff;text-align:center;font:800 98px/283px ui-rounded,system-ui,sans-serif;letter-spacing:-3px}
+.plate{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);min-width:560px;padding:20px 48px;border-radius:32px;background:#fffffff2;box-shadow:0 6px 24px #0002;text-align:center}
+.plate strong{display:block;font:800 52px/1.15 ui-rounded,system-ui,sans-serif}
+.plate span{display:block;font:600 28px/1.3 system-ui;color:#626878}
+.pill{position:absolute;right:48px;top:48px;padding:16px 24px;border-radius:40px;background:#ffffffcf;font:600 26px system-ui}
+.overlay{position:absolute;inset:0;z-index:3}
+.overlay[hidden]{display:none}
+button{font:inherit;color:inherit;border:1px solid var(--line);background:var(--btn);border-radius:8px;padding:8px 13px;min-height:40px;cursor:pointer}
+button[aria-pressed=true]{background:var(--on);color:var(--on-ink);border-color:transparent}
+.spacer{flex:1}
+.now{margin:6px 0 2px;font-weight:600}
+.why{margin:0;color:var(--muted);max-width:80ch}
+.progress{height:3px;background:var(--track);border-radius:2px;overflow:hidden;margin-top:8px}
+.progress i{display:block;height:100%;width:0;background:var(--ink);opacity:.55}
+.perf{margin:10px 0 0;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+@media (max-width:500px){button{padding:8px 10px;min-height:44px}.spacer{display:none}.row .label{min-width:100%}}
+</style>
+</head>
+<body>
+<main>
+<h1>Console backdrops in random rotation</h1>
+<p class="lede">Each console gets five animations. In <b>Random rotation</b> the folder plays one of its five, then crossfades to a different one at random every 12 seconds. Pick a single animation to judge it on its own. All sixteen EmuShelf consoles. SNES and PS1 are Codex's set, PS2 is the set you approved, and everything else is new. Rate them all on <a href="rate.html">the rating page</a>.</p>
+<div class="stage" id="stage"><div class="screen" id="screen">
+<canvas id="layerA" aria-hidden="true"></canvas><canvas id="layerB" aria-hidden="true"></canvas>
+<div class="overlay" id="overlay"><div class="folder"><div class="shadow"></div><div class="back"></div><div class="cover a"></div><div class="cover b"></div><div class="cover"></div><div class="front" id="folderLabel"></div></div><div class="plate"><strong id="plateName"></strong><span>Platform folder · 24 games</span></div><div class="pill">EmuShelf</div></div>
+</div></div>
+<div class="progress" aria-hidden="true"><i id="bar"></i></div>
+<div class="row" role="group" aria-label="Console"><span class="label">Console</span><span id="consoles" class="row" style="margin:0"></span></div>
+<div class="row" role="group" aria-label="Animation"><span class="label">Animation</span><span id="chips" class="row" style="margin:0"></span></div>
+<p class="now" id="now" aria-live="polite"></p>
+<p class="why" id="why"></p>
+<div class="row"><button type="button" id="play" aria-pressed="true">Pause motion</button><button type="button" id="skip">Skip to another</button><button type="button" id="folder" aria-pressed="true">Hide folder</button><span class="spacer"></span><button type="button" id="full">Full screen</button></div>
+<p class="perf" id="perf"></p>
+</main>
+<script src="backdrops.js"></script>
+<script>
+'use strict';
+const {CONSOLES,VARIANTS,prepare,render,makeLayer}=window.Backdrops;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const DWELL=12,FADE=1.6,$=id=>document.getElementById(id),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+const layers=[makeLayer($('layerA')),makeLayer($('layerB'))];
+let con='playstation2',mode='random',cur=layers[0],prev=null,fadeStart=0,shownAt=0,playing=true,visible=true,raf=0,last=0,painted=0,cost=0,clock=0;
+try{const s=JSON.parse(localStorage.getItem('emushelf-rotation')||'{}');if(CONSOLES[s.con])con=s.con;if(typeof s.mode==='string')mode=s.mode;$('overlay').hidden=s.folder===false;}catch{}
+{const id=decodeURIComponent(location.hash.slice(1)),v=VARIANTS.find(v=>v.id===id);if(v){con=v.con;mode=v.id;}}
+const store=()=>{try{localStorage.setItem('emushelf-rotation',JSON.stringify({con,mode,folder:!$('overlay').hidden}));}catch{}};
+const ofCon=c=>VARIANTS.filter(v=>v.con===c);
+function timed(L){const t0=performance.now();render(L,1/30);return performance.now()-t0;}
+function show(v,fade){
+ if(fade&&cur.v){prev=cur;cur=layers.find(l=>l!==prev);fadeStart=clock;}else{prev=null;layers.forEach(l=>{if(l!==cur)l.canvas.hidden=true;});}
+ prepare(cur,v,mode==='random'?Math.random()*20:0);cur.canvas.hidden=false;cur.canvas.style.zIndex=2;cur.canvas.style.opacity=fade&&prev?0:1;if(prev)prev.canvas.style.zIndex=1;
+ shownAt=clock;cost=0;timed(cur);ui();
+}
+function pickRandom(){const list=ofCon(con).filter(v=>v!==cur.v);return list[Math.floor(Math.random()*list.length)];}
+function setConsole(c){con=c;const list=ofCon(c);if(mode!=='random'&&!list.some(v=>v.id===mode))mode='random';show(mode==='random'?list[Math.floor(Math.random()*list.length)]:list.find(v=>v.id===mode),!!cur.v);store();buildChips();}
+function setMode(m){mode=m;if(m!=='random')show(VARIANTS.find(v=>v.id===m),true);else shownAt=clock;history.replaceState(null,'',m==='random'?location.pathname:'#'+m);store();buildChips();ui();}
+function buildChips(){
+ $('consoles').replaceChildren(...Object.entries(CONSOLES).map(([k,c])=>{const b=document.createElement('button');b.type='button';b.textContent=c.label;b.title=c.name;b.setAttribute('aria-pressed',String(k===con));b.onclick=()=>setConsole(k);return b;}));
+ $('chips').replaceChildren(...[['random','Random rotation'],...ofCon(con).map(v=>[v.id,v.name])].map(([id,name])=>{const b=document.createElement('button');b.type='button';b.textContent=name;b.setAttribute('aria-pressed',String(mode===id));b.onclick=()=>setMode(id);return b;}));
+}
+function ui(){const v=cur.v,c=CONSOLES[con];$('screen').style.setProperty('--accent',c.accent);$('folderLabel').textContent=c.label;$('plateName').textContent=c.name;
+ $('now').textContent=`${mode==='random'?'Now playing':'Showing'}: ${CONSOLES[v.con].label} · ${v.name}. ${v.cap||''}`;$('why').textContent=v.why;
+ $('skip').hidden=mode!=='random';$('folder').textContent=$('overlay').hidden?'Show folder':'Hide folder';$('folder').setAttribute('aria-pressed',String(!$('overlay').hidden));
+ $('play').textContent=reduced.matches?'Reduced motion on':playing?'Pause motion':'Play motion';$('play').setAttribute('aria-pressed',String(playing&&!reduced.matches));}
+function fit(){const st=$('stage'),k=Math.min(st.clientWidth/1920,st.clientHeight/1080),sc=$('screen');sc.style.transform=`scale(${k})`;sc.style.left=`${(st.clientWidth-1920*k)/2}px`;sc.style.top=`${(st.clientHeight-1080*k)/2}px`;}
+const active=()=>playing&&visible&&!document.hidden&&!reduced.matches;
+function schedule(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;if(active())raf=requestAnimationFrame(tick);}
+function tick(now){raf=0;if(!active()){last=0;return;}const dt=last?Math.min((now-last)/1000,.08):0;last=now;clock+=dt;cur.time+=dt;if(prev)prev.time+=dt;
+ if(now-painted>=1000/30-1){painted=now;let ms=timed(cur);
+  if(prev){const k=clamp((clock-fadeStart)/FADE,0,1);ms+=timed(prev);cur.canvas.style.opacity=k;if(k>=1){prev.canvas.hidden=true;prev=null;}}
+  cost=cost?cost*.9+ms*.1:ms;$('perf').textContent=`Software render: ${cost.toFixed(1)} ms/frame at ${cur.canvas.width}×${cur.canvas.height} in this browser (doubles briefly during a crossfade). Not an on-device measurement.`;}
+ $('bar').style.width=mode==='random'?`${clamp((clock-shownAt)/DWELL,0,1)*100}%`:'0';
+ if(mode==='random'&&!prev&&clock-shownAt>=DWELL)show(pickRandom(),true);
+ raf=requestAnimationFrame(tick);}
+$('play').onclick=()=>{playing=!playing;ui();schedule();};$('skip').onclick=()=>show(pickRandom(),true);
+$('folder').onclick=()=>{$('overlay').hidden=!$('overlay').hidden;ui();store();};
+$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await $('stage').requestFullscreen();}catch{$('now').textContent='Full screen is not available in this view.';}};
+new ResizeObserver(fit).observe($('stage'));new IntersectionObserver(es=>{visible=es[0].isIntersecting;schedule();}).observe($('stage'));
+document.addEventListener('visibilitychange',schedule);reduced.addEventListener('change',()=>{ui();schedule();});
+window.rotationDebug={show:(id,fade=false)=>show(VARIANTS.find(v=>v.id===id),fade),setConsole,setMode,VARIANTS,layers,get cur(){return cur;},setTime:t=>{cur.time=t;},render:()=>timed(cur)};
+fit();buildChips();setConsole(con);
+</script>
+</body>
+</html>

@@ -68,7 +68,14 @@ public sealed class LauncherCompositor : INativeScene
         _vao = gl.GenVertexArray();
     }
 
-    public float? NextFrameMilliseconds => null;
+    /// <summary>
+    /// While only the focus glow breathes (everything else settled), the next 30 Hz step of the breath: a slow
+    /// change of opacity looks the same at 30 frames a second as at the panel's 120, at a quarter of the frames
+    /// (each costs Android's compositor as much as it costs us). Null when nothing moves.
+    /// </summary>
+    public float? NextFrameMilliseconds => _breathing ? LauncherMotion.BreathStepMilliseconds : null;
+
+    private bool _breathing;
 
     private sealed class SpriteState(LauncherSprite sprite, uint texture, uint shadow)
     {
@@ -530,6 +537,7 @@ public sealed class LauncherCompositor : INativeScene
 
     private bool DrawSelector(float now)
     {
+        _breathing = false;
         if (!_selectorShown || _target is null)
             return false;
         var animating = false;
@@ -559,8 +567,11 @@ public sealed class LauncherCompositor : INativeScene
         var sinceFocus = now - _focusTime;
         if (_glowTexture != 0 && _glowImage is { } glow)
         {
-            var breath = LauncherMotion.Breath(sinceFocus);
-            animating |= sinceFocus < LauncherMotion.BreathHalfCycleMilliseconds * LauncherMotion.BreathHalfCycles;
+            // Stepped on the 30 Hz grid from the focus change, so every frame of the breath is one the clock chose.
+            var stepped = sinceFocus < 0f ? sinceFocus
+                : MathF.Floor(sinceFocus / LauncherMotion.BreathStepMilliseconds) * LauncherMotion.BreathStepMilliseconds;
+            var breath = LauncherMotion.Breath(stepped);
+            _breathing = sinceFocus < LauncherMotion.BreathHalfCycleMilliseconds * LauncherMotion.BreathHalfCycles;
             _sprites.Use();
             var gx = x + (w / 2) - (glow.Width / 2);
             var gy = y + (h / 2) - (glow.Height / 2);

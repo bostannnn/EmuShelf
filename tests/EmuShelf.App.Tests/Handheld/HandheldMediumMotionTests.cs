@@ -115,4 +115,27 @@ public class HandheldMediumMotionTests
 
         Assert.NotEqual(MediaRotationModel.RestYaw, motion.Yaw, 4);
     }
+
+    [Fact]
+    public void TheSway_RestsAMinuteAfterTheMediumWasLeftAlone_WithoutAJump_AndANewGameWakesIt()
+    {
+        var motion = new HandheldMediumMotion();
+        Run(motion, 59_000, 50);
+        Assert.True(motion.IsSwaying);
+
+        // Easing to a stop: the pose keeps moving a little, never jumps, then holds.
+        var before = motion.Yaw;
+        Run(motion, 3_000, 50);
+        Assert.True(motion.IsSwayResting);
+        Assert.False(motion.IsSwaying); // the shell's sway timer stops: nothing ticks, nothing draws
+        Assert.True(MathF.Abs(motion.Yaw - before) < 0.2f);
+        var held = motion.Yaw;
+        Assert.False(motion.Tick(1_000));
+        Assert.Equal(held, motion.Yaw);
+
+        motion.Recentre(); // a new game
+        Assert.False(motion.IsSwayResting);
+        Run(motion, 4_000, 50);
+        Assert.True(motion.IsSwaying);
+    }
 }

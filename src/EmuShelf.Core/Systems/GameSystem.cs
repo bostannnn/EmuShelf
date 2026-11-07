@@ -29,6 +29,11 @@ namespace EmuShelf.Core.Systems;
 /// look: Handheld mode's top screen draws a pixel grid behind cartridge systems and scanlines behind disc
 /// systems (HANDHELD-MODE.md, the Stage's backdrop).
 /// </param>
+/// <param name="Backdrops">
+/// The animated backdrops Handheld mode draws behind this system on the Thor's native Stage (M45 H7), as
+/// ids into <c>EmuShelf.Rendering</c>'s backdrop catalog. The Stage rotates through them; null or empty
+/// keeps the era motif. Purely a look, like <see cref="Era"/>.
+/// </param>
 public sealed record GameSystem(
     string Id,
     string Name,
@@ -37,7 +42,8 @@ public sealed record GameSystem(
     double CoverAspectRatio,
     string Manufacturer = "",
     bool IsDualScreen = false,
-    SystemEra Era = SystemEra.Disc);
+    SystemEra Era = SystemEra.Disc,
+    IReadOnlyList<string>? Backdrops = null);
 
 /// <summary>The kind of media a system's games shipped on; see <see cref="GameSystem.Era"/>.</summary>
 public enum SystemEra

@@ -2,6 +2,7 @@ using System.Numerics;
 using EmuShelf.Rendering.Gl;
 using EmuShelf.Rendering.Models;
 using EmuShelf.Rendering.Shells;
+using EmuShelf.Rendering.Stage.Backdrops;
 using Silk.NET.OpenGL;
 
 namespace EmuShelf.Rendering.Stage;
@@ -36,9 +37,19 @@ public sealed class StageCompositor : INativeScene
     private readonly GlProgram _program;
     private readonly uint _vao;
 
+    private BackdropRenderer? _animator;
+    private IReadOnlyList<string>? _animatedIds;
+    private readonly Random _random = new();
     private BackdropState? _backdrop;
     private BackdropState? _leavingBackdrop;
     private float _backdropFadeStart;
+
+    // The backdrop's own clock (StageRest): it runs with the Stage's while someone navigates, then eases to a
+    // stop a minute after the last navigation, and the Stage stops drawing until the next one.
+    private float _backdropClock;
+    private float _backdropClockReal = float.NaN;
+    private float _backdropSpeed = 1f;
+    private float _lastNavigation;
 
     private Layer? _art;
     private List<Layer> _hero = [];
@@ -79,21 +90,65 @@ public sealed class StageCompositor : INativeScene
         _vao = gl.GenVertexArray();
     }
 
-    /// <summary>The backdrop's step interval while it has something moving; null when it is still.</summary>
-    public float? NextFrameMilliseconds => _backdrop?.Backdrop is { Tile: not null } or { Quad: not null }
-        ? _backdrop.Backdrop.StepMilliseconds
-        : null;
+    /// <summary>
+    /// The backdrop's step interval while it has something moving (an animated backdrop's 30 Hz step, or the era
+    /// motif's drift); null when it is still.
+    /// </summary>
+    public float? NextFrameMilliseconds => IsBackdropResting
+        ? null
+        : _backdrop?.Animated is not null
+            ? BackdropCatalog.StepMilliseconds
+            : _backdrop?.Backdrop is { Tile: not null } or { Quad: not null }
+                ? _backdrop.Backdrop.StepMilliseconds
+                : null;
+
+    /// <summary>The backdrop has eased to a stop (StageRest): nothing moves until the next navigation.</summary>
+    public bool IsBackdropResting => _backdropSpeed <= 0f;
+
+    /// <summary>Advances the backdrop's clock to the Stage's <paramref name="now"/> at the backdrop's current speed.</summary>
+    private void AdvanceBackdropClock(float now)
+    {
+        // A long gap (resting, a paused activity) moves the clock no more than a frame or so.
+        var delta = float.IsNaN(_backdropClockReal) ? 0f : Math.Clamp(now - _backdropClockReal, 0f, 100f);
+        _backdropClockReal = now;
+        _backdropSpeed = StageRest.Next(_backdropSpeed, delta, now - _lastNavigation >= StageRest.AfterMilliseconds);
+        _backdropClock += delta * StageRest.Eased(_backdropSpeed);
+    }
 
     public void Apply(StageCommand command, float now)
     {
+        // Navigation wakes a resting backdrop; the medium's idle sway and the corner pills do not.
+        if (command is not (StageMediumPoseCommand or StageChromeCommand))
+            _lastNavigation = now;
         switch (command)
         {
             case StageBackdropCommand backdrop:
+            {
+                var ids = backdrop.Animated is { Count: > 0 } list ? list : null;
+                if (_backdrop?.Animated is not null && ids is not null && _animatedIds is not null
+                    && ids.SequenceEqual(_animatedIds) && backdrop.Backdrop is { } same)
+                {
+                    // A move within the same system: its backdrops keep running, only the pictured fallback changes.
+                    var refreshed = Upload(same);
+                    (refreshed.Animated, refreshed.Previous, refreshed.RotationStart) = (_backdrop.Animated, _backdrop.Previous, _backdrop.RotationStart);
+                    _backdrop.Animated = _backdrop.Previous = null;
+                    DeleteBackdrop(_backdrop);
+                    _backdrop = refreshed;
+                    break;
+                }
                 DeleteBackdrop(_leavingBackdrop);
                 _leavingBackdrop = _backdrop;
                 _backdrop = backdrop.Backdrop is { } next ? Upload(next) : null;
+                _animatedIds = ids;
+                if (_backdrop is not null && ids is not null)
+                {
+                    // A system opens on one of its backdrops at random, then takes turns (BackdropRotation).
+                    _animator ??= new BackdropRenderer(_gl, _dialect, _major, _minor);
+                    _backdrop.Animated = _animator.Start(BackdropRotation.Pick(ids, null, _random), _backdropClock);
+                }
                 _backdropFadeStart = now;
                 break;
+            }
             case StageCentreCommand centre:
                 Replace(ref _art, centre.Art, repeat: false);
                 ReplaceHero(centre.Hero);
@@ -151,6 +206,16 @@ public sealed class StageCompositor : INativeScene
     {
         if (_medium is not null && (_mediumDirty || _coverDirty))
             RenderMedium(surfaceWidth / CanvasWidth);
+        // Animated backdrops draw their next 30 Hz step into their own small frames before the Stage is composed.
+        AdvanceBackdropClock(now);
+        var clock = _backdropClock;
+        if (_backdrop is { } current)
+        {
+            Rotate(current, clock);
+            UpdateAnimated(current, clock);
+        }
+        if (_leavingBackdrop is { } leaving)
+            UpdateAnimated(leaving, clock);
 
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
         _gl.Viewport(0, 0, (uint)surfaceWidth, (uint)surfaceHeight);
@@ -179,12 +244,12 @@ public sealed class StageCompositor : INativeScene
             }
             else
             {
-                DrawBackdrop(_leavingBackdrop, now, 1f);
+                DrawBackdrop(_leavingBackdrop, clock, 1f);
                 animating = true;
             }
         }
         if (_backdrop is not null)
-            DrawBackdrop(_backdrop, now, _leavingBackdrop is null ? 1f : fade);
+            DrawBackdrop(_backdrop, clock, _leavingBackdrop is null ? 1f : fade);
 
         var sincePop = now - _popStart;
         var centreScale = StageCurves.PopScale(sincePop);
@@ -363,6 +428,14 @@ public sealed class StageCompositor : INativeScene
     private sealed class BackdropState(StageBackdrop backdrop, Layer under, Layer? over, uint tile, Layer? quad)
     {
         public StageBackdrop Backdrop { get; } = backdrop;
+
+        /// <summary>The animated backdrop drawn instead of the layers, when the system has one that compiled.</summary>
+        public BackdropInstance? Animated { get; set; }
+
+        /// <summary>The system's previous backdrop while the next one fades in over it.</summary>
+        public BackdropInstance? Previous { get; set; }
+
+        public float RotationStart { get; set; }
         public Layer Under { get; } = under;
         public Layer? Over { get; } = over;
         public uint Tile { get; } = tile;
@@ -380,6 +453,9 @@ public sealed class StageCompositor : INativeScene
     {
         if (state is null)
             return;
+        _animator?.Stop(state.Animated);
+        _animator?.Stop(state.Previous);
+        state.Animated = state.Previous = null;
         _gl.DeleteTexture(state.Under.Texture);
         if (state.Over is { } over)
             _gl.DeleteTexture(over.Texture);
@@ -389,20 +465,71 @@ public sealed class StageCompositor : INativeScene
             _gl.DeleteTexture(quad.Texture);
     }
 
+    // The system's backdrops take turns: after its dwell the showing one hands over to another at random, which
+    // fades in over it; once the fade is done the old one's targets are freed. These run on the backdrop's own
+    // clock, so a resting backdrop also pauses its turn.
+    private void Rotate(BackdropState state, float clock)
+    {
+        if (state.Animated is not { } showing || _animatedIds is not { } ids)
+            return;
+        if (state.Previous is { } previous)
+        {
+            if (clock - state.RotationStart >= BackdropRotation.FadeMilliseconds)
+            {
+                _animator!.Stop(previous);
+                state.Previous = null;
+            }
+            return;
+        }
+        if (clock - showing.StartMilliseconds < BackdropRotation.DwellMilliseconds(ids.Count))
+            return;
+        if (_animator!.Start(BackdropRotation.Pick(ids, showing.Id, _random), clock) is not { } next)
+            return;
+        state.Previous = showing;
+        state.Animated = next;
+        state.RotationStart = clock;
+    }
+
+    private void UpdateAnimated(BackdropState state, float clock)
+    {
+        if (state.Previous is { } previous)
+            _animator!.Update(previous, clock);
+        if (state.Animated is { } animated)
+            _animator!.Update(animated, clock);
+    }
+
     /// <summary>Where the mover is: the clock's place in its loop, held to the last step, in whole pixels.</summary>
-    public static Vector2 DriftOffset(StageBackdrop backdrop, float now)
+    public static Vector2 DriftOffset(StageBackdrop backdrop, float clock)
     {
         if (backdrop.LoopMilliseconds <= 0)
             return Vector2.Zero;
-        var stepped = backdrop.StepMilliseconds > 0 ? MathF.Floor(now / backdrop.StepMilliseconds) * backdrop.StepMilliseconds : now;
+        var stepped = backdrop.StepMilliseconds > 0 ? MathF.Floor(clock / backdrop.StepMilliseconds) * backdrop.StepMilliseconds : clock;
         var progress = stepped / backdrop.LoopMilliseconds % 1f;
         return new Vector2(MathF.Round(backdrop.Travel.X * progress), MathF.Round(backdrop.Travel.Y * progress));
     }
 
-    private void DrawBackdrop(BackdropState state, float now, float opacity)
+    private void DrawBackdrop(BackdropState state, float clock, float opacity)
     {
+        if (state.Animated is { } animated)
+        {
+            if (state.Previous is { } previous)
+            {
+                // Within a system the next backdrop fades in over the last one (BackdropRotation.FadeMilliseconds).
+                _animator!.Present(previous, opacity);
+                _animator.Present(animated, opacity * StageCurves.EaseInOut((clock - state.RotationStart) / BackdropRotation.FadeMilliseconds));
+            }
+            else
+            {
+                _animator!.Present(animated, opacity);
+            }
+            // Back to the sprite program for the layers above.
+            _program.Use();
+            _gl.BindVertexArray(_vao);
+            _gl.ActiveTexture(TextureUnit.Texture0);
+            return;
+        }
         DrawLayer(state.Under, opacity, 1f, 0, 0);
-        var offset = DriftOffset(state.Backdrop, now);
+        var offset = DriftOffset(state.Backdrop, clock);
         if (state.Tile != 0 && state.Backdrop.Tile is { } tile)
         {
             // The tile layer slides by the offset: canvas x shows the tile at x - offset.
@@ -483,6 +610,8 @@ public sealed class StageCompositor : INativeScene
         DeleteBackdrop(_backdrop);
         DeleteBackdrop(_leavingBackdrop);
         _backdrop = _leavingBackdrop = null;
+        _animator?.Dispose();
+        _animator = null;
         Replace(ref _art, null, false);
         Replace(ref _plate, null, false);
         _folder?.Dispose();

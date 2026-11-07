@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PS2 and 3DS Backdrops</title>
+<style>
+:root{--bg:#f3f4f2;--ink:#263845;--muted:#586775;--line:#c6ced2;--btn:#fafbf8;--on:#263c4b;--on-ink:#fff}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#161c21;--ink:#e1eaf0;--muted:#afbec9;--line:#48535d;--btn:#25313b;--on:#dae6ef;--on-ink:#20313c}}
+:root[data-theme=dark]{--bg:#161c21;--ink:#e1eaf0;--muted:#afbec9;--line:#48535d;--btn:#25313b;--on:#dae6ef;--on-ink:#20313c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:20px 16px 40px}
+h1{font:700 20px/1.2 system-ui;margin:0 0 4px}
+.lede{margin:0 0 14px;color:var(--muted);max-width:70ch}
+.stage{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:#e8e7ec;isolation:isolate}
+.stage:fullscreen{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0;background:#000}
+.screen{position:absolute;width:1920px;height:1080px;transform-origin:0 0;--accent:#2f44d6;color:#28333e}
+canvas{position:absolute;inset:0;width:1920px;height:1080px}
+canvas.pixel{image-rendering:pixelated}
+.folder{position:absolute;left:736px;top:236px;width:448px;height:448px}
+.shadow{position:absolute;inset:160px -35px -70px;background:radial-gradient(ellipse,#24354a32,transparent 65%)}
+.back{position:absolute;inset:58px 13px 17px;border-radius:82px;background:color-mix(in srgb,var(--accent) 70%,#202a41)}
+.cover{position:absolute;top:44px;left:145px;width:159px;height:224px;border-radius:12px;background:linear-gradient(145deg,#e9c794 0 40%,#3f777b 40% 67%,#254558 67%);box-shadow:0 5px 14px #0003}
+.cover.a{transform:translateX(-67px) rotate(-9deg);background:linear-gradient(145deg,#e0c7b8 0 38%,#905a68 38% 60%,#594c68 60%)}
+.cover.b{transform:translateX(67px) rotate(9deg);background:linear-gradient(150deg,#ebcf9b 0 42%,#80a590 42% 64%,#416867 64%)}
+.front{position:absolute;left:13px;right:13px;bottom:17px;height:283px;border-radius:82px;background:linear-gradient(color-mix(in srgb,var(--accent) 62%,white),var(--accent));box-shadow:inset 0 2px #ffffff70;color:#fff;text-align:center;font:800 98px/283px ui-rounded,system-ui,sans-serif;letter-spacing:-3px}
+.plate{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);min-width:560px;padding:20px 48px;border-radius:32px;background:#fffffff2;box-shadow:0 6px 24px #0002;text-align:center}
+.plate strong{display:block;font:800 52px/1.15 ui-rounded,system-ui,sans-serif}
+.plate span{display:block;font:600 28px/1.3 system-ui;color:#626878}
+.pill{position:absolute;right:48px;top:48px;padding:16px 24px;border-radius:40px;background:#ffffffcf;font:600 26px system-ui}
+.overlay[hidden]{display:none}
+.controls,.picker{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 8px}
+button,select{font:inherit;color:inherit;border:1px solid var(--line);background:var(--btn);border-radius:8px;padding:9px 14px;min-height:42px;cursor:pointer}
+button[aria-pressed=true]{background:var(--on);color:var(--on-ink);border-color:transparent}
+select{min-width:0;flex:0 1 260px}
+.spacer{flex:1}
+.picker{justify-content:center}
+.count{color:var(--muted);font-variant-numeric:tabular-nums;min-width:52px;text-align:center}
+.caption{margin:4px 0 2px;font-weight:600}
+.why{margin:0;color:var(--muted);max-width:80ch}
+.perf{margin:8px 0 0;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+@media (max-width:500px){button{padding:9px 10px;min-height:44px}.spacer{display:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>PS2 and 3DS animated backdrops</h1>
+<p class="lede">Five per platform, same approach as the SNES/PS1 motion lab: no scenery, all drawn in code, and each one leans on how that console drew things. PS2 renders soft at 480×270 with smooth shading, glow, see-through layers and interlacing. 3DS renders crisp at the 3DS top-screen density with no anti-aliasing, cel shading, outlines and stereoscopic depth.</p>
+<div class="stage" id="stage"><div class="screen" id="screen">
+<canvas id="bg" role="img" aria-label="Animated backdrop"></canvas>
+<div class="overlay" id="overlay"><div class="folder"><div class="shadow"></div><div class="back"></div><div class="cover a"></div><div class="cover b"></div><div class="cover"></div><div class="front" id="folderLabel"></div></div><div class="plate"><strong id="plateName"></strong><span>Platform folder · 24 games</span></div><div class="pill">EmuShelf</div></div>
+</div></div>
+<div class="controls"><button type="button" id="play" aria-pressed="true">Pause motion</button><button type="button" id="folder" aria-pressed="true">Hide folder</button><button type="button" id="pick" aria-pressed="false">Shortlist</button><span class="spacer"></span><button type="button" id="full">Full screen</button></div>
+<p class="caption" id="caption"></p>
+<p class="why" id="why"></p>
+<div class="picker"><button type="button" id="prev" aria-label="Previous variant">‹</button><select id="select" aria-label="Choose a variant"></select><span class="count" id="count"></span><button type="button" id="next" aria-label="Next variant">›</button></div>
+<p class="perf" id="perf"></p>
+</main>
+<script>
+'use strict';
+// ---------- shared math ----------
+const clamp=(v,a,b)=>v<a?a:v>b?b:v, lerp=(a,b,t)=>a+(b-a)*t, mod=(v,n)=>(v%n+n)%n;
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]], sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]], mul=(a,k)=>[a[0]*k,a[1]*k,a[2]*k];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2], norm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
+const mix=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+let seed=7;const rnd=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+function rotator(rx,ry,rz){const a=Math.cos(rx),b=Math.sin(rx),c=Math.cos(ry),d=Math.sin(ry),e=Math.cos(rz),f=Math.sin(rz);
+ return v=>{let x=v[0]*e-v[1]*f,y=v[0]*f+v[1]*e,z=v[2];const y2=y*a-z*b;z=y*b+z*a;y=y2;const x2=x*c+z*d;z=-x*d+z*c;return [x2,y,z];};}
+function camera(pos,yaw,pitch,f,cx,cy){const cw=Math.cos(yaw),sw=Math.sin(yaw),cp=Math.cos(pitch),sp=Math.sin(pitch);
+ return {pos,f,cx,cy,view(p){let x=p[0]-pos[0],y=p[1]-pos[1],z=p[2]-pos[2];const x2=x*cw-z*sw;z=x*sw+z*cw;const y2=y*cp+z*sp;z=-y*sp+z*cp;return [x2,y2,z];}};}
+// A camera that sways sideways while staying aimed at a pivot: the pivot plane holds still,
+// nearer things slide one way and farther things the other, the way a stereo image reads.
+function swayCam(t,amp,pivotZ,y,f,cx,cy,pitch=0,speed=.33){const x=Math.sin(t*speed)*amp;return camera([x,y,0],Math.atan2(-x,pivotZ),pitch,f,cx,cy);}
+// ---------- meshes (triangles with vertex normals) ----------
+function sphere(nu,nv){const o=[],P=(i,j)=>{const th=i/nu*Math.PI*2,ph=j/nv*Math.PI;return [Math.sin(ph)*Math.cos(th),Math.cos(ph),Math.sin(ph)*Math.sin(th)];};
+ for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1);if(j>0)o.push({p:[a,b,c],n:[a,b,c]});if(j<nv-1)o.push({p:[a,c,d],n:[a,c,d]});}return o;}
+function torus(R,r,nu,nv){const o=[],P=(i,j)=>{const th=i/nu*Math.PI*2,ph=j/nv*Math.PI*2,n=[Math.cos(ph)*Math.cos(th),Math.sin(ph),Math.cos(ph)*Math.sin(th)];return [add([R*Math.cos(th),0,R*Math.sin(th)],mul(n,r)),n];};
+ for(let i=0;i<nu;i++)for(let j=0;j<nv;j++){const a=P(i,j),b=P(i+1,j),c=P(i+1,j+1),d=P(i,j+1);o.push({p:[a[0],b[0],c[0]],n:[a[1],b[1],c[1]]},{p:[a[0],c[0],d[0]],n:[a[1],c[1],d[1]]});}return o;}
+function box(){const o=[];for(const [ax,s] of [[0,1],[0,-1],[1,1],[1,-1],[2,1],[2,-1]]){const n=[0,0,0];n[ax]=s;const u=[0,0,0],v=[0,0,0];u[(ax+1)%3]=1;v[(ax+2)%3]=1;
+ const c=(a,b)=>add(add(n,mul(u,a)),mul(v,b)),A=c(-1,-1),B=c(1,-1),C=c(1,1),D=c(-1,1);o.push({p:[A,B,C],n:[n,n,n]},{p:[A,C,D],n:[n,n,n]});}return o;}
+function cone(sides){const o=[],top=[0,1,0];for(let i=0;i<sides;i++){const a=i/sides*Math.PI*2,b=(i+1)/sides*Math.PI*2,A=[Math.cos(a),-1,Math.sin(a)],B=[Math.cos(b),-1,Math.sin(b)],m=(a+b)/2,n=norm([Math.cos(m),.5,Math.sin(m)]),d=[0,-1,0];
+ o.push({p:[A,B,top],n:[n,n,n]},{p:[[0,-1,0],B,A],n:[d,d,d]});}return o;}
+function place(mesh,rot,scale,pos,extra){const s=Array.isArray(scale)?scale:[scale,scale,scale];
+ return mesh.map(t=>Object.assign({p:t.p.map(v=>add(rot([v[0]*s[0],v[1]*s[1],v[2]*s[2]]),pos)),n:t.n.map(rot)},extra));}
+
+// =====================================================================
+// PS2 renderer: 480x270, float colour buffer, perspective-correct Gouraud
+// colour, depth buffer, distance fog, alpha/additive blending, bloom and
+// alternating-field interlace on output. No vertex snapping, no affine wobble.
+// =====================================================================
+const PW=480,PH=270,PN=PW*PH,pc=new Float32Array(PN*3),pd=new Float32Array(PN);
+function pSky(top,bottom,horizon=PH){for(let y=0;y<PH;y++){const c=mix(top,bottom,clamp(y/horizon,0,1));for(let x=0;x<PW;x++){const j=(y*PW+x)*3;pc[j]=c[0];pc[j+1]=c[1];pc[j+2]=c[2];}}pd.fill(1e9);}
+function pTris(cam,tris,o={}){
+ const fog=o.fog,fn=o.fogNear||0,fr=o.fogRange||1e9,{f,cx:ox,cy:oy}=cam;
+ for(const t of tris){
+  const A=cam.view(t.p[0]),B=cam.view(t.p[1]),C=cam.view(t.p[2]);if(A[2]<.25||B[2]<.25||C[2]<.25)continue;
+  const ax=ox+A[0]*f/A[2],ay=oy-A[1]*f/A[2],bx=ox+B[0]*f/B[2],by=oy-B[1]*f/B[2],cx=ox+C[0]*f/C[2],cy=oy-C[1]*f/C[2];
+  const den=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);if(Math.abs(den)<1e-7)continue;
+  const x0=Math.max(0,Math.floor(Math.min(ax,bx,cx))),x1=Math.min(PW-1,Math.ceil(Math.max(ax,bx,cx))),y0=Math.max(0,Math.floor(Math.min(ay,by,cy))),y1=Math.min(PH-1,Math.ceil(Math.max(ay,by,cy)));
+  if(x0>x1||y0>y1)continue;
+  const ia=1/A[2],ib=1/B[2],ic=1/C[2],ca=t.c[0],cb=t.c[1],cc=t.c[2],al=t.a??1,additive=!!t.add;
+  for(let y=y0;y<=y1;y++){const py=y+.5;for(let x=x0;x<=x1;x++){const px=x+.5;
+   const l0=((by-cy)*(px-cx)+(cx-bx)*(py-cy))/den;if(l0<0)continue;const l1=((cy-ay)*(px-cx)+(ax-cx)*(py-cy))/den;if(l1<0)continue;const l2=1-l0-l1;if(l2<0)continue;
+   const z=1/(l0*ia+l1*ib+l2*ic),i=y*PW+x;if(z>=pd[i])continue;
+   const w0=l0*ia*z,w1=l1*ib*z,w2=l2*ic*z;let r=w0*ca[0]+w1*cb[0]+w2*cc[0],g=w0*ca[1]+w1*cb[1]+w2*cc[1],b=w0*ca[2]+w1*cb[2]+w2*cc[2];
+   if(fog){const k=clamp((z-fn)/fr,0,1);r+=(fog[0]-r)*k;g+=(fog[1]-g)*k;b+=(fog[2]-b)*k;}
+   const j=i*3;if(additive){pc[j]+=r*al;pc[j+1]+=g*al;pc[j+2]+=b*al;}else if(al<1){pc[j]+=(r-pc[j])*al;pc[j+1]+=(g-pc[j+1])*al;pc[j+2]+=(b-pc[j+2])*al;}else{pc[j]=r;pc[j+1]=g;pc[j+2]=b;pd[i]=z;}
+  }}
+ }
+}
+function pSplat(x,y,col,k,size=1){const xi=Math.round(x),yi=Math.round(y);for(let dy=-size;dy<=size;dy++)for(let dx=-size;dx<=size;dx++){const X=xi+dx,Y=yi+dy;if(X<0||Y<0||X>=PW||Y>=PH)continue;const w=k/(1+(dx*dx+dy*dy)*1.6),j=(Y*PW+X)*3;pc[j]+=col[0]*w;pc[j+1]+=col[1]*w;pc[j+2]+=col[2]*w;}}
+const bloomA=document.createElement('canvas');bloomA.width=120;bloomA.height=68;const bA=bloomA.getContext('2d'),bImg=bA.createImageData(120,68);
+const bloomB=document.createElement('canvas');bloomB.width=40;bloomB.height=23;const bB=bloomB.getContext('2d');
+function pPresent(ctx,img,frame,{thr=205,amt=.55,scan=.035}={}){
+ const d=img.data;for(let y=0;y<PH;y++){const k=((y+frame)&1)?1-scan:1;for(let x=0;x<PW;x++){const i=y*PW+x,j=i*3,p=i*4;d[p]=pc[j]*k;d[p+1]=pc[j+1]*k;d[p+2]=pc[j+2]*k;d[p+3]=255;}}
+ ctx.putImageData(img,0,0);
+ const b=bImg.data;
+ for(let by=0;by<68;by++)for(let bx=0;bx<120;bx++){let r=0,g=0,bl=0,n=0;for(let yy=by*4;yy<Math.min(PH,by*4+4);yy++)for(let xx=bx*4;xx<bx*4+4;xx++){const j=(yy*PW+xx)*3;r+=pc[j];g+=pc[j+1];bl+=pc[j+2];n++;}
+  r/=n;g/=n;bl/=n;const s=clamp(((r*.3+g*.55+bl*.15)-thr)/(255-thr),0,1.5),p=(by*120+bx)*4;b[p]=r*s;b[p+1]=g*s;b[p+2]=bl*s;b[p+3]=255;}
+ bA.putImageData(bImg,0,0);bB.drawImage(bloomA,0,0,40,23);
+ ctx.save();ctx.imageSmoothingEnabled=true;ctx.globalCompositeOperation='lighter';ctx.globalAlpha=amt;ctx.drawImage(bloomA,0,0,PW,PH);ctx.globalAlpha=amt*.9;ctx.drawImage(bloomB,0,0,PW,PH);ctx.restore();
+}
+
+// ---------- PS2 1: Glass towers ----------
+function towerFaces(x,z,h,w,col){const lo=col.lo,hi=col.hi,top=col.top,P=[[x-w,0,z-w],[x+w,0,z-w],[x+w,0,z+w],[x-w,0,z+w]],Q=P.map(p=>[p[0],h,p[2]]);
+ const faces=[];for(let i=0;i<4;i++){const a=P[i],b=P[(i+1)%4],c=Q[(i+1)%4],d=Q[i],ctr=[(a[0]+b[0])/2,h/2,(a[2]+b[2])/2],shade=[.86,1,.9,1.06][i];
+  faces.push({ctr,tris:[{p:[a,b,c],c:[mul(lo,shade),mul(lo,shade),mul(hi,shade)],a:col.a},{p:[a,c,d],c:[mul(lo,shade),mul(hi,shade),mul(hi,shade)],a:col.a}]});}
+ faces.push({ctr:[x,h,z],tris:[{p:[Q[0],Q[1],Q[2]],c:[top,top,top],a:col.ta},{p:[Q[0],Q[2],Q[3]],c:[top,top,top],a:col.ta}]});return faces;}
+function ps2Towers(t){
+ const sky=[138,156,218],hor=[208,216,242];pSky(sky,hor,150);
+ const cam=camera([Math.sin(t*.07)*1.6,3.1,-3],-Math.sin(t*.07)*.07,.27,320,240,104),camPos=cam.pos,fog={fog:hor,fogNear:8,fogRange:40};
+ const towers=[];
+ for(let j=0;j<11;j++)for(let i=-7;i<=7;i++){if(Math.abs(i)<=1&&j<6)continue;const x=i*1.55+(j%2)*.4,z=2.5+j*1.55,wave=.5+.5*Math.sin(t*.55+i*.62+j*.41),h=.35+2.6*wave*wave*(1-Math.abs(i)*.03);towers.push({x,z,h,d:Math.hypot(x-camPos[0],z-camPos[2])});}
+ towers.sort((a,b)=>b.d-a.d);
+ const colReal={lo:[30,44,160],hi:[96,124,228],top:[206,218,255],a:.58,ta:.78},colRefl={lo:[96,112,200],hi:[44,62,170],top:[160,176,236],a:.26,ta:.3};
+ const drawTower=(T,col,mirror)=>{const faces=towerFaces(T.x,T.z,mirror?-T.h:T.h,.52,col);faces.sort((a,b)=>Math.hypot(...sub(b.ctr,camPos))-Math.hypot(...sub(a.ctr,camPos)));for(const fc of faces)pTris(cam,fc.tris,fog);};
+ for(const T of towers)drawTower(T,colRefl,true);
+ const floor=[];for(let z=-1;z<34;z+=2.5)for(let x=-18;x<18;x+=2.5){const k=((Math.round(x/2.5)+Math.round(z/2.5))&1)?1:.965,c=mul([184,194,232],k);floor.push({p:[[x,0,z],[x+2.5,0,z],[x+2.5,0,z+2.5]],c:[c,c,c],a:.7},{p:[[x,0,z],[x+2.5,0,z+2.5],[x,0,z+2.5]],c:[c,c,c],a:.7});}
+ pTris(cam,floor,fog);
+ for(const T of towers)drawTower(T,colReal,false);
+}
+// ---------- PS2 2: Light trails (frame feedback) ----------
+const trail={n:1500,ready:false};
+function ps2Trails(t,dt){
+ const top=[16,26,86],bottom=[40,64,168];
+ if(!trail.ready){pSky(top,bottom);trail.ready=true;}
+ const decay=Math.pow(.86,clamp(dt*30,.3,3));
+ for(let y=0;y<PH;y++){const c=mix(top,bottom,y/PH);for(let x=0;x<PW;x++){const j=(y*PW+x)*3;pc[j]=c[0]+(pc[j]-c[0])*decay;pc[j+1]=c[1]+(pc[j+1]-c[1])*decay;pc[j+2]=c[2]+(pc[j+2]-c[2])*decay;}}
+ const cols=[[110,160,255],[175,135,255],[100,230,255]];
+ for(let i=0;i<trail.n;i++){const s=i%3,ph=(i/trail.n)*Math.PI*2*7.0,a=ph+t*(.22+.06*s)*(s===1?-1:1),r=118+22*Math.sin(3*a+t*.45+s*2)+((i*37)%17-8),tilt=[-.35,.25,.05][s],squash=[.36,.46,.3][s];
+  let x=Math.cos(a)*r*1.18,y=Math.sin(a)*r*squash;const xr=x*Math.cos(tilt)-y*Math.sin(tilt),yr=x*Math.sin(tilt)+y*Math.cos(tilt),depth=Math.sin(a),k=(.10+.08*depth)*(.6+.4*Math.sin(i*1.7+t*2));
+  pSplat(240+xr,118+yr+s*6,cols[s],k,depth>.4?1:0);}
+ for(let i=0;i<40;i++){const a=i*2.39+t*.05,r=60+mod(i*53+t*14,170),x=240+Math.cos(a)*r*1.3,y=118+Math.sin(a)*r*.6;pSplat(x,y,[200,220,255],.25*(.5+.5*Math.sin(t*3+i)),1);}
+}
+// ---------- PS2 3: Chrome sea ----------
+const seaRows=[];for(let k=0,z=1.1;z<60;k++,z*=1.17)seaRows.push(z);
+function ps2Sea(t){
+ const zen=[132,154,214],hor=[222,224,236],deep=[46,68,132],sunDir=norm([0,.13,1]);
+ const cam=camera([Math.sin(t*.05)*1.4,1.35+Math.sin(t*.3)*.04,0],-Math.sin(t*.05)*.04,.06,300,240,118),P=cam.pos;
+ pSky(zen,hor,102);
+ const sp=cam.view(add(P,mul(sunDir,1000))),sx=cam.cx+sp[0]*cam.f/sp[2],sy=cam.cy-sp[1]*cam.f/sp[2];
+ for(let y=0;y<130;y++)for(let x=0;x<PW;x++){const d2=(x-sx)**2+((y-sy)*1.25)**2,g=Math.exp(-d2/700)*.85+Math.exp(-d2/7000)*.22,j=(y*PW+x)*3;pc[j]+=g*(255-pc[j]);pc[j+1]+=g*(246-pc[j+1]);pc[j+2]+=g*(228-pc[j+2]);}
+ const h=(x,z)=>.24*Math.sin(.55*x+.42*z-t*.9)+.15*Math.sin(-.33*x+.8*z-t*1.25)+.07*Math.sin(1.6*x+1.15*z-t*2.1);
+ const cols=44,V=seaRows.map(z=>{const w=z*1.05+4;return Array.from({length:cols+1},(_,c)=>{const x=(c/cols*2-1)*w+P[0],y=h(x,z),e=.06,n=norm([-(h(x+e,z)-y)/e,1,-(h(x,z+e)-y)/e]),p=[x,y,z],v=norm(sub(p,P)),r=sub(v,mul(n,2*dot(v,n)));
+   const skyc=r[1]>0?mix(hor,zen,clamp(r[1]*2.4,0,1)):hor,sun=Math.pow(Math.max(0,dot(r,sunDir)),90)*380+Math.pow(Math.max(0,dot(r,sunDir)),12)*30,fr=.05+.7*Math.pow(1-Math.max(0,-dot(v,n)),5);
+   const base=mix(deep,skyc,fr);return {p,c:[base[0]+sun,base[1]+sun*.95,base[2]+sun*.85]};});});
+ const tris=[];for(let k=0;k<seaRows.length-1;k++)for(let c=0;c<cols;c++){const a=V[k][c],b=V[k+1][c],cc=V[k+1][c+1],d=V[k][c+1];tris.push({p:[a.p,b.p,cc.p],c:[a.c,b.c,cc.c]},{p:[a.p,cc.p,d.p],c:[a.c,cc.c,d.c]});}
+ pTris(cam,tris,{fog:hor,fogNear:14,fogRange:60});
+}
+// ---------- PS2 4: Pearl orbs ----------
+const orbMesh=sphere(22,13),orbSpec=Array.from({length:11},(_,i)=>({r:.55+((i*7)%5)*.12,metal:[.75,.35,.6,.2,.85][i%5],base:[[120,140,220],[214,218,236],[96,110,200],[180,196,240],[150,160,230]][i%5]}));
+function ps2Orbs(t){
+ const top=[190,200,236],bot=[238,239,246];pSky(top,bot,PH);
+ for(let y=0;y<PH;y++)for(let x=0;x<PW;x++){const g=Math.exp(-((x-240)**2/14000+(y-112)**2/5200))*.5,j=(y*PW+x)*3;pc[j]+=g*(255-pc[j]);pc[j+1]+=g*(255-pc[j+1]);pc[j+2]+=g*(255-pc[j+2]);}
+ const cam=camera([0,0,0],0,0,310,240,116),L=norm([-.45,.6,-.65]),Hh=norm(add(L,[0,0,-1])),center=[0,-.25,13];
+ const tilt=rotator(.42+.08*Math.sin(t*.1),0,.18),tris=[];
+ orbSpec.forEach((o,i)=>{const a=i/orbSpec.length*Math.PI*2+t*.13,local=[Math.cos(a)*5.6,Math.sin(t*.7+i)*.18,Math.sin(a)*5.6],p=add(tilt(local),center),r=o.r;
+  for(const tr of orbMesh){const cs=tr.n.map(n=>{const v=norm(sub(add(p,mul(n,r)),cam.pos)),diff=Math.max(0,dot(n,L)),spec=Math.pow(Math.max(0,dot(n,Hh)),48),rr=sub(v,mul(n,2*dot(v,n))),env=rr[1]>0?mix([214,224,250],[120,140,214],clamp(rr[1]*1.6,0,1)):mix([226,226,236],[80,88,140],clamp(-rr[1]*3,0,1)),
+    rim=Math.pow(1-Math.max(0,-dot(v,n)),3),lit=mix(mul(o.base,.45+.65*diff),env,o.metal);return [lit[0]+spec*230+rim*70,lit[1]+spec*230+rim*70,lit[2]+spec*220+rim*80];});
+   tris.push({p:tr.p.map(v=>add(p,mul(v,r))),c:cs});}});
+ pTris(cam,tris,{fog:[226,230,244],fogNear:12,fogRange:30});
+}
+// ---------- PS2 5: Light shafts ----------
+const SX=240,SY=96,shaftR=new Float32Array(PN),shaftA=new Uint16Array(PN),beamLUT=new Float32Array(1024);
+for(let y=0;y<PH;y++)for(let x=0;x<PW;x++){const i=y*PW+x;shaftR[i]=Math.hypot(x-SX,(y-SY)*1.15);shaftA[i]=Math.floor(mod(Math.atan2(y-SY,x-SX),Math.PI*2)/(Math.PI*2)*1024)&1023;}
+const motes=Array.from({length:170},()=>({x:rnd()*PW,y:rnd()*PH,s:.3+rnd()*.7,p:rnd()*6}));
+function ps2Shafts(t,dt){
+ for(let b=0;b<1024;b++){const a=b/1024*Math.PI*2;beamLUT[b]=smooth(.5,.95,.5+.5*Math.sin(7*a+t*.11))*(.55+.45*Math.sin(3*a-t*.07+1))+.55*smooth(.72,1,.5+.5*Math.sin(13*a-t*.17+2));}
+ const top=[112,126,174],bot=[178,186,214];
+ for(let y=0;y<PH;y++){const c=mix(top,bot,y/PH);for(let x=0;x<PW;x++){const i=y*PW+x,j=i*3,r=shaftR[i],haze=.72+.28*Math.sin(r*.05-t*.85+shaftA[i]*.012),I=beamLUT[shaftA[i]]*haze/(1+r*.011)*smooth(4,40,r)+Math.exp(-r*r/500)*1.4;
+  pc[j]=c[0]+I*(255-c[0])*.62;pc[j+1]=c[1]+I*(240-c[1])*.62;pc[j+2]=c[2]+I*(212-c[2])*.62;}}
+ for(const m of motes){m.y-=dt*(3+m.s*5);m.x+=Math.sin(t*.6+m.p)*dt*3;if(m.y<-2){m.y=PH+2;m.x=rnd()*PW;}
+  const i=clamp(Math.round(m.y),0,PH-1)*PW+clamp(Math.round(m.x),0,PW-1),I=beamLUT[shaftA[i]]/(1+shaftR[i]*.011);pSplat(m.x,m.y,[255,240,215],(.08+I*.5)*m.s,0);}
+}
+
+// =====================================================================
+// 3DS renderer: 400x225 (3DS top-screen pixel density, 16:9 crop), no
+// anti-aliasing, depth + object-id buffers, banded cel shading with a
+// specular dot, then one post pass that draws 1px outlines at object
+// edges and a screen-space drop shadow wherever something sits nearer the
+// viewer than what is behind it: the "pops out of the screen" cue.
+// =====================================================================
+const TW=400,TH=225,TN=TW*TH,tc=new Float32Array(TN*3),td=new Float32Array(TN),ti=new Int16Array(TN);
+function toon(base,o={}){return Object.assign({lit:base,mid:mix(base,[104,110,178],.2),dark:mix(base,[78,64,140],.4),hi:[255,255,255],t1:.38,t2:-.2,spec:0},o);}
+function tBg(top,bottom,dotCol,t,step=10){const off=Math.floor(t*4);for(let y=0;y<TH;y++){const c=mix(top,bottom,y/TH);for(let x=0;x<TW;x++){const j=(y*TW+x)*3,dotted=mod(x+off,step)===0&&mod(y+((Math.floor((x+off)/step)&1)?step/2:0),step)===0,cc=dotted?dotCol:c;tc[j]=cc[0];tc[j+1]=cc[1];tc[j+2]=cc[2];}}td.fill(1e9);ti.fill(0);}
+const LIGHT=norm([-.45,.72,-.55]),HALF=norm(add(LIGHT,[0,0,-1]));
+function tTris(cam,tris){
+ const {f,cx:ox,cy:oy}=cam;
+ for(const t of tris){
+  const A=cam.view(t.p[0]),B=cam.view(t.p[1]),C=cam.view(t.p[2]);if(A[2]<.25||B[2]<.25||C[2]<.25)continue;
+  const ax=ox+A[0]*f/A[2],ay=oy-A[1]*f/A[2],bx=ox+B[0]*f/B[2],by=oy-B[1]*f/B[2],cx=ox+C[0]*f/C[2],cy=oy-C[1]*f/C[2];
+  const den=(by-cy)*(ax-cx)+(cx-bx)*(ay-cy);if(Math.abs(den)<1e-7)continue;
+  const x0=Math.max(0,Math.floor(Math.min(ax,bx,cx))),x1=Math.min(TW-1,Math.ceil(Math.max(ax,bx,cx))),y0=Math.max(0,Math.floor(Math.min(ay,by,cy))),y1=Math.min(TH-1,Math.ceil(Math.max(ay,by,cy)));
+  if(x0>x1||y0>y1)continue;
+  const ia=1/A[2],ib=1/B[2],ic=1/C[2],m=t.m,n0=t.n[0],n1=t.n[1],n2=t.n[2],bias=t.bias||0,id=t.id;
+  for(let y=y0;y<=y1;y++){const py=y+.5;for(let x=x0;x<=x1;x++){const px=x+.5;
+   const l0=((by-cy)*(px-cx)+(cx-bx)*(py-cy))/den;if(l0<0)continue;const l1=((cy-ay)*(px-cx)+(ax-cx)*(py-cy))/den;if(l1<0)continue;const l2=1-l0-l1;if(l2<0)continue;
+   const z=1/(l0*ia+l1*ib+l2*ic),i=y*TW+x;if(z>=td[i]+bias)continue;
+   let col;if(m.flat)col=m.lit;else{const nx=l0*n0[0]+l1*n1[0]+l2*n2[0],ny=l0*n0[1]+l1*n1[1]+l2*n2[1],nz=l0*n0[2]+l1*n1[2]+l2*n2[2],nl=Math.hypot(nx,ny,nz)||1,d=(nx*LIGHT[0]+ny*LIGHT[1]+nz*LIGHT[2])/nl;
+    col=d>m.t1?m.lit:d>m.t2?m.mid:m.dark;if(m.spec&&(nx*HALF[0]+ny*HALF[1]+nz*HALF[2])/nl>m.spec)col=m.hi;}
+   const j=i*3;tc[j]=col[0];tc[j+1]=col[1];tc[j+2]=col[2];td[i]=z;ti[i]=id;
+  }}
+ }
+}
+function tPresent(ctx,img,{shadow=[4,5],ink=[58,48,90]}={}){
+ const d=img.data;
+ for(let y=0;y<TH;y++)for(let x=0;x<TW;x++){const i=y*TW+x,j=i*3,p=i*4;let r=tc[j],g=tc[j+1],b=tc[j+2];const me=ti[i],z=td[i];
+  if(shadow){const sx=x-shadow[0],sy=y-shadow[1];if(sx>=0&&sy>=0){const s=sy*TW+sx;if(ti[s]!==me&&ti[s]!==0&&td[s]<z-.5){r*=.8;g*=.78;b*=.88;}}}
+  if(me){let edge=false;if(x>0&&ti[i-1]!==me&&td[i-1]>z)edge=true;else if(x<TW-1&&ti[i+1]!==me&&td[i+1]>z)edge=true;else if(y>0&&ti[i-TW]!==me&&td[i-TW]>z)edge=true;else if(y<TH-1&&ti[i+TW]!==me&&td[i+TW]>z)edge=true;if(edge){r=ink[0];g=ink[1];b=ink[2];}}
+  d[p]=r;d[p+1]=g;d[p+2]=b;d[p+3]=255;}
+ ctx.putImageData(img,0,0);
+}
+const POP=[[255,124,128],[255,198,86],[112,212,166],[104,178,244],[176,148,236],[252,250,255],[255,150,200]];
+
+// ---------- 3DS 1: Pop-out layers ----------
+function ringTris(inner,outer,z,m,id){const o=[],n=[0,0,-1];for(let i=0;i<inner.length;i++){const k=(i+1)%inner.length,a=[...inner[i],z],b=[...inner[k],z],c=[...outer[k],z],d=[...outer[i],z];o.push({p:[a,b,c],n:[n,n,n],m,id},{p:[a,c,d],n:[n,n,n],m,id});}return o;}
+function superPts(hw,hh,N,wob){const o=[];for(let i=0;i<N;i++){const a=i/N*Math.PI*2,c=Math.cos(a),s=Math.sin(a),e=.5,k=wob?wob(a):1;o.push([Math.sign(c)*Math.pow(Math.abs(c),e)*hw*k,Math.sign(s)*Math.pow(Math.abs(s),e)*hh*k]);}return o;}
+function ds3Layers(t){
+ tBg([250,247,252],[236,240,250],[226,226,240],t);
+ const cam=swayCam(t,1.25,10,0,260,200,104),tris=[],layers=[[255,250,252],[176,148,236],[104,178,244],[112,212,166],[255,198,86],[255,124,128]];
+ layers.forEach((col,idx)=>{const k=5-idx,z=8+k*1.45,openPx=188-k*19,hw=openPx*z/260,hh=hw*.62,dir=k%2?1:-1;
+  const wob=a=>1+.022*Math.sin(14*a+t*(.45+k*.08)*dir),inner=superPts(hw,hh,72,wob).map(([x,y])=>[x,y+Math.sin(t*.6+k)*.07]),outer=superPts(hw*2.4,hh*2.6,72);
+  tris.push(...ringTris(inner,outer,z,toon(col,{flat:true}),idx+1));});
+ tTris(cam,tris);
+}
+// ---------- 3DS 2: Toon blocks ----------
+const boxMesh=box(),pyrMesh=cone(4),triMesh=cone(3);
+const blocks=Array.from({length:36},(_,i)=>{const a=i*2.399+.4,z=6+((i*7)%11)*1.35,rad=(.33+((i*5)%4)*.06)*z;return {a,z,rad,y0:rnd()*8,s:.34+((i*3)%4)*.1,mesh:[boxMesh,boxMesh,pyrMesh,triMesh][i%4],col:POP[i%7===5?0:i%7],w:[.3+rnd()*.4,.2+rnd()*.5,.1+rnd()*.3],ph:rnd()*6};});
+function ds3Blocks(t){
+ tBg([244,246,252],[252,246,240],[228,230,242],t);
+ const cam=swayCam(t,1.1,11,0,260,200,104),tris=[];
+ blocks.forEach((b,i)=>{const span=b.z*.95,y=mod(b.y0+t*.32,8)/8*span*2-span,x=Math.cos(b.a)*b.rad*1.5,yy=y+Math.sin(b.a)*b.rad*.2;
+  const rot=rotator(t*b.w[0]+b.ph,t*b.w[1]+b.ph*.5,t*b.w[2]);tris.push(...place(b.mesh,rot,b.s,[x,yy,b.z],{m:toon(b.col),id:i+1}));});
+ tTris(cam,tris);
+}
+// ---------- 3DS 3: Bubble depth ----------
+const bubMesh=sphere(14,9),bubs=Array.from({length:30},(_,i)=>({a:i*2.399,R:2.6+((i*7)%9)*.25,s:i/30*24,r:.38+((i*5)%4)*.1,col:POP[[0,1,2,3,4,6][i%6]]}));
+function ds3Bubbles(t){
+ tBg([238,244,252],[250,246,252],[224,230,244],t);
+ const cam=swayCam(t,1,10,0,260,200,104),tris=[];
+ bubs.forEach((b,i)=>{const z=28-mod(b.s+t*1.15,24),a=b.a+t*.08,p=[Math.cos(a)*b.R*1.35,Math.sin(a)*b.R*.78+Math.sin(t*.9+i)*.15,z],grow=smooth(28,25,z);
+  if(grow<=0)return;tris.push(...place(bubMesh,v=>v,b.r*grow,p,{m:toon(b.col,{spec:.93}),id:i+1}));});
+ tTris(cam,tris);
+}
+// ---------- 3DS 4: Depth slider ----------
+function ds3Slider(t){
+ tBg([246,244,252],[240,244,252],[228,226,240],t);
+ const T=mod(t,10),s=T<1.2?0:T<4?smooth(1.2,4,T):T<6.8?1:1-smooth(6.8,9.6,T);
+ const cam=swayCam(t,.9+s*.5,10,0,260,200,104),tris=[],cols=[[255,124,128],[255,198,86],[112,212,166],[104,178,244],[176,148,236],[255,150,200],[252,250,255]];
+ for(let k=0;k<7;k++){const z=10+(k-2)*1.7*s+k*.003,w=3.55-k*.36,h=w*.6,thick=.42,tilt=rotator(0,0,(k%2?1:-1)*.05*s);
+  const inner=superPts(w,h,64).map(([x,y])=>tilt([x,y,0])),outer=superPts(w+thick,h+thick,64).map(([x,y])=>tilt([x,y,0]));
+  tris.push(...ringTris(inner.map(v=>[v[0],v[1]]),outer.map(v=>[v[0],v[1]]),z,toon(cols[k],{flat:true}),k+1));}
+ tTris(cam,tris);
+}
+// ---------- 3DS 5: Turntable toys ----------
+const toyMeshes=[torus(1,.38,20,10),boxMesh,cone(14),sphere(14,9),torus(1,.38,20,10),sphere(14,9)],toyScale=[.8,.62,.8,.75,.8,[.55,.95,.55]];
+function ds3Toys(t){
+ tBg([240,242,252],[252,248,244],[230,230,242],t);
+ const cam=swayCam(t,.8,11,4.4,260,200,96,.42,.25),tris=[],floorM=[toon([246,242,236],{flat:true}),toon([236,232,246],{flat:true})];
+ for(let zi=0;zi<22;zi++)for(let xi=-11;xi<11;xi++){const x=xi*1.3,z=1.5+zi*1.3,m=floorM[(xi+zi)&1],n=[0,1,0];tris.push({p:[[x,0,z],[x+1.3,0,z+1.3],[x+1.3,0,z]],n:[n,n,n],m,id:1},{p:[[x,0,z],[x,0,z+1.3],[x+1.3,0,z+1.3]],n:[n,n,n],m,id:1});}
+ const shadowM=toon([200,192,222],{flat:true}),center=[0,0,11];
+ toyMeshes.forEach((mesh,i)=>{const a=i/6*Math.PI*2+t*.16,pos=[center[0]+Math.cos(a)*5.2,0,center[2]+Math.sin(a)*3.4],hop=Math.abs(Math.sin(t*1.5+i*1.1)),y=1.05+hop*.7;
+  const sr=.95*(1-hop*.3),n=[0,1,0];for(let k=0;k<18;k++){const a0=k/18*Math.PI*2,a1=(k+1)/18*Math.PI*2;tris.push({p:[[pos[0],.01,pos[2]],[pos[0]+Math.cos(a1)*sr,.01,pos[2]+Math.sin(a1)*sr*.85],[pos[0]+Math.cos(a0)*sr,.01,pos[2]+Math.sin(a0)*sr*.85]],n:[n,n,n],m:shadowM,id:1,bias:.06});}
+  const rot=i===0||i===4?rotator(Math.PI/2+.3*Math.sin(t+i),t*.9+i,0):rotator(.25*Math.sin(t*.8+i),t*.8+i,0);
+  tris.push(...place(mesh,rot,toyScale[i],[pos[0],y,pos[2]],{m:toon(POP[[0,3,1,2,6,4][i]],{spec:.95}),id:i+2}));});
+ tTris(cam,tris);
+}
+
+// =====================================================================
+// Viewer
+// =====================================================================
+const SYS={ps2:{label:'PS2',name:'PlayStation 2',accent:'#2f44d6',pixel:false,w:PW,h:PH},ds3:{label:'3DS',name:'Nintendo 3DS',accent:'#d9465a',pixel:true,w:TW,h:TH}};
+const VARIANTS=[
+ {sys:'ps2',id:'ps2-towers',name:'Glass towers',draw:ps2Towers,cap:'See-through columns rise and fall over a reflective floor while the camera drifts.',why:'Stacked alpha-blended layers, a mirrored reflection pass, smooth vertical shading and fog. PS2 hardware was built to push huge amounts of transparent overdraw, and the system menu of that era lived on glassy blocks.'},
+ {sys:'ps2',id:'ps2-trails',name:'Light trails',draw:ps2Trails,cap:'Streams of glowing particles orbit the folder and leave fading trails.',why:'Frame feedback (each frame is blended over the last) and additive particles with bloom: the motion-blur and glow tricks PS2 games used constantly, on the console’s deep-blue colour.'},
+ {sys:'ps2',id:'ps2-sea',name:'Chrome sea',draw:ps2Sea,cap:'A smooth reflective surface rolls toward a hazy low sun.',why:'Per-vertex environment reflection, Fresnel and specular glints on a dense mesh, washed into heavy distance fog and bloom. Same moving surface as PS1 Crystal tide, but drawn smooth and soft instead of faceted and dithered.'},
+ {sys:'ps2',id:'ps2-orbs',name:'Pearl orbs',draw:ps2Orbs,cap:'Glossy spheres circle the folder on a slowly tilting ring.',why:'Curved surfaces that are actually round: high-tessellation Gouraud spheres with chrome-band reflections, rim light and bloom. The PS1 could only fake curves with flat facets.'},
+ {sys:'ps2',id:'ps2-shafts',name:'Light shafts',draw:ps2Shafts,cap:'Rays of light turn slowly behind the folder, with dust drifting through them.',why:'Volumetric-looking god rays, haze and glowing motes: the atmospheric lighting PS2-era games leaned on to hide draw distance and set mood.'},
+ {sys:'ds3',id:'3ds-layers',name:'Pop-out layers',draw:ds3Layers,cap:'Scalloped paper-like frames stack in depth and sway as if you were tilting the console.',why:'Stereoscopic depth is the 3DS’s signature. Each layer sits at a different depth, slides with parallax against the others and drops a hard shadow on the layer behind, with crisp unsmoothed edges at 3DS pixel density.'},
+ {sys:'ds3',id:'3ds-blocks',name:'Toon blocks',draw:ds3Blocks,cap:'Chunky cel-shaded cubes and pyramids tumble upward, some close enough to pop out.',why:'Banded toon shading with ink outlines and no anti-aliasing, the look of countless 3DS games, plus near/far parallax and drop shadows that read as objects in front of the screen.'},
+ {sys:'ds3',id:'3ds-bubbles',name:'Bubble depth',draw:ds3Bubbles,cap:'Cel-shaded bubbles stream out of the screen toward you, around the folder.',why:'The classic 3DS “coming at you” effect: objects travel from deep inside the screen to in front of it, with outlines, a specular dot and the shadow cue growing as they approach.'},
+ {sys:'ds3',id:'3ds-slider',name:'Depth slider',draw:ds3Slider,cap:'Concentric screen-shaped frames sit flat, then spread into a deep tunnel and settle back.',why:'Acts out the 3D depth slider: flat at zero, deep at full. The frames use the 3DS top screen’s wide shape, and shadows only appear once the layers separate in depth.'},
+ {sys:'ds3',id:'3ds-toys',name:'Turntable toys',draw:ds3Toys,cap:'Toon toys hop around a checkered turntable with round blob shadows beneath them.',why:'Blob shadows, checker floors and bright cel-shaded primitives with outlines are hallmarks of handheld 3D on DS and 3DS. The jaggies are deliberate: no anti-aliasing at the native density.'}
+];
+const $=id=>document.getElementById(id),canvas=$('bg'),ctx=canvas.getContext('2d',{alpha:false}),reduced=matchMedia('(prefers-reduced-motion: reduce)');
+let img=null,cur=0,playing=true,showFolder=true,time=0,frame=0,last=0,painted=0,raf=0,visible=true,picks=[],cost=0;
+try{const s=JSON.parse(localStorage.getItem('emushelf-ps2-3ds')||'{}');picks=Array.isArray(s.picks)?s.picks:[];showFolder=s.folder!==false;cur=clamp(s.cur|0,0,VARIANTS.length-1);}catch{}
+const store=()=>{try{localStorage.setItem('emushelf-ps2-3ds',JSON.stringify({picks,folder:showFolder,cur}));}catch{}};
+for(const sys of ['ps2','ds3']){const g=document.createElement('optgroup');g.label=SYS[sys].name;VARIANTS.forEach((v,i)=>{if(v.sys===sys){const o=document.createElement('option');o.value=i;o.textContent=`${SYS[sys].label} · ${v.name}`;g.append(o);}});$('select').append(g);}
+function select(i){
+ cur=mod(i,VARIANTS.length);const v=VARIANTS[cur],s=SYS[v.sys];
+ if(canvas.width!==s.w||canvas.height!==s.h||!img){canvas.width=s.w;canvas.height=s.h;img=ctx.createImageData(s.w,s.h);}
+ canvas.className=s.pixel?'pixel':'';$('screen').style.setProperty('--accent',s.accent);$('folderLabel').textContent=s.label;$('plateName').textContent=s.name;
+ $('caption').textContent=`${s.label} · ${v.name}: ${v.cap}`;$('why').textContent=v.why;$('select').value=cur;$('count').textContent=`${cur+1} / ${VARIANTS.length}`;
+ canvas.setAttribute('aria-label',`${s.label} ${v.name} animated backdrop`);trail.ready=false;time=0;frame=0;cost=0;ui();draw(0);store();schedule();
+}
+function draw(dt){const v=VARIANTS[cur],t0=performance.now();v.draw(time,dt);if(v.sys==='ps2')pPresent(ctx,img,frame,v.id==='ps2-trails'?{thr:120,amt:.7}:v.id==='ps2-shafts'?{thr:190,amt:.6}:{thr:228,amt:.4});else tPresent(ctx,img,v.id==='3ds-toys'?{shadow:null}:{});frame++;
+ cost=cost?cost*.9+(performance.now()-t0)*.1:performance.now()-t0;$('perf').textContent=`Software render: ${cost.toFixed(1)} ms/frame in this browser at ${canvas.width}×${canvas.height}. Prototype only, not an on-device measurement.`;}
+function ui(){const v=VARIANTS[cur];$('overlay').hidden=!showFolder;$('folder').textContent=showFolder?'Hide folder':'Show folder';$('folder').setAttribute('aria-pressed',String(showFolder));
+ const on=picks.includes(v.id);$('pick').textContent=on?'Shortlisted':'Shortlist';$('pick').setAttribute('aria-pressed',String(on));
+ $('play').textContent=reduced.matches?'Reduced motion on':playing?'Pause motion':'Play motion';$('play').setAttribute('aria-pressed',String(playing&&!reduced.matches));}
+function fit(){const st=$('stage'),k=Math.min(st.clientWidth/1920,st.clientHeight/1080),sc=$('screen');sc.style.transform=`scale(${k})`;sc.style.left=`${(st.clientWidth-1920*k)/2}px`;sc.style.top=`${(st.clientHeight-1080*k)/2}px`;}
+const active=()=>playing&&visible&&!document.hidden&&!reduced.matches;
+function schedule(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;if(active())raf=requestAnimationFrame(tick);}
+function tick(now){raf=0;if(!active()){last=0;return;}const dt=last?Math.min((now-last)/1000,.08):0;last=now;time+=dt;if(now-painted>=1000/30-1){draw(painted?Math.min((now-painted)/1000,.1):1/30);painted=now;}raf=requestAnimationFrame(tick);}
+$('prev').onclick=()=>select(cur-1);$('next').onclick=()=>select(cur+1);$('select').onchange=e=>select(+e.target.value);
+$('play').onclick=()=>{playing=!playing;ui();schedule();};$('folder').onclick=()=>{showFolder=!showFolder;ui();store();};
+$('pick').onclick=()=>{const id=VARIANTS[cur].id;picks=picks.includes(id)?picks.filter(p=>p!==id):[...picks,id];ui();store();};
+$('full').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await $('stage').requestFullscreen();}catch{$('caption').textContent='Full screen is not available in this view.';}};
+document.addEventListener('keydown',e=>{if(e.target.tagName==='SELECT')return;if(e.key==='ArrowRight')select(cur+1);else if(e.key==='ArrowLeft')select(cur-1);else if(e.key===' '){e.preventDefault();$('play').click();}});
+new ResizeObserver(fit).observe($('stage'));new IntersectionObserver(es=>{visible=es[0].isIntersecting;schedule();}).observe($('stage'));
+document.addEventListener('visibilitychange',schedule);reduced.addEventListener('change',()=>{ui();schedule();});
+window.backdropDebug={select,draw,get cost(){return cost;},setTime:v=>{time=v;},VARIANTS};
+fit();select(cur);
+</script>
+</body>
+</html>

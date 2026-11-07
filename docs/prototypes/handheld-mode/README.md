@@ -1,5 +1,7 @@
 # Handheld mode: interactive mockup and handoff
 
+**Latest console-backdrop work (2026-11-07):** [handoff, feedback history and next steps](backdrops-motion-study/README.md) · [ten animated SNES/PS1 experiments](backdrops-motion-study/index.html). This is the current backdrop exploration; the older scenery studies were rejected.
+
 **Status (2026-11-06): baseline agreed, nothing built yet.** After four rounds Andrew's verdict
 was "not completely sold yet, it still feels very unfinished." An independent review
 ([`REVIEW.md`](REVIEW.md)) found the cause to be missing rules rather than missing polish, round 5

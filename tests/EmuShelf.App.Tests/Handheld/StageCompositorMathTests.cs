@@ -90,6 +90,15 @@ public class LauncherMotionNumbersTests
     }
 
     [Fact]
+    public void Breathing_StepsAt30Hz_OnAGridThatHitsEveryTurn()
+    {
+        // A half cycle is a whole number of 30 Hz steps, so the stepped breath reaches its exact low and high.
+        var steps = LauncherMotion.BreathHalfCycleMilliseconds / LauncherMotion.BreathStepMilliseconds;
+        Assert.Equal(MathF.Round(steps), steps, 3);
+        Assert.Equal(1000f / 30f, LauncherMotion.BreathStepMilliseconds, 3);
+    }
+
+    [Fact]
     public void TrackSpring_CanBeHeldToOneColumnOfLag()
     {
         var spring = new SceneSpring(LauncherMotion.TrackStiffness, LauncherMotion.TrackDamping);

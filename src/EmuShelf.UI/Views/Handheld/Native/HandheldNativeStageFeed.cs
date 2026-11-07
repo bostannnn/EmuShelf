@@ -200,10 +200,9 @@ internal sealed class HandheldNativeStageFeed
                 _backdropSettle.Stop();
                 _backdropSettle.Start();
                 break;
-            case nameof(HandheldStageViewModel.MediumYaw):
-            case nameof(HandheldStageViewModel.MediumPitch):
+            case nameof(HandheldStageViewModel.MediumPoseVersion):
                 if (stage.HasMedium)
-                    _host.Post(new StageMediumPoseCommand((float)stage.MediumYaw, (float)stage.MediumPitch));
+                    _host.Post(new StageMediumPoseCommand((float)stage.MediumYaw, (float)stage.MediumPitch, stage.MediumPoseIsSway));
                 break;
             case nameof(HandheldStageViewModel.Art):
                 if (stage.HasMedium)
@@ -362,7 +361,7 @@ internal sealed class HandheldNativeStageFeed
     {
         if (!_active)
             return;
-        _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop)));
+        _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated));
     }
 
     /// <summary>

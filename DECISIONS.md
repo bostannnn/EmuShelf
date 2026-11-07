@@ -13095,3 +13095,138 @@ properties; the Thor now runs this AOT build (installed with `adb install -r`, d
   a simulated hidden-lifecycle pause, a 15-colour native NES palette, and page overflow at 320/736/1500px.
   Scene and overlay screenshots were visually inspected. No app source changed; no application build
   was required. No Thor visual/thermal check or owner approval has occurred.
+
+## 2026-11-07 — M45 H7: console backdrops become GPU shaders in the native Stage, Thor only
+
+- **Context.** In the backdrop motion lab, the owner rated 53 animated backdrops Do across all sixteen
+  systems (`docs/prototypes/handheld-mode/backdrops-motion-study/picks.json`) and asked to bring them
+  into the app, rotating per system and built for the Thor. The prototypes are CPU software renderers
+  in a browser (about 1–19 ms per frame per animation there). That cost suits judging the look, not an
+  all-day handheld.
+- **Decision.** Rebuild each pick as GL ES 3 shaders inside `StageCompositor` (the native Stage
+  that main moved the top screen to on Android). Each backdrop renders into a small target at its
+  console's resolution, and one shared output pass gives it that console's finish (bit depth,
+  dither, LCD/CRT grid, composite blur, bloom, ghosting). The Stage's existing crossfade and
+  render-when-dirty scheduling carry it, with a 33 ms step while a backdrop is showing. Android only;
+  desktop keeps the era motif.
+- **Rejected.** *Pre-rendered video loops*: exact to the prototype, but the app has no video player
+  (a heavy native dependency such as LibVLC), about 5–10 MB per loop, and loop seams to hide; this
+  stays the fallback if the kill criterion trips. *Porting the CPU renderers to C#* into a bitmap: the
+  quickest port, but it puts per-pixel work and an upload every frame on the device CPU, the cost the
+  native Stage was built to remove. *Hosting shaders in Avalonia on desktop*: an `OpenGlControlBase` costs
+  about 10 ms of UI thread per GL frame (measured, `DECISIONS.md` 2026-11-07), so desktop keeps the era motif.
+- **Consequences.** About 53 shader ports grouped into three draw paths (full-screen fragment, lit
+  instanced meshes, PS1-style affine meshes) so most ports are a fragment function plus settings.
+  A continuously animating backdrop means the Stage draws at 30 Hz instead of resting. H7a measures that
+  on the Thor before the other 37 are built, and H7c makes the backdrop rest when idle. Plan: `ROADMAP.md`
+  M45 H7 (a/b/c).
+
+## 2026-11-07 — M45 H7a: how the animated backdrops are built
+
+- **Data.** `GameSystem.Backdrops` (Core) lists a system's animated backdrops by id. `KnownSystems` gives each of
+  the sixteen systems one id for H7a. The list rides `HandheldPlatform` → `HandheldBackdrop.Animated` →
+  `StageBackdropCommand.Animated`. It is the system's own list instance, so a move within a system is value-
+  equal, and the compositor keeps the running backdrop: only the pictured fallback is refreshed, with no restart
+  and no crossfade. Desktop ignores the list (the Avalonia Stage still draws the era motif).
+- **Rendering.** `EmuShelf.Rendering/Stage/Backdrops`: `BackdropCatalog` (id → resolution, passes, output
+  stage) and `BackdropRenderer` (GL ES 3 on the Stage's render thread). Every pass is attribute-less: a
+  fullscreen fragment shader, or a vertex shader that builds a grid, boxes, lines or points from
+  `gl_VertexID`. No geometry is uploaded. A backdrop renders into its own target at its console's resolution
+  (160×90 to 480×270) at most once per 30 Hz step. The output pass then draws it over the whole Stage every
+  Stage frame with the console's finish, in the motion lab's order: composite blur, bit depth with ordered
+  dither, LCD/CRT grid, interlace, then bloom from a quarter- and a twelfth-resolution bright pass. Ghosting
+  and trails use a per-backdrop ping-pong history. PS1 meshes get the PS1 look from snapped vertices and
+  `w = 1` (affine) interpolation, since GLSL ES has no `noperspective`.
+- **Stage.** `StageCompositor` starts the system's first id (rotation is H7b), updates running backdrops
+  before composing, presents them in place of the layers with the existing 450 ms crossfade, and reports a
+  33 ms `NextFrameMilliseconds` while one shows. A backdrop that fails to compile is remembered and its system
+  keeps the pictured era motif.
+- **Known limits.** The backdrop clock wraps every 10 minutes, a visible jump once per 10 minutes of staying on
+  one system; H7b's rotation restarts the clock every few seconds, which removes it. 8-bit targets clamp HDR
+  highlights before bloom, so glints bloom slightly less than in the browser.
+- **Checked** on macOS with `tools/EmuShelf.Rendering.Preview --backdrops`, which renders all 16 through the
+  app's renderer and was compared frame by frame with the prototype rendered at the same time values. Not yet
+  run on the Thor: GL ES compilation, cost, heat and battery are H7a's exit check there.
+
+## 2026-11-07 — M45 H7b: the other 37 backdrops, and rotation
+
+- **Rotation lives in the compositor.** `BackdropRotation` picks at random from the system's list, never the
+  one showing (a one-item list keeps itself). Each backdrop shows for 12 s, then the next fades in over 1.6 s
+  on an ease-in-out, both drawn into the Stage on the render thread, so the UI thread never wakes for it. A
+  system with a single backdrop (PSP) restarts it every 5 minutes, before its 10-minute clock wrap could
+  show. Moving within a system keeps the rotation where it is; changing system starts a fresh pick.
+- **Every pick is in.** The H7a list per system became its full `picks.json` row (53 ids). The catalog test that
+  every backdrop belongs to a system now also pins the count at 53, so a backdrop cannot be added or dropped
+  without changing the owner's set on purpose.
+- **Draw order instead of sorting.** The prototypes sorted translucent geometry on the CPU every frame (glass
+  towers, reflections, covers). The ports keep attribute-less passes and get the order from the vertex index
+  instead. Reflections come first, then the floor, then the real thing. Glass towers draw back rows first and
+  outer columns first, and each tower ranks its five faces by distance in the vertex shader. A pass can start
+  at a vertex offset (`BackdropPass.First`), so one shader draws both a reflection and its original.
+- **Lines and particles.** The prototypes' antialiased strokes of 0.8–1.1 px became 1 px GL lines with the
+  stroke's average coverage folded into the colour. Additive splats became point sprites (3 × 3 with the
+  prototype's falloff). PS2 light trails use frame feedback, and their floor reflection is drawn after the
+  feedback in a finish pass, so the reflection never feeds back into the trails.
+- **Checked** with the preview tool against Node renders of the prototypes, and against GL ES rules with
+  `glslc` on the shaders as the app stamps them. The Mac's GL 4.1 accepts things ES rejects (implicit
+  int→float), so it is not proof on its own.
+
+## 2026-11-07 — M45 H7: the Stage rests after a minute (fan and heat)
+
+The owner liked H7b but did not want the Thor's fan to ramp up. Measured on the Thor (Release AOT, `top` over
+10–15 s, % of one core), the cost of an animated Stage was almost all per posted frame, not per pixel:
+the GPU sat at 1% busy on its lowest clock, and `Draw` took ~1.1 ms on the GL thread, but every frame the
+Stage's SurfaceView posts also costs SurfaceFlinger, the display HAL (`composer-service`), the ROM's
+per-app vsync thread and our own buffer/binder callbacks.
+
+| Case | App | SurfaceFlinger | Display HAL | Stage fps |
+|---|---|---|---|---|
+| EmuShelf in the background (the floor) | 0.2 | 0.8 | 0.3 | – |
+| H7b, home, backdrop animating | 14.7 | 14.0 | 7.2 | 28 |
+| H7b, a game focused, the medium's sway alone (backdrop rested) | 14.8 | 11.9 | 7.8 | 25 |
+| Now, home, first minute | 13.2 | 11.8 | 7.7 | 25 |
+| Now, a game focused, first minute | 17.5 | 11.8 | 7.8 | 25 |
+| Now, a minute without navigation (home or game) | 0.0–0.2 | 0.5–0.6 | 0.1–0.2 | 0 |
+
+- **Rest, not a lower frame rate.** The motion stays at the lab's 30 Hz while someone is using the Stage, and a
+  minute after the last navigation (`StageRest`) it eases to a stop over 2 s and the Stage stops drawing. A
+  navigation brings it back over half a second. The backdrop runs on its own clock in the compositor, so it
+  slows rather than freezes, and its rotation pauses with it. The medium's idle sway, which before this ran
+  for as long as a game sat on the Stage (~35% of a core on its own, for ever), rests on the same rule. The
+  corner pills and the sway's own pose updates do not count as navigation. CPU and GPU temperatures fell
+  about 1.6 °C within two minutes of resting.
+- **The sway rides along on backdrop frames.** A sway step is marked (`StageMediumPoseCommand.Sway`), and while
+  the Stage is drawing anyway it waits for that frame instead of asking for its own, so a game on the Stage
+  posts ~25 frames a second instead of the two motions' frames interleaved. The stick and the spring still
+  render at once. Each tick now sends one pose update, not one per angle (yaw and pitch used to post two).
+- **A frame-rate hint.** While only a stepped backdrop moves, the Stage's surface tells Android it runs at
+  30 Hz (`Surface.setFrameRate`), and the top panel drops from 120 to 60 Hz, halving the vsync wakeups. Both
+  rates are in one display-mode group, which Android switches seamlessly; the hint is withdrawn whenever
+  something animates at the panel's rate.
+- **Not done, and why.** A lower step rate (20 or 15 Hz) would cut the animating cost by a third to a half, but
+  changes how the approved backdrops move; it is the owner's call, not an optimisation. The Launcher (bottom
+  screen) kept the panel's full rate for every move's 4.8 s glow breath: see the next entry.
+- **How to measure.** `--latency` in `dumpsys SurfaceFlinger` keeps only the last 128 frames, so a short burst
+  reads as a steady rate: count the frames that arrive over a fixed window instead. `top -H` thread
+  percentages on this ROM are unreliable (negative values); use per-process `top` and per-thread
+  `voluntary_ctxt_switches` for wakeups.
+
+## 2026-11-08 — M45 H7: the Launcher's glow breathes at 30 Hz
+
+Follow-up to the Stage's rest, on the owner's go-ahead. A probe on the Launcher's `Draw` showed ~7.5 ms a frame,
+but almost all of it was the first touch of the window's framebuffer: the GL thread waiting for the display
+to hand back a buffer at 120 Hz, not work. The sprites themselves take 0.3–1 ms for 30–80 quads, so the
+draw path is not worth restructuring. The cost was again the number of frames. After every focus change
+the selector's glow breathes for 4.8 s (8 half-cycles of 600 ms), and the Launcher drew at the panel's full
+rate for all of it, about 576 frames a move, though only one glow's opacity was changing.
+
+- Once the selector, the lift and every other motion have settled, the breath alone now steps at 30 Hz
+  (`LauncherMotion.BreathStepMilliseconds`), through the same drift timer and frame-rate hint as the Stage's
+  backdrop. A half-cycle is a whole number of steps, so the breath still reaches its exact low and ends at
+  full strength. With anything else moving it draws at the panel's rate, as before.
+- Measured on the Thor (frames counted by polling SurfaceFlinger's history often enough that its 128-frame
+  window never overflows): one move on home now posts 167 frames on the bottom screen over the breath's
+  4.8 s, against ~576 before (the probe logged 240 frames in 2.0 s mid-breath).
+- The design is unchanged (timing, depth and colour of the breath); only its frame rate is, and only when
+  nothing else moves.
+

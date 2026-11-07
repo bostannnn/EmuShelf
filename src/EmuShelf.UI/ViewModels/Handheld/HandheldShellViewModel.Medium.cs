@@ -53,8 +53,7 @@ public sealed partial class HandheldShellViewModel
 
     private void PushMediumPose()
     {
-        Stage.MediumYaw = _medium.Yaw;
-        Stage.MediumPitch = _medium.Pitch;
+        Stage.SetMediumPose(_medium.Yaw, _medium.Pitch, sway: _medium.IsSwaying);
     }
 
     private void UpdateMediumTimer()

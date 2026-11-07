@@ -16,6 +16,9 @@ public static class LauncherMotion
     public const float BreathLow = 0.55f;
     public const float BreathHalfCycleMilliseconds = 600f;
     public const int BreathHalfCycles = 8;
+
+    /// <summary>The breath alone steps at 30 Hz; with anything else moving the Launcher draws at the panel's rate.</summary>
+    public const float BreathStepMilliseconds = 1000f / 30f;
     public const float BumpFraction = 0.07f;
     public const float BumpMilliseconds = 300f;
 

@@ -1084,7 +1084,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
-        platform is not null && Color.TryParse(platform.AccentColor, out var color) ? new HandheldBackdrop(color, platform.Era) : null;
+        platform is not null && Color.TryParse(platform.AccentColor, out var color) ? new HandheldBackdrop(color, platform.Era, platform.Backdrops) : null;
 
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {

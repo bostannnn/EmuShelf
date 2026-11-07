@@ -2374,6 +2374,68 @@ Played. Pad input already reaches one dispatcher from both displays
       it. Five original sound effects (move, open, close, confirm, back) with an off switch. Dock
       icons loaded at about 512 px with one colour picked per app. **Exit:** nothing a Gamepad-mode
       user can do is missing in Handheld mode.
+- [ ] **H7 — console backdrops on the Thor (native Stage shaders).** Replace the era motif behind the
+      Stage, on Android only, with the 53 animated backdrops the owner approved in the motion lab
+      (`docs/prototypes/handheld-mode/backdrops-motion-study/`; the set is `picks.json`, the look and
+      motion reference is `backdrops.js` / `console-rotation.html`). Each system rotates through its
+      picks (random, no immediate repeat, about 12 s each, crossfade). Desktop keeps the era motif.
+      Why GPU shaders, and the alternatives that were rejected, are in `DECISIONS.md` (2026-11-07,
+      "M45 H7"). It can be scheduled ahead of H4–H6 if the owner wants: it touches only the Stage's
+      backdrop path. Three slices, one commit each:
+  - [ ] **H7a — framework and one backdrop per system (16).** In `EmuShelf.Rendering/Stage/Backdrops/`:
+        a registry (backdrop id → program, internal resolution, output settings); a low-res
+        offscreen target per backdrop at its console's resolution (NES 256×144 up to 480×270); one
+        shared output pass to the 1920×1080 canvas (nearest or linear upscale, bit depth with Bayer
+        dither, LCD/CRT cell grid, composite blur, bloom, and ghost/persistence through a ping-pong
+        target); and three draw paths: full-screen fragment shaders (planes, patterns, caustics),
+        instanced boxes/heightfield meshes lit per pixel (tiles, cubes, seas), and PS1-style meshes
+        (snapped vertices, `noperspective` affine UVs, 16×16 textures). `StageCompositor` gets a
+        procedural backdrop beside the picture layers, using the existing two-state crossfade, and
+        `NextFrameMilliseconds` returns the backdrop's step (33 ms) while one is showing. A system's
+        set comes from data in `KnownSystems` (backdrop ids per system id), carried through
+        `HandheldPlatform` → `HandheldBackdrop` → `HandheldNativeStageFeed` as a new Stage command.
+        Browsing a system's games keeps the running backdrop (value equality, no restart). If a
+        program fails to compile, that system falls back to today's era motif layers. Slice set (one
+        per system, chosen to cover every draw path and output stage): `nes-meta`, `runway`,
+        `gbc-bands`, `gba-iso`, `gc-caustics`, `ds-ripples`, `wii-tiles`, `3ds-tiles`, `md-planes`,
+        `dc-checker`, `field`, `ps2-sea`, `psp-field-v2`, `ps3-sheet`, `arc-checker`, `steam-mesh`.
+        **Verify on macOS:** `tools/EmuShelf.Rendering.Preview` renders every backdrop headless to
+        PNG frames, compared side by side with the prototype at the same time values. Tests cover
+        the registry (every system resolves at least one id, every id has a program and settings)
+        and rotation (no repeat, dwell, seeded). **Exit, on the Thor:** the owner judges all 16 by feel
+        against the prototype; `adb` measurements recorded in `DECISIONS.md` for idle on home, idle
+        on a game, and scrolling home (GL thread %, GPU %, render/UI thread %), plus skin temperature
+        and battery drain over 30 minutes idle on the Stage. **Kill criterion:** if idle on home costs
+        more than about 10% of the GL thread or 15% GPU at 30 Hz, or the device warms noticeably,
+        stop and choose between a lower step rate, pre-rendered loops, or fewer animated systems
+        before H7b.
+        *Built and checked on macOS (2026-11-07); on the Thor the owner judged all 16 good by feel.* They
+        compile on the device's GL ES (no "unavailable" lines in logcat). First reading idle on a game
+        (Release AOT, one sample): the Stage's GL thread ~15% of a core (4% before), GPU ~4%. The full
+        measurement suite is folded into H7b's exit, against the heaviest backdrop of each draw path.
+  - [ ] **H7b — the remaining 37 and rotation.** Port the rest of `picks.json`, then turn on per-system
+        rotation (dwell and crossfade timed in the compositor, so the UI thread never wakes for
+        it). Each port is checked against the prototype in the preview tool. **Exit:** all 53 on the
+        Thor, rotation judged by the owner, measurements repeated for the heaviest backdrop of each
+        draw path.
+        *Built 2026-11-07: all 53 in `BackdropCatalog`, every system's list is its `picks.json` row, and the
+        compositor rotates them (random, never the same twice running, 12 s dwell, 1.6 s eased crossfade).
+        Every port was rendered through the app's renderer and compared with the prototype at t = 8 s; only
+        hash-seeded layouts differ (tap spots, orange blocks, cover colours). All backdrop shaders pass a GL ES
+        front-end check (`glslc`, ES 3.10 rules), the suite passes, and the Release AOT build is installed on
+        the Thor with no "unavailable" lines in logcat.* Still open for the exit: the owner's judgement of
+        the rotation, and the measurements (only a rough `top` reading so far: the busiest app thread at
+        4–12% of a core while GameCube rotated).
+  - [ ] **H7c — rest and fallbacks.** The backdrop holds a still frame when the Stage is idle for
+        a while (as the glow rests), when Android battery saver is on, and under the system's
+        reduced-motion setting; a lost GL context rebuilds the running backdrop. The desktop Stage
+        stays on the era motif (recorded, not built). **Exit:** an hour idle on the Stage shows no
+        measurable cost from the backdrop once it rests.
+        *Rest after idle built 2026-11-07 (pulled forward by the owner's "I don't want my fan to ramp up"):*
+        a minute after the last navigation the backdrop's clock and the medium's idle sway ease to a stop
+        over 2 s and the Stage posts no frames; measured on the Thor, the whole system is then back at the
+        floor of the app being in the background. Still open: battery saver, reduced motion, and checking
+        that a lost GL context rebuilds the running backdrop.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).

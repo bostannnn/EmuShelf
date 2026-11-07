@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Backdrop Ratings</title>
+<style>
+:root{--bg:#f3f4f2;--card:#fff;--ink:#22323e;--muted:#5d6b77;--line:#d3d9dc;--btn:#fafbf8;--do:#2f7d4f;--maybe:#a8741a;--dont:#b23b3b;--focus:#2f5fd0}
+@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--bg:#14191d;--card:#1d252b;--ink:#e2eaf0;--muted:#a7b5c0;--line:#34414b;--btn:#243039;--do:#5cc489;--maybe:#e2ad4f;--dont:#ef7b7b;--focus:#8fb0ff}}
+:root[data-theme=dark]{--bg:#14191d;--card:#1d252b;--ink:#e2eaf0;--muted:#a7b5c0;--line:#34414b;--btn:#243039;--do:#5cc489;--maybe:#e2ad4f;--dont:#ef7b7b;--focus:#8fb0ff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,sans-serif}
+main{max-width:1280px;margin:0 auto;padding:20px 16px 60px}
+h1{font:700 22px/1.2 system-ui;margin:0 0 6px}
+h2{font:700 17px/1.2 system-ui;margin:0}
+.lede{color:var(--muted);margin:0 0 14px;max-width:80ch}
+.bar{position:sticky;top:0;z-index:10;background:var(--bg);border-bottom:1px solid var(--line);padding:10px 0;margin-bottom:14px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.bar .spacer{flex:1}
+.stats{color:var(--muted);font-variant-numeric:tabular-nums}
+.stats b{color:var(--ink)}
+button,select,textarea{font:inherit;color:inherit}
+button,select{border:1px solid var(--line);background:var(--btn);border-radius:8px;padding:7px 12px;min-height:38px;cursor:pointer}
+button:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+textarea{width:100%;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 10px;resize:vertical;min-height:38px}
+.overall{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:22px}
+.overall label{display:block;font-weight:600;margin-bottom:6px}
+section.con{margin:0 0 28px}
+.conhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:8px}
+.conhead .swatch{width:12px;height:12px;border-radius:3px;display:inline-block;align-self:center}
+.conhead .meta{color:var(--muted);font-size:13px}
+.connote{margin-bottom:10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.card[data-r=do]{border-color:var(--do)}.card[data-r=maybe]{border-color:var(--maybe)}.card[data-r=dont]{border-color:var(--dont)}
+.stage{position:relative;aspect-ratio:16/9;overflow:hidden;background:#e8e7ec}
+.screen{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;transform:scale(var(--k,.15));--accent:#888;color:#28333e}
+.screen canvas{position:absolute;inset:0;width:1920px;height:1080px}
+.screen canvas.pixel{image-rendering:pixelated}
+.folder{position:absolute;left:736px;top:236px;width:448px;height:448px}
+.fshadow{position:absolute;inset:160px -35px -70px;background:radial-gradient(ellipse,#24354a32,transparent 65%)}
+.back{position:absolute;inset:58px 13px 17px;border-radius:82px;background:color-mix(in srgb,var(--accent) 70%,#202a41)}
+.cover{position:absolute;top:44px;left:145px;width:159px;height:224px;border-radius:12px;background:linear-gradient(145deg,#e9c794 0 40%,#3f777b 40% 67%,#254558 67%);box-shadow:0 5px 14px #0003}
+.cover.a{transform:translateX(-67px) rotate(-9deg);background:linear-gradient(145deg,#e0c7b8 0 38%,#905a68 38% 60%,#594c68 60%)}
+.cover.b{transform:translateX(67px) rotate(9deg);background:linear-gradient(150deg,#ebcf9b 0 42%,#80a590 42% 64%,#416867 64%)}
+.front{position:absolute;left:13px;right:13px;bottom:17px;height:283px;border-radius:82px;background:linear-gradient(color-mix(in srgb,var(--accent) 62%,white),var(--accent));box-shadow:inset 0 2px #ffffff70;color:#fff;text-align:center;font:800 98px/283px ui-rounded,system-ui,sans-serif;letter-spacing:-3px}
+.plate{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);min-width:560px;padding:20px 48px;border-radius:32px;background:#fffffff2;box-shadow:0 6px 24px #0002;text-align:center}
+.plate strong{display:block;font:800 52px/1.15 ui-rounded,system-ui,sans-serif}
+.plate span{display:block;font:600 28px/1.3 system-ui;color:#626878}
+body.nofolder .overlay{display:none}
+.body{padding:10px 12px 12px;display:flex;flex-direction:column;gap:8px;flex:1}
+.title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.title strong{font-size:15px}
+.title a{margin-left:auto;font-size:12px;color:var(--muted)}
+.badge{font-size:11px;padding:2px 7px;border-radius:10px;font-weight:600;background:color-mix(in srgb,var(--muted) 16%,transparent);color:var(--muted)}.badge.new{background:color-mix(in srgb,var(--focus) 18%,transparent);color:var(--focus)}.badge.compare{background:color-mix(in srgb,var(--maybe) 20%,transparent);color:var(--maybe)}.badge.improved{background:color-mix(in srgb,var(--do) 18%,transparent);color:var(--do)}
+.cap{margin:0}
+.why{margin:0;color:var(--muted);font-size:13px}
+.rate{display:flex;gap:6px;margin-top:auto}
+.rate button{flex:1;min-height:40px;font-weight:600}
+.rate button[data-v=do][aria-pressed=true]{background:var(--do);border-color:var(--do);color:#fff}
+.rate button[data-v=maybe][aria-pressed=true]{background:var(--maybe);border-color:var(--maybe);color:#fff}
+.rate button[data-v=dont][aria-pressed=true]{background:var(--dont);border-color:var(--dont);color:#fff}
+.card textarea{min-height:36px;font-size:13px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(760px,calc(100vw - 32px));padding:16px}
+dialog textarea{height:50vh;font:12px/1.4 ui-monospace,monospace}
+dialog::backdrop{background:#0006}
+.hidden{display:none!important}
+@media (max-width:500px){.grid{grid-template-columns:1fr}.bar{position:static}}
+</style>
+</head>
+<body>
+<main>
+<h1>Rate the console backdrops</h1>
+<p class="lede">Round 3 of ratings. Your 32 Do picks are kept and already marked Do. Each Maybe stays in place, marked <b>Current (Maybe)</b>, with an <b>Improved</b> version right after it so you can compare. Don'ts are gone, except on 3DS, PSP and PS3, which get two <b>New</b> ideas each. The filter starts on the cards that need a decision. Rate them Do / Maybe / Don't (re-rate the current Maybes too if the comparison changes your mind), then press <b>Copy results</b> and paste them back to Claude. Everything saves in this browser as you go.</p>
+<div class="bar">
+ <select id="fcon" aria-label="Filter by console"><option value="">All consoles</option></select>
+ <select id="fstat" aria-label="Filter by rating"><option value="changed">Needs a decision (Maybes, improvements, new)</option><option value="">All ratings</option><option value="none">Not rated yet</option><option value="do">Do</option><option value="maybe">Maybe</option><option value="dont">Don't</option></select>
+ <button type="button" id="tfolder" aria-pressed="true">Folder shown</button>
+ <button type="button" id="tanim" aria-pressed="true">Animating</button>
+ <span class="stats" id="stats"></span>
+ <span class="spacer"></span>
+ <button type="button" id="copy">Copy results</button>
+ <button type="button" id="dl">Download JSON</button>
+</div>
+<div class="overall"><label for="overall">Overall notes: the random-rotation idea, what's working, what's missing</label><textarea id="overall" rows="2" placeholder="e.g. five per console is right, but they should share a palette…"></textarea></div>
+<div id="sections"></div>
+</main>
+<dialog id="dlg"><h2 style="margin-bottom:8px">Your ratings</h2><p class="why" id="dlgmsg" style="margin-bottom:8px"></p><textarea id="out" readonly></textarea><div style="display:flex;justify-content:flex-end;gap:8px;margin-top:10px"><button type="button" id="close">Close</button></div></dialog>
+<template id="tpl"><article class="card"><div class="stage"><div class="screen"><canvas aria-hidden="true"></canvas><div class="overlay"><div class="folder"><div class="fshadow"></div><div class="back"></div><div class="cover a"></div><div class="cover b"></div><div class="cover"></div><div class="front"></div></div><div class="plate"><strong></strong><span>Platform folder · 24 games</span></div></div></div></div>
+<div class="body"><div class="title"><strong class="name"></strong><span class="badge hidden"></span><a class="open" target="_blank" rel="noopener">Open large</a></div><p class="cap"></p><p class="why"></p>
+<div class="rate" role="group"><button type="button" data-v="do" aria-pressed="false">Do</button><button type="button" data-v="maybe" aria-pressed="false">Maybe</button><button type="button" data-v="dont" aria-pressed="false">Don't</button></div>
+<textarea rows="1" placeholder="Comment (optional)"></textarea></div></article></template>
+<script src="backdrops.js"></script>
+<script>
+'use strict';
+const {CONSOLES,VARIANTS,HISTORY,prepare,render,makeLayer}=window.Backdrops;
+const KEY='emushelf-backdrop-ratings-v1',$=id=>document.getElementById(id),LABEL={do:'Do',maybe:'Maybe',dont:"Don't"};
+let data={ratings:{},consoles:{},overall:''};
+try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&typeof s==='object')data=Object.assign(data,s);}catch{}
+// Animations kept from the last round were rated Do; carry that over if this browser has no rating for them.
+for(const id in HISTORY)if(HISTORY[id].seed&&!data.ratings[id])data.ratings[id]={r:HISTORY[id].seed,c:''};
+let saveT=0;const save=()=>{clearTimeout(saveT);saveT=setTimeout(()=>{try{localStorage.setItem(KEY,JSON.stringify(data));}catch{}},250);};
+const cards=[],byCon={};
+for(const v of VARIANTS)(byCon[v.con]=byCon[v.con]||[]).push(v);
+for(const [k,c] of Object.entries(CONSOLES)){const o=document.createElement('option');o.value=k;o.textContent=c.name;$('fcon').append(o);}
+for(const [k,c] of Object.entries(CONSOLES)){
+ const sec=document.createElement('section');sec.className='con';sec.dataset.con=k;
+ const head=document.createElement('div');head.className='conhead';head.innerHTML=`<span class="swatch" style="background:${c.accent}"></span><h2></h2><span class="meta"></span>`;head.querySelector('h2').textContent=c.name;sec.append(head);
+ const note=document.createElement('textarea');note.className='connote';note.rows=1;note.placeholder=`Notes on ${c.name} as a whole (optional)`;note.setAttribute('aria-label',`Notes on ${c.name}`);note.value=data.consoles[k]||'';note.oninput=()=>{data.consoles[k]=note.value;save();};sec.append(note);
+ const grid=document.createElement('div');grid.className='grid';sec.append(grid);
+ for(const v of byCon[k]||[]){
+  const el=$('tpl').content.firstElementChild.cloneNode(true),canvas=el.querySelector('canvas'),L=makeLayer(canvas);
+  el.querySelector('.screen').style.setProperty('--accent',c.accent);el.querySelector('.front').textContent=c.label;el.querySelector('.plate strong').textContent=c.name;
+  el.querySelector('.name').textContent=v.name;el.querySelector('.cap').textContent=v.cap;el.querySelector('.why').textContent=v.why;el.querySelector('.open').href='console-rotation.html#'+encodeURIComponent(v.id);el.querySelector('.open').setAttribute('aria-label',`Open ${v.name} large`);
+  if(HISTORY[v.id]){const b=el.querySelector('.badge');b.textContent=HISTORY[v.id].text;b.classList.add(HISTORY[v.id].kind);b.classList.remove('hidden');}
+  el.querySelector('.rate').setAttribute('aria-label',`Rate ${v.name}`);
+  const ta=el.querySelector('textarea');ta.setAttribute('aria-label',`Comment on ${c.label} ${v.name}`);
+  const card={v,el,L,visible:false,ready:false,last:0,sec};cards.push(card);
+  const rec=()=>data.ratings[v.id]||(data.ratings[v.id]={r:'',c:''});
+  const paint=()=>{const r=(data.ratings[v.id]||{}).r||'';el.dataset.r=r;el.querySelectorAll('.rate button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.v===r)));};
+  el.querySelectorAll('.rate button').forEach(b=>b.onclick=()=>{const R=rec();R.r=R.r===b.dataset.v?'':b.dataset.v;paint();save();stats();filter();});
+  ta.value=(data.ratings[v.id]||{}).c||'';ta.oninput=()=>{rec().c=ta.value;save();};
+  paint();grid.append(el);
+ }
+ $('sections').append(sec);
+}
+$('overall').value=data.overall||'';$('overall').oninput=e=>{data.overall=e.target.value;save();};
+function stats(){let d=0,m=0,n=0;for(const v of VARIANTS){const r=(data.ratings[v.id]||{}).r;if(r==='do')d++;else if(r==='maybe')m++;else if(r==='dont')n++;}
+ $('stats').innerHTML=`Rated <b>${d+m+n}</b>/${VARIANTS.length} · Do <b>${d}</b> · Maybe <b>${m}</b> · Don't <b>${n}</b>`;
+ for(const sec of document.querySelectorAll('section.con')){const list=byCon[sec.dataset.con]||[],done=list.filter(v=>(data.ratings[v.id]||{}).r).length;sec.querySelector('.meta').textContent=`${done}/${list.length} rated`;}}
+function filter(){const fc=$('fcon').value,fs=$('fstat').value;for(const sec of document.querySelectorAll('section.con'))sec.classList.toggle('hidden',!!fc&&sec.dataset.con!==fc);
+ for(const c of cards){const r=(data.ratings[c.v.id]||{}).r||'';c.el.classList.toggle('hidden',!!fs&&(fs==='changed'?(HISTORY[c.v.id]||{}).kind==='kept':fs==='none'?!!r:r!==fs));}}
+$('fcon').onchange=filter;$('fstat').onchange=filter;
+$('tfolder').onclick=e=>{const on=document.body.classList.toggle('nofolder');e.target.setAttribute('aria-pressed',String(!on));e.target.textContent=on?'Folder hidden':'Folder shown';};
+let animating=!matchMedia('(prefers-reduced-motion: reduce)').matches;
+const tanim=$('tanim');const animUi=()=>{tanim.setAttribute('aria-pressed',String(animating));tanim.textContent=animating?'Animating':'Paused';};animUi();tanim.onclick=()=>{animating=!animating;animUi();if(animating)loop();};
+// Scale each 1920x1080 screen to its card.
+const ro=new ResizeObserver(es=>{for(const e of es)e.target.querySelector('.screen').style.setProperty('--k',e.contentRect.width/1920);});
+const io=new IntersectionObserver(es=>{for(const e of es){const c=cards.find(c=>c.el.querySelector('.stage')===e.target);if(!c)continue;c.visible=e.isIntersecting;if(c.visible&&!c.ready){prepare(c.L,c.v,4+Math.random()*6);c.ready=true;render(c.L,1/30);}}if(animating)loop();},{rootMargin:'100px'});
+for(const c of cards){const st=c.el.querySelector('.stage');ro.observe(st);io.observe(st);}
+// Round-robin renderer: spend at most ~14 ms per frame across visible cards; each card's clock follows real time.
+let raf=0,rr=0;
+function loop(){if(!raf)raf=requestAnimationFrame(tick);}
+function tick(now){raf=0;if(!animating||document.hidden)return;const vis=cards.filter(c=>c.visible&&c.ready&&!c.el.classList.contains('hidden'));if(!vis.length)return;const start=performance.now();let n=0;
+ while(n<vis.length&&performance.now()-start<14){const c=vis[rr++%vis.length];const dt=c.last?Math.min((now-c.last)/1000,.25):1/30;c.last=now;c.L.time+=dt;render(c.L,dt);n++;}
+ raf=requestAnimationFrame(tick);}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&animating)loop();});
+function md(){const lines=['# Backdrop ratings',''];if(data.overall.trim())lines.push('**Overall:** '+data.overall.trim(),'');
+ for(const [k,c] of Object.entries(CONSOLES)){const list=byCon[k]||[],note=(data.consoles[k]||'').trim(),rows=list.map(v=>{const R=data.ratings[v.id]||{};return [v,R.r||'',(R.c||'').trim()];});if(!note&&rows.every(r=>!r[1]&&!r[2]))continue;
+  lines.push(`## ${c.name}`);if(note)lines.push('Notes: '+note);for(const [v,r,cm] of rows)lines.push(`- ${v.name} (\`${v.id}\`): ${r?LABEL[r]:'not rated'}${cm?' · '+cm:''}`);lines.push('');}
+ const unrated=VARIANTS.filter(v=>!(data.ratings[v.id]||{}).r).length;lines.push(`_${VARIANTS.length-unrated} of ${VARIANTS.length} rated._`);return lines.join('\n');}
+$('copy').onclick=async()=>{const text=md();$('out').value=text;try{await navigator.clipboard.writeText(text);$('dlgmsg').textContent='Copied to the clipboard. Paste it into the chat with Claude. The text is also below.';}catch{$('dlgmsg').textContent='Your browser blocked clipboard access. Select the text below and copy it.';}$('dlg').showModal();$('out').select();};
+$('close').onclick=()=>$('dlg').close();
+$('dl').onclick=()=>{const blob=new Blob([JSON.stringify({exported:new Date().toISOString(),...data},null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='backdrop-ratings.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);};
+window.rateDebug={cards,render,prepare};
+stats();filter();
+</script>
+</body>
+</html>

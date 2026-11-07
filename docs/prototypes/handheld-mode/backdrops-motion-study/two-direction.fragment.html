@@ -1,0 +1,175 @@
+<div id="es-motion-proposals">
+<style>
+#es-motion-proposals{display:flow-root;color:light-dark(#28343d,#e6edf0);font:14px/1.45 system-ui,sans-serif}
+#es-motion-proposals *{box-sizing:border-box}
+#es-motion-proposals .mp-bar{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0}
+#es-motion-proposals button{font:inherit;color:inherit;border:1px solid light-dark(#c6ced2,#48535d);background:light-dark(#fafbf8,#25313b);border-radius:8px;padding:9px 15px;min-height:42px;cursor:pointer}
+#es-motion-proposals button[aria-pressed=true]{background:light-dark(#263c4b,#dae6ef);color:light-dark(#fff,#20313c);border-color:transparent}
+#es-motion-proposals .mp-stage{position:relative;aspect-ratio:16/9;overflow:hidden;background:#e6e7ec;border-radius:12px;isolation:isolate}
+#es-motion-proposals .mp-stage:fullscreen{border-radius:0;width:100vw;height:100vh;aspect-ratio:auto}
+#es-motion-proposals .mp-screen{position:absolute;width:1920px;height:1080px;transform-origin:0 0;color:#28333e;--folder:#8d66c4}
+#es-motion-proposals canvas{position:absolute;inset:0;width:1920px;height:1080px;image-rendering:pixelated}
+#es-motion-proposals .mp-folder{position:absolute;left:736px;top:236px;width:448px;height:448px}
+#es-motion-proposals .mp-shadow{position:absolute;inset:160px -35px -70px;background:radial-gradient(ellipse,#24354a32,transparent 65%)}
+#es-motion-proposals .mp-back{position:absolute;inset:58px 13px 17px;border-radius:82px;background:color-mix(in srgb,var(--folder) 70%,#202a41)}
+#es-motion-proposals .mp-cover{position:absolute;top:44px;left:145px;width:159px;height:224px;border-radius:12px;background:linear-gradient(145deg,#e9c794 0 40%,#3f777b 40% 67%,#254558 67%);box-shadow:0 5px 14px #0003}
+#es-motion-proposals .mp-cover.a{transform:translateX(-67px) rotate(-9deg);background:linear-gradient(145deg,#e0c7b8 0 38%,#905a68 38% 60%,#594c68 60%)}
+#es-motion-proposals .mp-cover.b{transform:translateX(67px) rotate(9deg);background:linear-gradient(150deg,#ebcf9b 0 42%,#80a590 42% 64%,#416867 64%)}
+#es-motion-proposals .mp-front{position:absolute;left:13px;right:13px;bottom:17px;height:283px;border-radius:82px;background:linear-gradient(color-mix(in srgb,var(--folder) 62%,white),var(--folder));box-shadow:inset 0 2px #ffffff70;color:#fff;text-align:center;font:800 98px/283px ui-rounded,system-ui,sans-serif;letter-spacing:-3px}
+#es-motion-proposals .mp-plate{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);min-width:560px;padding:20px 48px;border-radius:32px;background:#fffffff2;box-shadow:0 6px 24px #0002;text-align:center}
+#es-motion-proposals .mp-plate strong{display:block;font:800 52px/1.15 ui-rounded,system-ui,sans-serif}
+#es-motion-proposals .mp-plate span{display:block;font:600 28px/1.3 system-ui;color:#626878}
+#es-motion-proposals .mp-pill{position:absolute;right:48px;top:48px;padding:16px 24px;border-radius:40px;background:#ffffffcf;font:600 26px system-ui}
+#es-motion-proposals .mp-spacer{flex:1}
+#es-motion-proposals .mp-note{font-size:13px;color:light-dark(#586775,#afbec9);margin-top:8px;min-height:19px}
+#es-motion-proposals .mp-hidden{display:none}
+@media(max-width:480px){#es-motion-proposals button{padding:9px 11px;min-height:44px}#es-motion-proposals .mp-spacer{display:none}}
+</style>
+<div class="mp-bar" aria-label="Console">
+<button type="button" data-system="snes" aria-pressed="true">SNES · Perspective playground</button>
+<button type="button" data-system="ps1" aria-pressed="false">PS1 · Polygon field</button>
+</div>
+<div class="mp-stage" aria-label="Animated EmuShelf Stage preview">
+<div class="mp-screen">
+<canvas width="320" height="180" role="img" aria-label="Live animated perspective tile plane"></canvas>
+<div class="mp-overlay"><div class="mp-folder"><div class="mp-shadow"></div><div class="mp-back"></div><div class="mp-cover a"></div><div class="mp-cover b"></div><div class="mp-cover"></div><div class="mp-front">SNES</div></div><div class="mp-plate"><strong>Super Nintendo</strong><span>Platform folder · 24 games</span></div><div class="mp-pill">EmuShelf</div></div>
+</div>
+</div>
+<div class="mp-bar" aria-label="Preview controls">
+<button type="button" data-action="play" aria-pressed="true">Pause motion</button>
+<button type="button" data-action="folder" aria-pressed="true">Hide folder</button>
+<span class="mp-spacer"></span><button type="button" data-action="full">Full screen</button>
+</div>
+<div class="mp-note" aria-live="polite">SNES · Scrolling and turning tile plane</div>
+<script>
+(()=>{
+'use strict';
+const root=document.getElementById('es-motion-proposals'),$=s=>root.querySelector(s),cv=$('canvas'),ctx=cv.getContext('2d',{alpha:false}),W=320,H=180;
+const screen=$('.mp-screen'),stage=$('.mp-stage'),reduce=matchMedia('(prefers-reduced-motion: reduce)');
+const state={system:'snes',playing:!reduce.matches,folder:true,speed:1,strength:1};
+const restored=window.openai?.widgetState?.modelContent?.motionStudy;
+if(restored&&['snes','ps1'].includes(restored.system)){state.system=restored.system;state.folder=restored.folder!==false;state.playing=!reduce.matches&&restored.playing!==false;}
+const bayer=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),mod=(v,n)=>(v%n+n)%n;
+const lerp=(a,b,t)=>a+(b-a)*t;
+const mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
+let seed=51;function random(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
+const image=ctx.createImageData(W,H),pixels=image.data;
+// A genuinely flat tile map. Perspective comes from sampling it through a moving camera.
+const mapSize=512,map=new Uint8ClampedArray(mapSize*mapSize*3);
+const tileColors=[[221,208,238],[183,170,215],[232,222,241],[205,198,227]];
+for(let y=0;y<mapSize;y++)for(let x=0;x<mapSize;x++){
+ const tx=x>>5,ty=y>>5,u=x&31,v=y&31;
+ let col=tileColors[(tx+ty)%2?0:1];
+ if(mod(tx,8)===0||mod(ty,8)===0)col=[234,225,241];
+ if(mod(tx+ty*3,13)===3)col=[149,194,182];
+ if(mod(tx*3+ty,17)===6)col=[224,172,175];
+ if(mod(tx+ty,19)===8)col=[229,207,156];
+ if(u<1||v<1)col=mix(col,[115,105,155],.13);
+ if(u===2||v===2)col=mix(col,[255,248,239],.3);
+ // Inlaid corner marks give the tiles a designed rhythm at close range.
+ if(((u===6&&v>=6&&v<12)||(v===6&&u>=6&&u<12))&&mod(tx+ty,3)===0)col=mix(col,[255,252,240],.5);
+ const at=(y*mapSize+x)*3;map.set(col,at);
+}
+function background(top,bottom,horizon){
+ for(let y=0;y<H;y++){
+  const t=clamp(y/horizon,0,1),c=mix(top,bottom,Math.round(t*20)/20);
+  for(let x=0;x<W;x++){const p=(y*W+x)*4;pixels[p]=c[0];pixels[p+1]=c[1];pixels[p+2]=c[2];pixels[p+3]=255;}
+ }
+}
+function diamond(x,y,size,time,color){
+ const width=Math.max(3,Math.abs(Math.cos(time))*(size*.65)+size*.25),s=size;
+ ctx.fillStyle='#5e527c28';ctx.beginPath();ctx.ellipse(Math.round(x),Math.round(y+s*.85),s*.72,s*.16,0,0,Math.PI*2);ctx.fill();
+ const poly=(p,c)=>{ctx.fillStyle=c;ctx.beginPath();p.forEach(([a,b],i)=>i?ctx.lineTo(Math.round(a),Math.round(b)):ctx.moveTo(Math.round(a),Math.round(b)));ctx.closePath();ctx.fill();};
+ poly([[x,y-s],[x-width,y],[x,y+s],[x+width,y]],color[0]);
+ poly([[x,y-s],[x-width,y],[x,y+s]],color[1]);poly([[x,y-s],[x+width,y],[x,y-s*.13]],color[2]);
+ ctx.fillStyle='#fff4dc';ctx.fillRect(Math.round(x-width*.45),Math.round(y-s*.4),2,2);
+}
+function snes(time){
+ const horizon=67;
+ background([198,191,225],[244,234,229],horizon);
+ const angle=.24*Math.sin(time*.115),ca=Math.cos(angle),sa=Math.sin(angle),travel=time*16;
+ for(let y=horizon+1;y<H;y++){
+  const z=2600/(y-horizon),fog=clamp((z-45)/420,0,1),f=Math.pow(fog,.8);
+  for(let x=0;x<W;x++){
+   const wx=(x-160)*z/175,wz=z+travel,u=Math.floor(wx*ca-wz*sa+256),v=Math.floor(wx*sa+wz*ca+256),at=(mod(v,mapSize)*mapSize+mod(u,mapSize))*3,p=(y*W+x)*4;
+   for(let k=0;k<3;k++)pixels[p+k]=lerp(map[at+k],[244,234,229][k],f*.95);
+  }
+ }
+ ctx.putImageData(image,0,0);
+ // Sprite-like geometric markers belong to the peripheral composition, leaving the hero clear.
+ diamond(34+Math.sin(time*.2)*4,103+Math.sin(time*.35)*2,13,time*.35,['#b97fbb','#9769a5','#e2b4d6']);
+ diamond(285+Math.sin(time*.2+2)*5,88+Math.cos(time*.3)*2,10,time*.35+1,['#74bcae','#529c9c','#b6ddc5']);
+ diamond(308+Math.sin(time*.16)*4,153+Math.sin(time*.28)*2,17,time*.26,['#d1ac73','#b69269','#f1d5a0']);
+}
+// PS1 uses a moving camera over an actual triangulated surface, with affine texture mapping.
+const textures=Array.from({length:5},(_,n)=>{
+ const arr=new Uint8ClampedArray(16*16*3),base=[[124,153,160],[151,164,168],[176,176,184],[157,169,163],[137,151,171]][n];
+ for(let y=0;y<16;y++)for(let x=0;x<16;x++){
+  const d=(random()-.5)*15+((x+y)%7===0?6:0),line=(x===0||y===0)?-7:0;
+  let col=base.map(v=>v+d+line);
+  if((x===3&&y>=3&&y<=5)||(y===3&&x>=3&&x<=5))col=base.map(v=>v+22);
+  arr.set(col,(y*16+x)*3);
+ }return arr;
+});
+const zs=[2.3,2.9,3.6,4.5,5.7,7.2,9.2,12,16,22,32,48];
+function elevation(x,z){
+ const side=clamp((Math.abs(x)-2.6)/6,0,1);
+ return side*(1.4+.6*Math.cos(z*.35+x*.22))+.15*Math.sin(z*.7+x*.6);
+}
+const mesh=[];
+for(let j=0;j<zs.length-1;j++)for(let i=-15;i<15;i++){
+ const x=i*1.5,z0=zs[j],z1=zs[j+1];
+ const a=[x,elevation(x,z0),z0],b=[x+1.5,elevation(x+1.5,z0),z0],c=[x,elevation(x,z1),z1],d=[x+1.5,elevation(x+1.5,z1),z1];
+ const color=mod(i*7+j*3,5);
+ mesh.push({v:[a,c,b],uv:[[0,15],[0,0],[15,15]],tex:color,shade:.91});
+ mesh.push({v:[b,c,d],uv:[[15,15],[0,0],[15,0]],tex:color,shade:1.035});
+}
+const depths=new Float32Array(W*H);
+function ps1(time){
+ background([188,204,213],[233,233,222],83);depths.fill(Infinity);
+ const pan=Math.sin(time*.17)*.7,angle=Math.sin(time*.12)*.065,ca=Math.cos(angle),sa=Math.sin(angle),cameraH=3.5+Math.sin(time*.14)*.12;
+ for(const face of mesh){
+  const projected=face.v.map(v=>{const xx=v[0]-pan,zz=v[2],rx=xx*ca-zz*sa,rz=xx*sa+zz*ca;return [Math.round(160+rx*145/rz),Math.round(74+(cameraH-v[1])*145/rz),rz];});
+  if(projected.some(p=>p[2]<.1))continue;
+  const [a,b,c]=projected,den=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(den)<.01)continue;
+  const minX=Math.max(0,Math.min(a[0],b[0],c[0])),maxX=Math.min(W-1,Math.max(a[0],b[0],c[0])),minY=Math.max(0,Math.min(a[1],b[1],c[1])),maxY=Math.min(H-1,Math.max(a[1],b[1],c[1]));
+  const texture=textures[face.tex],slope=(face.v[0][1]-face.v[1][1])*.08,shade=clamp(face.shade+slope,.7,1.13);
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+   const l0=((b[1]-c[1])*(x+.5-c[0])+(c[0]-b[0])*(y+.5-c[1]))/den,l1=((c[1]-a[1])*(x+.5-c[0])+(a[0]-c[0])*(y+.5-c[1]))/den,l2=1-l0-l1;if(l0<0||l1<0||l2<0)continue;
+   const z=1/(l0/a[2]+l1/b[2]+l2/c[2]),at=y*W+x;if(z>depths[at])continue;depths[at]=z;
+   const u=clamp(Math.floor(l0*face.uv[0][0]+l1*face.uv[1][0]+l2*face.uv[2][0]),0,15),v=clamp(Math.floor(l0*face.uv[0][1]+l1*face.uv[1][1]+l2*face.uv[2][1]),0,15),ti=(v*16+u)*3,fog=clamp((z-5)/29,0,.96),p=at*4;
+   for(let k=0;k<3;k++)pixels[p+k]=lerp(texture[ti+k]*shade,[233,233,222][k],fog);
+  }
+ }
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const p=(y*W+x)*4,d=(bayer[(y&3)*4+(x&3)]-7.5)*.36;
+  for(let k=0;k<3;k++)pixels[p+k]=clamp(Math.round((pixels[p+k]+d)*31/255)*255/31,0,255);
+ }
+ ctx.putImageData(image,0,0);
+}
+let t=0,frameCount=0,visible=true,raf=0,last=0,painted=0;
+function draw(){const start=performance.now();state.system==='snes'?snes(t):ps1(t);frameCount++;root.dataset.drawMs=(performance.now()-start).toFixed(2);root.dataset.frame=String(frameCount);root.dataset.time=t.toFixed(3);}
+function active(){return state.playing&&!reduce.matches&&!document.hidden&&visible;}
+function tick(now){raf=0;if(!active()){last=0;return;}if(!last)last=now;const dt=Math.min((now-last)/1000,.08);last=now;t+=dt*state.speed;if(now-painted>=1000/30){draw();painted=now;}raf=requestAnimationFrame(tick);}
+function syncClock(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;if(active())raf=requestAnimationFrame(tick);}
+function remember(){window.openai?.setWidgetState?.({modelContent:{motionStudy:{system:state.system,folder:state.folder,playing:state.playing}},privateContent:null}).catch(()=>{});}
+function controls(){
+ root.querySelectorAll('[data-system]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.system===state.system)));
+ $('[data-action="play"]').textContent=state.playing&&!reduce.matches?'Pause motion':reduce.matches?'Reduced motion enabled':'Play motion';$('[data-action="play"]').setAttribute('aria-pressed',String(state.playing&&!reduce.matches));
+ $('[data-action="folder"]').textContent=state.folder?'Hide folder':'Show folder';$('[data-action="folder"]').setAttribute('aria-pressed',String(state.folder));$('.mp-overlay').classList.toggle('mp-hidden',!state.folder);
+ const isSNES=state.system==='snes';screen.style.setProperty('--folder',isSNES?'#8d66c4':'#8a8fa3');$('.mp-front').textContent=isSNES?'SNES':'PS';$('.mp-plate strong').textContent=isSNES?'Super Nintendo':'PlayStation';
+ $('.mp-note').textContent=isSNES?'SNES · Scrolling and turning tile plane':'PS1 · Camera drift, coarse textures and snapped vertices';cv.setAttribute('aria-label',isSNES?'Animated SNES-style tile plane scrolling and turning in perspective':'Animated PS1-style polygon field with camera drift and affine textures');
+}
+root.querySelectorAll('[data-system]').forEach(b=>b.onclick=()=>{state.system=b.dataset.system;controls();draw();remember();});
+$('[data-action="play"]').onclick=()=>{state.playing=!state.playing;controls();syncClock();remember();};
+$('[data-action="folder"]').onclick=()=>{state.folder=!state.folder;controls();remember();};
+$('[data-action="full"]').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await stage.requestFullscreen();}catch{$('.mp-note').textContent='Full screen is unavailable in this view.';}};
+function fit(){const scale=Math.min(stage.clientWidth/1920,stage.clientHeight/1080);screen.style.transform=`scale(${scale})`;screen.style.left=`${(stage.clientWidth-1920*scale)/2}px`;screen.style.top=`${(stage.clientHeight-1080*scale)/2}px`;}
+new ResizeObserver(fit).observe(stage);new IntersectionObserver(entries=>{visible=entries[0].isIntersecting;syncClock();}).observe(stage);document.addEventListener('visibilitychange',syncClock);reduce.addEventListener('change',()=>{controls();syncClock();});
+window.addEventListener('openai:set_globals',e=>{const s=e.detail?.globals?.widgetState?.modelContent?.motionStudy;if(s&&['snes','ps1'].includes(s.system)){state.system=s.system;state.folder=s.folder!==false;state.playing=s.playing!==false;controls();draw();syncClock();}});
+controls();draw();fit();syncClock();
+if(globalThis.Tweak){const tweak=new Tweak({container:root,onChange:()=>{draw();}});tweak.addSlider(state,'speed',{label:'Motion speed',min:.25,max:1.5,step:.05});}
+})();
+</script>
+</div>

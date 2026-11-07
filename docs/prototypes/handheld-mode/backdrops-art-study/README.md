@@ -1,5 +1,7 @@
 # Stage backdrop art study 01
 
+**Rejected by the owner.** Do not develop these generated scenery images further. See the [current handoff and motion lab](../backdrops-motion-study/README.md) for the positively received animated direction.
+
 2026-11-07. First quality checkpoint: four original generated images for two starting consoles. This is not a finished set of sixteen or an owner-approved selection.
 
 Open index.html directly, or serve this directory with `python3 -m http.server 8773 --bind 127.0.0.1`. The lab uses the existing Stage folder and plate CSS, original placeholder covers, folder/game/art-only modes, fullscreen, and per-direction localStorage notes and feedback export. It makes no external network requests.

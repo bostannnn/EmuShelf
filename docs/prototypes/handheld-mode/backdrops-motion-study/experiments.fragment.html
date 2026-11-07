@@ -1,0 +1,230 @@
+<div id="emu-experiments">
+<style>
+#emu-experiments{display:flow-root}
+#emu-experiments .trial{display:flow-root;font:14px/1.45 system-ui,sans-serif;color:light-dark(#263845,#e1eaf0)}
+#emu-experiments .stage{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:10px;background:#e8e7ec;isolation:isolate}
+#emu-experiments .stage:fullscreen{width:100vw;height:100vh;aspect-ratio:auto;border-radius:0}
+#emu-experiments .screen{position:absolute;width:1920px;height:1080px;transform-origin:0 0;--accent:#8d66c4;color:#28333e}
+#emu-experiments canvas{position:absolute;inset:0;width:1920px;height:1080px;image-rendering:pixelated}
+#emu-experiments .folder{position:absolute;left:736px;top:236px;width:448px;height:448px}
+#emu-experiments .shadow{position:absolute;inset:160px -35px -70px;background:radial-gradient(ellipse,#24354a32,transparent 65%)}
+#emu-experiments .back{position:absolute;inset:58px 13px 17px;border-radius:82px;background:color-mix(in srgb,var(--accent) 70%,#202a41)}
+#emu-experiments .cover{position:absolute;top:44px;left:145px;width:159px;height:224px;border-radius:12px;background:linear-gradient(145deg,#e9c794 0 40%,#3f777b 40% 67%,#254558 67%);box-shadow:0 5px 14px #0003}
+#emu-experiments .cover.a{transform:translateX(-67px) rotate(-9deg);background:linear-gradient(145deg,#e0c7b8 0 38%,#905a68 38% 60%,#594c68 60%)}
+#emu-experiments .cover.b{transform:translateX(67px) rotate(9deg);background:linear-gradient(150deg,#ebcf9b 0 42%,#80a590 42% 64%,#416867 64%)}
+#emu-experiments .front{position:absolute;left:13px;right:13px;bottom:17px;height:283px;border-radius:82px;background:linear-gradient(color-mix(in srgb,var(--accent) 62%,white),var(--accent));box-shadow:inset 0 2px #ffffff70;color:#fff;text-align:center;font:800 98px/283px ui-rounded,system-ui,sans-serif;letter-spacing:-3px}
+#emu-experiments .plate{position:absolute;left:50%;bottom:64px;transform:translateX(-50%);min-width:560px;padding:20px 48px;border-radius:32px;background:#fffffff2;box-shadow:0 6px 24px #0002;text-align:center}
+#emu-experiments .plate strong{display:block;font:800 52px/1.15 ui-rounded,system-ui,sans-serif}
+#emu-experiments .plate span{display:block;font:600 28px/1.3 system-ui;color:#626878}
+#emu-experiments .pill{position:absolute;right:48px;top:48px;padding:16px 24px;border-radius:40px;background:#ffffffcf;font:600 26px system-ui}
+#emu-experiments .controls{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:12px 0 8px}
+#emu-experiments .controls button{font:inherit;color:inherit;border:1px solid light-dark(#c6ced2,#48535d);background:light-dark(#fafbf8,#25313b);border-radius:8px;padding:9px 14px;min-height:42px;cursor:pointer}
+#emu-experiments .controls button[aria-pressed=true]{background:light-dark(#263c4b,#dae6ef);color:light-dark(#fff,#20313c);border-color:transparent}
+#emu-experiments .spacer{flex:1}
+#emu-experiments .caption{font-size:13px;color:light-dark(#586775,#afbec9);height:40px;margin:0}
+#emu-experiments .overlay[hidden]{display:none}
+@media(max-width:500px){#emu-experiments .controls button{padding:9px 10px;min-height:44px}#emu-experiments .spacer{display:none}#emu-experiments .caption{height:58px}}
+</style>
+<div class="viz-carousel" aria-label="Five SNES and five PlayStation animated backdrops">
+<section data-variant="SNES · Prism runway" data-id="runway"><div class="trial" aria-label="SNES Prism runway"></div></section>
+<section data-variant="SNES · Ripple mosaic" data-id="mosaic" hidden><div class="trial" aria-label="SNES Ripple mosaic"></div></section>
+<section data-variant="SNES · Ribbon scroll" data-id="ribbons" hidden><div class="trial" aria-label="SNES Ribbon scroll"></div></section>
+<section data-variant="SNES · Prism tunnel" data-id="tunnel" hidden><div class="trial" aria-label="SNES Prism tunnel"></div></section>
+<section data-variant="SNES · Floating tiles" data-id="tiles" hidden><div class="trial" aria-label="SNES Floating tiles"></div></section>
+<section data-variant="PS1 · Folded field" data-id="field" hidden><div class="trial" aria-label="PS1 Folded field"></div></section>
+<section data-variant="PS1 · Orbiting shards" data-id="shards" hidden><div class="trial" aria-label="PS1 Orbiting shards"></div></section>
+<section data-variant="PS1 · Folded ribbons" data-id="folds" hidden><div class="trial" aria-label="PS1 Folded ribbons"></div></section>
+<section data-variant="PS1 · Crystal tide" data-id="tide" hidden><div class="trial" aria-label="PS1 Crystal tide"></div></section>
+<section data-variant="PS1 · Passing frames" data-id="frames" hidden><div class="trial" aria-label="PS1 Passing frames"></div></section>
+</div>
+<template id="emu-trial-template">
+<div class="stage"><div class="screen"><canvas width="320" height="180" role="img"></canvas><div class="overlay"><div class="folder"><div class="shadow"></div><div class="back"></div><div class="cover a"></div><div class="cover b"></div><div class="cover"></div><div class="front"></div></div><div class="plate"><strong></strong><span>Platform folder · 24 games</span></div><div class="pill">EmuShelf</div></div></div></div>
+<div class="controls"><button type="button" data-action="play" aria-pressed="true">Pause motion</button><button type="button" data-action="folder" aria-pressed="true">Hide folder</button><button type="button" data-action="pick" aria-pressed="false">Shortlist</button><span class="spacer"></span><button type="button" data-action="full">Full screen</button></div><p class="caption"></p>
+</template>
+<script>
+(()=>{
+'use strict';
+const root=document.getElementById('emu-experiments'),template=document.getElementById('emu-trial-template'),W=320,H=180;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),mod=(v,n)=>(v%n+n)%n,lerp=(a,b,t)=>a+(b-a)*t,mix=(a,b,t)=>a.map((v,i)=>lerp(v,b[i],t));
+const bayer=[0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5];
+let seed=51;const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+const info={
+ runway:'Turning perspective tiles, drifting prisms · develops the earlier SNES idea',
+ mosaic:'A full-screen tile pattern bends with overlapping waves',
+ ribbons:'Layered pixel ribbons scroll at different speeds',
+ tunnel:'Octagonal colour bands roll toward you through a pixel tunnel',
+ tiles:'Isometric tile clusters float at different depths',
+ field:'Camera drift across a textured polygon field · develops the earlier PS1 idea',
+ shards:'Three broken polygon rings slowly turn around the folder',
+ folds:'Textured ribbons twist and fold in three-dimensional space',
+ tide:'A triangulated surface rises and falls, with light moving across its facets',
+ frames:'A procession of textured polygon frames passes around the central opening'
+};
+const reduced=matchMedia('(prefers-reduced-motion: reduce)'),trials=[];
+const initialState=window.openai?.widgetState;let saved=(initialState?.modelContent||initialState)?.consoleExperiments;
+let picks=Array.isArray(saved?.shortlist)?saved.shortlist.filter(id=>Object.hasOwn(info,id)):[];
+let showFolder=saved?.folder!==false;
+function save(){window.openai?.setWidgetState?.({modelContent:{consoleExperiments:{shortlist:[...picks],folder:showFolder}},privateContent:null}).catch(()=>{});}
+function fillSky(s,top,bottom,horizon=100){const d=s.data;for(let y=0;y<H;y++){const u=Math.round(clamp(y/horizon,0,1)*24)/24,c=mix(top,bottom,u);for(let x=0;x<W;x++){const p=(y*W+x)*4;d[p]=c[0];d[p+1]=c[1];d[p+2]=c[2];d[p+3]=255;}}}
+function poly(c,points,col){c.fillStyle=col;c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(Math.round(x),Math.round(y)):c.moveTo(Math.round(x),Math.round(y)));c.closePath();c.fill();}
+const PALETTE=[[238,229,238],[189,175,218],[153,194,185],[229,184,187],[232,210,165],[166,176,209]];
+const tileMap=new Uint8ClampedArray(512*512*3);
+for(let y=0;y<512;y++)for(let x=0;x<512;x++){
+ const tx=x>>5,ty=y>>5,u=x&31,v=y&31;let c=PALETTE[(tx+ty)%2?0:1];
+ if(mod(tx,8)===0||mod(ty,8)===0)c=[234,225,241];if(mod(tx+ty*3,13)===3)c=PALETTE[2];if(mod(tx*3+ty,17)===6)c=PALETTE[3];if(mod(tx+ty,19)===8)c=PALETTE[4];
+ if(u<1||v<1)c=mix(c,[115,105,155],.13);if(u===2||v===2)c=mix(c,[255,248,239],.3);
+ if(((u===6&&v>=6&&v<12)||(v===6&&u>=6&&u<12))&&mod(tx+ty,3)===0)c=mix(c,[255,252,240],.5);
+ tileMap.set(c,(y*512+x)*3);
+}
+function diamond(c,x,y,size,time,color){
+ const width=Math.abs(Math.cos(time))*size*.65+size*.25;c.fillStyle='#5e527c28';c.beginPath();c.ellipse(Math.round(x),Math.round(y+size*.85),size*.72,size*.16,0,0,Math.PI*2);c.fill();
+ poly(c,[[x,y-size],[x-width,y],[x,y+size],[x+width,y]],color[0]);poly(c,[[x,y-size],[x-width,y],[x,y+size]],color[1]);poly(c,[[x,y-size],[x+width,y],[x,y-size*.13]],color[2]);c.fillStyle='#fff4dc';c.fillRect(Math.round(x-width*.45),Math.round(y-size*.4),2,2);
+}
+function runway(s,t){
+ fillSky(s,[198,191,225],[244,234,229],67);const a=.24*Math.sin(t*.115),ca=Math.cos(a),sa=Math.sin(a);
+ for(let y=68;y<H;y++){const z=2600/(y-67),fog=Math.pow(clamp((z-45)/420,0,1),.8)*.95;
+ for(let x=0;x<W;x++){const xx=(x-160)*z/175,zz=z+t*16,u=Math.floor(xx*ca-zz*sa+256),v=Math.floor(xx*sa+zz*ca+256),at=(mod(v,512)*512+mod(u,512))*3,p=(y*W+x)*4;for(let k=0;k<3;k++)s.data[p+k]=lerp(tileMap[at+k],[244,234,229][k],fog);}}
+ s.ctx.putImageData(s.image,0,0);diamond(s.ctx,34+Math.sin(t*.2)*4,103+Math.sin(t*.35)*2,13,t*.35,['#b97fbb','#9769a5','#e2b4d6']);diamond(s.ctx,285+Math.sin(t*.2+2)*5,88+Math.cos(t*.3)*2,10,t*.35+1,['#74bcae','#529c9c','#b6ddc5']);diamond(s.ctx,308+Math.sin(t*.16)*4,153+Math.sin(t*.28)*2,17,t*.26,['#d1ac73','#b69269','#f1d5a0']);
+}
+function mosaic(s,t){
+ const d=s.data;
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const u=x+9*Math.sin(y*.045+t*.42),v=y+8*Math.sin(x*.033-t*.36),tx=Math.floor(u/12),ty=Math.floor(v/12),gx=mod(u,12),gy=mod(v,12);
+  const wave=Math.sin(tx*.33+ty*.49-t*.38),idx=mod(Math.floor((tx+ty)/3),5);let c=PALETTE[idx];
+  if(gx<1.1||gy<1.1)c=[240,235,237];else if(gx<2||gy<2)c=mix(c,[255,250,235],.32);
+  const light=.13*(wave+1),quiet=Math.exp(-((x-160)**2/3200+(y-72)**2/1700))*.73;c=mix(c,[247,240,234],quiet+light*(1-quiet));
+  const p=(y*W+x)*4;s.data[p]=c[0];s.data[p+1]=c[1];s.data[p+2]=c[2];s.data[p+3]=255;
+ }s.ctx.putImageData(s.image,0,0);
+}
+function ribbons(s,t){
+ fillSky(s,[232,221,238],[247,235,219],130);s.ctx.putImageData(s.image,0,0);const c=s.ctx;
+ const cols=['#c8c4df','#a4c4c6','#84afb2','#c9a6c6','#a38bb8'];
+ for(let k=0;k<5;k++){
+  const pts=[],base=110+k*12,amp=12+k*3;
+  for(let x=-2;x<=322;x+=2){const y=base+Math.sin(x*.019+t*(.12+k*.045)+k*.9)*amp+Math.sin(x*.045-t*.12)*3;pts.push([x,y]);}
+  poly(c,[...pts,[322,185],[-2,185]],cols[k]);c.strokeStyle=['#e3deed','#d3e4db','#b6d9cd','#e2c4d8','#c6aed6'][k];c.lineWidth=2;c.beginPath();pts.forEach(([x,y],i)=>i?c.lineTo(x,Math.round(y)):c.moveTo(x,Math.round(y)));c.stroke();
+  c.fillStyle='#fff5db80';for(let j=0;j<9;j++){const x=mod(j*43-t*(4+k*3),340)-10,y=base+Math.sin(x*.019+t*(.12+k*.045)+k*.9)*amp+7; c.fillRect(Math.round(x),Math.round(y),8+k*2,1);}
+ }
+ // A thin counter-moving band at the top balances the deeper waves below.
+ for(let x=0;x<W;x+=2){const y=12+Math.sin(x*.025+t*.2)*5;c.fillStyle='#d8c7e3';c.fillRect(x,0,2,Math.round(y));c.fillStyle='#eee2ed';c.fillRect(x,Math.round(y),2,3);}
+}
+const tunnelCoords=new Float32Array(W*H*2);
+for(let y=0;y<H;y++)for(let x=0;x<W;x++){const dx=(x-160)/1.55,dy=y-78,r=Math.max(Math.abs(dx),Math.abs(dy),(Math.abs(dx)+Math.abs(dy))*.707);tunnelCoords[(y*W+x)*2]=r;tunnelCoords[(y*W+x)*2+1]=Math.atan2(dy,dx);}
+function tunnel(s,t){
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){
+  const i=y*W+x,r=tunnelCoords[i*2],theta=tunnelCoords[i*2+1],phase=160/Math.max(9,r)-t*.17,ring=Math.floor(phase*4),seg=Math.floor((theta+t*.055)*4/Math.PI),edge=mod(phase*4,1);
+  let c=PALETTE[mod(ring+seg,6)];if(edge<.12)c=mix(c,[103,99,150],.22);if(edge>.9)c=mix(c,[255,244,221],.65);
+  const quiet=1-clamp((r-24)/70,0,1);c=mix(c,[244,234,230],quiet*.95);
+  const p=i*4;s.data[p]=c[0];s.data[p+1]=c[1];s.data[p+2]=c[2];s.data[p+3]=255;
+ }s.ctx.putImageData(s.image,0,0);
+}
+const floatTiles=[];for(let j=-4;j<8;j++)for(let i=-7;i<8;i++){const x=160+(i-j)*22,y=86+(i+j)*10;if((x<90||x>235||y>130||y<23)&&x>-40&&x<360&&y>-25&&y<210)floatTiles.push({x,y,i,j,n:mod(i*3+j,5)});}
+function tiles(s,t){
+ fillSky(s,[219,222,236],[242,236,224],180);s.ctx.putImageData(s.image,0,0);const c=s.ctx;
+ for(const a of floatTiles){const lift=4+Math.sin(t*.5+a.i*.6+a.j*.3)*4,x=a.x+Math.sin(t*.12)*5,y=a.y-lift,sz=18,col=PALETTE[a.n],cs=v=>`rgb(${v.join(',')})`;
+  poly(c,[[x-sz,a.y+5],[x,a.y+14],[x+sz,a.y+5],[x,a.y-4]],'#766f8c1a');
+  poly(c,[[x-sz,y],[x,y+9],[x,y+14],[x-sz,y+5]],cs(mix(col,[74,80,123],.25)));
+  poly(c,[[x,y+9],[x+sz,y],[x+sz,y+5],[x,y+14]],cs(mix(col,[74,80,123],.12)));
+  poly(c,[[x,y-9],[x+sz,y],[x,y+9],[x-sz,y]],cs(col));
+  poly(c,[[x,y-6],[x+12,y],[x,y+6],[x-12,y]],cs(mix(col,[255,247,228],.28)));
+  if(a.n===2){c.fillStyle='#fff5da';c.fillRect(Math.round(x)-1,Math.round(y)-1,3,2);}
+ }
+}
+// A shared software rasterizer gives all five PS1 experiments real perspective,
+// snapped screen vertices, affine UVs, a depth buffer, and restrained colour dithering.
+const tex=Array.from({length:8},(_,n)=>{const out=new Uint8ClampedArray(16*16*3),base=[[124,153,160],[151,164,168],[176,176,184],[157,169,163],[137,151,171],[180,156,175],[185,175,149],[116,164,170]][n];for(let y=0;y<16;y++)for(let x=0;x<16;x++){const d=(random()-.5)*13+((x+y)%7===0?6:0)+(x===0||y===0?-7:0);let col=base.map(v=>v+d);if((x===3&&y>=3&&y<=5)||(y===3&&x>=3&&x<=5))col=base.map(v=>v+20);out.set(col,(y*16+x)*3);}return out;});
+function tri(out,a,b,c,texture=0,shade=1){out.push({v:[a,b,c],uv:[[0,15],[0,0],[15,15]],tex:mod(texture,8),shade});}
+function quad(out,a,b,c,d,texture=0,shade=1){tri(out,a,b,d,texture,shade*.95);out.push({v:[d,b,c],uv:[[15,15],[0,0],[15,0]],tex:mod(texture,8),shade:shade*1.02});}
+const zs=[2.3,2.9,3.6,4.5,5.7,7.2,9.2,12,16,22,32,48];
+function elevation(x,z){return clamp((Math.abs(x)-2.6)/6,0,1)*(1.4+.6*Math.cos(z*.35+x*.22))+.15*Math.sin(z*.7+x*.6);}
+const fieldMesh=[];
+for(let j=0;j<zs.length-1;j++)for(let i=-15;i<15;i++){const x=i*1.5,z=zs[j],zz=zs[j+1];quad(fieldMesh,[x,elevation(x,z),z],[x,elevation(x,zz),zz],[x+1.5,elevation(x+1.5,zz),zz],[x+1.5,elevation(x+1.5,z),z],mod(i*7+j*3,5));}
+function raster(s,faces,cam){
+ const depths=s.depth;depths.fill(Infinity);const ca=Math.cos(cam.yaw||0),sa=Math.sin(cam.yaw||0),f=cam.f||145,cy=cam.cy??74;
+ for(const face of faces){
+  const points=face.v.map(v=>{const x=v[0]-(cam.x||0),z=v[2],rx=x*ca-z*sa,rz=x*sa+z*ca;return [Math.round(160+rx*f/rz),Math.round(cy+((cam.y||0)-v[1])*f/rz),rz];});
+  if(points.some(p=>p[2]<.6))continue;const [a,b,c]=points,den=(b[1]-c[1])*(a[0]-c[0])+(c[0]-b[0])*(a[1]-c[1]);if(Math.abs(den)<.01)continue;
+  const minX=Math.max(0,Math.min(a[0],b[0],c[0])),maxX=Math.min(W-1,Math.max(a[0],b[0],c[0])),minY=Math.max(0,Math.min(a[1],b[1],c[1])),maxY=Math.min(H-1,Math.max(a[1],b[1],c[1])),texture=tex[face.tex];
+  for(let y=minY;y<=maxY;y++)for(let x=minX;x<=maxX;x++){
+   const l0=((b[1]-c[1])*(x+.5-c[0])+(c[0]-b[0])*(y+.5-c[1]))/den,l1=((c[1]-a[1])*(x+.5-c[0])+(a[0]-c[0])*(y+.5-c[1]))/den,l2=1-l0-l1;if(l0<0||l1<0||l2<0)continue;
+   const z=1/(l0/a[2]+l1/b[2]+l2/c[2]),at=y*W+x;if(z>depths[at])continue;depths[at]=z;
+   const u=clamp(Math.floor(l0*face.uv[0][0]+l1*face.uv[1][0]+l2*face.uv[2][0]),0,15),v=clamp(Math.floor(l0*face.uv[0][1]+l1*face.uv[1][1]+l2*face.uv[2][1]),0,15),ti=(v*16+u)*3,fog=clamp((z-(cam.fogNear||5))/(cam.fogRange||29),0,.97),p=at*4;
+   for(let k=0;k<3;k++)s.data[p+k]=lerp(texture[ti+k]*face.shade,cam.fog[k],fog);
+  }
+ }
+ for(let y=0;y<H;y++)for(let x=0;x<W;x++){const p=(y*W+x)*4,d=(bayer[(y&3)*4+(x&3)]-7.5)*.32;for(let k=0;k<3;k++)s.data[p+k]=clamp(Math.round((s.data[p+k]+d)*31/255)*255/31,0,255);}
+ s.ctx.putImageData(s.image,0,0);
+}
+function field(s,t){fillSky(s,[188,204,213],[233,233,222],83);raster(s,fieldMesh,{x:Math.sin(t*.17)*.7,y:3.5+Math.sin(t*.14)*.12,yaw:Math.sin(t*.12)*.065,fog:[233,233,222]});}
+function transform(p,rx,ry,center){const cx=Math.cos(rx),sx=Math.sin(rx),cy=Math.cos(ry),sy=Math.sin(ry),y=p[1]*cx-p[2]*sx,z=p[1]*sx+p[2]*cx;return [p[0]*cy+z*sy+center[0],y+center[1],-p[0]*sy+z*cy+center[2]];}
+function shards(s,t){
+ fillSky(s,[206,207,224],[239,231,222],160);const out=[];
+ for(let ring=0;ring<3;ring++){
+  const centers=[[-6.5,1.8,11],[6.8,1.1,12],[0,-5.3,11]],rad=[3.2,3.7,4.3][ring],rot=t*(.12+ring*.025)+ring*1.1;
+  const convert=p=>transform(p,.4+Math.sin(t*.13+ring)*.5,Math.sin(t*.16+ring)*.8,centers[ring]);
+  for(let i=0;i<9;i++){if(i%4===2)continue;const a=i/9*Math.PI*2+rot,b=a+.49;
+   const p=(r,ang,z)=>convert([Math.cos(ang)*r,Math.sin(ang)*r,z]);
+   quad(out,p(rad,a,-.3),p(rad,b,-.3),p(rad+.75,b,-.3),p(rad+.75,a,-.3),ring===0?5:ring===1?7:6,1.04);
+   quad(out,p(rad+.75,a,-.3),p(rad+.75,b,-.3),p(rad+.75,b,.4),p(rad+.75,a,.4),ring===0?5:1,.78);
+   quad(out,p(rad,a,.4),p(rad,b,.4),p(rad,b,-.3),p(rad,a,-.3),ring===1?7:4,.87);
+  }
+ }raster(s,out,{y:0,cy:80,fog:[239,231,222],fogNear:15,fogRange:45});
+}
+function folds(s,t){
+ fillSky(s,[205,218,222],[240,232,223],160);const out=[];
+ for(let strip=0;strip<3;strip++){
+  const point=(u,v)=>{
+   const phase=u*.29+t*.27+strip*1.8,z=8+(u+10)*.48;
+   if(strip===2)return [u*.85,-4.8+Math.sin(phase)*1.4+v*Math.cos(phase),z+v*Math.sin(phase)];
+   const sign=strip?1:-1;return [sign*(6.5+Math.sin(phase)*1.3)+v*Math.cos(phase),u*.65,z+v*Math.sin(phase)];
+  };
+  for(let j=-10;j<10;j++)for(let k=0;k<3;k++){const v=-1.6+k*1.05;quad(out,point(j,v),point(j+1,v),point(j+1,v+1.05),point(j,v+1.05),strip===0?3:strip===1?5:6,.9+.15*Math.sin(j*.3+t*.27));}
+ }raster(s,out,{y:0,cy:79,fog:[240,232,223],fogNear:9,fogRange:55});
+}
+function tide(s,t){
+ fillSky(s,[180,205,219],[225,236,229],80);const out=[];
+ const wave=(x,z)=>.45*Math.sin(x*.58+z*.5-t*.65)+.25*Math.cos(z*.9-t*.42)+clamp((Math.abs(x)-4)/9,0,1)*1.2;
+ for(let j=0;j<zs.length-1;j++)for(let i=-14;i<14;i++){const x=i*1.5,z=zs[j],zz=zs[j+1],a=wave(x,z),b=wave(x,zz),c=wave(x+1.5,zz),d=wave(x+1.5,z),shine=clamp(1+(a-c)*.24,.72,1.3);quad(out,[x,a,z],[x,b,zz],[x+1.5,c,zz],[x+1.5,d,z],mod(i+j,3)===0?7:mod(i+j,2)===0?0:3,shine);}
+ raster(s,out,{x:Math.sin(t*.1)*.35,y:3.1,cy:70,fog:[225,236,229],fogRange:32});
+}
+function frames(s,t){
+ fillSky(s,[204,205,225],[238,233,226],155);const out=[];
+ for(let j=0;j<10;j++){
+  const z=4+mod(j*3.4-t*.65,34),r=4.7,angle=.09*Math.sin(t*.18+z*.12)+z*.025;
+  const point=(rad,a,zz)=>[Math.cos(a+angle)*rad*1.55,Math.sin(a+angle)*rad,zz];
+  for(let i=0;i<8;i++){
+   const a=i/8*Math.PI*2,b=(i+1)/8*Math.PI*2;
+   quad(out,point(r,a,z),point(r,b,z),point(r+.3,b,z),point(r+.3,a,z),j%3===0?5:j%3===1?4:3,1.06);
+   quad(out,point(r,a,z),point(r,a,z+.55),point(r,b,z+.55),point(r,b,z),j%3===0?5:4,.78);
+  }
+ }raster(s,out,{y:0,cy:79,fog:[238,233,226],fogNear:6,fogRange:29});
+}
+const painters={runway,mosaic,ribbons,tunnel,tiles,field,shards,folds,tide,frames};
+const observer=new IntersectionObserver(entries=>{for(const e of entries){const s=trials.find(s=>s.stage===e.target);if(s)s.visible=e.isIntersecting;}schedule();});
+function update(s){
+ s.overlay.hidden=!showFolder;s.el.querySelector('[data-action="folder"]').textContent=showFolder?'Hide folder':'Show folder';s.el.querySelector('[data-action="folder"]').setAttribute('aria-pressed',String(showFolder));
+ s.el.querySelector('[data-action="pick"]').setAttribute('aria-pressed',String(picks.includes(s.id)));s.el.querySelector('[data-action="pick"]').textContent=picks.includes(s.id)?'Shortlisted':'Shortlist';
+ s.el.querySelector('[data-action="play"]').textContent=reduced.matches?'Reduced motion enabled':s.playing?'Pause motion':'Play motion';s.el.querySelector('[data-action="play"]').setAttribute('aria-pressed',String(s.playing&&!reduced.matches));
+}
+function draw(s){painters[s.id](s,s.time);s.el.dataset.frame=String(++s.frame);}
+function fit(s){const k=Math.min(s.stage.clientWidth/1920,s.stage.clientHeight/1080);s.screen.style.transform=`scale(${k})`;s.screen.style.left=`${(s.stage.clientWidth-1920*k)/2}px`;s.screen.style.top=`${(s.stage.clientHeight-1080*k)/2}px`;}
+for(const [index,section] of [...root.querySelectorAll('[data-variant]')].entries()){
+ const el=section.querySelector('.trial');el.append(template.content.cloneNode(true));const canvas=el.querySelector('canvas'),ctx=canvas.getContext('2d',{alpha:false}),image=ctx.createImageData(W,H),s={id:section.dataset.id,section,el,canvas,ctx,image,data:image.data,depth:new Float32Array(W*H),screen:el.querySelector('.screen'),stage:el.querySelector('.stage'),overlay:el.querySelector('.overlay'),playing:true,visible:false,time:0,frame:0,speed:1};trials.push(s);
+ const snes=index<5;s.screen.style.setProperty('--accent',snes?'#8d66c4':'#8a8fa3');el.querySelector('.front').textContent=snes?'SNES':'PS';el.querySelector('.plate strong').textContent=snes?'Super Nintendo':'PlayStation';el.querySelector('.caption').textContent=info[s.id];canvas.setAttribute('aria-label',section.dataset.variant+' animated backdrop');
+ el.querySelector('[data-action="folder"]').onclick=()=>{showFolder=!showFolder;trials.forEach(update);save();};
+ el.querySelector('[data-action="play"]').onclick=()=>{s.playing=!s.playing;update(s);schedule();};
+ el.querySelector('[data-action="pick"]').onclick=()=>{picks=picks.includes(s.id)?picks.filter(v=>v!==s.id):[...picks,s.id];update(s);save();};
+ el.querySelector('[data-action="full"]').onclick=async()=>{try{document.fullscreenElement?await document.exitFullscreen():await s.stage.requestFullscreen();}catch{el.querySelector('.caption').textContent='Full screen unavailable in this view.';}};
+ new ResizeObserver(()=>fit(s)).observe(s.stage);observer.observe(s.stage);update(s);draw(s);fit(s);
+ if(globalThis.Tweak){const tweak=new Tweak({container:el,onChange:()=>draw(s)});tweak.addSlider(s,'speed',{label:'Motion speed',min:.25,max:1.5,step:.05});}
+}
+let raf=0,last=0,painted=0;
+function active(s){return s.visible&&!s.section.hidden&&s.playing&&!document.hidden&&!reduced.matches;}
+function schedule(){if(raf)cancelAnimationFrame(raf);raf=0;last=0;if(trials.some(active))raf=requestAnimationFrame(tick);}
+function tick(now){raf=0;if(!trials.some(active)){last=0;return;}const dt=last?Math.min((now-last)/1000,.08):0;last=now;for(const s of trials)if(active(s))s.time+=dt*s.speed;if(now-painted>1000/30){for(const s of trials)if(active(s))draw(s);painted=now;}raf=requestAnimationFrame(tick);}
+document.addEventListener('visibilitychange',schedule);reduced.addEventListener('change',()=>{trials.forEach(update);schedule();});
+window.addEventListener('openai:set_globals',e=>{const ws=e.detail?.globals?.widgetState,st=(ws?.modelContent||ws)?.consoleExperiments;if(st){picks=Array.isArray(st.shortlist)?st.shortlist.filter(id=>Object.hasOwn(info,id)):[];showFolder=st.folder!==false;trials.forEach(update);}});
+root.experimentDebug={trials,draw};
+})();
+</script>
+</div>

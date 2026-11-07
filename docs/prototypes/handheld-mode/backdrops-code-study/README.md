@@ -1,5 +1,7 @@
 # Code-built console backdrop study
 
+**Rejected by the owner.** This scenery-based approach was superseded by the live animated graphics compositions. See the [current handoff and motion lab](../backdrops-motion-study/README.md). The notes below describe the historical experiment, not the direction to implement.
+
 Three original code-built scenes: NES Rooftop garden, PlayStation Seaside plaza, and PlayStation 2 Sunlit reservoir. This is an owner-review checkpoint, not an approved replacement for the app's era motif. It follows the rejected rounds A/B and generated-image study, preserving those files as history.
 
 - [index.html](index.html): standalone review lab. Open directly, or serve this directory on port 8774.

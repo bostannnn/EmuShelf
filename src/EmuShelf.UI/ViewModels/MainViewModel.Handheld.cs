@@ -154,7 +154,7 @@ public partial class MainViewModel
                 return systems
                     .Where(system => counts.ContainsKey(system.Id))
                     .Select(system => new HandheldPlatform(
-                        system.Id, system.Name, system.ShortName, system.AccentColor, counts[system.Id], system.Era))
+                        system.Id, system.Name, system.ShortName, system.AccentColor, counts[system.Id], system.Era, system.Backdrops))
                     .ToList();
             }, cancellationToken);
         }
