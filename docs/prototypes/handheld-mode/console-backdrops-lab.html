@@ -1,0 +1,1434 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Console Backdrops Lab</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap">
+<style>
+/* Layout: the Thor's top screen (1920×1080, scaled to fit) on the left, the backdrop's note and your verdict on the right,
+   a contact sheet of all sixteen systems and the picks table below. The Stage itself is a picture of the device and keeps
+   its own literal colours; only the page around it follows the theme. */
+:root {
+  --bg: #ECEEF4; --panel: #FFFFFF; --ink: #1B1F30; --muted: #596077; --line: #1B1F3022; --accent: #4D58D2; --accent-ink: #FFFFFF;
+  --keep: #2E8A57; --maybe: #B7791F; --no: #B23A48;
+  --font: "Nunito", ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12141C; --panel: #1C1F2C; --ink: #E7E9F2; --muted: #A2A8BD; --line: #FFFFFF1F; --accent: #8E96FF; --accent-ink: #10121A;
+  --keep: #5CC88A; --maybe: #E2AE54; --no: #F07A88; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #12141C; --panel: #1C1F2C; --ink: #E7E9F2; --muted: #A2A8BD; --line: #FFFFFF1F; --accent: #8E96FF; --accent-ink: #10121A;
+  --keep: #5CC88A; --maybe: #E2AE54; --no: #F07A88; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 600 15px/1.5 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 40px; }
+.wrap { max-width: 1560px; margin: 0 auto; }
+header.top { padding-block: 24px 6px; display: grid; gap: 6px; }
+h1 { font-size: 26px; font-weight: 900; margin: 0; letter-spacing: -.3px; text-wrap: balance; }
+header.top p { margin: 0; color: var(--muted); max-width: 78ch; }
+kbd { font: 700 12px var(--mono); border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 5px; padding: 0 5px; }
+
+nav.systems { display: flex; flex-wrap: wrap; gap: 10px 18px; padding-block: 14px 12px; }
+.group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+.group > span { font-size: 12px; font-weight: 800; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; margin-right: 2px; }
+.chip { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+  border-radius: 999px; padding: 5px 12px 5px 9px; font: 800 14px var(--font); cursor: pointer; }
+.chip i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); flex: none; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip b { font-weight: 900; font-size: 11px; color: var(--keep); }
+.chip b.maybe { color: var(--maybe); } .chip b.no { color: var(--no); }
+.chip:focus-visible, button:focus-visible, select:focus-visible, textarea:focus-visible, .thumb:focus-visible, label.file:focus-within { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+.viewer { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; align-items: start; }
+@media (max-width: 1080px) { .viewer { grid-template-columns: minmax(0, 1fr); } }
+.stagecol { display: grid; gap: 10px; min-width: 0; }
+.stagebox { position: relative; width: 100%; max-width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; background: #000; box-shadow: 0 0 0 1px var(--line); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+.seg button, .btn { border: 0; background: transparent; color: var(--ink); font: 800 13px var(--font); padding: 6px 13px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+.btn { border: 1px solid var(--line); border-radius: 999px; background: var(--panel); }
+.btn[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+label.file { position: relative; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); font: 800 13px var(--font); padding: 6px 13px; cursor: pointer; }
+label.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+.rate { margin-left: auto; font: 700 12px var(--mono); color: var(--muted); }
+
+aside.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding-block: 16px 18px; padding-inline: 18px; display: grid; gap: 12px; min-width: 0; }
+.eyebrow { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+aside h2 { margin: 0; font-size: 21px; font-weight: 900; line-height: 1.2; text-wrap: balance; }
+.field { display: grid; gap: 4px; }
+.field label { font-size: 12px; font-weight: 800; color: var(--muted); }
+select, textarea { font: 700 14px var(--font); color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; width: 100%; }
+textarea { resize: vertical; min-height: 58px; font-weight: 600; }
+dl { margin: 0; display: grid; gap: 8px; }
+dt { font-size: 12px; font-weight: 800; color: var(--muted); }
+dd { margin: 0; font-size: 14px; }
+.metrics { display: flex; flex-wrap: wrap; gap: 6px; }
+.metrics span { font: 700 12px var(--mono); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; color: var(--ink); }
+.metrics span.lvl-low { color: var(--keep); } .metrics span.lvl-med { color: var(--maybe); } .metrics span.lvl-high { color: var(--no); }
+.verdict { display: flex; gap: 6px; flex-wrap: wrap; }
+.verdict button { flex: 1 1 auto; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 10px; padding: 8px 10px; font: 800 14px var(--font); cursor: pointer; }
+.verdict button[aria-pressed="true"][data-v="keep"] { background: var(--keep); border-color: var(--keep); color: var(--panel); }
+.verdict button[aria-pressed="true"][data-v="maybe"] { background: var(--maybe); border-color: var(--maybe); color: var(--panel); }
+.verdict button[aria-pressed="true"][data-v="no"] { background: var(--no); border-color: var(--no); color: var(--panel); }
+.tag { display: inline-block; font-size: 11px; font-weight: 900; letter-spacing: .04em; color: var(--accent-ink); background: var(--accent); border-radius: 5px; padding: 0 6px; margin-left: 6px; vertical-align: 2px; }
+
+section.sheet, section.picks { padding-block: 26px 0; }
+section h2.sec { font-size: 18px; font-weight: 900; margin: 0 0 4px; }
+section p.sub { margin: 0 0 12px; color: var(--muted); }
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+.thumb { display: grid; gap: 6px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 6px; cursor: pointer; text-align: left; color: var(--ink); font: inherit; }
+.thumb canvas { width: 100%; max-width: 100%; aspect-ratio: 16 / 9; border-radius: 8px; display: block; background: #ddd; image-rendering: auto; }
+.thumb span { font-size: 13px; font-weight: 800; padding-inline: 4px; display: flex; gap: 6px; align-items: baseline; min-width: 0; }
+.thumb small { color: var(--muted); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 800; }
+tr:last-child td { border-bottom: 0; }
+td.v-keep { color: var(--keep); font-weight: 900; } td.v-maybe { color: var(--maybe); font-weight: 900; } td.v-no { color: var(--no); font-weight: 900; }
+.pickbar { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+pre#picksText { white-space: pre-wrap; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font: 600 13px var(--mono); }
+footer { color: var(--muted); font-size: 13px; padding-block: 24px 0; max-width: 90ch; }
+
+/* ---- the Stage (a picture of the device: literal colours on purpose) ---- */
+.screen { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+.screen canvas.bd { position: absolute; inset: 0; width: 1920px; height: 1080px; transition: opacity 450ms cubic-bezier(.4, 0, .2, 1); }
+.fold { position: absolute; left: 50%; top: calc(50% - 80px); width: 448px; height: 448px; transform: translate(-50%, -50%); }
+.fold .shadow { position: absolute; inset: 60px 0 -20px; border-radius: 80px; background: radial-gradient(closest-side, #0004, #0000); }
+.fold .back { position: absolute; left: 13px; right: 13px; top: 58px; bottom: 17px; border-radius: 82px; background: var(--c); }
+.fold .back::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: #14183047; }
+.fold .peek { position: absolute; left: 37px; right: 37px; top: 17px; height: 297px; }
+.fold .peek img { position: absolute; left: 50%; top: 26px; width: 159px; height: 224px; object-fit: cover; border-radius: 15px; box-shadow: 0 6px 16px #0003; }
+.fold .front { position: absolute; left: 13px; right: 13px; bottom: 17px; height: 283px; border-radius: 82px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 62%, white), var(--c)); color: #fff;
+  font: 900 112px/283px var(--font); text-align: center; letter-spacing: -2px; box-shadow: inset 0 2px 0 #fff4; }
+.game { position: absolute; left: 50%; top: calc(50% - 80px); transform: translate(-50%, -50%); border-radius: 22px; overflow: hidden; box-shadow: 0 28px 64px #0004; display: none; }
+.game img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.show-game .fold { display: none; } .show-game .game { display: block; }
+.plate { position: absolute; left: 50%; bottom: 64px; transform: translateX(-50%); min-width: 560px; padding: 20px 48px; border-radius: 32px;
+  background: rgba(255, 255, 255, .95); border: 1px solid #1C203314; box-shadow: 0 6px 24px #0002; text-align: center; color: #1C2033; }
+.plate b { display: block; font: 900 52px/1.15 var(--font); white-space: nowrap; }
+.plate small { display: block; font: 700 28px/1.3 var(--font); color: #5B6176; }
+.pill { position: absolute; right: 48px; top: 48px; height: 64px; padding: 0 24px; border-radius: 32px; background: rgba(255, 255, 255, .9); color: #1C2033; font: 800 26px/64px var(--font); }
+@media (prefers-reduced-motion: reduce) { .screen canvas.bd { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="top">
+  <h1>Console backdrops</h1>
+  <p>The Thor's top screen at 1920×1080, one backdrop per system. <b>Round B</b> (now proposed) draws an original scene in the look of each platform's landmark games, in that era's own palette; round A's tinted textures stay in the dropdown as alternates. Every option is built the way the app would build it: bitmaps made once, then only moved, turned or swapped, never redrawn, and stepped at most six times a second. Pick a system, judge it, and mark it <b>Keep</b>, <b>Maybe</b> or <b>Not this</b>. Any backdrop can be tried on any system.
+  <kbd>←</kbd> <kbd>→</kbd> system · <kbd>↑</kbd> <kbd>↓</kbd> backdrop · <kbd>G</kbd> folder or game</p>
+</header>
+
+<nav class="systems" id="systems" aria-label="Systems"></nav>
+
+<main class="viewer">
+  <section class="stagecol" aria-label="Top screen">
+    <div class="stagebox" id="stage"></div>
+    <div class="controls">
+      <div class="seg" role="group" aria-label="What the Stage shows">
+        <button type="button" id="showFolder" aria-pressed="true">Folder focused</button>
+        <button type="button" id="showGame" aria-pressed="false">Game focused</button>
+      </div>
+      <button type="button" class="btn" id="motion" aria-pressed="true">Motion on</button>
+      <label class="file" for="coverFiles">Use my covers…<input type="file" id="coverFiles" accept="image/*" multiple></label>
+      <span class="rate" id="rate"></span>
+    </div>
+  </section>
+  <aside class="panel" aria-live="polite">
+    <p class="eyebrow" id="sysEyebrow">System</p>
+    <h2 id="sysName"></h2>
+    <div class="field">
+      <label for="bdSelect">Backdrop</label>
+      <select id="bdSelect"></select>
+    </div>
+    <dl>
+      <dt>Borrows from</dt><dd id="borrows"></dd>
+      <dt>Stays clear of</dt><dd id="avoids"></dd>
+      <dt>On the Thor</dt><dd id="thor"></dd>
+    </dl>
+    <div class="metrics" id="metrics"></div>
+    <div class="verdict" role="group" aria-label="Your verdict for this system">
+      <button type="button" data-v="keep" aria-pressed="false">Keep</button>
+      <button type="button" data-v="maybe" aria-pressed="false">Maybe</button>
+      <button type="button" data-v="no" aria-pressed="false">Not this</button>
+    </div>
+    <div class="field">
+      <label for="note">Note for this system</label>
+      <textarea id="note" placeholder="What to change, or what you'd rather see"></textarea>
+    </div>
+  </aside>
+</main>
+
+<section class="sheet" aria-labelledby="sheetTitle">
+  <h2 class="sec" id="sheetTitle">All sixteen</h2>
+  <p class="sub">The proposed backdrop for each system, first frame, side by side. Click one to open it above.</p>
+  <div class="thumbs" id="thumbs"></div>
+</section>
+
+<section class="picks" aria-labelledby="picksTitle">
+  <h2 class="sec" id="picksTitle">Your picks</h2>
+  <p class="sub">Saved in this browser only. Copy them and paste them into the chat when you're done.</p>
+  <div class="tablewrap"><table id="picks"><thead><tr><th>System</th><th>Backdrop</th><th>Verdict</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+  <div class="pickbar"><button type="button" class="btn" id="copy">Copy picks</button><span id="copyState" class="rate"></span></div>
+  <pre id="picksText" hidden></pre>
+</section>
+
+<footer>Design lab for EmuShelf's Handheld mode (M45). Covers here are generated placeholders. "Use my covers…" reads image files into this browser tab only; nothing is uploaded. Counts on the name plate are made up. All art on this page is drawn by its own code: no game, console menu, logo or character is reproduced.</footer>
+</div>
+
+<script>
+"use strict";
+const W = 1920, H = 1080;
+
+// ---------- systems (KnownSystems.cs: id, name, short, accent, cover ratio, maker) ----------
+const SYSTEMS = [
+  { id: "nes", name: "Nintendo Entertainment System", short: "NES", c: "#9B7E6B", ar: 0.72, maker: "Nintendo", n: 26 },
+  { id: "snes", name: "Super Nintendo", short: "SNES", c: "#8D66C4", ar: 1.434, maker: "Nintendo", n: 41 },
+  { id: "gbc", name: "Game Boy Color", short: "GBC", c: "#4FAE9C", ar: 1.0, maker: "Nintendo", n: 18 },
+  { id: "gba", name: "Game Boy Advance", short: "GBA", c: "#7065A7", ar: 1.0, maker: "Nintendo", n: 37 },
+  { id: "gamecube", name: "GameCube", short: "GC", c: "#7B68C9", ar: 0.708, maker: "Nintendo", n: 52 },
+  { id: "nds", name: "Nintendo DS", short: "DS", c: "#7580B9", ar: 1.115, maker: "Nintendo", n: 64 },
+  { id: "wii", name: "Wii", short: "Wii", c: "#49B3C9", ar: 0.708, maker: "Nintendo", n: 48 },
+  { id: "3ds", name: "Nintendo 3DS", short: "3DS", c: "#C0568E", ar: 1.129, maker: "Nintendo", n: 33 },
+  { id: "megadrive", name: "Mega Drive / Genesis", short: "MD", c: "#3A6D74", ar: 0.708, maker: "Sega", n: 29 },
+  { id: "dreamcast", name: "Dreamcast", short: "DC", c: "#F07C3E", ar: 1.0, maker: "Sega", n: 21 },
+  { id: "playstation", name: "PlayStation", short: "PS1", c: "#8A8FA3", ar: 1.0, maker: "Sony", n: 88 },
+  { id: "playstation2", name: "PlayStation 2", short: "PS2", c: "#3D6DB5", ar: 0.708, maker: "Sony", n: 234 },
+  { id: "psp", name: "PSP", short: "PSP", c: "#596EBC", ar: 0.581, maker: "Sony", n: 45 },
+  { id: "playstation3", name: "PlayStation 3", short: "PS3", c: "#2E3A87", ar: 0.708, maker: "Sony", n: 27 },
+  { id: "arcade", name: "Arcade", short: "ARC", c: "#C0473A", ar: 1.333, maker: "Arcade", n: 112 },
+  { id: "steam", name: "Steam", short: "Steam", c: "#66C0F4", ar: 2 / 3, maker: "Valve", n: 76 },
+];
+
+// ---------- small helpers ----------
+const mod = (a, n) => ((a % n) + n) % n;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const off = (w, h) => { const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+function rng(seed) { return () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const hashStr = (s) => [...s].reduce((a, ch) => Math.imul(a ^ ch.charCodeAt(0), 16777619), 2166136261);
+function hslRgb(h, s, l) {
+  h = mod(h, 360); s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12, a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+const css = (c, a = 1) => `rgb(${c[0]} ${c[1]} ${c[2]} / ${a})`;
+const hsl = (h, s, l, a = 1) => css(hslRgb(h, s, l), a);
+const mix = (c1, c2, t) => c1.map((v, i) => Math.round(v + (c2[i] - v) * t));
+const q5 = (c) => c.map((v) => Math.min(248, Math.round(v / 8) * 8)); // 15-bit colour
+function hueOf(hex) {
+  const n = parseInt(hex.slice(1), 16), r = (n >> 16) / 255, g = (n >> 8 & 255) / 255, b = (n & 255) / 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b); if (mx === mn) return 0; const d = mx - mn;
+  const h = mx === r ? (g - b) / d + (g < b ? 6 : 0) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4; return h * 60;
+}
+const BAYER = [[0, 8, 2, 10], [12, 4, 14, 6], [3, 11, 1, 9], [15, 7, 13, 5]];
+// Ordered dither between whole levels: f is a level (0..max) with a fraction.
+const dith = (f, i, j, max) => { const b = Math.floor(f); return clamp(b + ((f - b) * 16 > BAYER[j & 3][i & 3] + 0.5 ? 1 : 0), 0, max); };
+
+// A canvas you set pixels on (low-res art, shown later at s px per pixel with nearest-neighbour).
+function pix(w, h) {
+  const c = off(w, h), x = c.getContext("2d"), img = x.createImageData(w, h), d = img.data;
+  return {
+    w, h,
+    set(i, j, rgb, a = 1) { if (i < 0 || j < 0 || i >= w || j >= h || !rgb) return; const k = (j * w + i) * 4; d[k] = rgb[0]; d[k + 1] = rgb[1]; d[k + 2] = rgb[2]; d[k + 3] = Math.round(a * 255); },
+    done() { x.putImageData(img, 0, 0); return c; },
+  };
+}
+// A pixel blob made of circles (and an optional rectangle), with an outline and a shaded underside.
+function blob(w, h, circles, { fill, outline, shade, shadeFrom = 1, rect } = {}) {
+  const p = pix(w, h);
+  const inside = (i, j) => (rect && i >= rect[0] && i < rect[2] && j >= rect[1] && j < rect[3]) || circles.some(([cx, cy, r]) => (i + 0.5 - cx) ** 2 + (j + 0.5 - cy) ** 2 <= r * r);
+  for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+    if (inside(i, j)) p.set(i, j, shade && j >= h * shadeFrom ? shade : fill);
+    else if (outline && (inside(i - 1, j) || inside(i + 1, j) || inside(i, j - 1) || inside(i, j + 1))) p.set(i, j, outline);
+  }
+  return p.done();
+}
+const stamp = (dst, img, x, y) => dst.getContext("2d").drawImage(img, Math.round(x), Math.round(y));
+function line(p, [x0, y0], [x1, y1], col, a = 1) { // Bresenham, so strokes stay jaggy like a low-res stylus line
+  x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
+  const dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let e = dx + dy;
+  for (;;) { p.set(mod(x0, p.w), mod(y0, p.h), col, a); if (x0 === x1 && y0 === y1) break; const e2 = 2 * e; if (e2 >= dy) { e += dy; x0 += sx; } if (e2 <= dx) { e += dx; y0 += sy; } }
+}
+function circlesPath(ctx, list) { ctx.beginPath(); for (const [x, y, r] of list) { ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, Math.PI * 2); } }
+
+// ---------- layers: the only things a backdrop may do (mirrors what the app can do cheaply) ----------
+// fill  – a gradient brush (no bitmap)            tile  – a tiny bitmap tiled as a brush
+// still – a bitmap that never moves               drift – a bitmap that slides (and wraps), in whole steps
+// sway  – a bitmap that slides back and forth      flip  – pre-drawn frames shown one at a time (opacity swap)
+// spin  – a bitmap turned in fixed steps           blink – a bitmap switched on and off (opacity)
+const L = {
+  fill: (paint, o = {}) => ({ kind: "fill", paint, ...o }),
+  tile: (img, o = {}) => ({ kind: "tile", img, ...o }),
+  still: (img, o = {}) => ({ kind: "still", img, ...o }),
+  drift: (img, o = {}) => ({ kind: "drift", img, wrapX: true, ...o }),
+  sway: (img, o = {}) => ({ kind: "sway", img, ...o }),
+  flip: (frames, o = {}) => ({ kind: "flip", frames, ...o }),
+  spin: (img, o = {}) => ({ kind: "spin", img, ...o }),
+  blink: (img, o = {}) => ({ kind: "blink", img, ...o }),
+};
+const Fill = {
+  solid: (c) => (ctx) => { ctx.fillStyle = c; ctx.fillRect(0, 0, W, H); },
+  linear: (y0, y1, stops) => (ctx) => { const g = ctx.createLinearGradient(0, y0, 0, y1); stops.forEach(([o, c]) => g.addColorStop(o, c)); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); },
+  radial: (x, y, r, stops, sy = 1) => (ctx) => {
+    ctx.save(); ctx.translate(x, y); ctx.scale(1, sy);
+    const g = ctx.createRadialGradient(0, 0, 0, 0, 0, r); stops.forEach(([o, c]) => g.addColorStop(o, c));
+    ctx.fillStyle = g; ctx.fillRect(-x - 10, (-y - 10) / sy, W + 20, (H + 20) / sy); ctx.restore();
+  },
+};
+function drawLayer(ctx, l, t, tick) {
+  ctx.globalAlpha = l.alpha ?? 1;
+  ctx.imageSmoothingEnabled = !!l.smooth; ctx.imageSmoothingQuality = "high";
+  const s = l.s || 1, sx = l.sx || s, q = l.q || s, qz = (v) => Math.round(v / q) * q;
+  const put = (img, x, y) => ctx.drawImage(img, x, y, img.width * sx, img.height * s);
+  switch (l.kind) {
+    case "fill": l.paint(ctx); break;
+    case "tile": ctx.fillStyle = ctx.createPattern(l.img, "repeat"); ctx.fillRect(0, 0, W, H); break;
+    case "still": put(l.img, l.x || 0, l.y || 0); break;
+    case "drift": {
+      const w = l.img.width * sx, hh = l.img.height * s, dx = qz((l.vx || 0) * t), dy = qz((l.vy || 0) * t);
+      if (l.rot) { // a wall seen at an angle: slide along its own axis inside a rotated frame
+        ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(l.rot * Math.PI / 180);
+        const x0 = mod((l.x || 0) + dx, w) - w;
+        for (let x = x0 - Math.ceil(1400 / w) * w; x < 1400; x += w) put(l.img, x, l.y || 0);
+        ctx.restore(); break;
+      }
+      let x0 = (l.x || 0) + dx, y0 = (l.y || 0) + dy;
+      if (l.wrapX) x0 = mod(x0, w) - w; if (l.wrapY) y0 = mod(y0, hh) - hh;
+      for (let y = y0; ; y += hh) { for (let x = x0; ; x += w) { put(l.img, x, y); if (!l.wrapX || x + w >= W) break; } if (!l.wrapY || y + hh >= H) break; }
+      break;
+    }
+    case "sway": { const a = 2 * Math.PI * t / l.period + (l.phase || 0); put(l.img, (l.x || 0) + qz((l.ax || 0) * Math.sin(a)), (l.y || 0) + qz((l.ay || 0) * Math.sin(a * 1.27 + 1))); break; }
+    case "flip": put(l.frames[Math.floor(tick / (l.every || 1)) % l.frames.length], l.x || 0, l.y || 0); break;
+    case "spin": {
+      let deg = l.dps != null ? l.dps * t : l.swayDeg * Math.sin(2 * Math.PI * t / l.period); deg = Math.round(deg / l.step) * l.step;
+      const px = (l.px ?? l.img.width / 2) * s, py = (l.py ?? l.img.height / 2) * s;
+      ctx.save(); ctx.translate(l.cx, l.cy); ctx.rotate(deg * Math.PI / 180); ctx.drawImage(l.img, -px, -py, l.img.width * s, l.img.height * s); ctx.restore(); break;
+    }
+    case "blink": if (mod(t / l.period + (l.phase || 0), 1) < l.duty) put(l.img, l.x || 0, l.y || 0); break;
+  }
+  ctx.globalAlpha = 1;
+}
+function measure(layers, hz) {
+  const seen = new Set(); let bytes = 0, area = 0, moving = 0;
+  for (const l of layers) {
+    const imgs = l.frames || (l.img ? [l.img] : []);
+    for (const i of imgs) if (!seen.has(i)) { seen.add(i); bytes += i.width * i.height * 4; }
+    if (!["fill", "tile", "still"].includes(l.kind)) moving++;
+    if (l.kind === "fill" || l.kind === "tile" || l.kind === "spin" || l.rot) { area += W * H; continue; }
+    const im = imgs[0], s = l.s || 1, w = l.wrapX ? W : Math.min(W, im.width * (l.sx || s)), hh = l.wrapY ? H : Math.min(H, im.height * s);
+    area += w * hh;
+  }
+  return { layers: layers.length, moving, hz, kb: bytes / 1024, overdraw: area / (W * H) };
+}
+
+// ---------- the backdrops ----------
+const BACKDROPS = [];
+const def = (o) => BACKDROPS.push(o);
+
+def({ id: "horizon", name: "8-bit horizon", for: "nes", hz: 4, cost: "low",
+  borrows: "8-bit side-scrollers: a dithered sky, three bands of stepped hills that scroll at different speeds, outlined clouds. Drawn at 240×135 and shown at 8 px a pixel, so every pixel is a real pixel and nothing is smoothed.",
+  avoids: "Blocks, pipes, characters and items from any game. The hills and clouds are generic shapes in shades of the system colour.",
+  thor: "One small sky bitmap plus four strips that step left by a whole 8 px pixel, at most 4 times a second. Nearest-neighbour scaling keeps every bitmap tiny.",
+  build({ h }) {
+    const s = 8, aw = 240, ah = 135, pal = [hslRgb(h, 40, 95), hslRgb(h, 42, 89), hslRgb(h, 45, 82)];
+    const sky = pix(aw, ah);
+    for (let j = 0; j < ah; j++) for (let i = 0; i < aw; i++) sky.set(i, j, pal[dith(clamp(1 - j / 72, 0, 1) * 2, i, j, 2)]);
+    const hill = (base, amp, f1, f2, seed, col, edge, dot) => {
+      const p = pix(480, ah);
+      for (let i = 0; i < 480; i++) {
+        const a = i / 480 * Math.PI * 2, y = Math.round((base - amp * (0.6 * Math.sin(a * f1 + seed) + 0.4 * Math.sin(a * f2 + seed * 2.1))) / 2) * 2;
+        for (let j = Math.max(0, y); j < ah; j++) p.set(i, j, j === y ? edge : dot && j > y + 3 && (i * 5 + j * 3) % 13 === 0 ? dot : col);
+      }
+      return p.done();
+    };
+    const white = hslRgb(h, 40, 99);
+    const cloud = blob(30, 13, [[7, 7, 4], [13, 5.5, 5], [20, 6, 4.5], [25, 8, 3]], { fill: white, outline: pal[2], rect: [5, 6, 27, 11] });
+    const small = blob(18, 10, [[5, 5, 3.5], [10, 4, 4], [14, 6, 3]], { fill: white, outline: pal[2], rect: [3, 5, 16, 8] });
+    const clouds = off(480, ah); [[cloud, 30, 14], [small, 130, 30], [cloud, 250, 8], [small, 330, 40], [cloud, 410, 24]].forEach(([c, x, y]) => stamp(clouds, c, x, y));
+    return [
+      L.still(sky.done(), { s }),
+      L.drift(clouds, { s, vx: -4 }),
+      L.drift(hill(100, 10, 3, 7, 1, hslRgb(h, 30, 86), hslRgb(h, 30, 91)), { s, vx: -8 }),
+      L.drift(hill(111, 8, 4, 9, 2, hslRgb(h, 34, 78), hslRgb(h, 34, 84), hslRgb(h, 36, 73)), { s, vx: -16 }),
+      L.drift(hill(123, 6, 5, 11, 3, hslRgb(h, 38, 70), hslRgb(h, 38, 76), hslRgb(h, 40, 64)), { s, vx: -32 }),
+    ];
+  } });
+
+def({ id: "mode7", name: "Mode 7 floor", for: "snes", hz: 4, cost: "low",
+  borrows: "16-bit Mode 7: a tiled floor in perspective running toward you, under a banded sky gradient (the HDMA look of the era), with see-through clouds and a far ridge. Drawn at 320×180, 6 px a pixel, in 15-bit colour.",
+  avoids: "Race tracks, karts and maps from any game. The floor is a plain two-tone checker that fades into the horizon.",
+  thor: "A perspective floor can't be faked by sliding one picture, so it is six pre-drawn frames shown in turn: one visible at a time, swapped by opacity 4 times a second. About 0.6 MB in all.",
+  build({ h }) {
+    const s = 6, aw = 320, hz0 = 104, top = hslRgb(h, 46, 80), hor = hslRgb(h, 38, 95);
+    const sky = pix(aw, hz0);
+    for (let j = 0; j < hz0; j++) { const c = q5(mix(top, hor, Math.pow(j / (hz0 - 1), 0.8))); for (let i = 0; i < aw; i++) sky.set(i, j, c); }
+    const ridge = pix(640, hz0), rc = hslRgb(h, 26, 88), re = hslRgb(h, 26, 92);
+    for (let i = 0; i < 640; i++) { const a = i / 640 * Math.PI * 2; const y = Math.round(hz0 - 7 - 4 * Math.sin(a * 3 + 1) - 3 * Math.sin(a * 8 + 2) - 1.5 * Math.sin(a * 19)); for (let j = y; j < hz0; j++) ridge.set(i, j, j === y ? re : rc); }
+    const clouds = off(640, hz0), cw = hslRgb(h, 40, 99);
+    [[40, 18, 34], [170, 40, 22], [300, 12, 40], [430, 52, 26], [540, 26, 30]].forEach(([x, y, w]) => {
+      const b = blob(w, Math.round(w * 0.42), [[w * 0.25, w * 0.25, w * 0.15], [w * 0.5, w * 0.19, w * 0.19], [w * 0.75, w * 0.25, w * 0.14]], { fill: cw, rect: [Math.round(w * 0.12), Math.round(w * 0.24), Math.round(w * 0.9), Math.round(w * 0.38)] });
+      stamp(clouds, b, x, y);
+    });
+    const c0 = hslRgb(h, 34, 90), c1 = hslRgb(h, 38, 84), cl = hslRgb(h, 42, 78), T = 32, F = 20, rows = 180 - hz0, frames = [];
+    for (let f = 0; f < 6; f++) {
+      const p = pix(aw, rows);
+      for (let r = 0; r < rows; r++) {
+        const z = 1200 / (r + 1.5), fog = Math.pow(clamp((z - 40) / 500, 0, 1), 0.6);
+        for (let i = 0; i < aw; i++) {
+          const ux = ((i - 160) * z / F + 1000) / T, uz = (z + f / 6 * 2 * T + 1000) / T, cx = Math.floor(ux), cz = Math.floor(uz);
+          let c = (cx + cz) & 1 ? c1 : c0; if (ux - cx < 0.07 || uz - cz < 0.07) c = cl;
+          p.set(i, r, q5(mix(c, hor, fog)));
+        }
+      }
+      frames.push(p.done());
+    }
+    return [L.still(sky.done(), { s }), L.drift(ridge.done(), { s, vx: -6 }), L.drift(clouds, { s, vx: -12, alpha: 0.55 }), L.flip(frames, { s, y: hz0 * s, every: 1 })];
+  } });
+
+def({ id: "overworld", name: "Four-shade overworld", for: "gbc", hz: 2, cost: "low",
+  borrows: "Handheld top-down RPG maps: an 8×8 tile grid in one four-shade palette, a ring of trees, a pond and flowers whose tiles swap between two frames, the way handheld tile animation worked. 160 pixels across, 12 px a pixel.",
+  avoids: "Maps, buildings and creatures from any game. The tiles are drawn here, and the clearing in the middle stays empty.",
+  thor: "Nothing scrolls. One 160×96 bitmap, plus a two-frame overlay for the water and flowers swapped twice a second. The cheapest option on the page.",
+  build({ h }) {
+    const s = 12, S = [hslRgb(h, 36, 95), hslRgb(h, 34, 85), hslRgb(h, 40, 67), hslRgb(h, 45, 40)];
+    const FL = [null, hslRgb(h + 165, 60, 82), hslRgb(48, 85, 74), S[3]];
+    const TL = {
+      tuftA: ["........", "........", "..1.....", ".1.1....", "......1.", ".....1.1", "........", "........"],
+      tuftB: ["........", ".....1..", "....1.1.", "........", ".1......", "1.1.....", "........", "........"],
+      tall: ["11111111", "12111121", "21211212", "11111111", "11121111", "11212111", "12111121", "21211212"],
+      waterA: ["11111111", "11111111", "12211111", "21121111", "11111111", "11111221", "11112112", "11111111"],
+      waterB: ["11111111", "11111111", "11122111", "11211211", "11111111", "12211111", "21121111", "11111111"],
+      flowerA: ["........", "...1....", "..121...", "...1....", "........", "......1.", ".....121", "......1."],
+      flowerB: ["........", "..1.1...", "...2....", "..1.1...", "........", ".....1.1", "......2.", ".....1.1"],
+    };
+    const tile = (p, rows, pal, tx, ty) => rows.forEach((r, j) => [...r].forEach((ch, i) => { if (ch !== ".") p.set(tx * 8 + i, ty * 8 + j, pal[+ch]); }));
+    const base = pix(160, 96), A = pix(160, 96), B = pix(160, 96), r = rng(11);
+    for (let j = 0; j < 96; j++) for (let i = 0; i < 160; i++) base.set(i, j, S[0]);
+    const clear = (tx, ty) => tx >= 6 && tx <= 13 && ty >= 1 && ty <= 8;
+    for (let ty = 0; ty < 12; ty++) for (let tx = 0; tx < 20; tx++) { if (clear(tx, ty)) continue; const v = r(); if (v < 0.2) tile(base, TL.tuftA, S, tx, ty); else if (v < 0.36) tile(base, TL.tuftB, S, tx, ty); }
+    // A round pond: water tiles masked to an ellipse, with a one-pixel shore drawn on the map.
+    const pond = [12, 1, 15, 3], pcx = 112, pcy = 20, prx = 16.5, pry = 12.5;
+    const inPond = (i, j) => ((i + 0.5 - pcx) / prx) ** 2 + ((j + 0.5 - pcy) / pry) ** 2;
+    for (let ty = pond[1]; ty <= pond[3]; ty++) for (let tx = pond[0]; tx <= pond[2]; tx++) { tile(A, TL.waterA, S, tx, ty); tile(B, TL.waterB, S, tx, ty); }
+    for (let j = 0; j < 40; j++) for (let i = 88; i < 136; i++) { const v = inPond(i, j); if (v > 1) { A.set(i, j, S[0], 0); B.set(i, j, S[0], 0); if (v <= 1.3) base.set(i, j, S[2]); } }
+    for (const [tx, ty] of [[4, 2], [5, 7], [3, 9], [15, 10], [12, 10], [16, 5], [2, 1], [7, 10], [14, 5]]) { tile(A, TL.flowerA, FL, tx, ty); tile(B, TL.flowerB, FL, tx, ty); }
+    const tree = (tx, ty) => {
+      const x = tx * 8, y = ty * 8;
+      for (let j = 0; j < 16; j++) for (let i = 0; i < 16; i++) {
+        const d = Math.hypot(i + 0.5 - 8, j + 0.5 - 7);
+        if (d < 6.5) base.set(x + i, y + j, d < 5.2 && i < 8 && j < 7 && (i + j) % 3 === 0 ? S[1] : S[2]);
+        else if (d < 7.5 && j < 13) base.set(x + i, y + j, S[3]);
+      }
+      for (let j = 13; j < 16; j++) for (let i = 6; i < 10; i++) base.set(x + i, y + j, S[3]);
+    };
+    [[0, 0], [0, 2], [0, 4], [0, 6], [0, 8], [0, 10], [18, 0], [18, 2], [18, 4], [18, 6], [18, 8], [18, 10], [2, 0], [2, 10], [16, 10], [4, 11]].forEach(([x, y]) => tree(x, y));
+    return [L.still(base.done(), { s }), L.flip([A.done(), B.done()], { s, every: 1 })];
+  } });
+
+def({ id: "cloudlevel", name: "Bright sky layers", for: "gba", hz: 4, cost: "low",
+  borrows: "32-bit handheld sky stages: bright, saturated colour (the screen had no backlight, so games went bright), bold outlined clouds on separate layers each scrolling at its own speed, and twinkling sparkles. 240 pixels across, 8 px a pixel.",
+  avoids: "Characters, rings and collectibles. The sparkles are plain four-point stars.",
+  thor: "One sky bitmap, three cloud strips stepping 8 px at a time, and two sparkle layers switched on and off by opacity.",
+  build({ h }) {
+    const s = 8, aw = 240, ah = 135, top = hslRgb(h, 60, 80), bot = hslRgb(h + 25, 62, 90);
+    const sky = pix(aw, ah); for (let j = 0; j < ah; j++) { const c = q5(mix(top, bot, j / (ah - 1))); for (let i = 0; i < aw; i++) sky.set(i, j, c); }
+    const ol = hslRgb(h, 45, 55), wh = hslRgb(h, 60, 99), sh = hslRgb(h, 50, 89);
+    const big = blob(44, 20, [[10, 12, 6.5], [20, 8, 7.5], [31, 9, 7], [38, 13, 4.5]], { fill: wh, outline: ol, shade: sh, shadeFrom: 0.62, rect: [5, 12, 41, 18] });
+    const med = blob(30, 14, [[8, 8, 4.5], [15, 6, 5], [22, 8, 4.5]], { fill: wh, outline: ol, shade: sh, shadeFrom: 0.62, rect: [4, 8, 27, 12] });
+    const farC = blob(20, 9, [[6, 5, 3.2], [11, 4, 3.6], [15, 5.5, 2.6]], { fill: hslRgb(h, 55, 97), outline: hslRgb(h, 40, 80), rect: [3, 5, 18, 8] });
+    const farL = off(480, ah); [[20, 44], [110, 70], [200, 36], [290, 62], [380, 48], [450, 80]].forEach(([x, y]) => stamp(farL, farC, x, y));
+    const nearL = off(480, ah); [[10, 6, big], [150, 14, med], [260, 4, big], [400, 18, med], [90, 92, med], [330, 96, big]].forEach(([x, y, c]) => stamp(nearL, c, x, y));
+    const seaC = []; for (let k = 0; k < 24; k++) { const c = [k * 20 + 10, 122 + 4 * Math.sin(k * 1.7), 9 + 3 * Math.sin(k * 2.3)]; seaC.push(c); if (k < 2) seaC.push([c[0] + 480, c[1], c[2]]); if (k > 21) seaC.push([c[0] - 480, c[1], c[2]]); }
+    const sea = blob(480, ah, seaC, { fill: wh, outline: ol, shade: sh, shadeFrom: 0.96, rect: [0, 124, 480, ah + 1] });
+    const spark = (pos) => { const p = pix(aw, ah), a = hslRgb(h + 40, 70, 68), w2 = [255, 255, 255]; for (const [x, y] of pos) { [[0, -2], [0, -1], [-2, 0], [-1, 0], [1, 0], [2, 0], [0, 1], [0, 2]].forEach(([dx, dy]) => p.set(x + dx, y + dy, a)); p.set(x, y, w2); } return p.done(); };
+    return [
+      L.still(sky.done(), { s }),
+      L.drift(farL, { s, vx: -8 }),
+      L.drift(nearL, { s, vx: -16 }),
+      L.drift(sea, { s, vx: -32 }),
+      L.blink(spark([[30, 30], [200, 24], [60, 100], [215, 90], [120, 12]]), { s, period: 2, duty: 0.5 }),
+      L.blink(spark([[90, 40], [170, 60], [20, 70], [228, 50], [150, 108]]), { s, period: 2, duty: 0.5, phase: 0.5 }),
+    ];
+  } });
+
+def({ id: "toon", name: "Cel-shaded sky", for: "gamecube", hz: 4, cost: "low",
+  borrows: "Early-2000s cel shading: a sky in hard colour bands, flat clouds with one hard shadow, a toon sea with white wave crests, and a flat sun with stepped rings.",
+  avoids: "Islands, boats, characters and the curled clouds of any one game. The console's menu is not referenced.",
+  thor: "The sky is one half-resolution bitmap. Clouds and wave crests are two strips drifting 2 px at a time, 4 times a second.",
+  build({ h }) {
+    const s = 2, w = 960, hh = 540, sky = off(w, hh), x = sky.getContext("2d");
+    x.fillStyle = hsl(h, 46, 83); x.fillRect(0, 0, w, hh);
+    const band = (y0, amp, col) => { x.fillStyle = col; x.beginPath(); x.moveTo(0, hh); for (let i = 0; i <= w; i += 8) x.lineTo(i, y0 + amp * Math.sin(i / w * Math.PI * 3 + y0)); x.lineTo(w, hh); x.closePath(); x.fill(); };
+    band(120, 10, hsl(h, 42, 89)); band(240, 8, hsl(h, 38, 94));
+    [[74, hsl(48, 95, 95, 0.35)], [54, hsl(48, 95, 95, 0.55)], [36, hsl(48, 100, 96)]].forEach(([r, c]) => { x.fillStyle = c; circlesPath(x, [[800, 80, r]]); x.fill(); });
+    const hor = 390; x.fillStyle = hsl(h, 42, 83); x.fillRect(0, hor, w, hh - hor); x.fillStyle = hsl(h, 46, 79); x.fillRect(0, 470, w, hh - 470); x.fillStyle = hsl(h, 36, 94); x.fillRect(0, hor, w, 4);
+    const waves = off(w, 150), wx = waves.getContext("2d"), wr = rng(14); wx.strokeStyle = "rgba(255,255,255,.8)"; wx.lineCap = "round";
+    for (let k = 0; k < 7; k++) {
+      const y0 = 6 + 136 * Math.pow(k / 6, 1.6), Lw = 10 + k * 8, sp = 90 + k * 45; wx.lineWidth = 1.5 + k * 0.8;
+      for (let cx = wr() * sp; cx < w; cx += sp * (0.7 + wr() * 0.8)) {
+        if (wr() < 0.3) continue; const y = y0 + (wr() - 0.5) * (4 + k * 3);
+        for (const ox of [0, -w, w]) { wx.beginPath(); wx.ellipse(cx + ox, y, Lw, Lw * 0.25, 0, Math.PI * 1.1, Math.PI * 1.9); wx.stroke(); }
+      }
+    }
+    const clouds = off(1920, 260), cx2 = clouds.getContext("2d");
+    const toon = (cx, cy, sc) => {
+      const parts = [[-60, 10, 40], [-20, -12, 52], [30, -6, 46], [70, 12, 34], [0, 16, 40]].map(([a, b, r]) => [cx + a * sc, cy + b * sc, r * sc]);
+      cx2.save(); cx2.beginPath(); cx2.rect(0, 0, 1920, cy + 30 * sc); cx2.clip();
+      circlesPath(cx2, parts); cx2.fillStyle = hsl(h, 36, 90); cx2.fill(); cx2.clip();
+      circlesPath(cx2, parts.map(([a, b, r]) => [a - 8 * sc, b - 12 * sc, r])); cx2.fillStyle = "#fff"; cx2.fill(); cx2.restore();
+    };
+    [[160, 100, 1], [560, 70, 0.8], [900, 130, 1.1], [1300, 80, 0.9], [1650, 120, 1]].forEach(([a, b, c]) => toon(a, b, c));
+    return [L.still(sky, { s, smooth: true }), L.drift(clouds, { s, smooth: true, vx: -4, q: 2 }), L.drift(waves, { s, smooth: true, y: hor * s, vx: -6, q: 2 })];
+  } });
+
+def({ id: "doodle", name: "Doodle notebook", for: "nds", hz: 4, cost: "low",
+  borrows: "Stylus-era handheld games that look drawn on paper: a ruled notebook page with pen doodles (stars, spirals, arrows, planets) in jaggy low-res lines, on two layers drifting at different speeds for depth.",
+  avoids: "Characters and drawings from any game, and the console's menu. The doodles are simple shapes.",
+  thor: "The ruled lines are a 4×54 tile. Two doodle layers, at 4 px and 6 px a pixel, drift diagonally one pixel at a time. Very light.",
+  build({ h }) {
+    const lines = off(4, 54), lx = lines.getContext("2d"); lx.fillStyle = hsl(h, 45, 62, 0.2); lx.fillRect(0, 51, 4, 2);
+    const shapes = [
+      () => [Array.from({ length: 11 }, (_, k) => { const r = k % 2 ? 0.42 : 1, a = -Math.PI / 2 + k * Math.PI / 5; return [r * Math.cos(a), r * Math.sin(a)]; })],
+      () => [Array.from({ length: 64 }, (_, k) => { const t = k / 63 * 4 * Math.PI, r = t / (4 * Math.PI); return [r * Math.cos(t), r * Math.sin(t)]; })],
+      () => [[[-1, 0.3], [1, -0.3]], [[0.55, -0.62], [1, -0.3], [0.68, 0.12]]],
+      () => [Array.from({ length: 41 }, (_, k) => { const x = -1 + k / 20; return [x, 0.35 * Math.sin(x * 9)]; })],
+      () => [Array.from({ length: 33 }, (_, k) => { const a = k / 32 * Math.PI * 2; return [0.55 * Math.cos(a), 0.55 * Math.sin(a)]; }), Array.from({ length: 41 }, (_, k) => { const a = k / 40 * Math.PI * 2, ex = Math.cos(a), ey = 0.28 * Math.sin(a); return [ex * Math.cos(-0.3) - ey * Math.sin(-0.3), ex * Math.sin(-0.3) + ey * Math.cos(-0.3)]; })],
+      () => [Array.from({ length: 41 }, (_, k) => { const t = k / 40 * Math.PI * 2; return [16 * Math.sin(t) ** 3 / 17, -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) / 17]; })],
+      () => [[[0.3, -1], [-0.4, 0.1], [0.15, 0.05], [-0.3, 1]]],
+      () => [Array.from({ length: 60 }, (_, k) => { const t = k / 59 * 6 * Math.PI; return [-1 + t / (3 * Math.PI) - 0.18 * Math.sin(t), -0.3 * Math.cos(t)]; })],
+      () => [[[-1, 0], [1, 0]], [[0, -1], [0, 1]], [[-0.5, -0.5], [0.5, 0.5]], [[-0.5, 0.5], [0.5, -0.5]]],
+    ];
+    const layer = (aw, ah, count, rMin, rMax, ink, seed) => {
+      const p = pix(aw, ah), r = rng(seed), placed = [];
+      for (let n = 0, tries = 0; n < count && tries < 400; tries++) {
+        const x = r() * aw, y = r() * ah, rad = rMin + r() * (rMax - rMin);
+        if (placed.some(([a, b]) => Math.hypot(Math.min(Math.abs(a - x), aw - Math.abs(a - x)), Math.min(Math.abs(b - y), ah - Math.abs(b - y))) < (rMax * 2.6))) continue;
+        placed.push([x, y]); n++;
+        const rot = r() * Math.PI * 2, polys = shapes[(n * 4 + seed) % shapes.length]();
+        for (const poly of polys) for (let k = 1; k < poly.length; k++) {
+          const tf = ([u, v]) => [x + rad * (u * Math.cos(rot) - v * Math.sin(rot)), y + rad * (u * Math.sin(rot) + v * Math.cos(rot))];
+          line(p, tf(poly[k - 1]), tf(poly[k]), ink);
+        }
+      }
+      return p.done();
+    };
+    return [
+      L.fill(Fill.radial(960, 470, 1300, [[0, hsl(h, 30, 98)], [1, hsl(h, 30, 94)]], 0.7)),
+      L.tile(lines),
+      L.fill((ctx) => { ctx.fillStyle = hsl(355, 65, 64, 0.3); ctx.fillRect(210, 0, 3, H); }),
+      L.drift(layer(480, 270, 10, 10, 17, hslRgb(h, 40, 74), 3), { s: 4, vx: -4, vy: -4, wrapY: true, alpha: 0.6 }),
+      L.drift(layer(320, 180, 7, 12, 19, hslRgb(h, 50, 56), 5), { s: 6, vx: -12, vy: -6, wrapY: true, alpha: 0.55 }),
+    ];
+  } });
+
+def({ id: "diorama", name: "Paper diorama", for: "3ds", hz: 4, cost: "medium",
+  borrows: "Stereoscopic-era papercraft stages: flat cut-out layers framing the edges, each casting a soft shadow on the one behind, swaying by different amounts as if you were tilting the 3D view.",
+  avoids: "Characters, stickers and props from any game, and the console's home menu.",
+  thor: "Seven cut-out layers with their shadows baked in when the backdrop is built; each sways at most 24 px, stepped 4 times a second. Cropped to their shapes at half resolution.",
+  build({ h }) {
+    const s = 2;
+    const cut = (w, hh, circles, col, rect) => {
+      const c = off(w, hh), x = c.getContext("2d");
+      x.shadowColor = "rgba(40,20,40,.22)"; x.shadowBlur = 14; x.shadowOffsetX = 6; x.shadowOffsetY = 10;
+      circlesPath(x, circles); if (rect) x.rect(...rect); x.fillStyle = col; x.fill("nonzero"); return c;
+    };
+    const mirror = (list) => list.map(([x, y, r]) => [360 - x, y, r]);
+    const planes = [
+      { col: hsl(h, 30, 88), ax: 6, L: [[30, 250, 110], [140, 330, 100], [40, 420, 130], [200, 470, 90]], rect: [0, 420, 140, 140] },
+      { col: hsl(h - 8, 34, 81), ax: 14, L: [[0, 330, 120], [110, 420, 100], [20, 500, 110], [230, 520, 70]], rect: [0, 480, 200, 80] },
+      { col: hsl(h - 16, 38, 74), ax: 24, L: [[-20, 430, 110], [90, 500, 90], [200, 545, 70]] },
+    ];
+    const layers = [L.fill(Fill.linear(0, H, [[0, hsl(h, 42, 95)], [1, hsl(h, 36, 89)]])), L.fill(Fill.radial(960, 470, 760, [[0, hsl(h, 40, 98, 0.8)], [1, hsl(h, 40, 98, 0)]], 0.75))];
+    planes.forEach((p, k) => {
+      const o = { s, smooth: true, ax: p.ax, period: 14, q: 2 };
+      const rectR = p.rect ? [360 - p.rect[0] - p.rect[2], p.rect[1], p.rect[2], p.rect[3]] : null;
+      layers.push(L.sway(cut(360, 560, p.L, p.col, p.rect), { ...o, x: -40 }), L.sway(cut(360, 560, mirror(p.L), p.col, rectR), { ...o, x: W - 680 }));
+      if (k === 1) { // paper clouds hang in the middle plane
+        const cl = off(960, 160), cx = cl.getContext("2d"); cx.shadowColor = "rgba(40,20,40,.18)"; cx.shadowBlur = 12; cx.shadowOffsetX = 5; cx.shadowOffsetY = 8;
+        for (const [x0, y0, sc] of [[190, 70, 1], [770, 56, 0.85], [480, 30, 0.6]]) { circlesPath(cx, [[x0 - 34 * sc, y0, 24 * sc], [x0, y0 - 10 * sc, 32 * sc], [x0 + 36 * sc, y0, 22 * sc]]); cx.rect(x0 - 58 * sc, y0, 116 * sc, 22 * sc); cx.fillStyle = hsl(h, 40, 98); cx.fill(); }
+        layers.push(L.sway(cl, { ...o, y: 0 }));
+      }
+      if (k === 2) { // the near plane's scalloped ground strip
+        const st = off(1000, 110), sx = st.getContext("2d"); sx.shadowColor = "rgba(40,20,40,.22)"; sx.shadowBlur = 14; sx.shadowOffsetY = -6;
+        const sc = []; for (let i = 0; i <= 1000; i += 70) sc.push([i, 70, 48]); circlesPath(sx, sc); sx.rect(0, 70, 1000, 40); sx.fillStyle = p.col; sx.fill();
+        layers.push(L.sway(st, { ...o, x: -40, y: H - 220 }));
+      }
+    });
+    return layers;
+  } });
+
+def({ id: "raster", name: "Line-scroll sea", for: "megadrive", hz: 6, cost: "medium",
+  borrows: "16-bit line-scroll parallax: a sky in hard colour bands and a sea cut into twenty strips, each scrolling faster than the one above, so the water seems to come toward you. Streaky clouds do the same overhead. 320×180, 6 px a pixel.",
+  avoids: "Stages, ships and characters from any game. The shapes are streaks and dashes.",
+  thor: "The most moving parts on the page: 25 thin strips, each a tiny bitmap stepped by a whole 6 px pixel, 6 times a second. Every step is 25 offset changes, but nothing is redrawn.",
+  build({ h }) {
+    const s = 6, aw = 320, sky = pix(aw, 100);
+    for (let b = 0; b < 10; b++) { const c = mix(hslRgb(h, 40, 80), hslRgb(h, 30, 95), b / 9); for (let j = b * 10; j < b * 10 + 10; j++) for (let i = 0; i < aw; i++) sky.set(i, j, c); }
+    const layers = [L.still(sky.done(), { s })];
+    [[8, 18, -18], [20, 30, -12], [32, 42, -9], [44, 54, -6], [56, 64, -4]].forEach(([y0, y1, v], k) => {
+      const p = pix(640, y1 - y0), r = rng(20 + k), wh = hslRgb(h, 30, 99), sh = hslRgb(h, 32, 88);
+      for (let n = 0; n < 6; n++) { const x0 = Math.floor(r() * 640), len = 24 + Math.floor(r() * 56), y = 1 + Math.floor(r() * (y1 - y0 - 4)); for (let i = 0; i < len; i++) { const xx = mod(x0 + i, 640); if (i > 3 && i < len - 3) p.set(xx, y, wh); p.set(xx, y + 1, wh); p.set(xx, y + 2, sh); } }
+      layers.push(L.drift(p.done(), { s, y: y0 * s, vx: v }));
+    });
+    const isl = pix(640, 10), ic = hslRgb(h, 30, 82);
+    for (const [cx, wd] of [[60, 30], [250, 18], [420, 40], [560, 22]]) for (let i = -wd; i <= wd; i++) { const top = Math.round(10 - 8 * Math.sqrt(1 - (i / wd) ** 2)); for (let j = top; j < 10; j++) isl.set(cx + i, j, ic); }
+    layers.push(L.drift(isl.done(), { s, y: 90 * s, vx: -2 }));
+    for (let k = 0; k < 20; k++) {
+      const p = pix(640, 4), base = mix(hslRgb(h, 32, 88), hslRgb(h, 38, 74), k / 19), hi = hslRgb(h, 30, 95), r = rng(50 + k);
+      for (let j = 0; j < 4; j++) for (let i = 0; i < 640; i++) p.set(i, j, base);
+      for (let n = 0; n < 10 + k; n++) { const x0 = Math.floor(r() * 640), len = 2 + Math.floor(r() * (3 + k * 0.4)), y = 1 + (n % 2); for (let i = 0; i < len; i++) p.set(mod(x0 + i, 640), y, hi); }
+      layers.push(L.drift(p.done(), { s, y: (100 + k * 4) * s, vx: -(3 + k * 2) }));
+    }
+    return layers;
+  } });
+
+def({ id: "sunburst", name: "Sunburst halftone", for: "dreamcast", hz: 3, cost: "medium",
+  borrows: "Late-90s arcade-bright graphics: a warm sunburst of rays turning slowly behind the folder, and halftone dots fading in from the corners, like the poster-bright, sunny look of that generation.",
+  avoids: "The console's swirl or any other mark, characters, and graffiti from any game.",
+  thor: "One ray bitmap turned 0.5° at a time, 3 times a second, plus one still halftone layer. Turning resamples one large layer, so this is the costliest of the turning options; the turn can be switched off.",
+  build({ h }) {
+    const s = 2, R = 600, rays = off(R * 2, R * 2), x = rays.getContext("2d");
+    x.translate(R, R); x.fillStyle = hsl(h, 90, 84, 0.5);
+    for (let k = 0; k < 20; k += 2) { const a0 = k / 20 * Math.PI * 2, a1 = (k + 1) / 20 * Math.PI * 2; x.beginPath(); x.moveTo(0, 0); x.arc(0, 0, R, a0, a1); x.closePath(); x.fill(); }
+    x.globalCompositeOperation = "destination-in";
+    const m = x.createRadialGradient(0, 0, 0, 0, 0, R); m.addColorStop(0, "rgba(0,0,0,0)"); m.addColorStop(150 / R, "rgba(0,0,0,0)"); m.addColorStop(330 / R, "rgba(0,0,0,1)"); m.addColorStop(1, "rgba(0,0,0,1)");
+    x.fillStyle = m; x.fillRect(-R, -R, R * 2, R * 2);
+    const ht = off(960, 540), hx = ht.getContext("2d"); hx.fillStyle = hsl(h, 85, 78, 0.6);
+    for (let row = 0, y = 0; y < 540 + 14; row++, y += 12) for (let xx = (row % 2) * 7; xx < 960 + 14; xx += 14) {
+      const d = Math.hypot((xx - 480) / 480, (y - 235) / 300), r = clamp((d - 0.75) / 0.5, 0, 1) * 6.2;
+      if (r > 0.5) { hx.beginPath(); hx.arc(xx, y, r, 0, Math.PI * 2); hx.fill(); }
+    }
+    return [
+      L.fill(Fill.radial(960, 470, 1150, [[0, hsl(h, 85, 96)], [1, hsl(h, 75, 90)]], 0.8)),
+      L.spin(rays, { s, smooth: true, cx: 960, cy: 470, dps: 1.5, step: 0.5 }),
+      L.still(ht, { s, smooth: true }),
+    ];
+  } });
+
+def({ id: "lowpoly", name: "Wobbly low-poly field", for: "playstation", hz: 4, cost: "low",
+  borrows: "32-bit 3D: a low-poly field of textured triangles whose textures bend at the seams (affine mapping), vertices snapping to whole pixels so the field wobbles, fog to the horizon, and the ordered dithering of 15-bit colour. 320×180, 6 px a pixel.",
+  avoids: "Levels and characters from any game, and the boot or memory-card screens.",
+  thor: "Four pre-drawn 320×180 frames of a slight camera sway, shown in turn twice a second; the swap is what makes the wobble. About 0.9 MB in all.",
+  build({ h }) {
+    const s = 6, aw = 320, ah = 180, hor = 92, F = 110, camH = 1.6, frames = [];
+    const tex = off(16, 16), tx = tex.getContext("2d");
+    tx.fillStyle = hsl(h, 26, 80); tx.fillRect(0, 0, 16, 16); tx.fillStyle = hsl(h, 28, 72); tx.fillRect(0, 0, 8, 8); tx.fillRect(8, 8, 8, 8);
+    tx.fillStyle = hsl(h, 30, 62); [[2, 3], [11, 2], [5, 12], [13, 11], [9, 6]].forEach(([a, b]) => tx.fillRect(a, b, 1, 2)); tx.fillStyle = hsl(h, 22, 92); [[3, 10], [12, 5]].forEach(([a, b]) => tx.fillRect(a, b, 2, 1));
+    const skyTop = hsl(h, 26, 84), skyHor = hslRgb(h, 20, 95);
+    const height = (X, Z) => 0.35 * (Math.sin(X * 0.7 + Z * 0.3) + Math.sin(Z * 0.9 - X * 0.4)) + 0.15 * Math.sin(X * 1.7);
+    const Zs = [1.4, 1.9, 2.5, 3.2, 4, 5, 6.2, 7.6, 9.2, 11, 13, 15.5];
+    const peaks = (() => { const r = rng(9), list = []; for (let x = -10; x <= 340; x += 20) list.push([x, 76 + r() * 12]); return list; })();
+    const tri = (x, P, T, shade, fog) => {
+      x.save(); x.beginPath(); x.moveTo(...P[0]); x.lineTo(...P[1]); x.lineTo(...P[2]); x.closePath();
+      x.fillStyle = hsl(h, 27, 76); x.strokeStyle = x.fillStyle; x.lineWidth = 0.8; x.fill(); x.stroke(); x.clip();
+      const [[u0, v0], [u1, v1], [u2, v2]] = T, [[x0, y0], [x1, y1], [x2, y2]] = P, det = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0);
+      const a = ((x1 - x0) * (v2 - v0) - (x2 - x0) * (v1 - v0)) / det, b = ((x2 - x0) * (u1 - u0) - (x1 - x0) * (u2 - u0)) / det;
+      const c = ((y1 - y0) * (v2 - v0) - (y2 - y0) * (v1 - v0)) / det, d = ((y2 - y0) * (u1 - u0) - (y1 - y0) * (u2 - u0)) / det;
+      x.setTransform(a, c, b, d, x0 - a * u0 - b * v0, y0 - c * u0 - d * v0); x.drawImage(tex, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0);
+      x.fillStyle = shade; x.fillRect(0, 0, aw, ah); x.fillStyle = css(skyHor, fog); x.fillRect(0, 0, aw, ah); x.restore();
+    };
+    for (let f = 0; f < 4; f++) {
+      const c = off(aw, ah), x = c.getContext("2d"), camX = 0.02 * Math.sin(f / 4 * Math.PI * 2);
+      const g = x.createLinearGradient(0, 0, 0, hor); g.addColorStop(0, skyTop); g.addColorStop(1, css(skyHor)); x.fillStyle = g; x.fillRect(0, 0, aw, hor); x.fillStyle = css(skyHor); x.fillRect(0, hor, aw, ah - hor);
+      for (let k = 0; k < peaks.length - 1; k++) { const [ax, ay] = peaks[k], [bx] = peaks[k + 1], mx = (ax + bx) / 2; x.fillStyle = hsl(h, 18, k % 2 ? 86 : 83); x.beginPath(); x.moveTo(ax - 10, 98); x.lineTo(ax, Math.round(ay)); x.lineTo(mx + 6, 98); x.fill(); x.fillStyle = hsl(h, 20, 88); x.beginPath(); x.moveTo(ax, Math.round(ay)); x.lineTo(mx + 6, 98); x.lineTo(bx, 98); x.fill(); }
+      const proj = (X, Z) => [Math.round(160 + (X - camX) * F / Z), Math.round(hor + (camH - height(X, Z)) * F / Z)];
+      for (let zi = Zs.length - 2; zi >= 0; zi--) {
+        const Z0 = Zs[zi], Z1 = Zs[zi + 1], fog = Math.pow(clamp(((Z0 + Z1) / 2 - 3.5) / 12, 0, 1), 1.2) * 0.8;
+        for (let X = -24; X < 24; X++) {
+          const p00 = proj(X, Z0), p10 = proj(X + 1, Z0), p01 = proj(X, Z1), p11 = proj(X + 1, Z1);
+          const slope = (height(X + 1, Z0) - height(X, Z1)) * 0.5, lit = clamp(0.5 + slope, 0, 1);
+          const shade = lit > 0.5 ? `rgba(255,255,255,${(lit - 0.5) * 0.5})` : `rgba(20,24,40,${(0.5 - lit) * 0.5})`;
+          tri(x, [p01, p11, p10], [[0, 0], [16, 0], [16, 16]], shade, fog);
+          tri(x, [p01, p10, p00], [[0, 0], [16, 16], [0, 16]], shade, fog);
+        }
+      }
+      const img = x.getImageData(0, 0, aw, ah), d = img.data;
+      for (let j = 0; j < ah; j++) for (let i = 0; i < aw; i++) { const o = (BAYER[j & 3][i & 3] / 16 - 0.5) * 8, k = (j * aw + i) * 4; for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.min(248, Math.round(clamp(d[k + ch] + o, 0, 255) / 8) * 8); d[k + 3] = 255; }
+      x.putImageData(img, 0, 0); frames.push(c);
+    }
+    return [L.flip(frames, { s, every: 2 })];
+  } });
+
+def({ id: "coverwall", name: "Cover wall on a CRT", for: "playstation2", hz: 6, cost: "medium", usesCovers: true,
+  borrows: "Your pick from round 2: the folder's own covers as a tilted, softened wall washed in its colour, seen through 2 px scanlines and a slow rolling bar, like a sixth-generation game on a CRT television.",
+  avoids: "Menus and logos. The covers are the library's own art, shown softened.",
+  thor: "The wall is drawn once (each cover softened once, never live) and drifts 1 px at a time, 6 times a second; the bar steps 8 px. About 5 MB at half resolution for 14 covers.",
+  build({ h, covers }) {
+    const cw = 100, ch = 142, gap = 15, pitch = cw + gap, rows = 6, n = covers.length, wallW = pitch * n, wallH = rows * (ch + gap);
+    const soft = covers.map((cv) => { const c = off(cw + 4, ch + 4), x = c.getContext("2d"); x.filter = "blur(1px) saturate(.8)"; x.drawImage(cv.el, 2, 2, cw, ch); return c; });
+    const wall = off(wallW, wallH), wx = wall.getContext("2d"); wx.fillStyle = hsl(h, 30, 84); wx.fillRect(0, 0, wallW, wallH);
+    for (let row = 0; row < rows; row++) for (let i = -1; i <= n; i++) wx.drawImage(soft[mod(i + row * 3, n)], i * pitch + (row % 2) * pitch / 2 - 2, row * (ch + gap) - 2);
+    wx.fillStyle = hsl(h, 35, 88, 0.55); wx.fillRect(0, 0, wallW, wallH);
+    const scan = off(1, 5), sx = scan.getContext("2d"); sx.fillStyle = hsl(h, 40, 30, 0.1); sx.fillRect(0, 3, 1, 2);
+    const bar = off(1, 1220), bx = bar.getContext("2d"), g = bx.createLinearGradient(0, 0, 0, 140);
+    g.addColorStop(0, hsl(h, 60, 96, 0)); g.addColorStop(0.5, hsl(h, 60, 96, 0.35)); g.addColorStop(1, hsl(h, 60, 96, 0)); bx.fillStyle = g; bx.fillRect(0, 0, 1, 140);
+    return [
+      L.fill(Fill.solid(hsl(h, 30, 84))),
+      L.drift(wall, { s: 2, smooth: true, rot: -10, y: -wallH, vx: -6, q: 1 }),
+      L.tile(scan),
+      L.drift(bar, { sx: W, s: 1, wrapX: false, wrapY: true, vy: 48, q: 8 }),
+      L.fill(Fill.radial(960, 470, 960, [[0, hsl(h, 35, 94, 0.7)], [0.75, hsl(h, 35, 94, 0)]], 0.75)),
+      L.fill(Fill.radial(960, 540, 1150, [[0.5, hsl(h, 40, 40, 0)], [1, hsl(h, 40, 40, 0.22)]], 0.62)),
+    ];
+  } });
+
+def({ id: "skyline", name: "Bloom skyline", for: "psp", hz: 4, cost: "low",
+  borrows: "Mid-2000s portable 3D: a hazy widescreen skyline under bloom, an anamorphic lens streak off the sun, and windows blinking on the near towers.",
+  avoids: "Cities and landmarks from any game, and the console's wave menu.",
+  thor: "Gradients, the bloom and the streak are brushes. The far skyline drifts 1 px at a time; four window layers switch by opacity; the near towers are still.",
+  build({ h }) {
+    const r = rng(31), far = off(1920, 200), fx = far.getContext("2d"); fx.fillStyle = hsl(h, 26, 86);
+    for (let x = 0; x < 1920;) { const w = 14 + r() * 26, ht = 30 + r() * 90; fx.fillRect(x, 200 - ht, w, ht); if (r() < 0.2) fx.fillRect(x + w / 2, 200 - ht - 16, 1.5, 16); x += w + 2; }
+    const tower = (side) => {
+      const c = off(260, 540), x = c.getContext("2d"), wins = [[], []]; let xx = side ? 0 : 260;
+      const hs = [480, 420, 360, 300, 250];
+      for (let k = 0; k < hs.length; k++) {
+        const w = 44 + r() * 16, ht = hs[k] - r() * 30, x0 = side ? xx : xx - w;
+        x.fillStyle = hsl(h, 28, 79 + k); x.fillRect(x0, 540 - ht, w, ht);
+        for (let wy = 540 - ht + 10; wy < 520; wy += 14) for (let wx = x0 + 6; wx < x0 + w - 8; wx += 10) {
+          const v = r(); x.fillStyle = v < 0.35 ? hsl(h + 30, 50, 90, 0.85) : hsl(h, 30, 84, 0.6); x.fillRect(wx, wy, 5, 7);
+          if (v < 0.06) wins[0].push([wx, wy]); else if (v < 0.12) wins[1].push([wx, wy]);
+        }
+        xx += side ? w + 4 : -(w + 4);
+      }
+      const lit = wins.map((list) => { const b = off(260, 540), bx = b.getContext("2d"); bx.fillStyle = hsl(48, 90, 95); list.forEach(([a, b2]) => bx.fillRect(a, b2, 5, 7)); return b; });
+      return { c, lit };
+    };
+    const left = tower(1), right = tower(0);
+    return [
+      L.fill(Fill.linear(0, 760, [[0, hsl(h, 40, 86)], [1, hsl(h + 25, 48, 95)]])),
+      L.fill(Fill.radial(1440, 300, 560, [[0, hsl(h + 40, 80, 99, 0.95)], [1, hsl(h + 40, 80, 99, 0)]])),
+      L.fill(Fill.radial(1440, 300, 900, [[0, "rgba(255,255,255,.7)"], [1, "rgba(255,255,255,0)"]], 0.035)),
+      L.drift(far, { s: 2, smooth: true, y: 380, vx: -2, q: 1 }),
+      L.fill((ctx) => { ctx.fillStyle = hsl(h, 24, 88); ctx.fillRect(0, 778, W, H - 778); }),
+      L.fill(Fill.linear(600, 900, [[0, hsl(h + 25, 45, 96, 0)], [0.6, hsl(h + 25, 45, 96, 0.85)], [1, hsl(h + 25, 45, 96, 0)]])),
+      L.still(left.c, { s: 2, smooth: true, x: 0, y: 0 }), L.still(right.c, { s: 2, smooth: true, x: W - 520, y: 0 }),
+      L.blink(left.lit[0], { s: 2, smooth: true, period: 4, duty: 0.5 }), L.blink(left.lit[1], { s: 2, smooth: true, period: 4, duty: 0.5, phase: 0.5 }),
+      L.blink(right.lit[0], { s: 2, smooth: true, x: W - 520, period: 4, duty: 0.5, phase: 0.25 }), L.blink(right.lit[1], { s: 2, smooth: true, x: W - 520, period: 4, duty: 0.5, phase: 0.75 }),
+    ];
+  } });
+
+def({ id: "shafts", name: "Light shafts", for: "playstation3", hz: 4, cost: "medium",
+  borrows: "HD-era cinematic lighting: soft light shafts falling from the top corner, dust motes drifting through them, bokeh from a shallow depth of field, and bloom.",
+  avoids: "The console's wave or ribbon menu, and scenery from any game.",
+  thor: "The shafts are blurred once when the backdrop is built and sway ±1.2° in 0.1° steps; two mote tiles drift 2 px at a time. No live blur.",
+  build({ h }) {
+    const sh = off(1400, 900), x = sh.getContext("2d"); x.filter = "blur(14px)"; x.fillStyle = "rgba(255,255,255,.55)";
+    for (const [deg, wd] of [[16, 0.035], [24, 0.055], [32, 0.03], [40, 0.05], [49, 0.032]]) { const a = deg * Math.PI / 180; x.beginPath(); x.moveTo(0, 0); x.lineTo(Math.cos(a - wd) * 1700, Math.sin(a - wd) * 1700); x.lineTo(Math.cos(a + wd) * 1700, Math.sin(a + wd) * 1700); x.closePath(); x.fill(); }
+    x.filter = "none"; x.globalCompositeOperation = "destination-in";
+    const m = x.createRadialGradient(0, 0, 0, 0, 0, 1500); m.addColorStop(0, "#000"); m.addColorStop(1, "rgba(0,0,0,.15)"); x.fillStyle = m; x.fillRect(0, 0, 1400, 900);
+    const motes = (count, rMin, rMax, a, blur, seed) => {
+      const c = off(480, 270), mx = c.getContext("2d"), r = rng(seed); mx.filter = `blur(${blur}px)`;
+      for (let k = 0; k < count; k++) { const px = r() * 480, py = r() * 270, rr = rMin + r() * (rMax - rMin); for (const [ox, oy] of [[0, 0], [-480, 0], [0, -270], [-480, -270], [480, 0], [0, 270]]) { mx.beginPath(); mx.arc(px + ox, py + oy, rr, 0, Math.PI * 2); mx.fillStyle = `rgba(255,255,255,${a})`; mx.fill(); } }
+      return c;
+    };
+    const bok = off(960, 540), bx = bok.getContext("2d"); bx.filter = "blur(4px)"; bx.fillStyle = hsl(h, 40, 97, 0.22);
+    for (const [a, b, rr] of [[70, 80, 90], [880, 470, 110], [120, 470, 70], [900, 60, 60], [760, 520, 50]]) { bx.beginPath(); bx.arc(a, b, rr, 0, Math.PI * 2); bx.fill(); }
+    return [
+      L.fill(Fill.radial(960, 480, 1200, [[0, hsl(h, 28, 89)], [1, hsl(h, 34, 72)]], 0.75)),
+      L.fill(Fill.radial(200, -100, 1100, [[0, "rgba(255,255,255,.55)"], [1, "rgba(255,255,255,0)"]])),
+      L.spin(sh, { s: 2, smooth: true, cx: -200, cy: -260, px: 0, py: 0, swayDeg: 1.2, period: 24, step: 0.1 }),
+      L.drift(motes(26, 1, 1.6, 0.55, 0.6, 4), { s: 2, smooth: true, vx: 4, vy: -2, q: 2, wrapY: true }),
+      L.drift(motes(7, 9, 16, 0.14, 2, 8), { s: 2, smooth: true, vx: 8, vy: -4, q: 2, wrapY: true }),
+      L.still(bok, { s: 2, smooth: true }),
+    ];
+  } });
+
+def({ id: "lawn", name: "Mown lawn", for: "wii", hz: 4, cost: "low",
+  borrows: "Seventh-generation casual and sports games: a clean bright sky, soft white clouds, and a lawn mown in stripes rolling over a gentle hill.",
+  avoids: "Characters, avatars, the console's channels and its menu.",
+  thor: "The lawn and sky are still. One cloud strip drifts 2 px at a time, 4 times a second.",
+  build({ h }) {
+    const g = h - 75, lawn = off(960, 260), x = lawn.getContext("2d");
+    const crest = (i) => 40 + 14 * Math.sin(i / 960 * Math.PI * 1.3 + 0.4);
+    x.fillStyle = hsl(h - 40, 30, 89); x.beginPath(); x.moveTo(0, 260); for (let i = 0; i <= 960; i += 8) x.lineTo(i, 20 + 10 * Math.sin(i / 960 * Math.PI * 2.2 + 1)); x.lineTo(960, 260); x.fill();
+    x.save(); x.beginPath(); x.moveTo(0, 260); for (let i = 0; i <= 960; i += 8) x.lineTo(i, crest(i)); x.lineTo(960, 260); x.closePath(); x.clip();
+    x.fillStyle = hsl(g, 45, 80); x.fillRect(0, 0, 960, 260); x.fillStyle = hsl(g, 42, 74);
+    for (let k = -14; k < 26; k += 2) { x.beginPath(); x.moveTo(480 + k * 14, -160); x.lineTo(480 + (k + 1) * 14, -160); x.lineTo(480 + (k + 1) * 120, 260); x.lineTo(480 + k * 120, 260); x.closePath(); x.fill(); }
+    x.restore();
+    x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = 3; x.beginPath(); for (let i = 0; i <= 960; i += 8) x[i ? "lineTo" : "moveTo"](i, crest(i) + 1); x.stroke();
+    const clouds = off(1920, 260), cx = clouds.getContext("2d"); cx.filter = "blur(3px)";
+    for (const [x0, y0, sc] of [[200, 110, 1], [640, 70, 0.8], [1060, 130, 1.1], [1480, 90, 0.9], [1800, 140, 0.7]]) {
+      const parts = [[-70, 10, 40], [-25, -10, 52], [30, -4, 46], [76, 14, 32]].map(([a, b, r]) => [x0 + a * sc, y0 + b * sc, r * sc]);
+      circlesPath(cx, parts.map(([a, b, r]) => [a, b + 8 * sc, r])); cx.fillStyle = hsl(h, 40, 92); cx.fill();
+      circlesPath(cx, parts); cx.fillStyle = "rgba(255,255,255,.96)"; cx.fill();
+    }
+    return [
+      L.fill(Fill.linear(0, 700, [[0, hsl(h, 55, 85)], [1, hsl(h, 45, 97)]])),
+      L.drift(clouds, { s: 2, smooth: true, vx: -4, q: 2 }),
+      L.still(lawn, { s: 2, smooth: true, y: 560 }),
+    ];
+  } });
+
+def({ id: "attract", name: "Attract-mode starfield", for: "arcade", hz: 4, cost: "low",
+  borrows: "Arcade attract mode: a vertical-shooter starfield on three layers, colour-cycling raster bars at the top and bottom, and chunky cabinet scanlines. Turned light: dark stars on a pale ground. 480×270, 4 px a pixel.",
+  avoids: "Ships, high-score tables, marquee art and any game's name.",
+  thor: "Three star layers step downward one 4 px pixel at a time; the bars cycle through four colourways by swapping frames twice a second.",
+  build({ h }) {
+    const s = 4, aw = 480, ah = 270;
+    const stars = (count, kind, col, seed) => {
+      const p = pix(aw, ah), r = rng(seed);
+      for (let n = 0; n < count;) { const x = Math.floor(r() * aw), y = Math.floor(r() * ah); if (x > 150 && x < 330 && r() < 0.7) continue; n++;
+        if (kind === "plus") { [[0, -2], [0, -1], [-2, 0], [-1, 0], [1, 0], [2, 0], [0, 1], [0, 2]].forEach(([dx, dy]) => p.set(x + dx, mod(y + dy, ah), col)); p.set(x, y, hslRgb(h, 40, 96)); }
+        else if (kind === "big") { [[0, 0], [1, 0], [0, 1], [1, 1]].forEach(([dx, dy]) => p.set(x + dx, mod(y + dy, ah), col)); }
+        else p.set(x, y, col); }
+      return p.done();
+    };
+    const bars = (shift) => Array.from({ length: 4 }, (_, f) => { const p = pix(1, 27); const ramp = [88, 82, 76, 72, 76, 82, 88]; for (let b = 0; b < 3; b++) ramp.forEach((l, j) => p.set(0, b * 9 + j + 1, hslRgb(h + f * 12 + b * 18 + shift, 60, l))); return p.done(); });
+    const scan = off(1, 4), sx = scan.getContext("2d"); sx.fillStyle = hsl(h, 40, 25, 0.07); sx.fillRect(0, 3, 1, 1);
+    return [
+      L.fill(Fill.radial(960, 470, 1150, [[0, hsl(h, 25, 96)], [1, hsl(h, 28, 91)]], 0.8)),
+      L.drift(stars(220, "dot", hslRgb(h, 26, 72), 1), { s, wrapX: false, wrapY: true, vy: 4 }),
+      L.drift(stars(80, "big", hslRgb(h, 36, 62), 2), { s, wrapX: false, wrapY: true, vy: 8 }),
+      L.drift(stars(22, "plus", hslRgb(h, 52, 55), 3), { s, wrapX: false, wrapY: true, vy: 16 }),
+      L.flip(bars(0), { s, sx: W, every: 2 }),
+      L.flip(bars(30), { s, sx: W, y: H - 27 * s, every: 2 }),
+      L.tile(scan),
+    ];
+  } });
+
+def({ id: "mesh", name: "Soft colour fields", for: "steam", hz: 2, cost: "low",
+  borrows: "Present-day storefront and launcher art: large soft colour fields drifting very slowly, with a fine grain so the gradients never band.",
+  avoids: "Steam and Valve branding, and the Big Picture look.",
+  thor: "Four soft fields are 128 px bitmaps scaled up smooth and moved 1 px at a time, twice a second. The grain is a 128 px tile.",
+  build({ h }) {
+    const field = (hh, a) => { const c = off(128, 128), x = c.getContext("2d"), g = x.createRadialGradient(64, 64, 0, 64, 64, 64); g.addColorStop(0, hsl(hh, 70, 72, a)); g.addColorStop(1, hsl(hh, 70, 72, 0)); x.fillStyle = g; x.fillRect(0, 0, 128, 128); return c; };
+    const grain = off(128, 128), gx = grain.getContext("2d"), r = rng(77);
+    for (let i = 0; i < 1400; i++) { gx.fillStyle = r() < 0.5 ? "rgba(255,255,255,.05)" : "rgba(20,30,50,.035)"; gx.fillRect(Math.floor(r() * 128), Math.floor(r() * 128), 1, 1); }
+    const o = { s: 8, smooth: true, q: 1 };
+    return [
+      L.fill(Fill.linear(0, H, [[0, hsl(h, 38, 94)], [1, hsl(h + 20, 36, 90)]])),
+      L.sway(field(h, 0.55), { ...o, x: -150, y: -220, ax: 60, ay: 40, period: 47 }),
+      L.sway(field(h + 40, 0.5), { ...o, x: 1050, y: -180, ax: 50, ay: 50, period: 53, phase: 1 }),
+      L.sway(field(h - 50, 0.45), { ...o, x: 900, y: 480, ax: 70, ay: 30, period: 61, phase: 2 }),
+      L.sway(field(h + 170, 0.3), { ...o, x: -160, y: 560, ax: 40, ay: 40, period: 43, phase: 3 }),
+      L.fill(Fill.radial(960, 470, 760, [[0, "rgba(255,255,255,.4)"], [1, "rgba(255,255,255,0)"]], 0.75)),
+      L.tile(grain),
+    ];
+  } });
+
+def({ id: "dithersky", name: "Dither sky (round 2)", for: null, hz: 4, cost: "low",
+  borrows: "Round 2's Dither sky: the whole screen as 8 px pixels in a four-colour ordered-dither gradient, deeper at the edges and pale behind the folder, with pixel clouds drifting across.",
+  avoids: "Same as the 8-bit horizon: generic shapes only.",
+  thor: "One 240×135 bitmap plus a cloud strip stepping 8 px at a time.",
+  build({ h }) {
+    const s = 8, cols = 240, rows = 135, ramp = [hslRgb(h, 42, 93), hslRgb(h, 44, 86), hslRgb(h, 46, 78), hslRgb(h, 48, 69)];
+    const base = pix(cols, rows);
+    for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) { const dx = (i - cols / 2) / (cols / 2), dy = (j - rows * 0.44) / (rows / 2); const v = Math.min(1, Math.sqrt(dx * dx * 0.8 + dy * dy * 1.1)) * 1.05 + Math.sin(i * 0.08 + j * 0.05) * 0.05; base.set(i, j, ramp[dith(clamp(v, 0, 1) * 3 - 0.1, i, j, 3)]); }
+    const cloud = (w) => { const p = pix(w, 6), c = hslRgb(h, 50, 98); for (let i = 0; i < w; i++) { const hg = Math.round(3 + 2.5 * Math.sin(Math.PI * i / w) + (i % 3 === 0 ? 1 : 0)); for (let j = 6 - Math.min(6, hg); j < 6; j++) p.set(i, j, c, 0.85); } return p.done(); };
+    const strip = off(480, rows); [[cloud(22), 20, 15], [cloud(14), 150, 32], [cloud(30), 260, 102], [cloud(18), 400, 112]].forEach(([c, x, y]) => stamp(strip, c, x, y));
+    return [L.still(base.done(), { s }), L.drift(strip, { s, vx: -16 })];
+  } });
+
+// ======================= Round B: scenes in the look of each platform's landmark games =======================
+// Round A tinted abstract textures in the system colour and read as pale and generic. These are original scenes
+// with their own authentic palettes: the genre and era are recognisable, nothing is copied. Same layer rules.
+const C = (r, g, b) => [r, g, b], WHITE = C(248, 248, 248);
+const rect = (p, x0, y0, w, h, col) => { for (let j = y0; j < y0 + h; j++) for (let i = x0; i < x0 + w; i++) p.set(mod(i, p.w), j, col); };
+const bandSky = (p, stops, y0, y1, steps = 12) => { for (let j = y0; j < y1; j++) { const t = Math.floor((j - y0) / (y1 - y0) * steps) / (steps - 1); let c = stops[0][1]; for (let k = 1; k < stops.length; k++) if (t >= stops[k - 1][0]) c = mix(stops[k - 1][1], stops[k][1], clamp((t - stops[k - 1][0]) / (stops[k][0] - stops[k - 1][0]), 0, 1)); rect(p, 0, j, p.w, 1, c); } };
+const circ = (p, cx, cy, r, col, edge) => { for (let j = Math.floor(cy - r - 1); j <= cy + r + 1; j++) for (let i = Math.floor(cx - r - 1); i <= cx + r + 1; i++) { const d = Math.hypot(i + 0.5 - cx, j + 0.5 - cy); if (d <= r) p.set(mod(i, p.w), j, col); else if (edge && d <= r + 1) p.set(mod(i, p.w), j, edge); } };
+const smooth = (w, h, draw) => { const c = off(w, h), x = c.getContext("2d"); draw(x, w, h); return c; };
+const roundedCloud = (x, cx, cy, sc, fill, shade, outline) => {
+  const parts = [[-60, 10, 40], [-20, -12, 52], [30, -6, 46], [70, 12, 34], [0, 16, 40]].map(([a, b, r]) => [cx + a * sc, cy + b * sc, r * sc]);
+  if (outline) { circlesPath(x, parts.map(([a, b, r]) => [a, b, r + 4])); x.fillStyle = outline; x.fill(); }
+  x.save(); x.beginPath(); x.rect(-1e4, -1e4, 2e4, cy + 30 * sc + 1e4); x.clip(); circlesPath(x, parts); x.fillStyle = shade; x.fill(); x.clip();
+  circlesPath(x, parts.map(([a, b, r]) => [a - 6 * sc, b - 12 * sc, r])); x.fillStyle = fill; x.fill(); x.restore();
+};
+
+def({ id: "brickworld", name: "Brick kingdom", for: "nes", round: "B", hz: 4, cost: "low",
+  borrows: "The 8-bit platformer: a flat blue sky, brick ground, floating blocks, rounded hills and stepped bushes in the NES's own 54-colour palette, auto-scrolling past a small stone castle. 240×135 at 8 px a pixel.",
+  avoids: "Characters, pipes, items and question blocks. The blocks are plain riveted blocks; the castle is a generic keep.",
+  thor: "A still sky and three strips (far hills and bushes, ground, blocks and castle) stepping 8 or 16 px, 4 times a second.",
+  build() {
+    const s = 8, aw = 240, ah = 135, SKY = C(92, 148, 252), WH = C(252, 252, 252), G1 = C(0, 168, 68), G2 = C(0, 104, 0), BR = C(200, 76, 12), BD = C(136, 20, 0), BK = C(252, 152, 56), ST = C(188, 188, 188), SD = C(116, 116, 116), BLK = C(0, 0, 0);
+    const sky = pix(aw, ah); rect(sky, 0, 0, aw, ah, SKY);
+    const far = pix(480, ah);
+    const hill = (cx, r) => { circ(far, cx, 111, r, G1, G2); for (let k = 0; k < 5; k++) { const a = cx + Math.round((k % 3 - 1) * r * 0.4), b = 111 - Math.round(r * 0.3) - (k % 2) * 6 - Math.floor(k / 3) * 8; far.set(a, b, G2); far.set(a + 1, b + 1, G2); far.set(a - 1, b + 1, G2); } };
+    hill(80, 26); hill(300, 18); hill(420, 30);
+    const bushAt = (x0, n) => { for (let k = 0; k < n; k++) circ(far, x0 + k * 8, 107, 6, G1, G2); };
+    bushAt(140, 3); bushAt(250, 2); bushAt(380, 4);
+    const cloud = (x0, n) => { for (let k = 0; k < n; k++) circ(far, x0 + k * 8, 26 + (k % 2) * 2 - (k === 1 ? 4 : 0), 6, WH, C(60, 100, 200)); rect(far, x0 - 4, 28, n * 8, 5, WH); };
+    cloud(40, 3); cloud(200, 2); cloud(330, 4); cloud(450, 2);
+    rect(far, 0, 111, 480, ah - 111, SKY);
+    const ground = pix(480, 24); for (let j = 0; j < 24; j++) for (let i = 0; i < 480; i++) { const row = Math.floor(j / 8), off2 = row % 2 ? 4 : 0; const bx = mod(i + off2, 8), by = j % 8; ground.set(i, j, (bx === 7 || by === 7) ? BD : (bx === 3 && by < 7) ? BD : BR); }
+    const near = pix(480, ah);
+    const block = (x0, y0) => { rect(near, x0, y0, 8, 8, BK); for (const [a, b] of [[0, 0], [7, 0], [0, 7], [7, 7]]) near.set(x0 + a, y0 + b, BLK); for (let k = 0; k < 8; k++) { near.set(x0 + k, y0 + 7, BD); near.set(x0 + 7, y0 + k, BD); near.set(x0 + k, y0, WH); near.set(x0, y0 + k, WH); } near.set(x0, y0, BLK); near.set(x0 + 7, y0, BLK); near.set(x0, y0 + 7, BLK); };
+    for (let k = 0; k < 4; k++) block(20 + k * 8, 70); for (let k = 0; k < 3; k++) block(200 + k * 8, 60); block(232, 44);
+    for (let c = 0; c < 5; c++) for (let r = 0; r <= c; r++) block(300 + c * 8, 103 - r * 8);
+    for (let c = 0; c < 3; c++) for (let r = 0; r <= c; r++) block(440 - c * 8, 103 - r * 8);
+    // a stone keep
+    const kx = 380, ky = 71; rect(near, kx, ky + 16, 40, 24, ST); rect(near, kx + 8, ky, 24, 16, ST);
+    for (let k = 0; k < 5; k++) rect(near, kx + k * 8, ky + 12, 4, 4, ST); for (let k = 0; k < 3; k++) rect(near, kx + 8 + k * 8, ky - 4, 4, 4, ST);
+    for (let j = ky; j < ky + 40; j += 4) for (let i = kx; i < kx + 40; i++) { const r = Math.floor((j - ky) / 4); if ((i + (r % 2) * 2) % 4 === 3) { const idx = j; for (let jj = idx; jj < idx + 4 && jj < ky + 40; jj++) if (jj >= ky + 16 || (i >= kx + 8 && i < kx + 32)) near.set(i, jj, SD); } }
+    rect(near, kx + 16, ky + 26, 8, 14, BLK); rect(near, kx + 4, ky + 22, 4, 6, BLK); rect(near, kx + 32, ky + 22, 4, 6, BLK); rect(near, kx + 18, ky + 4, 4, 6, BLK);
+    return [L.still(sky.done(), { s }), L.drift(far.done(), { s, vx: -8 }), L.drift(near.done(), { s, vx: -16 }), L.drift(ground.done(), { s, y: 111 * s, vx: -16 })];
+  } });
+
+def({ id: "kart", name: "Kart circuit", for: "snes", round: "B", hz: 4, cost: "low",
+  borrows: "The Mode 7 racer: a flat track in perspective running toward you, red-and-white kerbs, a dashed centre line, chequered grass, a banded sky and far hills. 320×180 at 6 px a pixel, 15-bit colour.",
+  avoids: "Karts, drivers, items and any real circuit's layout. The track is one straight.",
+  thor: "Six pre-drawn floor frames shown in turn at 4 a second (one visible), plus a still sky and a drifting cloud strip. About 0.6 MB.",
+  build() {
+    const s = 6, aw = 320, hz0 = 96, F = 20, frames = [], sky = pix(aw, hz0);
+    bandSky(sky, [[0, C(48, 104, 240)], [1, C(168, 216, 248)]], 0, hz0, 10);
+    const hills = pix(640, hz0); for (let i = 0; i < 640; i++) { const a = i / 640 * Math.PI * 2; const y = Math.round(hz0 - 8 - 6 * Math.sin(a * 2 + 1) - 4 * Math.sin(a * 5 + 2)); for (let j = y; j < hz0; j++) hills.set(i, j, j === y ? C(96, 176, 96) : C(56, 136, 72)); const y2 = Math.round(hz0 - 14 - 7 * Math.sin(a * 3 + 4) - 3 * Math.sin(a * 9)); for (let j = y2; j < y; j++) hills.set(i, j, C(120, 168, 208)); }
+    const clouds = pix(640, 60); for (const [x, y, w] of [[40, 14, 30], [200, 30, 20], [330, 8, 36], [470, 36, 24], [580, 20, 28]]) { for (let k = 0; k < w; k++) { const hh = Math.round(4 + 4 * Math.sin(Math.PI * k / w)); for (let j = 0; j < hh; j++) clouds.set(x + k, y + 8 - j, j === 0 ? C(216, 232, 248) : WHITE); } }
+    const GR1 = C(64, 168, 48), GR2 = C(48, 144, 40), ASP = C(104, 104, 120), ASP2 = C(96, 96, 112), KR = C(224, 48, 48), KW = C(248, 248, 248), LN = C(248, 248, 224);
+    for (let f = 0; f < 6; f++) {
+      const p = pix(aw, 180 - hz0);
+      for (let r = 0; r < 180 - hz0; r++) {
+        const z = 1200 / (r + 1.5), fog = Math.pow(clamp((z - 60) / 600, 0, 1), 0.7) * 0.75;
+        for (let i = 0; i < aw; i++) {
+          const xw = (i - 160) * z / F, zw = z + f / 6 * 64, ax = Math.abs(xw);
+          let c; if (ax < 150) c = (Math.floor((zw + 1e4) / 64) & 1) ? ASP : ASP2; else if (ax < 175) c = (Math.floor((zw + 1e4) / 48) & 1) ? KR : KW; else c = ((Math.floor((xw + 1e4) / 64) + Math.floor((zw + 1e4) / 64)) & 1) ? GR1 : GR2;
+          if (ax < 4 && (Math.floor((zw + 1e4) / 64) & 1)) c = LN;
+          p.set(i, r, q5(mix(c, C(168, 216, 248), fog)));
+        }
+      }
+      frames.push(p.done());
+    }
+    return [L.still(sky.done(), { s }), L.drift(clouds.done(), { s, y: 0, vx: -6 }), L.drift(hills.done(), { s, vx: -3 }), L.flip(frames, { s, y: hz0 * s })];
+  } });
+
+def({ id: "route", name: "Route one", for: "gbc", round: "B", hz: 2, cost: "low",
+  borrows: "The Game Boy Color monster-collecting route: 8×8 tiles, a tan path, fences, tall grass, round trees, a small house and a pond in the GBC's bright, limited palette. 160×90 at 12 px a pixel.",
+  avoids: "Creatures, trainers, named towns and any real route layout.",
+  thor: "One still map plus a two-frame overlay (water, flowers, tall grass) swapped twice a second. The cheapest option.",
+  build() {
+    const s = 12, aw = 160, ah = 90, GR = C(200, 240, 160), TG = C(120, 200, 88), TG2 = C(88, 168, 72), TR = C(56, 144, 72), TR2 = C(32, 104, 56), PA = C(240, 216, 144), PA2 = C(216, 184, 112), FE = C(168, 112, 56), RO = C(224, 72, 72), RO2 = C(176, 48, 48), WA = C(248, 240, 216), WT = C(120, 184, 248), WT2 = C(184, 216, 248), FL = C(248, 96, 96), FY = C(248, 216, 64);
+    const base = pix(aw, ah), A = pix(aw, ah), B = pix(aw, ah), r = rng(23);
+    rect(base, 0, 0, aw, ah, GR);
+    const tree = (x, y) => { rect(base, x + 3, y + 10, 2, 6, FE); circ(base, x + 4, y + 6, 5.5, TR, TR2); circ(base, x + 2, y + 4, 2, C(88, 176, 96)); };
+    for (let x = 0; x < aw; x += 8) { tree(x, -6); tree(x + 4, 2); }
+    for (let y = 8; y < ah; y += 8) { tree(-2, y); tree(aw - 6, y + 4); }
+    // path along the bottom, fences on both sides of it
+    rect(base, 0, 66, aw, 14, PA); for (let i = 0; i < aw; i += 3) base.set(i, 66 + (i % 2), PA2);
+    for (let i = 0; i < aw; i += 8) { rect(base, i, 60, 2, 6, FE); rect(base, i, 62, 8, 1, FE); rect(base, i, 64, 8, 1, FE); }
+    // house at left
+    rect(base, 10, 26, 30, 18, WA); for (let j = 0; j < 12; j++) rect(base, 8 + j, 14 + j, 34 - j * 2, 1, j % 3 === 2 ? RO2 : RO); rect(base, 8, 26, 34, 1, RO2);
+    rect(base, 22, 34, 6, 10, C(104, 72, 40)); rect(base, 13, 31, 5, 5, WT2); rect(base, 32, 31, 5, 5, WT2); rect(base, 10, 43, 30, 1, C(184, 168, 136));
+    // tall grass patches
+    const tall = (x0, y0, w, h, p1, p2) => { for (let ty = y0; ty < y0 + h; ty += 8) for (let tx = x0; tx < x0 + w; tx += 8) { rect(p1, tx, ty, 8, 8, TG); rect(p2, tx, ty, 8, 8, TG); for (let k = 0; k < 8; k += 2) { p1.set(tx + k, ty + 2 + (k % 4 ? 2 : 0), TG2); p1.set(tx + k, ty + 6, TG2); p2.set(tx + k + 1, ty + 3 + (k % 4 ? 2 : 0), TG2); p2.set(tx + k + 1, ty + 6, TG2); } } };
+    tall(96, 40, 32, 16, A, B); tall(8, 48, 24, 8, A, B); tall(120, 8, 16, 8, A, B);
+    // pond at right
+    for (let j = 10; j < 32; j++) for (let i = 112; i < 150; i++) { const v = ((i + 0.5 - 131) / 19) ** 2 + ((j + 0.5 - 21) / 11) ** 2; if (v <= 1) { A.set(i, j, WT); B.set(i, j, WT); if ((i + j * 3) % 11 === 0) A.set(i, j, WT2); if ((i + 3 + j * 3) % 11 === 0) B.set(i, j, WT2); } else if (v <= 1.25) base.set(i, j, PA2); }
+    // flowers and a signpost
+    for (const [x, y] of [[48, 20], [60, 40], [84, 12], [70, 56], [100, 56], [140, 50], [56, 52]]) { A.set(x, y, FL); A.set(x + 1, y + 1, FY); B.set(x + 1, y, FL); B.set(x, y + 1, FY); }
+    rect(base, 50, 60, 2, 6, FE); rect(base, 46, 56, 10, 5, C(216, 176, 96)); rect(base, 48, 58, 6, 1, FE);
+    return [L.still(base.done(), { s }), L.flip([A.done(), B.done()], { s })];
+  } });
+
+def({ id: "goldenhour", name: "Golden hour", for: "gba", round: "B", hz: 4, cost: "low",
+  borrows: "The GBA side-scroller at sunset: a smooth banded sky from orange to violet, a huge low sun, layered mountain silhouettes with parallax, a dark grassy foreground and the first stars. 240×135 at 8 px a pixel.",
+  avoids: "Castles, whips, suits and any game's skyline.",
+  thor: "Still sky and sun, four strips stepping 8 px at 4 a second.",
+  build() {
+    const s = 8, aw = 240, ah = 135, sky = pix(aw, ah);
+    bandSky(sky, [[0, C(72, 40, 120)], [0.45, C(216, 96, 96)], [0.8, C(248, 176, 72)], [1, C(252, 220, 120)]], 0, 100, 16);
+    rect(sky, 0, 100, aw, 35, C(40, 24, 64));
+    const r = rng(5); for (let k = 0; k < 40; k++) { const x = Math.floor(r() * aw), y = Math.floor(r() * 45); sky.set(x, y, k % 3 ? C(248, 232, 200) : C(200, 180, 240)); }
+    circ(sky, 170, 96, 22, C(252, 232, 128), C(252, 200, 96)); for (let j = 84; j < 100; j += 4) rect(sky, 140, j, 60, 1, C(248, 176, 72));
+    rect(sky, 0, 100, aw, 35, C(40, 24, 64));
+    const ridge = (base, amp, f, col, seed) => { const p = pix(480, ah); for (let i = 0; i < 480; i++) { const a = i / 480 * Math.PI * 2; const y = Math.round(base - amp * (0.6 * Math.sin(a * f + seed) + 0.4 * Math.sin(a * f * 2.7 + seed * 2))); for (let j = Math.max(0, y); j < ah; j++) p.set(i, j, col); } return p.done(); };
+    const streaks = pix(480, 60); for (const [x, y, w] of [[20, 30, 50], [160, 44, 34], [300, 24, 70], [420, 50, 40]]) { rect(streaks, x, y, w, 2, C(248, 160, 120)); rect(streaks, x + 6, y + 2, w - 12, 1, C(232, 120, 120)); }
+    const grass = pix(480, 30); rect(grass, 0, 8, 480, 22, C(24, 16, 40)); for (let i = 0; i < 480; i += 2) { const hh = 1 + ((i * 7) % 5); for (let j = 0; j < hh; j++) grass.set(i, 8 - j, C(24, 16, 40)); }
+    return [
+      L.still(sky.done(), { s }), L.drift(streaks.done(), { s, vx: -4 }),
+      L.drift(ridge(94, 10, 2, C(120, 56, 112), 1), { s, vx: -4 }), L.drift(ridge(104, 9, 3, C(80, 40, 88), 2), { s, vx: -8 }), L.drift(ridge(116, 7, 5, C(48, 28, 64), 3), { s, vx: -16 }),
+      L.drift(grass.done(), { s, y: 105 * s, vx: -32 }),
+    ];
+  } });
+
+def({ id: "toonsea", name: "Cel-shaded sea", for: "gamecube", round: "B", hz: 4, cost: "low",
+  borrows: "The cel-shaded sailing adventure: a saturated blue sea with white wave curls, flat two-tone clouds, a small palm island on each side and a warm sun, all in hard-edged toon shading.",
+  avoids: "Boats, characters, named islands and the console's menu.",
+  thor: "A still sky and islands at half resolution; a cloud strip and a wave strip drift 2 px at a time, 4 a second.",
+  build() {
+    const s = 2, w = 960, h = 540, hor = 330;
+    const sky = smooth(w, h, (x) => {
+      x.fillStyle = "#64B4FF"; x.fillRect(0, 0, w, hor); x.fillStyle = "#9CD2FF"; x.fillRect(0, hor - 60, w, 60);
+      x.fillStyle = "#FFF4B4"; circlesPath(x, [[780, 90, 40]]); x.fill(); x.fillStyle = "rgba(255,244,180,.35)"; circlesPath(x, [[780, 90, 64]]); x.fill();
+      x.fillStyle = "#2A6EDC"; x.fillRect(0, hor, w, h - hor); x.fillStyle = "#1E5AC8"; x.fillRect(0, hor + 120, w, h - hor - 120); x.fillStyle = "#CFEAFF"; x.fillRect(0, hor, w, 3);
+      const island = (cx, cy, sc, flip) => {
+        x.save(); x.translate(cx, cy); x.scale(flip ? -sc : sc, sc);
+        x.fillStyle = "#F0D896"; x.beginPath(); x.ellipse(0, 0, 90, 22, 0, 0, Math.PI * 2); x.fill(); x.fillStyle = "#D8B870"; x.beginPath(); x.ellipse(0, 6, 90, 16, 0, 0, Math.PI); x.fill();
+        x.fillStyle = "#4CAF50"; x.beginPath(); x.ellipse(-10, -10, 60, 20, 0, 0, Math.PI * 2); x.fill();
+        x.strokeStyle = "#8B5A2B"; x.lineWidth = 6; x.lineCap = "round"; x.beginPath(); x.moveTo(10, -8); x.quadraticCurveTo(30, -50, 22, -95); x.stroke();
+        x.fillStyle = "#2E8B3A"; for (let k = 0; k < 6; k++) { const a = -Math.PI / 2 + (k - 2.5) * 0.55; x.beginPath(); x.moveTo(22, -95); x.quadraticCurveTo(22 + Math.cos(a) * 70, -95 + Math.sin(a) * 70 + 30, 22 + Math.cos(a) * 60, -95 + Math.sin(a) * 60 + 50); x.quadraticCurveTo(22 + Math.cos(a) * 40, -95 + Math.sin(a) * 40, 22, -95); x.fill(); }
+        x.restore();
+      };
+      island(110, hor + 40, 1, false); island(860, hor + 70, 0.8, true);
+    });
+    const clouds = smooth(1920, 240, (x) => { for (const [cx, cy, sc] of [[180, 110, 1], [600, 70, 0.8], [980, 130, 1.1], [1400, 80, 0.9], [1750, 120, 0.8]]) roundedCloud(x, cx, cy, sc, "#FFFFFF", "#C8E0FF"); });
+    const waves = smooth(w, 180, (x) => { x.strokeStyle = "#FFFFFF"; x.lineCap = "round"; const r = rng(3);
+      for (let k = 0; k < 6; k++) { const y0 = 10 + 150 * Math.pow(k / 5, 1.5), lw = 14 + k * 10, sp = 110 + k * 50; x.lineWidth = 2 + k;
+        for (let cx = r() * sp; cx < w; cx += sp * (0.7 + r() * 0.8)) { if (r() < 0.3) continue; const y = y0 + (r() - 0.5) * (6 + k * 3); for (const ox of [0, -w, w]) { x.beginPath(); x.moveTo(cx + ox - lw, y); x.quadraticCurveTo(cx + ox - lw * 0.3, y - lw * 0.5, cx + ox + lw * 0.2, y - lw * 0.35); x.quadraticCurveTo(cx + ox + lw * 0.1, y - lw * 0.1, cx + ox + lw * 0.4, y - lw * 0.15); x.stroke(); } } } });
+    return [L.still(sky, { s, smooth: true }), L.drift(clouds, { s, smooth: true, vx: -4, q: 2 }), L.drift(waves, { s, smooth: true, y: hor * s, vx: -6, q: 2 })];
+  } });
+
+def({ id: "rollingvillage", name: "Rolling village", for: "nds", round: "B", hz: 4, cost: "low",
+  borrows: "The DS life-sim: the world curves away like a rolling log, round-canopy trees, a tiny house, flowers, a soft sky and chunky low-poly shading.",
+  avoids: "Villagers, animals, named towns and the console's menu.",
+  thor: "One still half-resolution scene; a cloud strip drifts 2 px at a time.",
+  build() {
+    const s = 2, w = 960, h = 540, R = 1500, cy = 330 + R;
+    const ground = smooth(w, h, (x) => {
+      const g = x.createLinearGradient(0, 0, 0, 340); g.addColorStop(0, "#8ED0FF"); g.addColorStop(1, "#E4F4FF"); x.fillStyle = g; x.fillRect(0, 0, w, h);
+      x.fillStyle = "#7CC850"; circlesPath(x, [[480, cy, R]]); x.fill(); x.fillStyle = "#6ABA44"; x.beginPath(); x.arc(480, cy, R, Math.PI * 1.3, Math.PI * 1.7); x.arc(480, cy + 30, R, Math.PI * 1.7, Math.PI * 1.3, true); x.fill();
+      x.strokeStyle = "#E8CFA0"; x.lineWidth = 26; x.beginPath(); x.arc(480, cy + 70, R, Math.PI * 1.35, Math.PI * 1.65); x.stroke();
+      const onArc = (px) => cy - Math.sqrt(R * R - (px - 480) ** 2);
+      const tree = (px, sc) => { const gy = onArc(px); x.fillStyle = "#8B5A2B"; x.fillRect(px - 6 * sc, gy - 60 * sc, 12 * sc, 60 * sc); x.fillStyle = "#3C9A3C"; circlesPath(x, [[px, gy - 80 * sc, 36 * sc]]); x.fill(); x.fillStyle = "#58B848"; circlesPath(x, [[px - 10 * sc, gy - 92 * sc, 24 * sc]]); x.fill(); };
+      [[60, 1], [150, 0.8], [250, 1.1], [720, 0.9], [830, 1.2], [920, 0.8]].forEach(([a, b]) => tree(a, b));
+      const hx = 870, hy = onArc(hx); x.fillStyle = "#F4E6C8"; x.fillRect(hx - 50, hy - 70, 100, 70); x.fillStyle = "#D84848"; x.beginPath(); x.moveTo(hx - 60, hy - 70); x.lineTo(hx, hy - 120); x.lineTo(hx + 60, hy - 70); x.fill(); x.fillStyle = "#7A4A2A"; x.fillRect(hx - 12, hy - 36, 24, 36); x.fillStyle = "#9CD2FF"; x.fillRect(hx - 40, hy - 56, 18, 16); x.fillRect(hx + 22, hy - 56, 18, 16);
+      const r = rng(8); for (let k = 0; k < 40; k++) { const px = r() * w, gy = onArc(px) + r() * 120; x.fillStyle = ["#FF6B9D", "#FFD83C", "#FFFFFF", "#FF8C42"][k % 4]; circlesPath(x, [[px, gy, 4]]); x.fill(); }
+    });
+    const clouds = smooth(1920, 200, (x) => { for (const [cx, cyy, sc] of [[200, 90, 0.8], [700, 60, 0.6], [1150, 110, 0.9], [1600, 70, 0.7]]) roundedCloud(x, cx, cyy, sc, "#FFFFFF", "#D6ECFF"); });
+    return [L.still(ground, { s, smooth: true }), L.drift(clouds, { s, smooth: true, vx: -3, q: 2 })];
+  } });
+
+def({ id: "fairway", name: "Fairway", for: "wii", round: "B", hz: 4, cost: "low",
+  borrows: "The motion-controlled sports game: a sunny golf hole with a mown fairway, rough, a bunker, a pond and a pin, clean low-detail 3D with soft shadows and a clear sky.",
+  avoids: "Avatars, golfers, scoreboards and the console's channels.",
+  thor: "One still half-resolution scene; a cloud strip drifts 2 px at a time; the flag flips between two frames once a second.",
+  build() {
+    const s = 2, w = 960, h = 540, hor = 300;
+    const scene = smooth(w, h, (x) => {
+      const g = x.createLinearGradient(0, 0, 0, hor); g.addColorStop(0, "#5AB0F0"); g.addColorStop(1, "#D8EEFF"); x.fillStyle = g; x.fillRect(0, 0, w, hor);
+      x.fillStyle = "#2F7A3A"; for (let px = -20; px < w + 40; px += 36) { circlesPath(x, [[px, hor - 6, 22 + (px * 7) % 14]]); x.fill(); } x.fillStyle = "#3C8E46"; for (let px = 0; px < w + 40; px += 44) { circlesPath(x, [[px, hor + 2, 16 + (px * 5) % 10]]); x.fill(); }
+      x.fillStyle = "#4F9E3C"; x.fillRect(0, hor, w, h - hor);
+      x.save(); x.beginPath(); x.moveTo(360, hor + 10); x.quadraticCurveTo(300, 400, 120, h); x.lineTo(900, h); x.quadraticCurveTo(700, 400, 600, hor + 10); x.closePath(); x.clip();
+      x.fillStyle = "#7CC850"; x.fillRect(0, 0, w, h); x.fillStyle = "#6DBA44"; for (let k = -6; k < 14; k++) { x.beginPath(); x.moveTo(480 + k * 24, hor); x.lineTo(480 + (k + 1) * 24, hor); x.lineTo(480 + (k + 1) * 160, h); x.lineTo(480 + k * 160, h); x.fill(); } x.restore();
+      x.fillStyle = "#EFD9A2"; x.beginPath(); x.ellipse(210, 450, 90, 32, -0.2, 0, Math.PI * 2); x.fill(); x.fillStyle = "#FFF3C8"; x.beginPath(); x.ellipse(200, 444, 70, 20, -0.2, 0, Math.PI * 2); x.fill();
+      x.fillStyle = "#4A9CE0"; x.beginPath(); x.ellipse(800, 400, 110, 34, 0.1, 0, Math.PI * 2); x.fill(); x.fillStyle = "#7CC0F0"; x.beginPath(); x.ellipse(790, 394, 80, 20, 0.1, 0, Math.PI * 2); x.fill();
+      x.fillStyle = "#3F8E30"; x.beginPath(); x.ellipse(700, 350, 70, 18, 0, 0, Math.PI * 2); x.fill();
+    });
+    const flag = (bend) => smooth(60, 120, (x) => { x.fillStyle = "#F0F0F0"; x.fillRect(10, 10, 3, 110); x.fillStyle = "#E03030"; x.beginPath(); x.moveTo(13, 12); x.lineTo(13 + 40 + bend, 24); x.lineTo(13, 38); x.fill(); x.fillStyle = "rgba(0,0,0,.25)"; x.beginPath(); x.ellipse(12, 118, 10, 3, 0, 0, Math.PI * 2); x.fill(); });
+    const clouds = smooth(1920, 220, (x) => { for (const [cx, cy, sc] of [[220, 110, 1], [760, 70, 0.7], [1240, 120, 1.1], [1700, 80, 0.8]]) roundedCloud(x, cx, cy, sc, "#FFFFFF", "#DCEEFF"); });
+    return [L.still(scene, { s, smooth: true }), L.drift(clouds, { s, smooth: true, vx: -4, q: 2 }), L.flip([flag(0), flag(-6)], { s, smooth: true, x: 1380, y: 466, every: 4 })];
+  } });
+
+def({ id: "blockstage", name: "Floating stage", for: "3ds", round: "B", hz: 4, cost: "medium",
+  borrows: "The stereoscopic 3D platformer: floating block islands with grass tops at three depths, each swaying by a different amount as if the 3D slider were up, a pastel sky and soft blue hills.",
+  avoids: "Characters, coins, flags and any real level.",
+  thor: "Three island layers sway up to 24 px, stepped 4 a second; sky and hills are still. Half resolution.",
+  build() {
+    const s = 2, w = 960, h = 540;
+    const sky = smooth(w, h, (x) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#7EC8FF"); g.addColorStop(1, "#E6F6FF"); x.fillStyle = g; x.fillRect(0, 0, w, h); x.fillStyle = "#A8D8F8"; for (let px = -40; px < w + 80; px += 90) { circlesPath(x, [[px, 440, 70 + (px * 3) % 40]]); x.fill(); } x.fillStyle = "#C4E6FA"; for (let px = 10; px < w + 80; px += 110) { circlesPath(x, [[px, 470, 60 + (px * 7) % 30]]); x.fill(); } });
+    const island = (W2, rows, sc) => smooth(W2 * sc + 20, (28 + rows * 26) * sc + 24, (x) => {
+      x.scale(sc, sc); x.translate(10 / sc, 10 / sc);
+      const depth = 14; x.fillStyle = "#9A6A3C"; x.fillRect(0, 28, W2, rows * 26); x.fillStyle = "#7A5230"; for (let j = 0; j < rows; j++) for (let i = 0; i < W2; i += 26) { const o = (j % 2) * 13; x.strokeStyle = "#5E3E22"; x.lineWidth = 2; x.strokeRect(i + o, 28 + j * 26, 26, 26); }
+      x.fillStyle = "#5E3E22"; x.beginPath(); x.moveTo(W2, 28); x.lineTo(W2 + depth, 28 - depth); x.lineTo(W2 + depth, 28 - depth + rows * 26); x.lineTo(W2, 28 + rows * 26); x.fill();
+      x.fillStyle = "#4CB83C"; x.fillRect(0, 10, W2, 20); x.fillStyle = "#6CD850"; x.beginPath(); x.moveTo(0, 10); x.lineTo(depth, 10 - depth); x.lineTo(W2 + depth, 10 - depth); x.lineTo(W2, 10); x.fill(); x.fillStyle = "#3A9A2C"; x.beginPath(); x.moveTo(W2, 10); x.lineTo(W2 + depth, 10 - depth); x.lineTo(W2 + depth, 30 - depth); x.lineTo(W2, 30); x.fill();
+      x.fillStyle = "#4CB83C"; for (let i = 6; i < W2; i += 18) { x.beginPath(); x.moveTo(i, 30); x.lineTo(i + 4, 38); x.lineTo(i + 8, 30); x.fill(); }
+    });
+    const o = { s, smooth: true, period: 14, q: 2 };
+    return [
+      L.still(sky, { s, smooth: true }),
+      L.sway(island(130, 1, 0.6), { ...o, x: 300, y: 200, ax: 6 }), L.sway(island(104, 1, 0.6), { ...o, x: 1500, y: 260, ax: 6, phase: 1 }),
+      L.sway(island(156, 2, 0.85), { ...o, x: 120, y: 560, ax: 14 }), L.sway(island(130, 2, 0.85), { ...o, x: 1560, y: 500, ax: 14, phase: 1.5 }),
+      L.sway(island(208, 3, 1.1), { ...o, x: -140, y: 820, ax: 24 }), L.sway(island(182, 3, 1.1), { ...o, x: 1560, y: 860, ax: 24, phase: 2 }),
+    ];
+  } });
+
+def({ id: "chequerhill", name: "Chequered hills", for: "megadrive", round: "B", hz: 4, cost: "low",
+  borrows: "The 16-bit speed platformer's first zone: chequered brown cliffs with bright green tops, pixel palm trees, a loop of track, sunflowers swaying, a waterfall, a blue sea and a banded sky. 320×180 at 6 px a pixel.",
+  avoids: "Characters, rings, monitors and any real stage layout.",
+  thor: "Still sky; four strips step 6 px at 4 a second; two small two-frame layers (sunflowers, waterfall).",
+  build() {
+    const s = 6, aw = 320, ah = 180, sky = pix(aw, ah);
+    bandSky(sky, [[0, C(40, 104, 232)], [1, C(168, 224, 248)]], 0, 108, 14); rect(sky, 0, 108, aw, 12, C(56, 120, 232)); rect(sky, 0, 120, aw, 60, C(40, 96, 208));
+    const clouds = pix(640, 70); for (const [x, y, w] of [[30, 20, 40], [220, 40, 28], [380, 12, 50], [540, 34, 36]]) { rect(clouds, x, y, w, 6, WHITE); rect(clouds, x + 8, y - 4, w - 16, 4, WHITE); rect(clouds, x + 4, y + 6, w - 8, 2, C(184, 208, 248)); }
+    const far = pix(640, ah); for (let i = 0; i < 640; i++) { const a = i / 640 * Math.PI * 2; const y = Math.round(112 - 10 * Math.abs(Math.sin(a * 3 + 1)) - 6 * Math.sin(a * 7)); for (let j = y; j < 122; j++) far.set(i, j, j === y ? C(96, 208, 120) : C(48, 160, 96)); }
+    const sea = pix(640, 60); for (let f = 0; f < 60; f++) for (let i = 0; i < 640; i++) if ((i + f * 5) % 23 < 6 && f % 7 === 0) sea.set(i, f, C(136, 200, 248));
+    const near = pix(640, ah), BR1 = C(176, 112, 48), BR2 = C(216, 160, 88), GR = C(16, 208, 72), GRD = C(0, 144, 48);
+    const top = (i) => Math.round(128 + 10 * Math.sin(i / 640 * Math.PI * 4) + 4 * Math.sin(i / 640 * Math.PI * 14));
+    for (let i = 0; i < 640; i++) { const y = top(i); for (let j = y; j < ah; j++) near.set(i, j, j < y + 6 ? (j === y ? C(120, 248, 136) : GR) : j === y + 6 ? GRD : ((Math.floor(i / 8) + Math.floor(j / 8)) & 1) ? BR1 : BR2); }
+    const palm = (px) => { const gy = top(px); for (let j = 0; j < 36; j++) rect(near, px + Math.round(Math.sin(j * 0.2) * 2), gy - j, 3, 1, j % 4 ? C(176, 112, 48) : C(120, 72, 32)); const ty = gy - 36; for (let k = 0; k < 7; k++) { const a = Math.PI + k * Math.PI / 6; for (let t = 0; t < 16; t++) { const xx = px + 1 + Math.round(Math.cos(a) * t), yy = ty + Math.round(Math.sin(a) * t * 0.7 + t * t * 0.04); near.set(mod(xx, 640), yy, t < 12 ? C(24, 168, 72) : C(16, 128, 56)); } } };
+    [70, 260, 470, 600].forEach(palm);
+    const loopX = 400, loopY = 92; for (let j = -36; j <= 36; j++) for (let i = -36; i <= 36; i++) { const d = Math.hypot(i, j); if (d <= 36 && d >= 28) near.set(loopX + i, loopY + j, ((Math.floor(i / 6) + Math.floor(j / 6)) & 1) ? BR1 : BR2); else if (d < 28 && d > 26) near.set(loopX + i, loopY + j, GRD); }
+    const flowers = (ph) => { const p = pix(640, ah); for (const px of [120, 190, 330, 540]) { const gy = top(px); rect(p, px, gy - 10, 1, 10, C(24, 160, 72)); const fx = px + ph; circ(p, fx + 0.5, gy - 12, 3.5, C(248, 216, 48)); circ(p, fx + 0.5, gy - 12, 1.5, C(120, 72, 32)); } return p.done(); };
+    const falls = (ph) => { const p = pix(24, 60); for (let j = 0; j < 60; j++) for (let i = 2; i < 22; i++) p.set(i, j, ((i + j * 2 + ph) % 7 < 3) ? C(136, 200, 248) : C(72, 144, 240)); return p.done(); };
+    return [
+      L.still(sky.done(), { s }), L.drift(clouds.done(), { s, vx: -3 }), L.drift(far.done(), { s, vx: -4 }), L.drift(sea.done(), { s, y: 118 * s, vx: 6 }),
+      L.drift(near.done(), { s, vx: -12 }), L.flip([flowers(0), flowers(1)], { s, every: 2 }), L.flip([falls(0), falls(3)], { s, x: 18 * s, y: 124 * s, every: 1 }),
+    ];
+  } });
+
+def({ id: "celcity", name: "Cel-shaded city", for: "dreamcast", round: "B", hz: 3, cost: "low",
+  borrows: "The turn-of-the-millennium cel-shaded street game: flat, loud colours with thick black outlines, blocky buildings, an elevated rail, and a halftone-dot sky.",
+  avoids: "Graffiti art, skaters, logos and the console's swirl.",
+  thor: "Still half-resolution scene; cel clouds drift 2 px at a time, 3 a second.",
+  build() {
+    const s = 2, w = 960, h = 540;
+    const scene = smooth(w, h, (x) => {
+      x.fillStyle = "#FFB347"; x.fillRect(0, 0, w, h); x.fillStyle = "#FF8C42"; for (let row = 0, y = 0; y < 360; row++, y += 14) for (let px = (row % 2) * 8; px < w; px += 16) { const r = clamp((y / 360) * 5.5, 0.5, 6); x.beginPath(); x.arc(px, y, r, 0, Math.PI * 2); x.fill(); }
+      const bld = (bx, by, bw, bh, col, win) => { x.fillStyle = "#111"; x.fillRect(bx - 5, by - 5, bw + 10, bh + 10); x.fillStyle = col; x.fillRect(bx, by, bw, bh); x.fillStyle = win; for (let j = by + 16; j < by + bh - 20; j += 34) for (let i = bx + 14; i < bx + bw - 20; i += 30) { x.fillStyle = "#111"; x.fillRect(i - 3, j - 3, 20, 26); x.fillStyle = win; x.fillRect(i, j, 14, 20); } };
+      bld(-10, 170, 140, 300, "#2EC4B6", "#FFF275"); bld(140, 240, 110, 230, "#FF3C8E", "#9DF5FF"); bld(230, 120, 90, 350, "#FFE135", "#2EC4B6");
+      bld(700, 200, 100, 270, "#7B5CFF", "#FFE135"); bld(800, 140, 130, 330, "#2EC4B6", "#FF3C8E"); bld(910, 230, 90, 240, "#FF6B35", "#9DF5FF");
+      x.fillStyle = "#111"; x.fillRect(0, 440, w, 100); x.fillStyle = "#5A5A6E"; x.fillRect(0, 448, w, 92); x.fillStyle = "#FFE135"; for (let px = 0; px < w; px += 60) x.fillRect(px, 490, 34, 6);
+      x.fillStyle = "#111"; x.fillRect(0, 400, w, 12); for (let px = 40; px < w; px += 160) x.fillRect(px, 412, 14, 40); x.fillStyle = "#3C3C50"; x.fillRect(0, 403, w, 6);
+    });
+    const clouds = smooth(1920, 220, (x) => { for (const [cx, cy, sc] of [[240, 100, 0.9], [820, 60, 0.7], [1320, 110, 1], [1760, 70, 0.8]]) roundedCloud(x, cx, cy, sc, "#FFFFFF", "#FFD6A5", "#111"); });
+    return [L.still(scene, { s, smooth: true }), L.drift(clouds, { s, smooth: true, vx: -4, q: 2 })];
+  } });
+
+def({ id: "polyvalley", name: "Low-poly valley", for: "playstation", round: "B", hz: 4, cost: "low",
+  borrows: "The 32-bit 3D adventure: a flat-shaded valley of textured triangles, bending textures and snapping vertices, blue-grey peaks, a gradient sky and 15-bit dithering. 320×180 at 6 px a pixel.",
+  avoids: "Dragons, gems, treasure and any real level.",
+  thor: "Four frames of a slight camera sway flipped twice a second (the wobble is the swap). About 0.9 MB.",
+  build() {
+    const s = 6, aw = 320, ah = 180, hor = 86, F = 110, camH = 1.8, frames = [];
+    const tex = smooth(16, 16, (x) => { x.fillStyle = "#4CA83C"; x.fillRect(0, 0, 16, 16); x.fillStyle = "#3C8C30"; x.fillRect(0, 0, 8, 8); x.fillRect(8, 8, 8, 8); x.fillStyle = "#6CC850"; [[2, 3], [11, 2], [5, 12], [13, 11], [9, 6]].forEach(([a, b]) => x.fillRect(a, b, 2, 1)); x.fillStyle = "#8C6C3C"; [[3, 10], [12, 5]].forEach(([a, b]) => x.fillRect(a, b, 2, 2)); });
+    const height = (X, Z) => 0.4 * (Math.sin(X * 0.7 + Z * 0.3) + Math.sin(Z * 0.9 - X * 0.4)) + 0.15 * Math.sin(X * 1.7) + Math.max(0, Math.abs(X) - 8) * 0.35;
+    const Zs = [1.4, 1.9, 2.5, 3.2, 4, 5, 6.2, 7.6, 9.2, 11, 13, 15.5];
+    const tri = (x, P, T, shade, fog) => {
+      x.save(); x.beginPath(); x.moveTo(...P[0]); x.lineTo(...P[1]); x.lineTo(...P[2]); x.closePath(); x.fillStyle = "#4CA83C"; x.strokeStyle = x.fillStyle; x.lineWidth = 0.8; x.fill(); x.stroke(); x.clip();
+      const [[u0, v0], [u1, v1], [u2, v2]] = T, [[x0, y0], [x1, y1], [x2, y2]] = P, det = (u1 - u0) * (v2 - v0) - (u2 - u0) * (v1 - v0);
+      const a = ((x1 - x0) * (v2 - v0) - (x2 - x0) * (v1 - v0)) / det, b = ((x2 - x0) * (u1 - u0) - (x1 - x0) * (u2 - u0)) / det, c = ((y1 - y0) * (v2 - v0) - (y2 - y0) * (v1 - v0)) / det, d = ((y2 - y0) * (u1 - u0) - (y1 - y0) * (u2 - u0)) / det;
+      x.setTransform(a, c, b, d, x0 - a * u0 - b * v0, y0 - c * u0 - d * v0); x.drawImage(tex, 0, 0); x.setTransform(1, 0, 0, 1, 0, 0);
+      x.fillStyle = shade; x.fillRect(0, 0, aw, ah); x.fillStyle = `rgba(190,214,236,${fog})`; x.fillRect(0, 0, aw, ah); x.restore();
+    };
+    const peaks = (() => { const r = rng(9), list = []; for (let px = -20; px <= 360; px += 28) list.push([px, 48 + r() * 26]); return list; })();
+    for (let f = 0; f < 4; f++) {
+      const c = off(aw, ah), x = c.getContext("2d"), camX = 0.02 * Math.sin(f / 4 * Math.PI * 2);
+      const g = x.createLinearGradient(0, 0, 0, hor); g.addColorStop(0, "#3C78D8"); g.addColorStop(1, "#BED6EC"); x.fillStyle = g; x.fillRect(0, 0, aw, hor); x.fillStyle = "#BED6EC"; x.fillRect(0, hor, aw, ah - hor);
+      for (let k = 0; k < peaks.length - 1; k++) { const [ax, ay] = peaks[k], [bx] = peaks[k + 1], mx = (ax + bx) / 2; x.fillStyle = "#8CA0C8"; x.beginPath(); x.moveTo(ax - 14, 92); x.lineTo(ax, Math.round(ay)); x.lineTo(mx + 8, 92); x.fill(); x.fillStyle = "#6C84B4"; x.beginPath(); x.moveTo(ax, Math.round(ay)); x.lineTo(mx + 8, 92); x.lineTo(bx, 92); x.fill(); x.fillStyle = "#E8F0F8"; x.beginPath(); x.moveTo(ax, Math.round(ay)); x.lineTo(ax - 5, Math.round(ay) + 8); x.lineTo(ax + 5, Math.round(ay) + 8); x.fill(); }
+      const proj = (X, Z) => [Math.round(160 + (X - camX) * F / Z), Math.round(hor + (camH - height(X, Z)) * F / Z)];
+      for (let zi = Zs.length - 2; zi >= 0; zi--) {
+        const Z0 = Zs[zi], Z1 = Zs[zi + 1], fog = Math.pow(clamp(((Z0 + Z1) / 2 - 3.5) / 12, 0, 1), 1.2) * 0.75;
+        for (let X = -24; X < 24; X++) {
+          const p00 = proj(X, Z0), p10 = proj(X + 1, Z0), p01 = proj(X, Z1), p11 = proj(X + 1, Z1), slope = (height(X + 1, Z0) - height(X, Z1)) * 0.5, lit = clamp(0.5 + slope, 0, 1);
+          const shade = lit > 0.5 ? `rgba(255,255,255,${(lit - 0.5) * 0.5})` : `rgba(10,30,20,${(0.5 - lit) * 0.6})`;
+          tri(x, [p01, p11, p10], [[0, 0], [16, 0], [16, 16]], shade, fog); tri(x, [p01, p10, p00], [[0, 0], [16, 16], [0, 16]], shade, fog);
+        }
+      }
+      const img = x.getImageData(0, 0, aw, ah), d = img.data;
+      for (let j = 0; j < ah; j++) for (let i = 0; i < aw; i++) { const o = (BAYER[j & 3][i & 3] / 16 - 0.5) * 8, k = (j * aw + i) * 4; for (let ch = 0; ch < 3; ch++) d[k + ch] = Math.min(248, Math.round(clamp(d[k + ch] + o, 0, 255) / 8) * 8); d[k + 3] = 255; }
+      x.putImageData(img, 0, 0); frames.push(c);
+    }
+    return [L.flip(frames, { s, every: 2 })];
+  } });
+
+def({ id: "bloomplains", name: "Bloomed plains", for: "playstation2", round: "B", hz: 2, cost: "medium",
+  borrows: "The sixth-generation epic: a vast empty plain under a blown-out sky, heavy bloom, drifting mist, muted greens, distant cliffs and a ruined stone arch far off.",
+  avoids: "Giants, horses, towers and any real landscape.",
+  thor: "Still half-resolution scene with the bloom baked in; two mist layers drift 2 px at a time, twice a second; the grass flips between two frames.",
+  build() {
+    const s = 2, w = 960, h = 540, hor = 300;
+    const scene = smooth(w, h, (x) => {
+      const g = x.createLinearGradient(0, 0, 0, hor); g.addColorStop(0, "#C9D6DF"); g.addColorStop(0.7, "#F2F4F0"); g.addColorStop(1, "#FFFFFF"); x.fillStyle = g; x.fillRect(0, 0, w, hor);
+      x.fillStyle = "#9FB0A8"; x.beginPath(); x.moveTo(0, hor); for (let px = 0; px <= 400; px += 10) x.lineTo(px, hor - 40 - 60 * Math.pow(Math.max(0, 1 - px / 400), 1.4) - 8 * Math.sin(px / 30)); x.lineTo(400, hor); x.fill();
+      x.fillStyle = "#AEBDB4"; x.beginPath(); x.moveTo(w, hor); for (let px = w; px >= 600; px -= 10) x.lineTo(px, hor - 30 - 90 * Math.pow(Math.max(0, (px - 600) / 360), 1.6) - 6 * Math.sin(px / 24)); x.lineTo(600, hor); x.fill();
+      x.fillStyle = "#8E9B8E"; x.fillRect(760, 236, 16, 64); x.fillRect(820, 232, 16, 68); x.beginPath(); x.arc(798, 244, 38, Math.PI, 0); x.arc(798, 244, 22, 0, Math.PI, true); x.fill(); x.fillRect(760, 236, 76, 10);
+      const gg = x.createLinearGradient(0, hor, 0, h); gg.addColorStop(0, "#B5BFA0"); gg.addColorStop(0.3, "#8A9B6A"); gg.addColorStop(1, "#5E7245"); x.fillStyle = gg; x.fillRect(0, hor, w, h - hor);
+      x.fillStyle = "rgba(255,255,255,.35)"; for (let k = 0; k < 6; k++) { x.beginPath(); x.ellipse(160 + k * 140, hor + 30 + k * 6, 120, 8 + k * 2, 0, 0, Math.PI * 2); x.fill(); }
+      x.filter = "blur(30px)"; x.fillStyle = "rgba(255,255,255,.55)"; x.fillRect(-50, hor - 90, w + 100, 150); x.filter = "none";
+    });
+    const mist = (seed, a) => smooth(960, 140, (x) => { const r = rng(seed); x.filter = "blur(18px)"; for (let k = 0; k < 7; k++) { x.fillStyle = `rgba(255,255,255,${a})`; x.beginPath(); x.ellipse(r() * 960, 60 + r() * 40, 140 + r() * 100, 22 + r() * 14, 0, 0, Math.PI * 2); x.fill(); } });
+    const grass = (ph) => smooth(960, 120, (x) => { x.strokeStyle = "rgba(60,80,40,.7)"; x.lineWidth = 2; const r = rng(42); for (let k = 0; k < 900; k++) { const px = r() * 960, py = 30 + r() * 90, hh = 6 + r() * 14 * (py / 120); x.beginPath(); x.moveTo(px, py); x.lineTo(px + ph * (hh / 8) + (r() - 0.5) * 3, py - hh); x.stroke(); } });
+    return [L.still(scene, { s, smooth: true }), L.drift(mist(1, 0.5), { s, smooth: true, y: 480, vx: 4, q: 2 }), L.drift(mist(2, 0.35), { s, smooth: true, y: 560, vx: 7, q: 2 }), L.flip([grass(1), grass(2.5)], { s, smooth: true, y: 840, every: 2 })];
+  } });
+
+def({ id: "silhouettes", name: "Silhouette march", for: "psp", round: "B", hz: 4, cost: "low",
+  borrows: "The PSP's flat vector art: a huge sun on a banded warm sky, layers of black silhouette hills with stylised lollipop trees and spiky grass, scrolling at different speeds like a marching side-scroller.",
+  avoids: "Tribes, drums, eyes and any character.",
+  thor: "Still sky; four silhouette strips drift 2 px at a time, 4 a second. Half resolution.",
+  build() {
+    const s = 2, w = 960, h = 540;
+    const sky = smooth(w, h, (x) => { ["#FFE08A", "#FFC46B", "#FFA552", "#F7833F", "#E8622F", "#C94A2A"].forEach((c, k) => { x.fillStyle = c; x.fillRect(0, k * 90, w, 90); }); x.fillStyle = "#FFF1B0"; circlesPath(x, [[620, 250, 150]]); x.fill(); x.fillStyle = "#FFE08A"; circlesPath(x, [[620, 250, 125]]); x.fill(); });
+    const hills = (base, amp, f, col, trees, seed) => smooth(1920, h, (x) => {
+      x.fillStyle = col; x.beginPath(); x.moveTo(0, h); for (let px = 0; px <= 1920; px += 8) x.lineTo(px, base - amp * (0.6 * Math.sin(px / 1920 * Math.PI * 2 * f + seed) + 0.4 * Math.sin(px / 1920 * Math.PI * 2 * f * 2.3 + seed * 2))); x.lineTo(1920, h); x.fill();
+      const yAt = (px) => base - amp * (0.6 * Math.sin(px / 1920 * Math.PI * 2 * f + seed) + 0.4 * Math.sin(px / 1920 * Math.PI * 2 * f * 2.3 + seed * 2));
+      const r = rng(seed * 7); for (let k = 0; k < trees; k++) { const px = r() * 1920, gy = yAt(px), sc = 0.6 + r() * 0.8, kind = k % 3; x.fillStyle = col; x.fillRect(px - 3 * sc, gy - 70 * sc, 6 * sc, 70 * sc);
+        if (kind === 0) { circlesPath(x, [[px, gy - 80 * sc, 26 * sc]]); x.fill(); } else if (kind === 1) { x.beginPath(); x.moveTo(px - 30 * sc, gy - 55 * sc); x.lineTo(px, gy - 120 * sc); x.lineTo(px + 30 * sc, gy - 55 * sc); x.fill(); } else { for (let t = 0; t < 5; t++) { x.beginPath(); x.moveTo(px, gy - 70 * sc); x.lineTo(px + Math.cos(Math.PI * (0.2 + t * 0.15)) * 40 * sc, gy - 70 * sc - Math.sin(Math.PI * (0.2 + t * 0.15)) * 40 * sc); x.lineTo(px, gy - 60 * sc); x.fill(); } } }
+      for (let px = 0; px < 1920; px += 7) { const gy = yAt(px); x.beginPath(); x.moveTo(px, gy + 2); x.lineTo(px + 2, gy - 10 - (px * 13) % 9); x.lineTo(px + 4, gy + 2); x.fill(); }
+    });
+    return [L.still(sky, { s, smooth: true }), L.drift(hills(300, 40, 1, "#7A3A3C", 10, 1), { s, smooth: true, vx: -2, q: 2 }), L.drift(hills(360, 36, 2, "#4A2630", 8, 2), { s, smooth: true, vx: -5, q: 2 }), L.drift(hills(430, 30, 3, "#2A1620", 6, 3), { s, smooth: true, vx: -10, q: 2 }), L.drift(hills(500, 20, 4, "#120810", 4, 4), { s, smooth: true, vx: -18, q: 2 })];
+  } });
+
+def({ id: "dunes", name: "Dunes", for: "playstation3", round: "B", hz: 3, cost: "medium",
+  borrows: "The HD-era art game: golden dunes with sharp sunlit ridges, a far mountain with a beam of light, haze, lens glare and sand glittering in the sun.",
+  avoids: "Travellers, cloth, glyphs and any real landmark.",
+  thor: "Still half-resolution dunes with the glow baked in; three glitter layers blink at 3 a second; haze drifts 2 px at a time.",
+  build() {
+    const s = 2, w = 960, h = 540;
+    const scene = smooth(w, h, (x) => {
+      const g = x.createLinearGradient(0, 0, 0, 300); g.addColorStop(0, "#5B8FD6"); g.addColorStop(0.6, "#E9C98A"); g.addColorStop(1, "#FFE9B8"); x.fillStyle = g; x.fillRect(0, 0, w, 300);
+      x.fillStyle = "#6A5A80"; x.beginPath(); x.moveTo(380, 300); x.lineTo(470, 120); x.lineTo(490, 150); x.lineTo(510, 125); x.lineTo(600, 300); x.fill(); x.fillStyle = "#8A7A9A"; x.beginPath(); x.moveTo(470, 120); x.lineTo(490, 150); x.lineTo(510, 125); x.lineTo(540, 190); x.lineTo(490, 190); x.fill();
+      x.filter = "blur(10px)"; x.fillStyle = "rgba(255,245,210,.85)"; x.fillRect(482, 0, 16, 130); x.filter = "blur(24px)"; x.fillStyle = "rgba(255,240,200,.6)"; x.fillRect(470, 0, 40, 140); x.filter = "none";
+      const dune = (pts, col, lit) => { x.fillStyle = col; x.beginPath(); x.moveTo(0, h); pts.forEach(([a, b]) => x.lineTo(a, b)); x.lineTo(w, h); x.fill(); x.strokeStyle = lit; x.lineWidth = 3; x.beginPath(); pts.forEach(([a, b], k) => k ? x.lineTo(a, b) : x.moveTo(a, b)); x.stroke(); };
+      dune([[0, 300], [200, 262], [420, 290], [700, 250], [960, 285]], "#D9A75E", "#FFE6A8");
+      dune([[0, 360], [160, 330], [330, 372], [560, 320], [820, 376], [960, 350]], "#C98F48", "#FFD98F");
+      dune([[0, 470], [220, 420], [480, 470], [760, 430], [960, 480]], "#B57A3A", "#F7C882");
+      x.filter = "blur(26px)"; x.fillStyle = "rgba(255,230,170,.45)"; x.fillRect(0, 230, w, 110); x.filter = "none";
+    });
+    const glit = (seed) => smooth(960, 300, (x) => { const r = rng(seed); x.fillStyle = "#FFFBE6"; for (let k = 0; k < 60; k++) { x.fillRect(r() * 960, r() * 300, 2, 2); } });
+    const haze = smooth(960, 120, (x) => { x.filter = "blur(20px)"; x.fillStyle = "rgba(255,236,200,.5)"; for (let k = 0; k < 5; k++) { x.beginPath(); x.ellipse(100 + k * 200, 60, 160, 24, 0, 0, Math.PI * 2); x.fill(); } });
+    return [L.still(scene, { s, smooth: true }), L.drift(haze, { s, smooth: true, y: 500, vx: 3, q: 2 }), L.blink(glit(1), { s, smooth: true, y: 560, period: 1, duty: 0.34 }), L.blink(glit(2), { s, smooth: true, y: 560, period: 1, duty: 0.34, phase: 0.33 }), L.blink(glit(3), { s, smooth: true, y: 560, period: 1, duty: 0.34, phase: 0.66 })];
+  } });
+
+def({ id: "galaxyraid", name: "Galaxy raid", for: "arcade", round: "B", hz: 4, cost: "low",
+  borrows: "The vertical space shooter's attract mode: a black sky with a three-speed starfield, ringed pixel planets at the edges, colour-cycling raster bars and cabinet scanlines. The one dark backdrop, because the cabinet was. 480×270 at 4 px a pixel.",
+  avoids: "Ships, formations, high-score tables and marquee art.",
+  thor: "Three star layers step one 4 px pixel downward, raster bars flip through four frames, planets are still.",
+  build() {
+    const s = 4, aw = 480, ah = 270;
+    const stars = (count, col, big, seed) => { const p = pix(aw, ah), r = rng(seed); for (let n = 0; n < count; n++) { const x = Math.floor(r() * aw), y = Math.floor(r() * ah); p.set(x, y, col); if (big) { p.set(x + 1, y, col); p.set(x, y + 1, col); p.set(x + 1, y + 1, col); } } return p.done(); };
+    const planets = pix(aw, ah);
+    circ(planets, 60, 70, 28, C(200, 80, 120)); circ(planets, 52, 62, 14, C(232, 120, 160)); for (let i = -46; i <= 46; i++) { const j = Math.round(i * 0.28); if (Math.abs(i) > 30) { planets.set(60 + i, 70 + j, C(120, 200, 240)); planets.set(60 + i, 71 + j, C(80, 140, 200)); } }
+    circ(planets, 430, 200, 20, C(80, 160, 232)); circ(planets, 436, 206, 8, C(40, 100, 180)); circ(planets, 410, 40, 7, C(232, 200, 80));
+    const bars = (shift) => Array.from({ length: 4 }, (_, f) => { const p = pix(1, 28); const ramp = [30, 44, 58, 66, 58, 44, 30]; for (let b = 0; b < 3; b++) ramp.forEach((l, j) => p.set(0, b * 9 + j + 1, hslRgb(200 + f * 25 + b * 60 + shift, 90, l))); return p.done(); });
+    const scan = off(1, 4), sx = scan.getContext("2d"); sx.fillStyle = "rgba(0,0,0,.35)"; sx.fillRect(0, 3, 1, 1);
+    return [
+      L.fill(Fill.solid("#06061A")),
+      L.drift(stars(180, C(90, 90, 140), false, 1), { s, wrapX: false, wrapY: true, vy: 4 }), L.drift(stars(70, C(160, 170, 220), false, 2), { s, wrapX: false, wrapY: true, vy: 8 }), L.drift(stars(26, C(255, 255, 255), true, 3), { s, wrapX: false, wrapY: true, vy: 16 }),
+      L.still(planets.done(), { s }), L.flip(bars(0), { s, sx: W, every: 2 }), L.flip(bars(40), { s, sx: W, y: H - 28 * s, every: 2 }), L.tile(scan),
+    ];
+  } });
+
+def({ id: "testchamber", name: "Test chamber", for: "steam", round: "B", hz: 2, cost: "low",
+  borrows: "The PC puzzle-shooter's sterile lab: a wall of white bevelled panels, a grey floor in perspective, a fluorescent strip, and an orange glow on one wall answered by a blue one on the other.",
+  avoids: "Portals as such, logos, turrets, cubes and signage.",
+  thor: "Still half-resolution room; the two glows sway 2 px at a time twice a second.",
+  build() {
+    const s = 2, w = 960, h = 540;
+    const room = smooth(w, h, (x) => {
+      x.fillStyle = "#E9ECEF"; x.fillRect(0, 0, w, 380);
+      for (let j = 0; j < 380; j += 64) for (let i = -32; i < w; i += 64) { x.fillStyle = "#F6F7F8"; x.fillRect(i + 2, j + 2, 60, 60); x.fillStyle = "#D9DDE2"; x.fillRect(i + 2, j + 58, 60, 4); x.fillRect(i + 58, j + 2, 4, 60); x.fillStyle = "#FFFFFF"; x.fillRect(i + 2, j + 2, 60, 3); }
+      x.fillStyle = "#7A8088"; x.fillRect(0, 380, w, h - 380); x.strokeStyle = "#5E646C"; x.lineWidth = 2; for (let k = -6; k <= 14; k++) { x.beginPath(); x.moveTo(480 + k * 60, 380); x.lineTo(480 + k * 220, h); x.stroke(); } for (let k = 0; k < 5; k++) { const y = 380 + 160 * Math.pow(k / 4, 1.8) + 6; x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke(); }
+      x.fillStyle = "#3C4047"; x.fillRect(0, 372, w, 10); x.fillStyle = "#FFFFFF"; x.fillRect(260, 20, 440, 10); x.filter = "blur(10px)"; x.fillStyle = "rgba(255,255,255,.7)"; x.fillRect(250, 10, 460, 30); x.filter = "none";
+    });
+    const glow = (col) => smooth(420, 540, (x) => { x.filter = "blur(40px)"; x.fillStyle = col; x.fillRect(60, 40, 120, 440); x.filter = "blur(14px)"; x.fillStyle = col; x.fillRect(100, 100, 40, 300); });
+    return [L.still(room, { s, smooth: true }), L.sway(glow("rgba(255,140,30,.55)"), { s, smooth: true, x: -200, y: 0, ax: 8, period: 9, q: 2 }), L.sway(glow("rgba(40,140,255,.55)"), { s, smooth: true, x: 1300, y: 0, ax: 8, period: 11, phase: 1.5, q: 2 })];
+  } });
+
+const byId = Object.fromEntries(BACKDROPS.map((b) => [b.id, b]));
+const proposedFor = (sysId) => BACKDROPS.find((b) => b.for === sysId && b.round === "B") || BACKDROPS.find((b) => b.for === sysId);
+
+// ---------- covers: generated placeholders (committed) or the owner's own (local only) ----------
+const WORDS_A = ["Lantern", "Harbor", "Comet", "Velvet", "Echo", "Orchard", "Signal", "Granite", "Ember", "Atlas", "Meadow", "Circuit", "Willow", "Tundra", "Copper", "Nimbus"];
+const WORDS_B = ["Run", "Tales", "Rally", "Quest", "Drift", "Story", "League", "Gate", "Saga", "Park", "Hollow", "Express", "Garden", "Relay"];
+const coverCache = {};
+function placeholderCovers(sys) {
+  if (coverCache[sys.id]) return coverCache[sys.id];
+  const r = rng(hashStr(sys.id)), hue0 = hueOf(sys.c), ar = sys.ar, cw = ar >= 1 ? 340 : Math.round(440 * ar), ch = ar >= 1 ? Math.round(340 / ar) : 440;
+  const list = [];
+  for (let i = 0; i < 14; i++) {
+    const c = off(cw, ch), x = c.getContext("2d"), hu = hue0 + (r() * 140 - 70), g = x.createLinearGradient(0, 0, cw * 0.3, ch);
+    g.addColorStop(0, hsl(hu, 55, 58)); g.addColorStop(1, hsl(hu + 35, 60, 30)); x.fillStyle = g; x.fillRect(0, 0, cw, ch);
+    x.fillStyle = hsl(hu + 180, 70, 72, 0.85); x.strokeStyle = hsl(hu + 180, 70, 80, 0.7);
+    const m = i % 5, cx = cw * (0.3 + r() * 0.4), cy = ch * (0.3 + r() * 0.2);
+    if (m === 0) { x.beginPath(); x.arc(cx, cy, cw * 0.22, 0, Math.PI * 2); x.fill(); x.fillStyle = hsl(hu, 50, 22, 0.8); x.fillRect(0, ch * 0.55, cw, ch); }
+    else if (m === 1) { x.lineWidth = cw * 0.06; for (let k = -6; k < 10; k++) { x.beginPath(); x.moveTo(k * cw * 0.16, ch); x.lineTo(k * cw * 0.16 + ch * 0.6, 0); x.stroke(); } }
+    else if (m === 2) { x.beginPath(); x.moveTo(0, ch * 0.7); x.lineTo(cw * 0.35, ch * 0.35); x.lineTo(cw * 0.6, ch * 0.6); x.lineTo(cw * 0.8, ch * 0.42); x.lineTo(cw, ch * 0.62); x.lineTo(cw, ch); x.lineTo(0, ch); x.fill(); }
+    else if (m === 3) { for (let yy = 12; yy < ch * 0.7; yy += 22) for (let xx = 12; xx < cw; xx += 22) { x.beginPath(); x.arc(xx, yy, 3 + 5 * (yy / ch), 0, Math.PI * 2); x.fill(); } }
+    else { x.lineWidth = cw * 0.03; for (let k = 1; k < 7; k++) { x.beginPath(); x.arc(cx, cy, k * cw * 0.07, 0, Math.PI * 2); x.stroke(); } }
+    const title = `${WORDS_A[Math.floor(r() * WORDS_A.length)]} ${WORDS_B[Math.floor(r() * WORDS_B.length)]}`;
+    x.fillStyle = "rgba(0,0,0,.35)"; x.fillRect(0, ch - Math.max(56, ch * 0.18), cw, ch);
+    x.fillStyle = "#fff"; x.font = `900 ${Math.round(Math.min(cw, ch) * 0.105)}px Nunito, system-ui, sans-serif`; x.textBaseline = "alphabetic";
+    x.fillText(title, Math.round(cw * 0.07), Math.round(ch - Math.max(20, ch * 0.06)), cw * 0.86);
+    let src = null;
+    list.push({ el: c, title, get src() { return src || (src = c.toDataURL("image/jpeg", 0.86)); } });
+  }
+  return (coverCache[sys.id] = list);
+}
+const ownCovers = {};
+const coversFor = (sys) => (ownCovers[sys.id] && ownCovers[sys.id].length >= 3 ? ownCovers[sys.id] : placeholderCovers(sys));
+const loadImage = (src, title) => new Promise((ok) => { const im = new Image(); im.onload = () => ok({ el: im, src, title }); im.onerror = () => ok(null); im.src = src; });
+// ?covers=http://127.0.0.1:8765 loads <base>/<short name>/1..14.jpg for each system (the round-2 notes folder has nes/ and ps2/).
+const coverBase = new URLSearchParams(location.search).get("covers");
+const tried = {};
+async function tryServedCovers(sys) {
+  if (!coverBase || tried[sys.id]) return false; tried[sys.id] = true;
+  const dir = `${coverBase.replace(/\/$/, "")}/${sys.short.toLowerCase()}`;
+  const list = (await Promise.all(Array.from({ length: 14 }, (_, i) => loadImage(`${dir}/${i + 1}.jpg`, `Cover ${i + 1}`)))).filter(Boolean);
+  if (list.length >= 3) { ownCovers[sys.id] = list; return true; } return false;
+}
+
+// ---------- state ----------
+const STORE = "emushelf-console-backdrops-v1";
+let picks = {};
+try { picks = JSON.parse(localStorage.getItem(STORE) || "{}") || {}; } catch { picks = {}; }
+const savePicks = () => { try { localStorage.setItem(STORE, JSON.stringify(picks)); } catch { /* storage blocked: picks live for this visit */ } };
+const shownBd = {}; // system id -> backdrop id being tried
+let sysIndex = Math.max(0, SYSTEMS.findIndex((s) => "#" + s.id === location.hash));
+let motionOn = true, showGame = false;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (reduceMotion) motionOn = false;
+
+// ---------- the Stage ----------
+const stageHost = document.getElementById("stage");
+const screen = document.createElement("div"); screen.className = "screen"; stageHost.append(screen);
+const overlay = document.createElement("div"); screen.append(overlay);
+function fit() { screen.style.transform = `scale(${stageHost.clientWidth / W})`; }
+new ResizeObserver(fit).observe(stageHost);
+
+let live = null; // { canvas, layers, bd, hz, t0, last, timer }
+function stopLive() { if (live && live.timer) { clearInterval(live.timer); live.timer = null; } }
+function startLive() {
+  if (!live || live.timer || !motionOn || document.hidden) return;
+  live.timer = setInterval(() => {
+    const tick = Math.floor((performance.now() - live.t0) / 1000 * live.hz);
+    if (tick === live.last) return; live.last = tick; paint(live, tick);
+  }, 1000 / live.hz / 2);
+}
+function paint(l, tick) { const ctx = l.canvas.getContext("2d"); ctx.clearRect(0, 0, W, H); for (const ly of l.layers) drawLayer(ctx, ly, tick / l.hz, tick); l.paints++; }
+document.addEventListener("visibilitychange", () => { if (document.hidden) stopLive(); else startLive(); });
+
+function showBackdrop(sys, bd, { crossfade }) {
+  stopLive();
+  const canvas = off(W, H); canvas.className = "bd"; canvas.style.opacity = crossfade ? "0" : "1";
+  const layers = bd.build({ h: hueOf(sys.c), sys, covers: coversFor(sys) });
+  const next = { canvas, layers, bd, hz: bd.hz, t0: performance.now(), last: 0, timer: null, paints: 0, since: performance.now() };
+  paint(next, 0);
+  // At most one crossfade: anything older than the leaving backdrop goes at once.
+  [...screen.querySelectorAll("canvas.bd")].slice(0, -1).forEach((c) => c.remove());
+  const leaving = screen.querySelector("canvas.bd");
+  screen.insertBefore(canvas, overlay);
+  if (crossfade && leaving) { requestAnimationFrame(() => requestAnimationFrame(() => { canvas.style.opacity = "1"; })); setTimeout(() => leaving.remove(), 520); }
+  else { canvas.style.opacity = "1"; if (leaving) leaving.remove(); }
+  live = next; startLive();
+  const m = measure(layers, bd.hz), lvl = { low: "lvl-low", medium: "lvl-med", high: "lvl-high" }[bd.cost];
+  document.getElementById("metrics").innerHTML =
+    `<span class="${lvl}">Cost: ${bd.cost}</span><span>${m.layers} layers</span><span>${m.moving} move</span><span>≤ ${m.hz} steps/s</span>` +
+    `<span>${m.kb < 1024 ? Math.round(m.kb) + " KB" : (m.kb / 1024).toFixed(1) + " MB"} of bitmaps</span><span>${m.overdraw.toFixed(1)}× screen drawn</span>`;
+}
+function showOverlay(sys) {
+  const covers = coversFor(sys), game = covers[3] || covers[0];
+  const ar = game.el.width / game.el.height, gh = ar >= 1 ? Math.round(Math.min(560 / ar, 560)) : 600, gw = Math.round(Math.min(gh * ar, 760));
+  overlay.innerHTML = `
+    <div class="fold" style="--c:${sys.c}"><div class="shadow"></div><div class="back"></div>
+      <div class="peek">${[[-28, -9, 1], [28, 9, 2], [0, 0, 0]].map(([dx, r, i]) => `<img alt="" src="${covers[i].src}" style="transform:translateX(calc(-50% + ${dx * 2.4}px)) rotate(${r}deg)">`).join("")}</div>
+      <div class="front">${sys.short}</div></div>
+    <div class="game" style="width:${gw}px;height:${Math.round(gw / ar)}px"><img alt="" src="${game.src}"></div>
+    <div class="pill">80%  4:18 PM</div>
+    <div class="plate"><b>${showGame ? escapeHtml(game.title) : sys.name}</b><small>${showGame ? `Game · ${sys.short}` : `Folder · ${sys.n} games`}</small></div>`;
+  screen.classList.toggle("show-game", showGame);
+}
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[ch]));
+
+// ---------- the page ----------
+const sel = document.getElementById("bdSelect");
+function renderSystems() {
+  const nav = document.getElementById("systems"); nav.innerHTML = "";
+  for (const maker of [...new Set(SYSTEMS.map((s) => s.maker))]) {
+    const g = document.createElement("div"); g.className = "group"; g.innerHTML = `<span>${maker}</span>`;
+    SYSTEMS.forEach((s, i) => {
+      if (s.maker !== maker) return;
+      const b = document.createElement("button"); b.type = "button"; b.className = "chip"; b.style.setProperty("--c", s.c);
+      b.setAttribute("aria-pressed", String(i === sysIndex));
+      const v = picks[s.id]?.v; b.innerHTML = `<i></i>${s.short}${v ? ` <b class="${v}">${{ keep: "✓", maybe: "?", no: "✕" }[v]}</b>` : ""}`;
+      b.setAttribute("aria-label", `${s.name}${v ? `, marked ${({ keep: "keep", maybe: "maybe", no: "not this" })[v]}` : ""}`);
+      b.addEventListener("click", () => selectSystem(i));
+      g.append(b);
+    });
+    nav.append(g);
+  }
+}
+// A Keep pins its backdrop; a Maybe or Not this is remembered in the table but the Stage shows the current proposal.
+function currentBd(sys) { const p = picks[sys.id]; return byId[shownBd[sys.id] || (p?.v === "keep" && byId[p.bd] ? p.bd : null) || proposedFor(sys.id).id]; }
+async function selectSystem(i, { crossfade = true } = {}) {
+  sysIndex = mod(i, SYSTEMS.length); const sys = SYSTEMS[sysIndex];
+  try { history.replaceState(null, "", location.pathname + location.search + "#" + sys.id); } catch { /* opaque origin (a data: or sandboxed view) */ }
+  await tryServedCovers(sys);
+  const label = (b) => b.for === sys.id ? (b.round === "B" ? " (proposed, round B)" : " (round A)") : b.for ? ` (${b.round === "B" ? "B" : "A"}, for ${SYSTEMS.find((s) => s.id === b.for).short})` : " (round 2)";
+  const ordered = [...BACKDROPS].sort((a, b) => (b.for === sys.id) - (a.for === sys.id) || (b.round === "B") - (a.round === "B"));
+  sel.innerHTML = ordered.map((b) => `<option value="${b.id}">${b.name}${label(b)}</option>`).join("");
+  sel.value = currentBd(sys).id;
+  renderSystems(); showOverlay(sys); applyBackdrop({ crossfade }); renderVerdict();
+}
+function applyBackdrop({ crossfade }) {
+  const sys = SYSTEMS[sysIndex], bd = currentBd(sys);
+  document.getElementById("sysEyebrow").textContent = `${sys.maker} · ${sys.short}`;
+  document.getElementById("sysName").innerHTML = `${sys.name}`;
+  document.getElementById("borrows").innerHTML = `<b>${bd.name}</b>${bd.for === sys.id && bd.round === "B" ? '<span class="tag">Proposed</span>' : bd.for === sys.id ? '<span class="tag" style="background:var(--muted)">Round A</span>' : ""}. ${bd.borrows}`;
+  document.getElementById("avoids").textContent = bd.avoids;
+  document.getElementById("thor").textContent = bd.thor;
+  showBackdrop(sys, bd, { crossfade });
+}
+function renderVerdict() {
+  const sys = SYSTEMS[sysIndex], p = picks[sys.id] || {};
+  document.querySelectorAll(".verdict button").forEach((b) => b.setAttribute("aria-pressed", String(p.v === b.dataset.v && p.bd === currentBd(sys).id)));
+  document.getElementById("note").value = p.note || "";
+  renderPicks();
+}
+function renderPicks() {
+  const tb = document.querySelector("#picks tbody");
+  tb.innerHTML = SYSTEMS.map((s) => { const p = picks[s.id]; const bd = p?.bd ? byId[p.bd] : null;
+    return `<tr><td>${s.name}</td><td>${bd ? bd.name : `<span style="color:var(--muted)">${proposedFor(s.id).name} (proposed)</span>`}</td><td class="${p?.v ? "v-" + p.v : ""}">${p?.v ? ({ keep: "Keep", maybe: "Maybe", no: "Not this" })[p.v] : "—"}</td><td>${p?.note ? escapeHtml(p.note) : ""}</td></tr>`; }).join("");
+}
+function picksText() {
+  return ["EmuShelf console backdrops: picks", ...SYSTEMS.map((s) => { const p = picks[s.id]; return `${s.short} (${s.id}): ${p?.bd ? byId[p.bd].name : proposedFor(s.id).name + " [not judged]"}${p?.v ? " | " + ({ keep: "keep", maybe: "maybe", no: "not this" })[p.v] : ""}${p?.note ? " | " + p.note : ""}`; })].join("\n");
+}
+
+sel.addEventListener("change", () => { const sys = SYSTEMS[sysIndex]; shownBd[sys.id] = sel.value; applyBackdrop({ crossfade: true }); renderVerdict(); });
+document.querySelectorAll(".verdict button").forEach((b) => b.addEventListener("click", () => {
+  const sys = SYSTEMS[sysIndex], bd = currentBd(sys).id, p = picks[sys.id] || {};
+  picks[sys.id] = p.v === b.dataset.v && p.bd === bd ? { note: p.note } : { ...p, bd, v: b.dataset.v };
+  savePicks(); renderVerdict(); renderSystems();
+}));
+document.getElementById("note").addEventListener("input", (e) => { const sys = SYSTEMS[sysIndex]; picks[sys.id] = { ...(picks[sys.id] || {}), note: e.target.value }; if (!picks[sys.id].bd) picks[sys.id].bd = currentBd(sys).id; savePicks(); renderPicks(); });
+const segF = document.getElementById("showFolder"), segG = document.getElementById("showGame");
+const setGame = (on) => { showGame = on; segF.setAttribute("aria-pressed", String(!on)); segG.setAttribute("aria-pressed", String(on)); showOverlay(SYSTEMS[sysIndex]); };
+segF.addEventListener("click", () => setGame(false)); segG.addEventListener("click", () => setGame(true));
+const motionBtn = document.getElementById("motion");
+const setMotion = (on) => { motionOn = on; motionBtn.setAttribute("aria-pressed", String(on)); motionBtn.textContent = on ? "Motion on" : "Motion off"; if (on) { if (live) live.t0 = performance.now() - live.last / live.hz * 1000; startLive(); } else stopLive(); };
+motionBtn.addEventListener("click", () => setMotion(!motionOn)); setMotion(motionOn);
+document.getElementById("coverFiles").addEventListener("change", async (e) => {
+  const files = [...e.target.files].filter((f) => f.type.startsWith("image/")); if (!files.length) return;
+  const list = (await Promise.all(files.slice(0, 24).map((f) => loadImage(URL.createObjectURL(f), f.name.replace(/\.[^.]+$/, ""))))).filter(Boolean);
+  const sys = SYSTEMS[sysIndex]; if (list.length < 3) return;
+  ownCovers[sys.id] = list; showOverlay(sys); applyBackdrop({ crossfade: false });
+});
+document.getElementById("copy").addEventListener("click", () => {
+  const text = picksText(), pre = document.getElementById("picksText"), state = document.getElementById("copyState");
+  pre.textContent = text; pre.hidden = false;
+  const fallback = () => { const r = document.createRange(); r.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(r); state.textContent = "Selected: press Copy"; };
+  try { navigator.clipboard.writeText(text).then(() => { state.textContent = "Copied"; }, fallback); } catch { fallback(); }
+});
+addEventListener("keydown", (e) => {
+  if (e.target.closest("textarea, select, input")) return;
+  if (e.key === "ArrowRight") { selectSystem(sysIndex + 1); e.preventDefault(); }
+  else if (e.key === "ArrowLeft") { selectSystem(sysIndex - 1); e.preventDefault(); }
+  else if (e.key === "ArrowDown" || e.key === "ArrowUp") { const n = sel.options.length; sel.selectedIndex = mod(sel.selectedIndex + (e.key === "ArrowDown" ? 1 : -1), n); sel.dispatchEvent(new Event("change")); e.preventDefault(); }
+  else if (e.key === "g" || e.key === "G") setGame(!showGame);
+});
+setInterval(() => { if (!live) return; const secs = (performance.now() - live.since) / 1000; document.getElementById("rate").textContent = live.timer ? `${live.bd.hz} redraws/s (app: offset changes only)` : "still"; if (secs > 5) { live.since = performance.now(); live.paints = 0; } }, 1000);
+
+// Contact sheet: build each system's proposed backdrop once, keep only its first frame.
+function buildSheet() {
+  const host = document.getElementById("thumbs"), big = off(W, H), bctx = big.getContext("2d");
+  const items = SYSTEMS.map((sys, i) => {
+    const b = document.createElement("button"); b.type = "button"; b.className = "thumb";
+    const c = off(480, 270); const bd = proposedFor(sys.id);
+    b.innerHTML = `<span>${sys.short}<small>${bd.name}</small></span>`; b.prepend(c);
+    b.addEventListener("click", () => { selectSystem(i); stageHost.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" }); });
+    host.append(b); return { sys, bd, c };
+  });
+  let k = 0;
+  const step = () => {
+    if (k >= items.length) return; const { sys, bd, c } = items[k++];
+    const layers = bd.build({ h: hueOf(sys.c), sys, covers: coversFor(sys) });
+    bctx.clearRect(0, 0, W, H); for (const ly of layers) drawLayer(bctx, ly, 0, 0);
+    const x = c.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(big, 0, 0, 480, 270);
+    x.fillStyle = "rgba(255,255,255,.92)"; x.beginPath(); x.roundRect(240 - 75, 270 - 16 - 30, 150, 30, 8); x.fill();
+    x.fillStyle = sys.c; x.beginPath(); x.roundRect(240 - 52, 40, 104, 100, 20); x.fill();
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 200);
+}
+
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(() => { selectSystem(sysIndex, { crossfade: false }); buildSheet(); });
+</script>
+</body>
+</html>
