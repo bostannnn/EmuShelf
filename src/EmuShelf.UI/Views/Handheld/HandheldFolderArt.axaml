@@ -8,7 +8,8 @@
     A platform (or, from H4, a user) folder: a back plate, the first three covers tucked inside, and the
     front flap with the folder's face. Drawn at 416 px and scaled to fit (a home tile is 176 px, the Stage's
     big folder 416). Its states are classes set by whoever shows it: `peek` tilts the flap so the covers peek
-    out (focus), `open` swings it open (A). Transform-only transitions on the flap and the covers.
+    out (focus), `open` swings it open (A), `instant` skips the transitions. Transform-only transitions on the
+    flap and the covers.
     DataContext: anything with AccentBrush, Monogram, PeekA, PeekB, PeekC (a home slot, the Stage).
   -->
 
@@ -62,6 +63,10 @@
     <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.left"><Setter Property="RenderTransform" Value="translate(-72px,-28px) rotate(-12deg)" /></Style>
     <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.middle"><Setter Property="RenderTransform" Value="translate(0px,-36px)" /></Style>
     <Style Selector="vh|HandheldFolderArt.open Border.peek-cover.right"><Setter Property="RenderTransform" Value="translate(72px,-28px) rotate(12deg)" /></Style>
+
+    <!-- `instant` lands a state without its transition (the Stage's folder arriving already open on a close). -->
+    <Style Selector="vh|HandheldFolderArt.instant Border.front"><Setter Property="Transitions" Value="{x:Null}" /></Style>
+    <Style Selector="vh|HandheldFolderArt.instant Border.peek-cover"><Setter Property="Transitions" Value="{x:Null}" /></Style>
   </UserControl.Styles>
 
   <!-- Not clipped: the shadow spills past the folder's own square. -->

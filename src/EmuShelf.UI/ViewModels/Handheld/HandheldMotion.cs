@@ -50,25 +50,57 @@ public static class HandheldMotion
     /// <summary>The big folder's flap tilts this long after the folder takes the focus.</summary>
     public const double FlapPeekDelayMilliseconds = 200;
 
-    // Folder open: the tile grows (150 ms), home recedes to 0.94× and fades (260 ms) while the games spill
-    // out of the folder, nearest first (440 ms each, 14 ms apart, capped), the header fades in.
-    public const double FolderTileGrowScale = 1.1;
-    public const double FolderTileGrowMilliseconds = 150;
-    public const double HomeRecedeScale = 0.94;
-    public const double HomeRecedeMilliseconds = 260;
-    public const double SpillMilliseconds = 440;
-    public const double SpillStaggerMilliseconds = 14;
-    public const double SpillStaggerCapMilliseconds = 180;
-    public const double SpillFromScale = 0.35;
-    public const double HeaderInDelayMilliseconds = 120;
-    public const double HeaderInMilliseconds = 300;
+    // Folder open, "Zoom through" (M45 H4, picked in the folder lab): two objects, one direction. The folder
+    // tile grows toward the viewer and fades; home fades under it; the folder page (header and grid, one
+    // surface) grows out of the tile's place on the springy curve, fading in over its first 45%.
+    public const double ZoomTileScale = 2.6;
+    public const double ZoomTileOutMilliseconds = 300;
+    public const double ZoomHomeOutDelayMilliseconds = 40;
+    public const double ZoomHomeOutMilliseconds = 240;
+    public const double ZoomSheetFromScale = 0.55;
 
-    // Folder close: the games gather back, farthest first (280 ms, 10 ms apart), while home returns (320 ms).
-    public const double GatherMilliseconds = 280;
-    public const double GatherStaggerMilliseconds = 10;
-    public const double GatherStaggerCapMilliseconds = 120;
-    public const double HomeReturnDelayMilliseconds = 80;
-    public const double HomeReturnMilliseconds = 320;
+    /// <summary>
+    /// The sheet's springy arrival, baked into a curve: stiffness 600, damping 32 (ratio ≈ 0.65), settling in
+    /// ≈ 0.38 s with ≈ 3% over full size. The lab's cubic-bezier(.22, 1.1, .36, 1) overshoots by only ≈ 0.1%
+    /// of the scale, so the spring carries the "springy" part of the pick.
+    /// </summary>
+    public static readonly HandheldSpringParameters ZoomSheet = new(600, 32);
+
+    /// <summary>The tile's return from 2.6× on close: stiffness 576, damping 38.8 (≈ 0.81), ≈ 2% under 1× before it rests.</summary>
+    public static readonly HandheldSpringParameters ZoomTile = new(576, 38.8);
+    public const double ZoomSheetInDelayMilliseconds = 60;
+    public const double ZoomSheetInMilliseconds = 380;
+    public const float ZoomSheetFadeInPortion = 0.45f;
+
+    // Folder close: the reverse. The page shrinks back into the tile's place, fading over its last 30%; home
+    // fades in; the tile comes back from 2.6× on the springy curve.
+    public const double ZoomSheetOutMilliseconds = 260;
+    public const float ZoomSheetFadeOutFrom = 0.7f;
+    public const double ZoomHomeInDelayMilliseconds = 60;
+    public const double ZoomHomeInMilliseconds = 240;
+    public const double ZoomTileInDelayMilliseconds = 40;
+    public const double ZoomTileInMilliseconds = 320;
+
+    /// <summary>The selector hides while the page zooms and fades back in once it has landed (140 ms).</summary>
+    public const double ZoomSelectorHiddenMilliseconds = 260;
+    public const double ZoomSelectorFadeMilliseconds = 140;
+
+    /// <summary>On close the big folder arrives open on the Stage and its flap closes this much later.</summary>
+    public const double StageFlapCloseDelayMilliseconds = 220;
+
+    // The Stage's era motif (M45 H4): a cartridge system's pixel grid with drifting blocks, a disc system's
+    // scanlines with a rolling bar, in the focused system's colour; translate-only on pre-rendered tiles.
+    public const double BackdropCrossfadeMilliseconds = 450;
+    public const double CartridgeGridPitch = 22;
+    public const double CartridgeGridLine = 2;
+    public const double CartridgeBlockSize = 22;
+    public const double CartridgeBlockTileWidth = 176;
+    public const double CartridgeBlockTileHeight = 132;
+    public const double CartridgeDriftSeconds = 22;
+    public const double DiscScanlinePitch = 5;
+    public const double DiscScanlineHeight = 2;
+    public const double DiscBarHeight = 140;
+    public const double DiscBarSeconds = 9;
 
     // Launch: the tile/cover presses in (0.94×) and pops (1.1×); the cover lifts off the Launcher, lands on
     // the Stage and zooms into the emulator. The emulator starts once the cover has landed.
@@ -84,8 +116,11 @@ public static class HandheldMotion
     /// <summary>The launch waits for the cover to land on the Stage before the emulator starts.</summary>
     public static readonly TimeSpan LaunchLead = TimeSpan.FromMilliseconds(LaunchLandDelayMilliseconds + LaunchLandMilliseconds);
 
-    /// <summary>The mockup's POP curve, cubic-bezier(.22, 1.1, .36, 1): fast out with a hair of overshoot.</summary>
+    /// <summary>The mockup's POP curve, cubic-bezier(.22, 1.1, .36, 1): fast out with a hair of overshoot (the lab's SPRINGY).</summary>
     public static Easing PopCurve() => new SplineEasing(0.22, 1.1, 0.36, 1);
+
+    /// <summary>The lab's EASE, cubic-bezier(.4, 0, .2, 1): the standard ease-in-out for things that leave.</summary>
+    public static Easing ZoomEase() => new SplineEasing(0.4, 0, 0.2, 1);
 
     /// <summary>The mockup's tile curve, cubic-bezier(.34, 1.42, .64, 1): the lift's ~8% overshoot.</summary>
     public static Easing LiftCurve() => new SplineEasing(0.34, 1.42, 0.64, 1);

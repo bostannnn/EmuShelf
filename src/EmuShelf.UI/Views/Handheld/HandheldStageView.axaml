@@ -10,8 +10,9 @@
     Handheld mode's top screen: whatever the Launcher has focused, shown large, with the name plate and
     the corner pills (status top-right, achievements bottom-left, button hints bottom-right). A pure view
     onto HandheldShellViewModel.Stage, drawn on a fixed 1920×1080 canvas and fitted, never cropped. The
-    cover art and the folder faces carry the colour; the plate and pills are quiet white surfaces. The motion
-    (the centre pop, the folder's flap, the launch landing) is HandheldStageMotion.
+    cover art and the folder faces carry the colour, over the era backdrop (HandheldEraBackdrop); the plate and
+    pills are quiet white surfaces. The motion (the centre pop, the folder's flap, the launch landing) is
+    HandheldStageMotion.
   -->
 
   <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
@@ -51,18 +52,13 @@
 
   <Panel>
   <!--
-    Backdrops fill the whole window. A game: a quiet wash of its colour (the platform's behind the medium,
-    the cover's on a Title page without fan art), so the medium and its label carry the picture. A Title
-    page with fan art: the art itself, full-bleed, darkened toward the logo and meta line.
+    Backdrops fill the whole window. A folder or a game: its system's era motif in the system's colour (a
+    pixel grid with drifting blocks for cartridges, scanlines with a rolling bar for discs; on a Title page
+    without fan art, in the colour picked from the cover), crossfading when the focus changes system. Apps,
+    empty slots and the menu keep the plain light gradient. A Title page with fan art: the art itself,
+    full-bleed, darkened toward the logo and meta line.
   -->
-  <Border IsVisible="{Binding Stage.IsGame}" Background="{Binding Stage.Tint}" Opacity="0.24">
-    <Border.OpacityMask>
-      <RadialGradientBrush Center="50%,42%" GradientOrigin="50%,42%" RadiusX="70%" RadiusY="90%">
-        <GradientStop Offset="0" Color="#FF000000" />
-        <GradientStop Offset="1" Color="#00000000" />
-      </RadialGradientBrush>
-    </Border.OpacityMask>
-  </Border>
+  <vh:HandheldEraBackdrop Backdrop="{Binding Stage.Backdrop}" />
   <Panel x:Name="HeroBackdrop" IsVisible="{Binding Stage.IsHeroArt}">
     <Image Source="{Binding Stage.Fanart}" Stretch="UniformToFill" />
     <Border>

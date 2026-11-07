@@ -12681,3 +12681,60 @@ platform colour replaces it. The Title page keeps its fan-art hero.
   drops bitmaps without disposing them (a control may still be drawing one).
 - **Unrelated, noticed:** a Debug `dotnet run` of the desktop app fails to load
   `AvaloniaUI.DiagnosticsSupport` (the UI project references it with `PrivateAssets="All"`); Release runs.
+
+## 2026-11-07 — M45 H4: Zoom through and the era motif replace H3's spill and flat wash
+
+(A revision of H3's motion after the folder lab, named H4 by the session that asked for it; ROADMAP's
+H4, arranging home, is still open.)
+
+- **Why the spill went.** H3 opened a folder by flying each of up to 15 covers out of the tile while home
+  shrank to 0.94×. On the Thor the owner found it chaotic: many things moved at once, against the spec's own
+  "one thing moves at a time". The folder lab (`docs/prototypes/handheld-mode/folder-motion-lab.html`,
+  f1d6c4f on `claude/folder-lab-821f46`) put ten openings and ten top-screen backgrounds side by side under
+  the rules transform and opacity only, pre-rendered shadows and blur, one thing moves at a time, the top
+  screen changes once and from the centre, anything that travels rides a spring.
+- **Zoom through (the owner's pick).** The folder tile grows toward the viewer (2.6×) and fades; the whole
+  folder page, header and grid as one surface, grows out of the tile's place (0.55× → 1×). Two objects, one
+  direction, and the cost does not grow with the game count. B is the exact reverse. iPadOS / Cocoon
+  folders are the reference. Built as compositor scale and opacity on the home slot's container and on the
+  new `FolderPage` panel, scaled about the tile's centre mapped into the page. The close pictures the page
+  once (one `RenderTargetBitmap`, as the gather pictured each tile) and shrinks the picture, because the
+  view model drops the folder at once. The tile goes back to rest (1×, opaque) as soon as home is out of
+  sight, so whatever closes the folder, its Avalonia state and composition visual agree (the H0 lesson).
+- **"Springy" is a real spring here.** The lab's curve, cubic-bezier(.22, 1.1, .36, 1), overshoots by only
+  about 0.1% of the sheet's scale, which reads as an ease-out. The brief asked for a 2–5% overshoot, so the
+  sheet plays a baked 600/32 spring (≈ 2.5% over, settling in ≈ 375 ms, the lab's 380 ms) and the returning
+  tile a 576/38.8 one (≈ 1% under, ≈ 320 ms). Both are unit-tested against those bounds.
+- **The page's fade on close follows the lab, not the brief's wording.** The brief said the page "fades
+  over the last 30%"; the lab the owner chose from has it gone by 70% of its shrink (opacity 1 → 0 over the
+  first 70%), so home shows through while it shrinks. Built as the lab.
+- **The selector hides during a folder's zoom** and fades back in (140 ms) from 260 ms, already springing to
+  the first game. This supersedes H3's "visible on the first frame of every transition" for folder open and
+  close only: a frame travelling across a page that is itself scaling read as a second moving thing. It is
+  the selector layer's opacity, so the glow's breathing (a compositor animation) is untouched.
+- **The Stage's folder arrives open on a close** and closes its flap 220 ms later, as in the lab. A new
+  `instant` class on `HandheldFolderArt` lands the open state without its transition for that moment.
+- **Era motif (the owner's pick for the top screen).** Cartridge systems get a light tint with a soft
+  22 px pixel grid and big blocks drifting diagonally; disc systems get a radial tint with 2 px scanlines, a
+  rolling light bar and a faint vignette, both in the focused system's colour. It reads the platform at a
+  glance without competing with the art, stays light, and costs one moving layer. The lab flagged its
+  1 px lines aliasing on a 1080p panel, so the scanlines are 2 px on a 5 px pitch and the grid lines 2 px.
+- **Era is data on the system** (`GameSystem.Era`, `SystemEra { Disc, Cartridge }` in Core, set in
+  `KnownSystems`). Cartridge: NES, SNES, GBC, GBA, DS, 3DS, Mega Drive and arcade (boards, and pixel art).
+  Disc (the default): PS1–PS3, PSP (UMD), GameCube, Wii, Dreamcast and Steam (digital, modern). It is only
+  a look; nothing else reads it.
+- **How the backdrop is drawn** (`HandheldEraBackdrop`). A 1920×1080 canvas in a `UniformToFill` Viewbox,
+  so it fills the window like the old wash and its pixel sizes are the panel's. Gradients are brushes; the
+  grid, block and scanline tiles are tiny premultiplied bitmaps built once per colour and era (cached) and
+  tiled with `ImageBrush`. The only motion is a compositor `Offset` loop on the block layer (one tile per
+  22 s) or the bar (top to bottom per 9 s), restarted when the control is re-hosted. Nothing is blurred.
+- **One backdrop value, set once per move.** The shell sets `Stage.Backdrop` (colour + era, a record) in the
+  same update as the rest of the Stage, never clearing it first, so the view crossfades (450 ms) only when
+  the colour or era really changes; moving between games of one system changes nothing. A Title page without
+  fan art keeps the era in the colour picked from the cover. Apps, empty slots and the menu have none and
+  show the plain light gradient. `Stage.Tint`, which only fed the old wash, is gone.
+- **Verification.** `dotnet build` and `dotnet test` pass on macOS. The real views were hosted headlessly
+  (Skia) and frames captured through an open, a close, a change of system and the drifts (throwaway
+  harness, not committed; its render clock runs faster than wall time, so it shows direction and shape,
+  not timing). Not yet run on the Thor: the feel, the timings and the backdrop's cost on the device are the
+  owner's check.

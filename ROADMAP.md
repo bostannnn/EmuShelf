@@ -2338,6 +2338,9 @@ Played. Pad input already reaches one dispatcher from both displays
       emulator). Start from the mockup's constants and tune on the device; write the final numbers
       into the spec. **Exit:** judged by feel on the Thor by the owner, not by checklist. The
       selector is visible on the first frame of every transition.
+      *Revised after the folder lab (2026-11-07, `DECISIONS.md` "M45 H4: Zoom through and the era
+      motif"):* folder open/close is now the owner's pick, Zoom through (the spill is gone), and the
+      Stage's backdrop is the era motif. Built and tested on macOS; the Thor feel check is still to come.
 - [ ] **H4 — arranging home.** `HandheldHomeLayout` in Core (pages of slots holding a platform
       folder, a user folder, a game pin, or a system tile; user folders with name, colour, ordered
       ids and sort mode) and `IHandheldHomeLayoutStore` → portable `Settings/handheld-home.json`,

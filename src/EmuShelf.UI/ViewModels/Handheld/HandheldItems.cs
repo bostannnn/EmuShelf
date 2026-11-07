@@ -10,11 +10,19 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Systems;
 
 namespace EmuShelf.App.ViewModels;
 
 /// <summary>A platform that has games, as a home folder shows it.</summary>
-public sealed record HandheldPlatform(string SystemId, string Name, string ShortName, string AccentColor, int GameCount);
+public sealed record HandheldPlatform(string SystemId, string Name, string ShortName, string AccentColor, int GameCount,
+    SystemEra Era = SystemEra.Disc);
+
+/// <summary>
+/// The Stage's era backdrop: a pixel grid (cartridge) or scanlines (disc), in one colour. Value equality, so
+/// the view crossfades only when the colour or the era actually changes, never on a move within a system.
+/// </summary>
+public sealed record HandheldBackdrop(Color Color, SystemEra Era);
 
 /// <summary>
 /// One game in a Handheld folder: the facts the tiles, the Stage and the sorts need, plus the shared
@@ -379,11 +387,11 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public partial Bitmap? Logo { get; set; }
 
     /// <summary>
-    /// The quiet colour wash behind a game: the platform's colour while browsing (behind the medium), and
-    /// on a Title page without fan art the colour picked from the cover.
+    /// The era motif behind a folder or a game, in the system's colour (on a Title page without fan art, the
+    /// colour picked from the cover). Null (an app, an empty slot, the menu) leaves the plain light gradient.
     /// </summary>
     [ObservableProperty]
-    public partial IBrush Tint { get; set; } = Brushes.Gray;
+    public partial HandheldBackdrop? Backdrop { get; set; }
 
     /// <summary>The focused game's physical medium (case, cartridge, card); null keeps the flat cover.</summary>
     [ObservableProperty]

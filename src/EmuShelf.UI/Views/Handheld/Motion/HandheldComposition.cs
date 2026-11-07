@@ -80,6 +80,24 @@ internal static class HandheldComposition
         visual.StartAnimation("Opacity", animation);
     }
 
+    /// <summary>
+    /// Slides the visual from where layout put it by <paramref name="travel"/>, linearly, then jumps back and
+    /// repeats forever: a seamless drift when the travel is one period of a tiled picture (the Stage's era
+    /// backdrop). Call after layout, so the visual's resting offset is known.
+    /// </summary>
+    public static void Loop(Visual control, Vector travel, double milliseconds)
+    {
+        if (VisualOf(control) is not { } visual)
+            return;
+        var rest = visual.Offset;
+        var animation = visual.Compositor.CreateVector3DKeyFrameAnimation();
+        animation.InsertKeyFrame(0f, rest, new LinearEasing());
+        animation.InsertKeyFrame(1f, new Vector3D(rest.X + travel.X, rest.Y + travel.Y, rest.Z), new LinearEasing());
+        animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));
+        animation.IterationBehavior = AnimationIterationBehavior.Forever;
+        visual.StartAnimation("Offset", animation);
+    }
+
     private static void Run(CompositionVisual visual, string property, KeyFrameAnimation animation, double milliseconds, double delayMilliseconds)
     {
         animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));

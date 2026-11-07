@@ -38,6 +38,7 @@ internal sealed class HandheldStageMotion
     private HandheldStageKind _outgoingKind;
     private int _change;
     private int _launch;
+    private string? _closingFolder;
 
     public HandheldStageMotion(Control view)
     {
@@ -65,6 +66,7 @@ internal sealed class HandheldStageMotion
             old.StageChanged -= OnStageChanged;
             old.LaunchStarting -= OnLaunchStarting;
             old.PropertyChanged -= OnShellChanged;
+            old.FolderClosing -= OnFolderClosing;
         }
         _shell = shell;
         if (shell is null)
@@ -73,6 +75,7 @@ internal sealed class HandheldStageMotion
         shell.StageChanged += OnStageChanged;
         shell.LaunchStarting += OnLaunchStarting;
         shell.PropertyChanged += OnShellChanged;
+        shell.FolderClosing += OnFolderClosing;
         UpdateFolderState(peekNow: true);
     }
 
@@ -169,10 +172,31 @@ internal sealed class HandheldStageMotion
         }
     }
 
+    // A closing folder comes back to the Stage still open, from the centre, and closes a beat later.
+    private void OnFolderClosing(HandheldFolderViewModel folder) => _closingFolder = folder.Name;
+
     private void UpdateFolderState(bool peekNow)
     {
         if (_shell is not { } shell)
             return;
+        if (_closingFolder is { } closingName && !peekNow)
+        {
+            _closingFolder = null;
+            if (shell.Stage.IsFolder && !shell.IsFolderOpen && shell.Stage.Title == closingName)
+            {
+                _folder.Classes.Set("instant", true);
+                _folder.Classes.Set("open", true);
+                _folder.Classes.Set("peek", true);
+                var closing = _change;
+                DispatcherTimer.RunOnce(() =>
+                {
+                    _folder.Classes.Set("instant", false);
+                    if (closing == _change)
+                        _folder.Classes.Set("open", false);
+                }, TimeSpan.FromMilliseconds(HandheldMotion.StageFlapCloseDelayMilliseconds));
+                return;
+            }
+        }
         var open = shell.IsFolderOpen && shell.Stage.IsFolder;
         _folder.Classes.Set("open", open);
         if (open || peekNow)

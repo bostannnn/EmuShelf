@@ -160,7 +160,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <inheritdoc cref="StageChanging"/>
     public event Action? StageChanged;
 
-    /// <summary>Raised before an open folder is torn down, while its tiles are still on screen (the gather).</summary>
+    /// <summary>Raised before an open folder is torn down, while its tiles are still on screen (the close pictures the page).</summary>
     public event Action<HandheldFolderViewModel>? FolderClosing;
 
     /// <summary>Raised when Play starts a launch from the Title page, before the lead-in (the cover's flight).</summary>
@@ -544,7 +544,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         var folder = new HandheldFolderViewModel(platform, homeSlot);
         OpenFolder = folder;
         Zone = HandheldZone.Grid;
-        // The top screen stays on the open folder while the games spill out, then moves on to the first one.
+        // The top screen stays on the open folder while the page zooms in, then moves on to the first one.
         _stageHold = _clock.GetTimestamp();
         UpdateFocus();
 
@@ -875,14 +875,14 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         UpdateHints();
     }
 
-    // ---- The top screen's timing: once per move, and the open folder held while its games spill out ----
+    // ---- The top screen's timing: once per move, and the open folder held while its page zooms in ----
 
     private readonly HandheldHeldDirection _heldDirection;
     private TimeSpan? _stageDefer;
     private long? _stageHold;
     private DispatcherTimer? _stageTimer;
 
-    /// <summary>The Stage is waiting for a held direction to settle (or for a folder's games to land).</summary>
+    /// <summary>The Stage is waiting for a held direction to settle (or for a folder's page to land).</summary>
     public bool IsStagePending { get; private set; }
 
     /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
@@ -993,7 +993,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 _platforms.Count == 0 ? "Add games from the menu in Gamepad mode" : "Folders you make will go here");
     }
 
-    private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false)
+    private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false,
+        HandheldBackdrop? backdrop = null)
     {
         // A different thing on the Stage gets the centre pop; a refresh of the same thing does not.
         var changing = kind != Stage.Kind || !string.Equals(title, Stage.Title, StringComparison.Ordinal);
@@ -1001,7 +1002,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             StageChanging?.Invoke();
         try
         {
-            ShowStageCore(kind, title, subtitle, keepArt);
+            ShowStageCore(kind, title, subtitle, keepArt, backdrop);
         }
         finally
         {
@@ -1021,7 +1022,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         StageChanged?.Invoke();
     }
 
-    private void ShowStageCore(HandheldStageKind kind, string title, string subtitle, bool keepArt)
+    private void ShowStageCore(HandheldStageKind kind, string title, string subtitle, bool keepArt, HandheldBackdrop? backdrop)
     {
         CancelStageArt(keepArt);
         Stage.Kind = kind;
@@ -1030,7 +1031,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.Monogram = string.Empty;
         Stage.AchievementText = null;
         Stage.AppIcon = null;
-        Stage.Tint = Brushes.Gray;
+        // Set once per change, never cleared first: the view crossfades only when colour or era really change.
+        Stage.Backdrop = backdrop;
         Stage.Medium = null;
         Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
         Stage.Glyph = kind switch
@@ -1045,7 +1047,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void ShowFolderStage(HandheldPlatform platform, string subtitle)
     {
-        ShowStage(HandheldStageKind.Folder, platform.Name, subtitle);
+        ShowStage(HandheldStageKind.Folder, platform.Name, subtitle, backdrop: BackdropFor(platform));
         Stage.Monogram = platform.ShortName;
         Stage.AccentBrush = Color.TryParse(platform.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
         ApplyPeek(platform.SystemId, Stage);
@@ -1053,18 +1055,23 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private long _stageGameId = -1;
 
+    /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
+    internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
+        platform is not null && Color.TryParse(platform.AccentColor, out var color) ? new HandheldBackdrop(color, platform.Era) : null;
+
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {
         if (Stage.Kind == HandheldStageKind.Game && _stageGameId == game.Id)
             return;
         // Game to game keeps the label up until the next one is ready, rather than flashing it blank.
-        ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game), keepArt: Stage.Kind == HandheldStageKind.Game);
+        _platforms.TryGetValue(game.SystemId, out var platform);
+        ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game), keepArt: Stage.Kind == HandheldStageKind.Game,
+            backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
+        if (platform is not null && Color.TryParse(platform.AccentColor, out var accent))
         {
             Stage.MediumAccent = accent;
-            Stage.Tint = new SolidColorBrush(accent);
         }
         Stage.Medium = game.ViewModel?.ShelfMediaShell;
         // The tile's cover is already decoded: print it on the medium now, so the label changes with the
@@ -1086,11 +1093,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         if (Stage.Kind == HandheldStageKind.Hero && _stageGameId == game.Id)
             return;
-        ShowStage(HandheldStageKind.Hero, game.Title, HeroSubtitle(game));
+        _platforms.TryGetValue(game.SystemId, out var platform);
+        ShowStage(HandheldStageKind.Hero, game.Title, HeroSubtitle(game), backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
-            Stage.Tint = new SolidColorBrush(accent);
         _ = LoadStageArtAsync(game, hero: true);
     }
 
@@ -1149,8 +1155,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             }
             // A game with no cover still replaces the borrowed interim label (with nothing).
             ReplaceStageArt(cover, borrowed: false);
-            if (hero && cover is not null && await PickTintAsync(cover) is { } tint && Current())
-                Stage.Tint = tint;
+            // A Title page without fan art takes the cover's colour; the system's era stays.
+            if (hero && cover is not null && await PickTintAsync(cover) is { } tint && Current() && Stage.Backdrop is { } backdrop)
+                Stage.Backdrop = backdrop with { Color = tint };
         }
         catch (OperationCanceledException)
         {
@@ -1182,14 +1189,14 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
     }
 
-    /// <summary>The cover's strongest hue as a brush (the artwork palette engine's accent), or null for grey art.</summary>
-    private static async Task<IBrush?> PickTintAsync(Bitmap cover)
+    /// <summary>The cover's strongest hue (the artwork palette engine's accent), or null for grey art.</summary>
+    private static async Task<Color?> PickTintAsync(Bitmap cover)
     {
         // Copying the pixels touches the live bitmap, so it stays on this (UI) thread; the analysis does not.
         if (ArtworkPaletteExtractor.CopyPixels(cover) is not { } pixels)
             return null;
         var palette = await Task.Run(() => ArtworkPaletteExtractor.FromBgraPixels(pixels, previousIsDark: false));
-        return palette is not null && Color.TryParse(palette.Accent, out var accent) ? new SolidColorBrush(accent) : null;
+        return palette is not null && Color.TryParse(palette.Accent, out var accent) ? accent : null;
     }
 
     // Stage.Art is either the Stage's own decode (disposed when replaced) or a tile's cover borrowed for

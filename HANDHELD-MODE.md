@@ -192,8 +192,22 @@ comfy look so it doesn't pull your eye from the game.
 
 ### Top screen — the Stage
 
-- **Background:** a slowly drifting pattern of soft rounded tiles in EmuShelf's own design. It is
-  calm and low-contrast, and it is never blurred per frame.
+- **Background: the era motif** (M45 H4, picked in the folder lab). Behind a focused folder or game,
+  a light field in that system's colour, patterned by the kind of media the system used:
+  - **Cartridge era** (NES, SNES, Game Boy, GBA, DS, 3DS, Mega Drive, arcade boards): a vertical tint
+    at about 92% → 86% lightness, a soft 22 px pixel grid of 2 px lines at 10%, a tile of large 22 px
+    blocks (8 per 176×132 tile, 22%, the folder's hue and ±20°) drifting diagonally by one tile every
+    22 s, and a lighter radial pool in the middle so the artwork sits on calm ground.
+  - **Disc era** (PS1–PS3, PSP, GameCube, Wii, Dreamcast, Steam): a radial tint (90% at the centre,
+    78% at the edges), 2 px scanlines at 9% on a 5 px pitch (2 px, not 1 px, so they do not alias on the
+    1080p panel), a 140 px light bar (35%) rolling top to bottom every 9 s, and a faint vignette.
+  - The era lives on the system definition (`GameSystem.Era`). A Title page without fan art keeps the
+    era in the colour picked from the cover. Apps, empty slots and the menu keep the plain light gradient.
+  - It crossfades over 450 ms only when the colour or era changes (moving between games of one system
+    changes nothing), and it changes with the rest of the top screen, once per move.
+  - Calm and low-contrast, and never blurred per frame: the grid, blocks and scanlines are tiny bitmaps
+    built once per colour and tiled; the blocks or the bar are the only thing moving, a compositor
+    offset loop.
 - **Focused folder:**
   - A large folder icon, centred.
   - A name plate: the name, plus "Folder · 42 games".
@@ -276,16 +290,24 @@ The motions:
   device clearly says "nothing there".
 - **Folder focus.** On the top screen, the big folder grows out of the centre (as for every focus
   change), and after about 200 ms its flap tilts so three covers peek out.
-- **Folder open (A).**
-  1. The flap swings open on both the tile and the big top-screen folder. The tile grows slightly
-     (150 ms).
-  2. Home recedes to 0.94× and fades out (260 ms). At the same time, the games spill out of the
-     folder's position, nearest first (each 440 ms, 14 ms apart).
-  3. The header fades in, and the selector appears once the first tiles have landed.
-  4. At about 300 ms the top screen crossfades from the open folder to the first game.
+- **Folder open (A): Zoom through** (M45 H4; it replaced H3's spill after the owner judged that
+  chaotic in the folder lab). Two objects, one direction, and no tile moves on its own:
+  1. The flap swings open on the big top-screen folder at once.
+  2. The folder tile grows toward the viewer, 1× → 2.6×, and fades out (300 ms, ease-in-out); its own
+     flap swings open as it goes. Home fades out under it (240 ms from 40 ms; no scale).
+  3. The whole folder page, header and grid as one surface, grows out of the pressed tile's place,
+     0.55× → 1× about the tile's centre (380 ms from 60 ms, on a spring that ends ≈ 2.5% over), fading
+     in over its first 45%.
+  4. The selector hides at the start and fades back in once the page has landed (from 260 ms, 140 ms),
+     already springing to the first game.
+  5. At about 300 ms the top screen changes from the open folder to the first game, from the centre.
 - **Folder close (B).** The reverse:
-  1. The games gather back into the folder, farthest first (280 ms) while home returns.
-  2. The flap closes with a small bounce, and the top screen crossfades back to the folder.
+  1. The page (pictured as one surface) shrinks back into the tile's place, 1× → 0.55× (260 ms,
+     ease-in-out), and is gone by 70% of it, so home shows through. Home fades in (240 ms from 60 ms).
+  2. The tile comes back from 2.6× to 1× and fades in (320 ms from 40 ms, on a spring that dips ≈ 1%
+     under before it rests), its flap closing.
+  3. On top, the big folder grows in from the centre with its flap still open, and closes it 220 ms
+     later. The selector hides and returns as on open.
 - **Focus change on top (games, folders, apps): from the centre, never from the side** (owner,
   mockup 3, asking for it to feel like the 3DS and Cocoon).
   - The old art shrinks to 0.86× and fades out (150 ms).
@@ -306,8 +328,9 @@ The motions:
 - **Sounds** (Phase 5): soft original effects for move, open, close, swap and launch, and an off
   switch in Settings. They must be self-made or CC0-licensed. No Nintendo sounds.
 
-**Numbers as built (M45 H3, 2026-11-07).** One table, in code as `HandheldMotion`; the device tuning edits
-both. They are still the mockup's values: the owner's feel check on the Thor is what moves them.
+**Numbers as built (M45 H3, 2026-11-07; folder open/close and the backdrop revised in M45 H4).** One
+table, in code as `HandheldMotion`; the device tuning edits both. They are still the mockup's and the
+folder lab's values: the owner's feel check on the Thor is what moves them.
 
 | Motion | Value |
 |---|---|
@@ -319,8 +342,9 @@ both. They are still the mockup's values: the owner's feel check on the Thor is 
 | Top-screen pop | old art (pictured beneath the new; a 3D medium just gives way) 0.86× and fading, 150 ms; new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fading in over 170 ms; plate 0.94× → 1 in 240 ms |
 | Held direction | presses under 150 ms apart; the top screen updates 140 ms after the last one |
 | Folder focus | flap tilts 200 ms after the folder takes the top screen (300 ms transition); the home tile tilts at once |
-| Folder open | tile 1 → 1.1 → 1; home 0.94× and fading, 260 ms; games spill from 0.35× at the folder, 440 ms each, 14 ms apart (capped at 180 ms); header fades in after 120 ms over 300 ms; the top screen holds the open folder 300 ms |
-| Folder close | games gather to 0.35× at the folder, 280 ms, farthest first, 10 ms apart (capped at 120 ms); home returns after 80 ms over 320 ms |
+| Folder open (Zoom through) | tile 1 → 2.6× and fading, 300 ms, cubic-bezier(.4, 0, .2, 1); home fades out over 240 ms from 40 ms; the page (header + grid, one surface) 0.55× → 1 about the tile's centre, 380 ms from 60 ms on a 600/32 spring (≈ 2.5% over), opacity 0 → 1 over its first 45%; selector hidden until 260 ms, then fades in over 140 ms; the top screen holds the open folder 300 ms |
+| Folder close | the page's picture 1 → 0.55× about the tile's centre, 260 ms, opacity gone by 70%; home fades in over 240 ms from 60 ms; tile 2.6× → 1 on a 576/38.8 spring (≈ 1% under) and fading in, 320 ms from 40 ms; selector as on open; the Stage's folder arrives open and closes its flap after 220 ms |
+| Stage backdrop (era motif) | crossfade 450 ms on a change of colour or era. Cartridge: tint hsl(h 40% 92%) → hsl(h 38% 86%); grid 22 px pitch, 2 px lines, hsl(h 50% 60% / .10); blocks 22 px, 8 per 176×132 tile, hsl(h−20/h/h+20 55% 62% / .22), drifting (176, 132) px per 22 s; pool hsl(h 35% 97% / .8) → clear at 75% of a 55% × 70% ellipse. Disc: radial hsl(h 35% 90%) → hsl(h 30% 78%) over 90% × 120% from (50%, 40%); scanlines 2 px of 5, hsl(h 40% 30% / .09); bar 140 px, hsl(h 60% 96% / .35) at its middle, top to bottom (1220 px) every 9 s; vignette clear to 55% then hsl(h 40% 40% / .18) |
 | Launch | Launcher cover presses to 0.94×, pops to 1.1× (260 ms) and lifts off (420 ms); the Stage's cover lands from below after 140 ms (520 ms) and zooms to 1.7× fading (460 ms); the emulator starts as it lands (660 ms after Play) |
 
 

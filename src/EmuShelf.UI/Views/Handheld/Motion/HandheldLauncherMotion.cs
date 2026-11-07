@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Linq;
 using Avalonia;
@@ -17,8 +16,9 @@ namespace EmuShelf.App.Views.Handheld;
 
 /// <summary>
 /// The bottom screen's motion (HANDHELD-MODE.md Motion spec): the travelling selector on a retargetable
-/// spring with its breathing glow and the edge bump, the page and folder-column tracks, the folder's games
-/// spilling out and gathering back, and the launch cover lifting off. Springs tick on the render clock
+/// spring with its breathing glow and the edge bump, the page and folder-column tracks, the folder's Zoom
+/// through (the tile grows toward the viewer and fades while the folder page grows out of its place, and
+/// back), and the launch cover lifting off. Springs tick on the render clock
 /// (<see cref="TopLevel.RequestAnimationFrame"/>) only while something moves and write transforms; one-shot
 /// effects are compositor animations. The view model never knows about any of it.
 /// </summary>
@@ -39,7 +39,7 @@ internal sealed class HandheldLauncherMotion
     private readonly Control _homeLayer;
     private readonly ItemsControl _pageTrack;
     private readonly Control _pageIndicator;
-    private readonly Control _folderHeader;
+    private readonly Control _folderPage;
     private readonly ItemsControl _folderTiles;
     private readonly Canvas _ghostLayer;
     private readonly Control _launchCover;
@@ -62,8 +62,10 @@ internal sealed class HandheldLauncherMotion
     private readonly List<Control> _anchors = [];
     private HandheldShellViewModel? _shell;
     private HandheldFolderViewModel? _folder;
-    private HandheldFolderViewModel? _spillFolder;
     private Point _folderOrigin;
+    private int _zoom;
+    private bool _selectorHidePending;
+    private TimeSpan? _selectorHideStart;
     private bool _selectorShown;
     private bool _pagePlaced;
     private Size _glowSize;
@@ -84,7 +86,7 @@ internal sealed class HandheldLauncherMotion
         _homeLayer = Find<Control>("HomeLayer");
         _pageTrack = Find<ItemsControl>("PageTrack");
         _pageIndicator = Find<Control>("PageIndicator");
-        _folderHeader = Find<Control>("FolderHeader");
+        _folderPage = Find<Control>("FolderPage");
         _folderTiles = Find<ItemsControl>("FolderTiles");
         _ghostLayer = Find<Canvas>("GhostLayer");
         _launchCover = Find<Control>("LaunchCover");
@@ -108,7 +110,6 @@ internal sealed class HandheldLauncherMotion
         };
         view.DetachedFromVisualTree += (_, _) => _ticking = false;
         view.LayoutUpdated += (_, _) => RequestTick();
-        _folderTiles.LayoutUpdated += (_, _) => TrySpill();
     }
 
     private T Find<T>(string name) where T : Control =>
@@ -176,23 +177,19 @@ internal sealed class HandheldLauncherMotion
 
     private bool _bumpPending;
 
-    // ---- Folder: the column track, the spill and the gather ----
+    // ---- Folder: the column track and the Zoom through ----
 
     private void WatchFolder(HandheldFolderViewModel? folder)
     {
         if (ReferenceEquals(folder, _folder))
             return;
         if (_folder is { } old)
-        {
             old.PropertyChanged -= OnFolderChanged;
-            old.VisibleTiles.CollectionChanged -= OnTilesChanged;
-        }
         _folder = folder;
         _column.Snap(0);
         if (folder is null)
             return;
         folder.PropertyChanged += OnFolderChanged;
-        folder.VisibleTiles.CollectionChanged += OnTilesChanged;
         _lastFirstColumn = folder.FirstVisibleColumn;
         ApplyColumn();
     }
@@ -230,98 +227,93 @@ internal sealed class HandheldLauncherMotion
 
     private void OnFolderOpening(HandheldFolderViewModel folder)
     {
-        // 1. The tile grows a little as its flap swings open. 2. Home recedes and fades while the games
-        // spill out of where the folder sat (TrySpill, once they are laid out). 3. The header fades in.
-        _spillFolder = folder;
+        // Zoom through: two objects, one direction. The folder tile grows toward the viewer and fades (its
+        // flap swings open as it goes); home fades out under it; the whole folder page, header and grid as one
+        // surface, grows out of the tile's place on a spring. No tile moves on its own. The selector stays
+        // hidden until the page has landed.
+        var zoom = ++_zoom;
         _folderOrigin = HomeSlotCentre(folder.HomeSlot) ?? new Point(PageWidth / 2, 400);
+        HideSelector();
+        var ease = HandheldMotion.ZoomEase();
         if (HomeSlotContainer(folder.HomeSlot) is { } slot)
         {
-            HandheldComposition.Scale(slot, HandheldMotion.FolderTileGrowMilliseconds / 0.35 * 1.0, new SineEaseOut(), 0,
-                (0f, 1), (0.35f, HandheldMotion.FolderTileGrowScale), (1f, 1));
             SetSlotOpen(slot, true);
+            HandheldComposition.Scale(slot, 1, HandheldMotion.ZoomTileScale, HandheldMotion.ZoomTileOutMilliseconds, ease);
+            HandheldComposition.Opacity(slot, 1, 0, HandheldMotion.ZoomTileOutMilliseconds, ease);
+            // Once home is out of sight the tile goes back to rest, so its Avalonia-side state (1×, opaque)
+            // and its composition visual agree again whatever closes the folder.
+            DispatcherTimer.RunOnce(() =>
+            {
+                if (zoom == _zoom)
+                    RestSlot(slot);
+            }, TimeSpan.FromMilliseconds(HandheldMotion.ZoomTileOutMilliseconds + 40));
         }
         _homeLayer.Opacity = 0;
-        HandheldComposition.Opacity(_homeLayer, 1, 0, HandheldMotion.HomeRecedeMilliseconds, new CubicEaseInOut());
-        HandheldComposition.Scale(_homeLayer, 1, HandheldMotion.HomeRecedeScale, HandheldMotion.HomeRecedeMilliseconds, new CubicEaseInOut());
-        HandheldComposition.Opacity(_folderHeader, 0, 1, HandheldMotion.HeaderInMilliseconds, new CubicEaseOut(), HandheldMotion.HeaderInDelayMilliseconds);
+        HandheldComposition.Opacity(_homeLayer, 1, 0, HandheldMotion.ZoomHomeOutMilliseconds, ease, HandheldMotion.ZoomHomeOutDelayMilliseconds);
+
+        var centre = ToFolderPage(_folderOrigin);
+        HandheldComposition.ScaleAbout(_folderPage, centre, HandheldMotion.ZoomSheetInMilliseconds, SheetEasing,
+            HandheldMotion.ZoomSheetInDelayMilliseconds, (0f, HandheldMotion.ZoomSheetFromScale), (1f, 1));
+        HandheldComposition.Opacity(_folderPage, HandheldMotion.ZoomSheetInMilliseconds, new LinearEasing(),
+            HandheldMotion.ZoomSheetInDelayMilliseconds, (0f, 0), (HandheldMotion.ZoomSheetFadeInPortion, 1), (1f, 1));
     }
 
-    private void OnTilesChanged(object? sender, NotifyCollectionChangedEventArgs e) => TrySpill();
-
-    /// <summary>The first time an opening folder's tiles are laid out, they spill out of the folder, nearest first.</summary>
-    private void TrySpill()
-    {
-        if (_spillFolder is not { } folder || !ReferenceEquals(folder, _folder) || folder.VisibleTiles.Count == 0)
-            return;
-        var tiles = new List<(Control Container, Point Centre)>();
-        for (var i = 0; i < folder.VisibleTiles.Count; i++)
-        {
-            if (_folderTiles.ContainerFromIndex(i) is not { } container || container.Bounds.Width <= 0)
-                return; // not laid out yet; the next layout pass tries again
-            if (CentreOnCanvas(container) is { } centre)
-                tiles.Add((container, centre));
-        }
-        _spillFolder = null;
-        var rank = 0;
-        foreach (var (container, centre) in tiles.OrderBy(tile => Distance(tile.Centre, _folderOrigin)))
-        {
-            var delay = Math.Min(rank++ * HandheldMotion.SpillStaggerMilliseconds, HandheldMotion.SpillStaggerCapMilliseconds);
-            var from = _folderOrigin - centre;
-            var easing = HandheldMotion.PopCurve();
-            HandheldComposition.OffsetFrom(container, new Vector(from.X, from.Y), HandheldMotion.SpillMilliseconds, easing, delay);
-            HandheldComposition.Scale(container, HandheldMotion.SpillFromScale, 1, HandheldMotion.SpillMilliseconds, easing, delay);
-            HandheldComposition.Opacity(container, HandheldMotion.SpillMilliseconds, new LinearEasing(), delay, (0f, 0), (0.3f, 1), (1f, 1));
-        }
-    }
+    private static readonly HandheldSpringEasing SheetEasing = new(HandheldMotion.ZoomSheet);
+    private static readonly HandheldSpringEasing TileReturnEasing = new(HandheldMotion.ZoomTile);
 
     private void OnFolderClosing(HandheldFolderViewModel folder)
     {
-        // The tiles are about to go: picture each one where it is, then gather the pictures back into the
-        // folder, farthest first, while home returns and the flap closes.
-        _spillFolder = null;
+        // The reverse. The page is about to go, so picture it whole and shrink the picture back into the
+        // folder's place while home fades in and the tile comes back from 2.6× with its flap closing.
+        ++_zoom;
+        HideSelector();
         var origin = HomeSlotCentre(folder.HomeSlot) ?? _folderOrigin;
-        var ghosts = new List<(Image Ghost, Point Centre)>();
-        for (var i = 0; i < folder.VisibleTiles.Count; i++)
-        {
-            // The column parked behind the window is out of sight; picturing it would fly it in from off-canvas.
-            if (folder.VisibleTiles[i].Column < folder.FirstVisibleColumn)
-                continue;
-            if (_folderTiles.ContainerFromIndex(i) is { } container && Ghost(container) is { } ghost)
-                ghosts.Add(ghost);
-        }
-        var header = Ghost(_folderHeader);
+        var page = Ghost(_folderPage);
+        var ease = HandheldMotion.ZoomEase();
 
         _homeLayer.Opacity = 1;
-        HandheldComposition.Opacity(_homeLayer, 0, 1, HandheldMotion.HomeReturnMilliseconds, new CubicEaseOut(), HandheldMotion.HomeReturnDelayMilliseconds);
-        HandheldComposition.Scale(_homeLayer, HandheldMotion.HomeRecedeScale, 1, HandheldMotion.HomeReturnMilliseconds, new CubicEaseOut(), HandheldMotion.HomeReturnDelayMilliseconds);
+        HandheldComposition.Opacity(_homeLayer, 0, 1, HandheldMotion.ZoomHomeInMilliseconds, ease, HandheldMotion.ZoomHomeInDelayMilliseconds);
         if (HomeSlotContainer(folder.HomeSlot) is { } slot)
+        {
             SetSlotOpen(slot, false);
+            HandheldComposition.Scale(slot, HandheldMotion.ZoomTileInMilliseconds, TileReturnEasing, HandheldMotion.ZoomTileInDelayMilliseconds,
+                (0f, HandheldMotion.ZoomTileScale), (1f, 1));
+            HandheldComposition.Opacity(slot, 0, 1, HandheldMotion.ZoomTileInMilliseconds, new CubicEaseOut(), HandheldMotion.ZoomTileInDelayMilliseconds);
+        }
+        if (page is not { } picture)
+            return; // no picture: the page simply goes and home fades in
 
-        // The pictures need a layout pass before their compositor offsets mean anything.
+        // The picture needs a layout pass before its composition visual is placed.
         Dispatcher.UIThread.Post(() =>
         {
-            var rank = 0;
-            var longest = 0d;
-            foreach (var (ghost, centre) in ghosts.OrderByDescending(g => Distance(g.Centre, origin)))
-            {
-                var delay = Math.Min(rank++ * HandheldMotion.GatherStaggerMilliseconds, HandheldMotion.GatherStaggerCapMilliseconds);
-                var to = origin - centre;
-                var easing = new CubicEaseInOut();
-                HandheldComposition.OffsetFrames(ghost, HandheldMotion.GatherMilliseconds, easing, delay, (0f, default), (1f, new Vector(to.X, to.Y)));
-                HandheldComposition.Scale(ghost, 1, HandheldMotion.SpillFromScale, HandheldMotion.GatherMilliseconds, easing, delay);
-                HandheldComposition.Opacity(ghost, HandheldMotion.GatherMilliseconds, new LinearEasing(), delay, (0f, 1), (0.7f, 1), (1f, 0));
-                longest = Math.Max(longest, delay + HandheldMotion.GatherMilliseconds);
-            }
-            if (header is { } headerGhost)
-                HandheldComposition.Opacity(headerGhost.Ghost, 1, 0, 180);
-            DispatcherTimer.RunOnce(() =>
-            {
-                foreach (var (ghost, _) in ghosts)
-                    RemoveGhost(ghost);
-                if (header is { } h)
-                    RemoveGhost(h.Ghost);
-            }, TimeSpan.FromMilliseconds(Math.Max(longest, 180) + 60));
+            var topLeft = new Point(Canvas.GetLeft(picture.Ghost), Canvas.GetTop(picture.Ghost));
+            HandheldComposition.ScaleAbout(picture.Ghost, origin - topLeft, HandheldMotion.ZoomSheetOutMilliseconds, ease, 0,
+                (0f, 1), (1f, HandheldMotion.ZoomSheetFromScale));
+            // As in the lab the owner picked from: the page is gone by 70% of its shrink, so home shows through.
+            HandheldComposition.Opacity(picture.Ghost, HandheldMotion.ZoomSheetOutMilliseconds, ease, 0,
+                (0f, 1), (HandheldMotion.ZoomSheetFadeOutFrom, 0), (1f, 0));
+            DispatcherTimer.RunOnce(() => RemoveGhost(picture.Ghost),
+                TimeSpan.FromMilliseconds(HandheldMotion.ZoomSheetOutMilliseconds + 60));
         }, DispatcherPriority.Loaded);
+    }
+
+    private static void RestSlot(Control slot)
+    {
+        HandheldComposition.Scale(slot, 1, 1, 1);
+        HandheldComposition.Opacity(slot, 1, 1, 1);
+    }
+
+    /// <summary>A point on the Launcher canvas in the folder page's own coordinates (it sits at its margin).</summary>
+    private Point ToFolderPage(Point onCanvas) =>
+        new(onCanvas.X - _folderPage.Margin.Left, onCanvas.Y - _folderPage.Margin.Top);
+
+    /// <summary>Hides the selector for a folder's zoom; it fades back in once the page has landed.</summary>
+    private void HideSelector()
+    {
+        _selectorLayer.Opacity = 0;
+        _selectorHidePending = true;
+        _selectorHideStart = null;
+        RequestTick();
     }
 
     private (Image Ghost, Point Centre)? Ghost(Control control)
@@ -375,8 +367,6 @@ internal sealed class HandheldLauncherMotion
     private Point? CentreOnCanvas(Visual visual) =>
         visual.TranslatePoint(new Point(visual.Bounds.Width / 2, visual.Bounds.Height / 2), _ghostLayer);
 
-    private static double Distance(Point a, Point b) => Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
-
     // ---- Launch: the cover presses in, pops, and lifts off toward the top screen ----
 
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
@@ -428,6 +418,7 @@ internal sealed class HandheldLauncherMotion
         ApplyColumn();
 
         moving |= StepSelector(dt);
+        moving |= StepSelectorFade();
         if (moving)
             RequestTick();
         else
@@ -522,6 +513,27 @@ internal sealed class HandheldLauncherMotion
         _glowShift.X = _selectorShift.X + (_width.Value / 2) - (_glow.Width / 2);
         _glowShift.Y = _selectorShift.Y + (_height.Value / 2) - (_glow.Height / 2);
         return moving;
+    }
+
+    /// <summary>The selector layer's opacity across a folder's zoom: hidden, then a short fade back in.</summary>
+    private bool StepSelectorFade()
+    {
+        if (_selectorHidePending)
+        {
+            _selectorHidePending = false;
+            _selectorHideStart = _now;
+        }
+        if (_selectorHideStart is not { } start)
+            return false;
+        var elapsed = (_now - start).TotalMilliseconds - HandheldMotion.ZoomSelectorHiddenMilliseconds;
+        if (elapsed >= HandheldMotion.ZoomSelectorFadeMilliseconds)
+        {
+            _selectorHideStart = null;
+            _selectorLayer.Opacity = 1;
+            return false;
+        }
+        _selectorLayer.Opacity = elapsed <= 0 ? 0 : Math.Round(elapsed / HandheldMotion.ZoomSelectorFadeMilliseconds, 2);
+        return true;
     }
 
     // Out to the wall fast (the first 35%), then eased back.

@@ -23,6 +23,12 @@ namespace EmuShelf.Core.Systems;
 /// launch path forces the built-in screen and the setting is hidden. See
 /// <see cref="Launching.LaunchScreenResolver"/>.
 /// </param>
+/// <param name="Era">
+/// What the system's games came on: <see cref="SystemEra.Cartridge"/> (ROM cartridges and cards, and
+/// arcade boards) or <see cref="SystemEra.Disc"/> (optical media, and digital-only libraries). Purely a
+/// look: Handheld mode's top screen draws a pixel grid behind cartridge systems and scanlines behind disc
+/// systems (HANDHELD-MODE.md, the Stage's backdrop).
+/// </param>
 public sealed record GameSystem(
     string Id,
     string Name,
@@ -30,4 +36,15 @@ public sealed record GameSystem(
     string AccentColor,
     double CoverAspectRatio,
     string Manufacturer = "",
-    bool IsDualScreen = false);
+    bool IsDualScreen = false,
+    SystemEra Era = SystemEra.Disc);
+
+/// <summary>The kind of media a system's games shipped on; see <see cref="GameSystem.Era"/>.</summary>
+public enum SystemEra
+{
+    /// <summary>Optical discs (and digital-only libraries): drawn with scanlines and a rolling bar.</summary>
+    Disc,
+
+    /// <summary>ROM cartridges and game cards (and arcade boards): drawn with a soft pixel grid.</summary>
+    Cartridge,
+}
