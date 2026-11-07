@@ -12849,3 +12849,35 @@ half the bottom screen going white. Reproduced on the Thor by holding right thro
   Launcher's selector, lift and column track animate. Home scrolling, with folder art instead of a medium, is
   69%. Candidates, all feel calls for the owner: 60 Hz while animating, a flat cover during a run of presses
   with the medium only once the selection rests, or a shorter medium spring.
+
+## 2026-11-07 — M45 H4: no 2D stand-in for the 3D medium while browsing (measured, not built)
+
+The owner asked to show a 2D picture while selections change quickly and the live 3D medium once the
+selection rests, with a seamless swap. Investigated on the Thor (Release, JIT) and not built:
+
+- **How others do it.** Big Box / LaunchBox browse with pre-rendered 2D images of 3D boxes and only show an
+  interactive 3D model on demand; the general technique is an impostor (render once to a texture, regenerate
+  only on change), whose known weakness is the visible seam at the swap.
+- **A seamless impostor is not possible here.** The medium is PBR-lit and tone-mapped, with the cover as a
+  texture on a lit label. An exact 2D match needs per-pixel UV lookup and tone mapping, i.e. shaders, which
+  Avalonia's 2D drawing does not expose. A flat cover or an approximate composite shows a seam, which the owner
+  ruled out. Caching real renders only helps on revisits; a run through a folder is all first visits.
+- **And it would not have fixed the fans.** Temporary probes (removed) and switches, vertical scrolling in the
+  Nintendo DS folder at ~6 presses/s, baseline Render 78% / UI 37%:
+
+  | Turned off | Render | UI |
+  |---|---|---|
+  | the 3D medium (flat covers) | 73% | **19%** |
+  | the Stage's centre pop | **51%** | 36% |
+  | the whole Launcher (hidden) | **48%** | 40% |
+  | backdrop / box shadows / glow (each) | 72–73% | 33–44% |
+  | all of backdrop, shadows, pop, medium, glow | 44% | 23% |
+
+  The medium's own work is small: ~0.3 ms CPU to draw and ~3.3 ms of GPU per frame (`glFinish` probe), 2–8 ms
+  per cover conversion, about two GL frames per selection. The ~18 UI points it costs while scrolling, and the
+  ~25% UI while resting on a game (the 20 Hz idle sway), are Avalonia's per-frame overhead around
+  `OpenGlControlBase` (~10 ms of UI thread per GL frame), outside the app's code. The render thread's load is
+  the 120 Hz redraw of both screens while the centre pop and the Launcher's selector/lift animate.
+- **Levers that remain are feel decisions** (the owner's): animate at 60 Hz while the panel stays at 120;
+  let the idle sway rest after some seconds (as the glow does); a shorter centre pop. Invisible ones are
+  small: converting covers off the UI thread and reusing their buffers (~2–5% UI).
