@@ -21,7 +21,6 @@ public static class HandheldMotion
     public static readonly HandheldSpringParameters Pop = new(190, 17);
 
     public const double PopFromScale = 0.72;
-    public const double PopFadeMilliseconds = 170;
     public const double PlateFromScale = 0.94;
     public const double PlatePopMilliseconds = 240;
     public const double OutgoingScale = 0.86;
@@ -185,6 +184,18 @@ public sealed class HandheldSpring(HandheldSpringParameters parameters, double r
     /// screen stays put while the thing under it jumped (a folder's window scrolled by a column), then glides.
     /// </summary>
     public void Displace(double delta) => Value += delta;
+
+    /// <summary>
+    /// Keeps the value within <paramref name="distance"/> of the target, keeping the speed: a track that may
+    /// only lag by what is realized behind it (a folder's one spare column) never shows the empty space past it.
+    /// </summary>
+    public void Limit(double distance)
+    {
+        if (Value - Target > distance)
+            Value = Target + distance;
+        else if (Target - Value > distance)
+            Value = Target - distance;
+    }
 
     /// <summary>Advances the spring. Returns whether it moved.</summary>
     public bool Step(double seconds)

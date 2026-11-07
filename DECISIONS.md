@@ -12802,3 +12802,50 @@ from `dumpsys SurfaceFlinger --latency` on the Stage's `SurfaceView[…MainActiv
   (`docs/couch-idle-cpu-investigation.md`: it reinstalls under a new uid and loses the data pointer); a
   `-t:Clean` build plus `adb install -r` keeps the library and Handheld mode, and `lastUpdateTime` confirms
   each install.
+
+## 2026-11-07 — M45 H4: folder scrolling, second performance round
+
+The owner tried the first round and reported folders still bad: fans up while scrolling through a folder, and
+half the bottom screen going white. Reproduced on the Thor by holding right through the Nintendo DS folder
+(131 games) and screen-recording both displays (`screenrecord --display-id`; the Launcher can be recorded).
+
+- **Every column step rebuilt the whole grid.** `RealizeWindow` cleared `VisibleTiles` and re-added the
+  window, so the Launcher threw away and re-created all 18 tile controls on every left/right press. A
+  temporary probe (removed) measured ~25 ms of UI thread per press and 108 tile containers prepared a second
+  at 6 presses a second. Now `SlideWindow` removes and adds only at the ends (the WrapPanel is column-major,
+  so the tiles that stay do not move in the list), and a press costs about 1 ms. A window that does not
+  overlap the old one (a re-sort, a jump) is still replaced outright.
+- **The white strip.** The folder's column track displaced itself by a column on every step and glided back;
+  a held direction outran the spring, so the track lagged by several columns while only one column is
+  realized past the window's edge, and the gap showed as white. `HandheldSpring.Limit` now caps the lag at one
+  column (keeping the speed), so the track never shows past what is realized.
+- **The top screen blinked.** With the outgoing art no longer pictured (first round), the new art's fade from
+  0 left the Stage blank for a beat on every change. The new art and plate now arrive opaque and only pop in
+  scale.
+- **Measure Release, not Debug.** The Debug APK runs managed code in Mono's interpreter on the Thor
+  (`simpleperf` on the render thread: 37% inside `libmonosgen`), and the owner's device had been running the
+  Debug builds these sessions installed, which made everything about twice as heavy (as
+  `docs/couch-idle-cpu-investigation.md` already warned). The table below is Release with JIT
+  (`-c Release -p:RunAOTCompilation=false`; the AOT build that ships needs the NDK, not installed on this
+  Mac). The Thor now has this Release build, installed with `adb install -r` (same debug keystore, data kept).
+
+**Release (JIT) on the Thor, f6af72c vs this commit,** same script as the first round, Nintendo DS folder,
+"hold" = `input keyevent 22` every ~12 ms plus its own cost, about the app's held-repeat floor (38 ms → 26/s).
+
+| Case | Stage fps | Render | UI | GPU busy |
+|---|---|---|---|---|
+| Idle on home, before → after | 115.9 → **4.0** | 50% → **6%** | 1% → 6% | 16% → **0%** |
+| Scrolling home (5/s), before → after | 115.0 → 116.9 | 103% → **69%** | 29% → 22% | 30% → **12%** |
+| Idle on a game, before → after | 118.7 → **20.0** | 51% → **11%** | 24% → 25% | 24% → **8%** |
+| Scrolling a folder (5–6/s), before → after | 116.8 → 118.7 | 94% → 92% | 41% → 38% | 36% → 32% |
+| Holding right in a folder, before → after | 97.1 → 59.6 | 64% → 67% | 59% → 49% | 29% → 26% |
+
+- Holding right, the old build managed 14.7 presses a second and the new one 27: per press, UI thread
+  ~4.0% → ~1.8% of a core, and the recording shows no blank columns (the old one went white for about a
+  column and a half mid-run). The top screen holds the last game while the direction is held and updates
+  when it settles, as specified.
+- **Still expensive: paced folder scrolling (Render ~92%).** At 5 presses a second inside a folder the Stage
+  pops a new 3D medium every 200 ms (the GL medium springs in and is redrawn every frame of it) while the
+  Launcher's selector, lift and column track animate. Home scrolling, with folder art instead of a medium, is
+  69%. Candidates, all feel calls for the owner: 60 Hz while animating, a flat cover during a run of presses
+  with the medium only once the selection rests, or a shorter medium spring.

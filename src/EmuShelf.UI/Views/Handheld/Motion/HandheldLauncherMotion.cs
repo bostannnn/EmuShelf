@@ -215,7 +215,12 @@ internal sealed class HandheldLauncherMotion
             var delta = folder.FirstVisibleColumn - _lastFirstColumn;
             _lastFirstColumn = folder.FirstVisibleColumn;
             if (Math.Abs(delta) == 1 && !folder.IsResorting)
+            {
+                // Only one column is realized past each edge of the window: a held direction that outruns the
+                // spring must not slide that edge on screen, where it showed as a white strip.
                 _column.Displace(delta * ColumnPitch);
+                _column.Limit(ColumnPitch);
+            }
             else
                 _column.Snap(0);
             ApplyColumn();

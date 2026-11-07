@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Media;
@@ -173,4 +174,62 @@ public partial class HandheldShellViewModelTests
 
     private static HandheldGameEntry Entry(long id, string system) =>
         new(id, $"{system} game {id}", system, system, null, 0, TimeSpan.Zero, true);
+}
+
+public class HandheldFolderWindowTests
+{
+    private static List<HandheldGameTileViewModel> Tiles(int count) =>
+        Enumerable.Range(0, count)
+            .Select(i => new HandheldGameTileViewModel(i, new HandheldGameEntry(i, $"g{i}", "ds", "DS", null, 0, TimeSpan.Zero, true)))
+            .ToList();
+
+    [Fact]
+    public void ScrollingAColumn_TouchesOnlyTheColumnsThatLeaveAndArrive()
+    {
+        var items = Tiles(60);
+        var visible = new System.Collections.ObjectModel.ObservableCollection<HandheldGameTileViewModel>();
+        HandheldShellViewModel.SlideWindow(visible, items, 0, 18);
+        var changes = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        visible.CollectionChanged += (_, e) => changes.Add(e.Action);
+
+        HandheldShellViewModel.SlideWindow(visible, items, 3, 21);
+
+        Assert.Equal(Enumerable.Range(3, 18), visible.Select(tile => tile.Index));
+        // Three removed at the front, three added at the back; no reset, so no tile control is rebuilt.
+        Assert.Equal(6, changes.Count);
+        Assert.DoesNotContain(System.Collections.Specialized.NotifyCollectionChangedAction.Reset, changes);
+        Assert.Same(items[3], visible[0]);
+
+        changes.Clear();
+        HandheldShellViewModel.SlideWindow(visible, items, 0, 18);
+        Assert.Equal(Enumerable.Range(0, 18), visible.Select(tile => tile.Index));
+        Assert.Equal(6, changes.Count);
+    }
+
+    [Fact]
+    public void AJumpPastTheWindow_ReplacesIt()
+    {
+        var items = Tiles(60);
+        var visible = new System.Collections.ObjectModel.ObservableCollection<HandheldGameTileViewModel>();
+        HandheldShellViewModel.SlideWindow(visible, items, 0, 18);
+
+        HandheldShellViewModel.SlideWindow(visible, items, 42, 60);
+
+        Assert.Equal(Enumerable.Range(42, 18), visible.Select(tile => tile.Index));
+    }
+
+    [Fact]
+    public void ATrackSpring_NeverLagsMoreThanItsLimit_AndKeepsItsSpeed()
+    {
+        var spring = new HandheldSpring(HandheldMotion.Track);
+        spring.Snap(0);
+        spring.Displace(264);
+        spring.Step(1d / 120d);
+        var speed = spring.Velocity;
+        spring.Displace(264);
+        spring.Limit(264);
+
+        Assert.True(spring.Value <= 264);
+        Assert.Equal(speed, spring.Velocity);
+    }
 }

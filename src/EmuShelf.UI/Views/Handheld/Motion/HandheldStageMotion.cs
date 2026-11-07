@@ -101,11 +101,13 @@ internal sealed class HandheldStageMotion
             // The centre wrapper fills the canvas above the plate, so its middle is where the art sits.
             HandheldComposition.ScaleAbout(_centre, centre, PopEasing.Duration.TotalMilliseconds, new LinearEasingAdapter(PopEasing), 0,
                 (0f, HandheldMotion.PopFromScale), (1f, 1));
-            HandheldComposition.Opacity(_centre, 0, 1, HandheldMotion.PopFadeMilliseconds, new CubicEaseOut());
+            // No fade from nothing: with the old art no longer pictured, a fade-in left the screen blank for a
+            // beat on every change. The new art replaces the old at once and grows from the centre.
+            HandheldComposition.Opacity(_centre, 1, 1, 1);
             var plateCentre = new Point(CanvasWidth / 2, CanvasHeight - 140);
             HandheldComposition.ScaleAbout(_plate, plateCentre, HandheldMotion.PlatePopMilliseconds, HandheldMotion.PopCurve(), 0,
                 (0f, HandheldMotion.PlateFromScale), (1f, 1));
-            HandheldComposition.Opacity(_plate, 0, 1, HandheldMotion.PlatePopMilliseconds, new CubicEaseOut());
+            HandheldComposition.Opacity(_plate, 1, 1, 1);
             HandheldComposition.Opacity(_content, 1, 1, 1);
         }
         UpdateFolderState(peekNow: false);

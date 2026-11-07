@@ -316,7 +316,8 @@ The motions:
   - The old art gives way at once. (Until the performance pass it was pictured and shrank to 0.86×;
     rendering that picture on every change cost more than it showed.)
   - The new art grows from 0.72× to full size on a real spring with about 2% overshoot (stiffness
-    190, damping 17, settling in about 0.45 s), fading in over the first 170 ms.
+    190, damping 17, settling in about 0.45 s). It does not fade in: with the old art gone at once, a
+    fade from nothing left the screen blank for a beat on every change.
   - The name plate pops in from 0.94× at the same time.
   - The movement never depends on which direction you pressed.
 - **Page change.** The grid slides on the track spring, and the page dots follow.
@@ -343,7 +344,7 @@ folder lab's values: the owner's feel check on the Thor is what moves them.
 | Focus lift | 1.13× in 220 ms, cubic-bezier(.34, 1.42, .64, 1), with a deeper pre-rendered shadow fading in |
 | Glow breathing | opacity 1 ↔ 0.55, 600 ms each way, 8 half cycles (4.8 s) after each focus change, then rests at 1 |
 | Edge bump | 7% of the selector's size toward the wall, out in the first 35% of 300 ms, eased back |
-| Top-screen pop | old art gives way at once (no picture); new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fading in over 170 ms; plate 0.94× → 1 in 240 ms |
+| Top-screen pop | old art gives way at once (no picture); new art 0.72× → 1 on the 190/17 spring (≈ 0.5 s, a few % over), fully opaque from the start; plate 0.94× → 1 in 240 ms, opaque |
 | Held direction | presses under 150 ms apart; the top screen updates 140 ms after the last one |
 | Folder focus | flap tilts 200 ms after the folder takes the top screen (300 ms transition); the home tile tilts at once |
 | Folder open (Zoom through) | tile 1 → 2.6× and fading, 300 ms, cubic-bezier(.4, 0, .2, 1); home fades out over 240 ms from 40 ms; the page (header + grid, one surface) 0.55× → 1 about the tile's centre, 380 ms from 60 ms on a 600/32 spring (≈ 2.5% over), opacity 0 → 1 over its first 45%; selector hidden until 260 ms, then fades in over 140 ms; the top screen holds the open folder 300 ms |

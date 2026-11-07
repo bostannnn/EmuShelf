@@ -686,9 +686,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         folder.WindowFirstColumn = Math.Max(0, folder.FirstVisibleColumn - 1);
         var firstIndex = folder.WindowFirstColumn * rows;
         var lastIndex = Math.Min(folder.Items.Count, (folder.FirstVisibleColumn + HandheldFolderNavigation.VisibleColumns + 1) * rows);
-        folder.VisibleTiles.Clear();
-        for (var i = firstIndex; i < lastIndex; i++)
-            folder.VisibleTiles.Add(folder.Items[i]);
+        SlideWindow(folder.VisibleTiles, folder.Items, firstIndex, lastIndex);
 
         var keepFrom = Math.Max(0, folder.FirstVisibleColumn - CoverKeepMarginColumns) * rows;
         var keepTo = Math.Min(folder.Items.Count,
@@ -706,6 +704,35 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 ReleaseCover(tile);
             }
         }
+    }
+
+    /// <summary>
+    /// Makes <paramref name="visible"/> hold <paramref name="items"/>[first, last) by removing and adding only at
+    /// the ends, so a column scroll touches the column that leaves and the one that arrives. Clearing and
+    /// re-adding the window made the Launcher rebuild all 18 tile controls on every press (about 25 ms of UI
+    /// thread a press on the Thor, and the fans with it). A window that does not overlap is replaced outright.
+    /// </summary>
+    internal static void SlideWindow(IList<HandheldGameTileViewModel> visible, IReadOnlyList<HandheldGameTileViewModel> items, int first, int last)
+    {
+        var currentFirst = visible.Count > 0 ? visible[0].Index : -1;
+        var currentLast = visible.Count > 0 ? visible[^1].Index + 1 : -1;
+        var contiguous = visible.Count > 0 && currentLast - currentFirst == visible.Count &&
+            ReferenceEquals(visible[0], items.ElementAtOrDefault(currentFirst));
+        if (!contiguous || last <= currentFirst || first >= currentLast || first >= last)
+        {
+            visible.Clear();
+            for (var i = first; i < last; i++)
+                visible.Add(items[i]);
+            return;
+        }
+        while (visible.Count > 0 && visible[0].Index < first)
+            visible.RemoveAt(0);
+        while (visible.Count > 0 && visible[^1].Index >= last)
+            visible.RemoveAt(visible.Count - 1);
+        for (var i = Math.Min(currentFirst, last) - 1; i >= first; i--)
+            visible.Insert(0, items[i]);
+        for (var i = Math.Max(currentLast, first); i < last; i++)
+            visible.Add(items[i]);
     }
 
     private async Task LoadTileCoverAsync(HandheldGameTileViewModel tile)
