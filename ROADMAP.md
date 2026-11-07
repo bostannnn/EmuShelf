@@ -2314,7 +2314,9 @@ Played. Pad input already reaches one dispatcher from both displays
       generation, grid navigation including empty slots and paging, folder sorts. **Exit:** from a
       cold start you can open a folder, scroll it, pick a game (launching temporarily via the
       existing path), press B back, and switch to Gamepad mode and back.
-- [ ] **H2 — Title page.** A on a game opens the Title page on the Launcher: cover, title, platform
+- [x] **H2 — Title page.** ✅ (2026-11-07; Stage hero, screen chooser, launch and return checked on the
+      Thor over adb; the Launcher side is `FLAG_SECURE`, so its look awaits the owner's hands-on check.
+      Choices in `DECISIONS.md` 2026-11-07 "M45 H2".) A on a game opens the Title page on the Launcher: cover, title, platform
       and emulator, last played, play time, which screen it runs on, disc, achievement count; the
       buttons Play, Disc (multi-disc only) and Achievements; Y the full actions sheet; B back. The
       disc chooser and the launch-screen chooser (`LaunchScreenResolver`'s Ask / Built-in /

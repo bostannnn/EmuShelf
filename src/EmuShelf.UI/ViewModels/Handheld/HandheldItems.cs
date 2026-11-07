@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EmuShelf.Core.Handheld;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.ViewModels;
@@ -28,7 +29,35 @@ public sealed record HandheldGameEntry(
     TimeSpan Playtime,
     bool IsAvailable,
     string? AchievementText = null,
-    GameViewModel? ViewModel = null);
+    GameViewModel? ViewModel = null,
+    double AchievementRatio = 0);
+
+/// <summary>
+/// What the Title page shows beyond the folder's facts, read when it opens: the emulator that will run the
+/// game, its discs, and where it will run (<see cref="LaunchScreenPlanner"/>'s answer).
+/// </summary>
+public sealed record HandheldTitleDetails(
+    string? EmulatorName,
+    IReadOnlyList<int> DiscNumbers,
+    int SelectedDiscNumber,
+    LaunchScreenDecision Screen,
+    bool HasSecondScreen,
+    bool IsDualScreenSystem)
+{
+    public bool IsMultiDisc => DiscNumbers.Count > 1;
+
+    /// <summary>A single-disc game on the built-in screen; what a fake or a failed read falls back to.</summary>
+    public static HandheldTitleDetails Default { get; } =
+        new(null, [1], 1, LaunchScreenDecision.BuiltIn, HasSecondScreen: false, IsDualScreenSystem: false);
+}
+
+/// <summary>The scraped art the Stage draws for a game: fan art for the hero, a tiny fan art for the soft browsing backdrop, the logo.</summary>
+public enum HandheldArtKind
+{
+    Fanart,
+    Backdrop,
+    Logo,
+}
 
 /// <summary>
 /// What the Handheld shell needs from the library and the app. <c>MainViewModel</c> implements it over
@@ -51,7 +80,26 @@ public interface IHandheldLibrary
     /// </summary>
     Task<Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, CancellationToken cancellationToken);
 
-    Task LaunchAsync(HandheldGameEntry game);
+    /// <summary>
+    /// Decodes a game's scraped fan art or logo off the UI thread. Null when the game has none, which the
+    /// Stage answers with the cover on a tinted backdrop.
+    /// </summary>
+    Task<Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken cancellationToken);
+
+    /// <summary>Reads the emulator, discs and launch screen for a game's Title page.</summary>
+    Task<HandheldTitleDetails> GetTitleDetailsAsync(HandheldGameEntry game, CancellationToken cancellationToken = default);
+
+    /// <summary>Makes <paramref name="discNumber"/> the disc a multi-disc game starts on; false if it could not be saved.</summary>
+    Task<bool> SelectDiscAsync(HandheldGameEntry game, int discNumber);
+
+    /// <summary>Pins the screen a system's games run on ("Always use this screen").</summary>
+    void RememberLaunchScreen(string systemId, GameLaunchScreen screen);
+
+    /// <summary>
+    /// Runs the app's launch core on the chosen screen (save sync, play recording, the status line). True once
+    /// the emulator started; false when the launch was refused or failed, and the status line says why.
+    /// </summary>
+    Task<bool> LaunchAsync(HandheldGameEntry game, GameLaunchScreen screen);
 
     Task SwitchModeAsync(InterfaceMode mode);
 
@@ -230,6 +278,8 @@ public enum HandheldStageKind
     AllApps,
     Menu,
     Header,
+    /// <summary>A game's Title page is open: its fan art full-bleed with the logo, or its cover on a tint.</summary>
+    Hero,
 }
 
 /// <summary>What the Stage (the top screen) shows for the current focus.</summary>
@@ -241,6 +291,12 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsApp))]
     [NotifyPropertyChangedFor(nameof(IsGlyph))]
     [NotifyPropertyChangedFor(nameof(HasPlate))]
+    [NotifyPropertyChangedFor(nameof(IsHero))]
+    [NotifyPropertyChangedFor(nameof(IsHeroArt))]
+    [NotifyPropertyChangedFor(nameof(IsHeroFallback))]
+    [NotifyPropertyChangedFor(nameof(HasBackdrop))]
+    [NotifyPropertyChangedFor(nameof(IsCentreVisible))]
+    [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -272,10 +328,50 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     /// <summary>"12 / 40" when the focused game has RetroAchievements data; null hides the pill.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasAchievements))]
+    [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
     public partial string? AchievementText { get; set; }
 
+    /// <summary>The Title page's fan art, decoded for the full screen. Owned (and disposed) by the shell.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsHeroArt))]
+    [NotifyPropertyChangedFor(nameof(IsHeroFallback))]
+    [NotifyPropertyChangedFor(nameof(HasPlate))]
+    [NotifyPropertyChangedFor(nameof(IsCentreVisible))]
+    [NotifyPropertyChangedFor(nameof(IsGame))]
+    [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
+    public partial Bitmap? Fanart { get; set; }
+
+    /// <summary>The game's logo over the fan art; without one the hero sets the title in type.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLogo))]
+    public partial Bitmap? Logo { get; set; }
+
+    /// <summary>
+    /// A focused game's fan art decoded tiny and stretched behind its cover: the browsing backdrop. The
+    /// upscale is the softening, so no blur effect runs per frame.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBackdrop))]
+    public partial Bitmap? Backdrop { get; set; }
+
+    /// <summary>The hero fallback's backdrop colour: picked from the cover, else the platform's colour.</summary>
+    [ObservableProperty]
+    public partial IBrush HeroTint { get; set; } = Brushes.Gray;
+
+    public bool IsHero => Kind == HandheldStageKind.Hero;
+    public bool IsHeroArt => IsHero && Fanart is not null;
+
+    /// <summary>A Title page for a game with no fan art: the cover, large, on a tinted backdrop with the plate.</summary>
+    public bool IsHeroFallback => IsHero && Fanart is null;
+
+    public bool HasLogo => Logo is not null;
+    public bool HasBackdrop => Kind == HandheldStageKind.Game && Backdrop is not null;
+
+    /// <summary>The centred card (folder, cover, app, glyph) and its plate; the fan-art hero replaces both.</summary>
+    public bool IsCentreVisible => !IsHeroArt;
+
     public bool IsFolder => Kind == HandheldStageKind.Folder;
-    public bool IsGame => Kind == HandheldStageKind.Game;
+    public bool IsGame => Kind is HandheldStageKind.Game || IsHeroFallback;
     public bool IsApp => Kind == HandheldStageKind.App;
 
     /// <summary>The kinds drawn as a plain glyph card: an empty slot, All apps, the menu, the header.</summary>
@@ -284,7 +380,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     public bool HasArt => Art is not null;
     public bool HasAchievements => !string.IsNullOrEmpty(AchievementText);
-    public bool HasPlate => Kind != HandheldStageKind.None && !string.IsNullOrEmpty(Title);
+
+    /// <summary>The corner achievements pill; the fan-art hero carries the count in its meta line instead.</summary>
+    public bool ShowAchievementPill => HasAchievements && !IsHeroArt;
+    public bool HasPlate => Kind != HandheldStageKind.None && !IsHeroArt && !string.IsNullOrEmpty(Title);
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>
@@ -313,7 +412,7 @@ public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> i
     public partial bool IsFocused { get; set; }
 }
 
-internal static class HandheldText
+internal static partial class HandheldText
 {
     public static string GameCount(int count) => count == 1 ? "1 game" : $"{count} games";
 

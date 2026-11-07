@@ -7,6 +7,7 @@ using Avalonia.Media.Imaging;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Handheld;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
 using Xunit;
 
@@ -20,7 +21,15 @@ public class HandheldShellViewModelTests
         public Dictionary<string, List<HandheldGameEntry>> Games { get; } = new();
         public List<long> CoverRequests { get; } = [];
         public List<long> Launched { get; } = [];
+        public List<GameLaunchScreen> LaunchScreens { get; } = [];
+        public List<(string SystemId, GameLaunchScreen Screen)> Remembered { get; } = [];
+        public List<(long GameId, int Disc)> DiscSelections { get; } = [];
+        public Dictionary<long, HandheldTitleDetails> Details { get; } = new();
         public List<InterfaceMode> ModeSwitches { get; } = [];
+
+        /// <summary>What the next launch reports; a pending source holds the launch open (the Launching state).</summary>
+        public TaskCompletionSource<bool>? PendingLaunch { get; set; }
+        public bool LaunchSucceeds { get; set; } = true;
         public int Released { get; private set; }
 
         public FakeLibrary WithPlatform(string id, int games)
@@ -48,10 +57,25 @@ public class HandheldShellViewModelTests
             return Task.FromResult<Bitmap?>(null);
         }
 
-        public Task LaunchAsync(HandheldGameEntry game)
+        public Task<Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken cancellationToken) =>
+            Task.FromResult<Bitmap?>(null);
+
+        public Task<HandheldTitleDetails> GetTitleDetailsAsync(HandheldGameEntry game, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Details.GetValueOrDefault(game.Id, HandheldTitleDetails.Default));
+
+        public Task<bool> SelectDiscAsync(HandheldGameEntry game, int discNumber)
+        {
+            DiscSelections.Add((game.Id, discNumber));
+            return Task.FromResult(true);
+        }
+
+        public void RememberLaunchScreen(string systemId, GameLaunchScreen screen) => Remembered.Add((systemId, screen));
+
+        public Task<bool> LaunchAsync(HandheldGameEntry game, GameLaunchScreen screen)
         {
             Launched.Add(game.Id);
-            return Task.CompletedTask;
+            LaunchScreens.Add(screen);
+            return PendingLaunch?.Task ?? Task.FromResult(LaunchSucceeds);
         }
 
         public Task SwitchModeAsync(InterfaceMode mode)
@@ -150,7 +174,7 @@ public class HandheldShellViewModelTests
     }
 
     [Fact]
-    public async Task AOnAGame_LaunchesThroughTheLibrary()
+    public async Task AOnAGame_OpensItsTitlePage_AndASecondPressPlays()
     {
         var library = new FakeLibrary().WithPlatform("ps2", 5);
         var shell = await CreateAsync(library);
@@ -159,7 +183,18 @@ public class HandheldShellViewModelTests
         Press(shell, GamepadAction.NavigateDown);
         Press(shell, GamepadAction.Confirm);
 
+        Assert.Empty(library.Launched);
+        Assert.Equal(library.Games["ps2"][1].Id, shell.TitlePage!.Entry.Id);
+        Assert.Equal(HandheldStageKind.Hero, shell.Stage.Kind);
+
+        Press(shell, GamepadAction.Confirm);
+
         Assert.Equal([library.Games["ps2"][1].Id], library.Launched);
+        Assert.Equal([GameLaunchScreen.BuiltIn], library.LaunchScreens);
+        // The game started: back on the folder's grid, on the game that was played.
+        Assert.False(shell.IsTitleOpen);
+        Assert.True(shell.IsFolderOpen);
+        Assert.Equal(1, shell.OpenFolder!.SelectedIndex);
     }
 
     [Fact]
@@ -320,6 +355,228 @@ public class HandheldShellViewModelTests
 
         Assert.Equal([HandheldDirection.Left, HandheldDirection.Up], bumps);
     }
+
+    // ---- Title page (H2) ----
+
+    private static async Task<(FakeLibrary Library, HandheldShellViewModel Shell, HandheldGameEntry Game)> OpenTitleAsync(
+        HandheldTitleDetails? details = null, string? achievements = null)
+    {
+        var library = new FakeLibrary().WithPlatform("gc", 3);
+        if (achievements is not null)
+            library.Games["gc"][0] = library.Games["gc"][0] with { AchievementText = achievements, AchievementRatio = 0.5 };
+        var game = library.Games["gc"][0];
+        if (details is not null)
+            library.Details[game.Id] = details;
+        var shell = await CreateAsync(library);
+        Press(shell, GamepadAction.Confirm); // open the folder
+        Press(shell, GamepadAction.Confirm); // open the first game's Title page
+        Assert.True(shell.IsTitleOpen);
+        return (library, shell, game);
+    }
+
+    private static HandheldTitleDetails Details(
+        LaunchScreenDecision screen = LaunchScreenDecision.BuiltIn, int discs = 1, int selected = 1) =>
+        new("Dolphin", Enumerable.Range(1, discs).ToList(), selected, screen, HasSecondScreen: true, IsDualScreenSystem: false);
+
+    [Fact]
+    public async Task TitlePage_ShowsThePlayFacts_AndOnlyPlayForASingleDiscGame()
+    {
+        var (_, shell, game) = await OpenTitleAsync(Details());
+        var page = shell.TitlePage!;
+
+        Assert.Equal(game.Title, page.Title);
+        Assert.Equal("gc · Dolphin", page.PlatformLine);
+        Assert.Equal("Not yet", page.LastPlayedText);
+        Assert.Equal("Top screen", page.ScreenText);
+        Assert.False(page.HasDiscs);
+        // No companion on this head, so the full badge grid has nowhere to open: no Achievements button.
+        Assert.Equal([HandheldTitleButtonKind.Play], page.Buttons.Select(button => button.Kind));
+        Assert.Equal(["A", "Y", "B"], shell.Hints.Select(hint => hint.Button));
+        Assert.Equal(game.Title, shell.Stage.Title);
+        Assert.True(shell.Stage.IsHeroFallback); // no fan art: the cover on a tinted backdrop
+    }
+
+    [Fact]
+    public async Task AskSystem_PlayOpensTheScreenChooser_AndThePickLaunchesThere()
+    {
+        var (library, shell, game) = await OpenTitleAsync(Details(LaunchScreenDecision.Prompt));
+        Assert.Equal("Asks which screen", shell.TitlePage!.ScreenText);
+
+        Press(shell, GamepadAction.Confirm);
+        Assert.True(shell.TitlePage!.IsScreenChooser);
+        Assert.Empty(library.Launched);
+
+        Press(shell, GamepadAction.NavigateRight);
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.Equal([game.Id], library.Launched);
+        Assert.Equal([GameLaunchScreen.External], library.LaunchScreens);
+        Assert.Empty(library.Remembered);
+        Assert.False(shell.IsTitleOpen);
+    }
+
+    [Fact]
+    public async Task ScreenChooser_RememberToggle_PinsThePickForThePlatform()
+    {
+        var (library, shell, _) = await OpenTitleAsync(Details(LaunchScreenDecision.Prompt));
+        library.PendingLaunch = new TaskCompletionSource<bool>();
+        Press(shell, GamepadAction.Confirm);
+
+        Press(shell, GamepadAction.NavigateDown);   // the remember row
+        Assert.True(shell.TitlePage!.IsRememberFocused);
+        Press(shell, GamepadAction.Confirm);        // tick it
+        Assert.True(shell.TitlePage!.RememberScreen);
+        Press(shell, GamepadAction.NavigateUp);     // back to the card it came from (top)
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.Equal([("gc", GameLaunchScreen.BuiltIn)], library.Remembered);
+        Assert.Equal([GameLaunchScreen.BuiltIn], library.LaunchScreens);
+        Assert.Equal("Top screen", shell.TitlePage!.ScreenText);
+
+    }
+
+    [Fact]
+    public async Task PinnedSecondScreen_PlaysThereWithoutAsking()
+    {
+        var (library, shell, _) = await OpenTitleAsync(Details(LaunchScreenDecision.External));
+        Assert.Equal("Bottom screen", shell.TitlePage!.ScreenText);
+
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.Equal([GameLaunchScreen.External], library.LaunchScreens);
+    }
+
+    [Fact]
+    public async Task MultiDisc_HasADiscButton_AndTheChooserRemembersThePick()
+    {
+        var (library, shell, game) = await OpenTitleAsync(Details(discs: 3, selected: 1));
+        var page = shell.TitlePage!;
+        Assert.Equal([HandheldTitleButtonKind.Play, HandheldTitleButtonKind.Disc], page.Buttons.Select(button => button.Kind));
+        Assert.Equal("3 · starts on disc 1", page.DiscText);
+
+        Press(shell, GamepadAction.NavigateRight);
+        Press(shell, GamepadAction.Confirm);
+        Assert.True(page.IsDiscChooser);
+        Assert.Equal(["Disc 1", "Disc 2", "Disc 3"], page.Options.Select(option => option.Label));
+        Assert.Equal(0, page.OptionIndex); // starts on the current disc
+
+        Press(shell, GamepadAction.NavigateDown);
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.Equal([(game.Id, 2)], library.DiscSelections);
+        Assert.True(page.IsButtons);
+        Assert.Equal("Disc 2", page.Buttons[1].Label);
+        Assert.True(page.Buttons[1].IsFocused); // focus stays on the Disc button
+        Assert.Equal("3 · starts on disc 2", page.DiscText);
+        Assert.Empty(library.Launched);
+    }
+
+    [Fact]
+    public async Task Launching_HoldsThePage_ShowsTheSyncPanel_AndAFailureStaysOnThePage()
+    {
+        var (library, shell, _) = await OpenTitleAsync(Details());
+        var launch = new TaskCompletionSource<bool>();
+        library.PendingLaunch = launch;
+        var page = shell.TitlePage!;
+
+        Press(shell, GamepadAction.Confirm);
+        Assert.True(page.IsLaunching);
+        Assert.Equal("Starting…", page.LaunchingHeading);
+
+        shell.SetLaunchSaveSync(true);
+        Assert.Equal("Syncing saves…", page.LaunchingHeading);
+
+        // Nothing interrupts a launch: B and the system Back are both swallowed.
+        Press(shell, GamepadAction.Cancel);
+        Assert.True(shell.DispatchBack());
+        Assert.Same(page, shell.TitlePage);
+
+        shell.SetLaunchSaveSync(false);
+        launch.SetResult(false);
+
+        Assert.Same(page, shell.TitlePage);
+        Assert.True(page.IsButtons);
+    }
+
+    [Fact]
+    public async Task AfterAPlay_TheFolderIsReRead_SoTheStageShowsThePlayData()
+    {
+        var (library, shell, game) = await OpenTitleAsync(Details());
+        // What the library holds once the launch core has stamped the play.
+        library.Games["gc"][0] = game with { PlayCount = 1, Playtime = TimeSpan.FromMinutes(42), LastPlayedAt = DateTimeOffset.Now };
+
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.False(shell.IsTitleOpen);
+        Assert.Equal(0, shell.OpenFolder!.SelectedIndex);
+        Assert.Equal("gc · 42 min played", shell.Stage.Subtitle);
+    }
+
+    [Fact]
+    public async Task ClosingTheFolder_ClosesItsTitlePage()
+    {
+        var (_, shell, _) = await OpenTitleAsync(Details());
+
+        shell.CloseFolder(); // e.g. a library refresh that removed the platform
+
+        Assert.False(shell.IsTitleOpen);
+    }
+
+    [Fact]
+    public async Task B_LeavesAChooserFirst_ThenThePage()
+    {
+        var (_, shell, _) = await OpenTitleAsync(Details(LaunchScreenDecision.Prompt));
+        Press(shell, GamepadAction.Confirm);
+        Assert.True(shell.TitlePage!.IsScreenChooser);
+
+        Press(shell, GamepadAction.Cancel);
+        Assert.True(shell.TitlePage!.IsButtons);
+
+        Assert.True(shell.DispatchBack());
+        Assert.False(shell.IsTitleOpen);
+        Assert.True(shell.IsFolderOpen);
+        Assert.Equal(HandheldStageKind.Game, shell.Stage.Kind);
+    }
+
+    [Fact]
+    public async Task Y_OpensTheActionsSheet_WithWhatThePageCanDo()
+    {
+        var (library, shell, _) = await OpenTitleAsync(Details(LaunchScreenDecision.External, discs: 2));
+        var page = shell.TitlePage!;
+
+        Press(shell, GamepadAction.Actions);
+
+        Assert.True(page.IsActions);
+        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Back to GC System"], page.Options.Select(option => option.Label));
+
+        // "Play on another screen…" asks even though the platform is pinned to the bottom screen.
+        Press(shell, GamepadAction.NavigateDown);
+        Press(shell, GamepadAction.Confirm);
+        Assert.True(page.IsScreenChooser);
+        Assert.Empty(library.Launched);
+
+        Press(shell, GamepadAction.Cancel);
+        Press(shell, GamepadAction.Actions);
+        Press(shell, GamepadAction.NavigateDown, 3);
+        Press(shell, GamepadAction.Confirm);
+        Assert.False(shell.IsTitleOpen);
+    }
+
+    [Fact]
+    public async Task TitlePage_StageIsTheHero_AndClosingGoesBackToTheGame()
+    {
+        var (_, shell, game) = await OpenTitleAsync(Details(), achievements: "12/40");
+        Assert.Equal(HandheldStageKind.Hero, shell.Stage.Kind);
+        Assert.Equal("12/40", shell.Stage.AchievementText);
+        Assert.StartsWith("gc · ", shell.Stage.Subtitle);
+        Assert.Equal("12/40 achievements", shell.TitlePage!.AchievementLine);
+
+        Press(shell, GamepadAction.Cancel);
+
+        Assert.Equal(HandheldStageKind.Game, shell.Stage.Kind);
+        Assert.Equal(game.Title, shell.Stage.Title);
+    }
+
 }
 
 public class HandheldShellStatusTests
@@ -363,7 +620,13 @@ public class HandheldShellStatusTests
         public void ReleaseGames(System.Collections.Generic.IReadOnlyList<HandheldGameEntry> games) { }
         public System.Threading.Tasks.Task<Avalonia.Media.Imaging.Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, System.Threading.CancellationToken cancellationToken) =>
             System.Threading.Tasks.Task.FromResult<Avalonia.Media.Imaging.Bitmap?>(null);
-        public System.Threading.Tasks.Task LaunchAsync(HandheldGameEntry game) => System.Threading.Tasks.Task.CompletedTask;
+        public System.Threading.Tasks.Task<Avalonia.Media.Imaging.Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, System.Threading.CancellationToken cancellationToken) =>
+            System.Threading.Tasks.Task.FromResult<Avalonia.Media.Imaging.Bitmap?>(null);
+        public System.Threading.Tasks.Task<HandheldTitleDetails> GetTitleDetailsAsync(HandheldGameEntry game, System.Threading.CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult(HandheldTitleDetails.Default);
+        public System.Threading.Tasks.Task<bool> SelectDiscAsync(HandheldGameEntry game, int discNumber) => System.Threading.Tasks.Task.FromResult(false);
+        public void RememberLaunchScreen(string systemId, GameLaunchScreen screen) { }
+        public System.Threading.Tasks.Task<bool> LaunchAsync(HandheldGameEntry game, GameLaunchScreen screen) => System.Threading.Tasks.Task.FromResult(false);
         public System.Threading.Tasks.Task SwitchModeAsync(EmuShelf.Core.Settings.InterfaceMode mode) => System.Threading.Tasks.Task.CompletedTask;
         public void Quit() { }
     }

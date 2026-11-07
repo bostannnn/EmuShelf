@@ -57,6 +57,75 @@
       <Setter Property="Padding" Value="24,0" />
       <Setter Property="BoxShadow" Value="0 2 8 0 #0F000000" />
     </Style>
+    <!-- Title page: the big pill buttons (Play is the accent), the fact rows, the chooser cards. -->
+    <Style Selector="Border.title-button">
+      <Setter Property="Height" Value="88" />
+      <Setter Property="CornerRadius" Value="44" />
+      <Setter Property="Padding" Value="32,0" />
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BoxShadow" Value="0 4 14 0 #14000000" />
+    </Style>
+    <Style Selector="Border.title-button.play">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+    </Style>
+    <Style Selector="Border.title-button TextBlock.label">
+      <Setter Property="FontSize" Value="32" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.title-button TextBlock.note">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <Style Selector="Border.title-button.play TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.title-button PathIcon">
+      <Setter Property="Width" Value="32" />
+      <Setter Property="Height" Value="32" />
+      <Setter Property="Foreground" Value="#4B5274" />
+    </Style>
+    <Style Selector="Border.title-button.play PathIcon">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="TextBlock.fact-label">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="Margin" Value="0,0,24,12" />
+    </Style>
+    <Style Selector="TextBlock.fact-value">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <Style Selector="Border.hint-glyph">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Background" Value="#4B5274" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.screen-card">
+      <Setter Property="Width" Value="400" />
+      <Setter Property="Height" Value="296" />
+      <Setter Property="CornerRadius" Value="40" />
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BoxShadow" Value="0 6 20 0 #14000000" />
+      <Setter Property="Padding" Value="32" />
+    </Style>
+
     <Style Selector="TextBlock.chip-text">
       <Setter Property="FontSize" Value="26" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -266,6 +335,245 @@
 
     </Grid>
   </Viewbox>
+
+  <!--
+    ===== The Title page (A on a game) =====
+    Covers the grid and the dock, as the mockup's page does; the facts on the left of a row of big buttons,
+    and the disc chooser, the screen chooser, the actions sheet and the launching panel as its states.
+  -->
+  <Panel IsVisible="{Binding IsTitleOpen}">
+    <Panel.Background>
+      <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+        <GradientStop Offset="0" Color="#FAFBFD" />
+        <GradientStop Offset="1" Color="#E4E8EF" />
+      </LinearGradientBrush>
+    </Panel.Background>
+    <!-- The platform's colour as a soft wash from the top. -->
+    <Border Background="{Binding TitlePage.AccentBrush}" Opacity="0.14">
+      <Border.OpacityMask>
+        <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+          <GradientStop Offset="0" Color="#FF000000" />
+          <GradientStop Offset="0.7" Color="#00000000" />
+        </LinearGradientBrush>
+      </Border.OpacityMask>
+    </Border>
+    <Viewbox Stretch="Uniform" ClipToBounds="False">
+      <Grid Width="1240" Height="1080" ClipToBounds="False">
+
+        <Grid IsVisible="{Binding TitlePage.IsBrowsable}" RowDefinitions="88,*,136,56" Margin="48,40,48,32">
+          <!-- Header: Back and where the page came from. -->
+          <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
+            <Border Classes="chip">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <TextBlock Classes="chip-text" Text="Back" />
+              </StackPanel>
+            </Border>
+            <TextBlock Text="{Binding TitlePage.CrumbLine}" FontSize="26" FontWeight="SemiBold" Foreground="#5B6176"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="860" />
+          </StackPanel>
+
+          <!-- Body: the cover, then the facts. -->
+          <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,24">
+            <Border Width="392" Height="552" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
+                    BoxShadow="0 16 40 0 #2E000000" VerticalAlignment="Center">
+              <Panel>
+                <TextBlock Text="{Binding TitlePage.Title}" IsVisible="{Binding !TitlePage.HasCover}" FontSize="32"
+                           FontWeight="SemiBold" Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center"
+                           Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                <Border IsVisible="{Binding TitlePage.HasCover}">
+                  <Border.Background>
+                    <ImageBrush Source="{Binding TitlePage.Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                  </Border.Background>
+                </Border>
+              </Panel>
+            </Border>
+            <StackPanel Grid.Column="1" Margin="48,0,0,0" VerticalAlignment="Center" Spacing="8">
+              <TextBlock Text="{Binding TitlePage.Title}" FontSize="48" FontWeight="SemiBold" Foreground="#1C2033"
+                         TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding TitlePage.PlatformLine}" FontSize="28" Foreground="#5B6176"
+                         TextTrimming="CharacterEllipsis" />
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,32,0,0">
+                <TextBlock Classes="fact-label" Text="Last played" />
+                <TextBlock Classes="fact-value" Grid.Column="1" Text="{Binding TitlePage.LastPlayedText}" />
+                <TextBlock Classes="fact-label" Grid.Row="1" Text="Play time" />
+                <TextBlock Classes="fact-value" Grid.Row="1" Grid.Column="1" Text="{Binding TitlePage.PlaytimeText}" />
+                <TextBlock Classes="fact-label" Grid.Row="2" Text="Runs on" />
+                <TextBlock Classes="fact-value" Grid.Row="2" Grid.Column="1" Text="{Binding TitlePage.ScreenText}" />
+                <TextBlock Classes="fact-label" Grid.Row="3" Text="Discs" IsVisible="{Binding TitlePage.HasDiscs}" />
+                <TextBlock Classes="fact-value" Grid.Row="3" Grid.Column="1" Text="{Binding TitlePage.DiscText}"
+                           IsVisible="{Binding TitlePage.HasDiscs}" />
+              </Grid>
+              <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,16,0,0" IsVisible="{Binding TitlePage.HasAchievements}">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
+                <TextBlock Text="{Binding TitlePage.AchievementLine}" FontSize="26" FontWeight="SemiBold"
+                           Foreground="#1C2033" VerticalAlignment="Center" FontFeatures="+tnum" />
+                <ProgressBar Width="160" Height="12" MinHeight="12" CornerRadius="6" VerticalAlignment="Center"
+                             Minimum="0" Maximum="1" Value="{Binding TitlePage.AchievementRatio}"
+                             Background="#29465088" Foreground="#F2AE2E" />
+              </StackPanel>
+            </StackPanel>
+          </Grid>
+
+          <!-- The buttons: Play, Disc (multi-disc), Achievements. -->
+          <ItemsControl Grid.Row="2" ItemsSource="{Binding TitlePage.Buttons}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
+                        ClipToBounds="False" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="32" ClipToBounds="False" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldTitleButtonViewModel">
+                <Panel Classes="focusable" Classes.focused="{Binding IsFocused}">
+                  <Border Classes="title-button" Classes.play="{Binding IsPlay}">
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Play}" IsVisible="{Binding IsPlay}" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Disc}" IsVisible="{Binding IsDisc}" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" IsVisible="{Binding IsAchievements}" />
+                      <TextBlock Classes="label" Text="{Binding Label}" />
+                      <TextBlock Classes="note" Text="{Binding Note}" IsVisible="{Binding HasNote}" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="ring" CornerRadius="64" Margin="-20">
+                    <Border CornerRadius="60"><Border CornerRadius="48" /></Border>
+                  </Border>
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <!-- Footer: the buttons that are not on the page. -->
+          <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="32" HorizontalAlignment="Right" VerticalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Border Classes="hint-glyph">
+                <TextBlock Text="Y" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock Classes="chip-text" Text="More actions" Foreground="#5B6176" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Border Classes="hint-glyph">
+                <TextBlock Text="B" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock Classes="chip-text" Text="Back" Foreground="#5B6176" />
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+
+        <!-- State: the disc chooser or the actions sheet, a card over a scrim. -->
+        <Border IsVisible="{Binding TitlePage.IsOptionList}" Background="#521C2033" Margin="-400">
+          <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="40"
+                  Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+            <StackPanel Spacing="8">
+              <StackPanel Margin="24,8,24,8" Spacing="4">
+                <TextBlock Text="{Binding TitlePage.OptionsHeading}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" />
+                <TextBlock Text="{Binding TitlePage.Title}" FontSize="24" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <ItemsControl ItemsSource="{Binding TitlePage.Options}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Spacing="8" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:HandheldTitleOptionViewModel">
+                    <Border CornerRadius="16" Height="80" Padding="24,0"
+                            Background="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
+                        <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="24"
+                                   VerticalAlignment="Center" Margin="24,0,0,0" FontFeatures="+tnum"
+                                   Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowNote}}" />
+                      </Grid>
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </Border>
+
+        <!-- State: the launch-screen chooser — two screen cards and "Always use this screen". -->
+        <Border IsVisible="{Binding TitlePage.IsScreenChooser}" Background="#521C2033" Margin="-400">
+          <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="48"
+                  Background="#F5F6F9" Padding="48,40" BoxShadow="0 20 48 0 #33000000" ClipToBounds="False">
+            <StackPanel Spacing="32" ClipToBounds="False">
+              <StackPanel Spacing="4">
+                <TextBlock Text="Which screen?" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033" />
+                <TextBlock Text="{Binding TitlePage.Title}" FontSize="26" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <StackPanel Orientation="Horizontal" Spacing="48" HorizontalAlignment="Center" ClipToBounds="False">
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                  <Border Classes="screen-card">
+                    <StackPanel Spacing="16" VerticalAlignment="Center">
+                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenTop}" Width="96" Height="96" Foreground="#5B58D9" />
+                      <TextBlock Text="Top screen" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" HorizontalAlignment="Center" />
+                      <TextBlock Text="The companion stays below" FontSize="24" Foreground="#5B6176" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="ring" CornerRadius="60" Margin="-20">
+                    <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
+                  </Border>
+                </Panel>
+                <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" ZIndex="{Binding TitlePage.IsBottomScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
+                  <Border Classes="screen-card">
+                    <StackPanel Spacing="16" VerticalAlignment="Center">
+                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenBottom}" Width="96" Height="96" Foreground="#5B58D9" />
+                      <TextBlock Text="Bottom screen" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" HorizontalAlignment="Center" />
+                      <TextBlock Text="The companion moves up" FontSize="24" Foreground="#5B6176" HorizontalAlignment="Center" />
+                    </StackPanel>
+                  </Border>
+                  <Border Classes="ring" CornerRadius="60" Margin="-20">
+                    <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
+                  </Border>
+                </Panel>
+              </StackPanel>
+              <!-- The remember toggle: a row with a check box. -->
+              <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsRememberFocused}" HorizontalAlignment="Center">
+                <Border Classes="chip" Height="72" CornerRadius="36" Padding="24,0">
+                  <StackPanel Orientation="Horizontal" Spacing="16">
+                    <Border Width="40" Height="40" CornerRadius="12" BorderBrush="#5B58D9" BorderThickness="3" VerticalAlignment="Center"
+                            Background="{Binding TitlePage.RememberScreen, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="28" Height="28" Foreground="White"
+                                IsVisible="{Binding TitlePage.RememberScreen}" />
+                    </Border>
+                    <TextBlock Classes="chip-text" Text="{Binding TitlePage.RememberScreenLabel}" />
+                  </StackPanel>
+                </Border>
+                <Border Classes="ring" CornerRadius="56" Margin="-20">
+                  <Border CornerRadius="52"><Border CornerRadius="40" /></Border>
+                </Border>
+              </Panel>
+            </StackPanel>
+          </Border>
+        </Border>
+
+        <!-- State: launching — the pre-launch save sync (the blocking sync panel), then the emulator start. -->
+        <StackPanel IsVisible="{Binding TitlePage.IsLaunching}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
+          <Border Width="280" Height="392" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
+                  BoxShadow="0 16 40 0 #2E000000" HorizontalAlignment="Center">
+            <Border IsVisible="{Binding TitlePage.HasCover}">
+              <Border.Background>
+                <ImageBrush Source="{Binding TitlePage.Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+              </Border.Background>
+            </Border>
+          </Border>
+          <StackPanel Spacing="8">
+            <TextBlock Text="{Binding TitlePage.LaunchingHeading}" FontSize="40" FontWeight="SemiBold" Foreground="#1C2033"
+                       HorizontalAlignment="Center" />
+            <TextBlock Text="{Binding TitlePage.LaunchingDetail}" FontSize="26" Foreground="#5B6176"
+                       HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="1000" />
+          </StackPanel>
+          <ProgressBar IsIndeterminate="True" Width="320" Height="8" MinHeight="8" CornerRadius="4"
+                       HorizontalAlignment="Center" Background="#29465088" Foreground="#5B58D9" />
+        </StackPanel>
+      </Grid>
+    </Viewbox>
+  </Panel>
 
   <!-- The menu's scrim covers the whole window, letterbox bands included. -->
       <Border IsVisible="{Binding IsMenuOpen}" Background="#521C2033">

@@ -12542,3 +12542,43 @@ Facts H1–H5 must build on:
   face. Adding it (OFL, with its licence in `THIRD-PARTY-NOTICES.md`) belongs to the look work in H3.
 - **The status pill** reads battery and charging from `BatteryManager` and Wi-Fi from `ConnectivityManager`
   (new `ACCESS_NETWORK_STATE` permission, install-time) behind Core's `IDeviceStatusService`.
+
+## 2026-11-07 — M45 H2: the Title page
+
+- **The shared launch part is `LaunchScreenPlanner`** (`EmuShelf.UI/Services`): the preference read, the
+  dual-screen rule and `LaunchScreenResolver`, plus "Always use this screen". `MainViewModel.LaunchGameCoreAsync`
+  and the Title page both call it, so Gamepad and Handheld can't disagree about when to ask. The rest of
+  the core (busy guard, file checks, the return-watcher guard, save sync before and after, play recording,
+  the status line) stays one method that both modes run: the Title page resolves the screen, then calls the
+  core with it as `screenOverride`. The core now returns whether the emulator started, so the page knows
+  whether to step back to the grid or stay up with the failure.
+- **Choosers are page states, not overlays** (`HandheldTitleState`): Buttons, DiscChooser, ScreenChooser,
+  Actions, Launching. While Launching, every button and the system Back are swallowed; the pre-launch save
+  sync shows as "Syncing saves…" on that panel (`MainViewModel.IsBlockingLaunchSaveSync` is pushed to the
+  shell). A failed or refused launch returns to the buttons with the reason on the Stage's status pill.
+- **Screens are named by position, "Top screen" / "Bottom screen"**, as in the mockup, rather than the
+  Gamepad chooser's "Main" / "Second": Handheld mode only runs on the Thor, whose built-in display is the
+  top panel. A DS/3DS reads "Top screen" because the resolver always starts it on the built-in display.
+- **Returning lands on the grid.** A launch that started closes the page and re-reads the open folder, so
+  last played, play time and the play-data sorts are current; the deferred play completion on Android
+  (play time) re-reads it again.
+- **Achievements open the companion's badge grid on Screen-2** for the page's game: `SecondScreenController`
+  targets `HandheldShellViewModel.TitleGame` in Handheld mode, the companion swaps in while its overlay is
+  open, and B comes back to the page. The button only shows when the game has a set and a companion exists
+  (so never on a desktop head). The full restyle and D-pad reach of the companion are H6.
+- **H2's Y sheet holds what the page itself can do:** Play, "Play on another screen…" (asks even when the
+  platform is pinned), Choose disc…, Achievements, Back to the folder. Edit title, Set cover, Scrape and
+  Remove from library open Gamepad overlays that Handheld mode does not host yet; they join the sheet with
+  H6's restyle, whose exit is "nothing a Gamepad-mode user can do is missing".
+- **Hero art:** fan art full-bleed (decoded to fit 1920×1080) darkened by two gradients toward the logo and
+  the meta line; the logo (fit 900×600) or, without one, the title set large. No fan art: the cover on the
+  Stage over a wash of the cover's strongest hue (the artwork palette engine's accent), else the platform
+  colour, with the name plate. The **browsing backdrop** is the same fan art decoded at 96×54 and stretched
+  to fill: the upscale is the softening, so nothing blurs per frame. Fan art and logo paths come from the
+  same resolution the Gamepad spotlight uses, cached on the shared `GameViewModel`.
+- **Bitmaps leave the Stage before they are disposed** (set the property to null, then dispose), so no frame
+  can draw a disposed image.
+- **Device check (Thor, adb):** the hero and the soft backdrop render on the top screen; A → Title page →
+  Play on a GameCube game (system set to Ask) opened the screen chooser, top screen launched Dolphin, and
+  coming back landed on the folder grid with "Played today". Screen-2 is `FLAG_SECURE`, so the Launcher's
+  Title page layout is for the owner's hands-on check.

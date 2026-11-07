@@ -9,10 +9,12 @@ using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using EmuShelf.Core.Handheld;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Library;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.App.Services;
+using EmuShelf.Integrations.Emulators.Android;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -77,6 +79,7 @@ public partial class MainViewModel
             };
             Handheld = handheld;
             handheld.ShowStatus(StatusText);
+            handheld.SetLaunchSaveSync(IsBlockingLaunchSaveSync);
             handheld.StartStatusUpdates();
             _ = handheld.InitializeAsync();
         }
@@ -177,7 +180,8 @@ public partial class MainViewModel
                     set.Discs.Aggregate(TimeSpan.Zero, (total, disc) => total + disc.Game.Playtime),
                     viewModel.Model.IsAvailable,
                     viewModel.ShowAchievementMark ? viewModel.GamepadAchievementCountText : null,
-                    viewModel)).ToList();
+                    viewModel,
+                    viewModel.ShowAchievementMark ? viewModel.GamepadAchievementProgressRatio : 0)).ToList();
             }, cancellationToken);
         }
 
@@ -219,8 +223,115 @@ public partial class MainViewModel
             }
         }
 
-        public Task LaunchAsync(HandheldGameEntry game) =>
-            game.ViewModel is { } viewModel ? owner.LaunchGameCommand.ExecuteAsync(viewModel) : Task.CompletedTask;
+        // Fan art is drawn full-bleed on the 1920×1080 Stage; the browsing backdrop is the same art decoded
+        // tiny and stretched, which softens it without a blur effect. Logos sit in a box about 800×560.
+        private const int FanartMaxWidth = 1920;
+        private const int FanartMaxHeight = 1080;
+        private const int BackdropMaxWidth = 96;
+        private const int BackdropMaxHeight = 54;
+        private const int LogoMaxWidth = 900;
+        private const int LogoMaxHeight = 600;
+
+        public async Task<Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken cancellationToken)
+        {
+            if (game.ViewModel is not { } viewModel)
+                return null;
+            // The same scraped-media resolution the Gamepad spotlight hero uses, cached on the shared view model.
+            if (!viewModel.AreSpotlightDetailsLoaded)
+            {
+                var resolved = await Task.Run(() => owner.ResolveSpotlightDetails(viewModel.Id), cancellationToken);
+                if (!viewModel.AreSpotlightDetailsLoaded)
+                    viewModel.ApplySpotlightDetails(resolved.FanartPath, resolved.WheelPath, resolved.RatingText, resolved.Facts);
+            }
+            var (path, width, height) = kind switch
+            {
+                HandheldArtKind.Logo => (viewModel.WheelPath, LogoMaxWidth, LogoMaxHeight),
+                HandheldArtKind.Backdrop => (viewModel.FanartPath, BackdropMaxWidth, BackdropMaxHeight),
+                _ => (viewModel.FanartPath, FanartMaxWidth, FanartMaxHeight),
+            };
+            if (path is not { Length: > 0 } source)
+                return null;
+            await owner._coverDecodeGate.WaitAsync(cancellationToken);
+            try
+            {
+                return await Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    return File.Exists(source) ? SafeImageDecoder.DecodeToFit(source, width, height) : null;
+                }, cancellationToken);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            {
+                owner._logger.Warning($"Handheld: could not decode the {kind} art for {game.Title}.", ex);
+                return null;
+            }
+            finally
+            {
+                owner._coverDecodeGate.Release();
+            }
+        }
+
+        public async Task<HandheldTitleDetails> GetTitleDetailsAsync(HandheldGameEntry game, CancellationToken cancellationToken = default)
+        {
+            var viewModel = game.ViewModel;
+            var isDualScreen = owner._systemsById.TryGetValue(game.SystemId, out var system) && system.IsDualScreen;
+            cancellationToken.ThrowIfCancellationRequested();
+            var screen = await owner._launchScreens.ResolveAsync(game.SystemId, isDualScreen);
+            cancellationToken.ThrowIfCancellationRequested();
+            var emulator = await Task.Run(() => DescribeEmulator(game.SystemId), cancellationToken);
+            var discs = viewModel?.Discs.Select(disc => disc.Number).ToList() ?? [1];
+            return new HandheldTitleDetails(
+                emulator,
+                discs,
+                viewModel?.SelectedDiscNumber ?? 1,
+                screen,
+                owner._launchScreens.HasSecondScreen,
+                isDualScreen);
+        }
+
+        // The emulator that will run this system's games, by the name Settings shows: the saved choice, else
+        // the platform's default (on Android, the first choice in the catalogue, which is the launch default).
+        private string? DescribeEmulator(string systemId)
+        {
+            EmulatorConfiguration? configuration;
+            try
+            {
+                configuration = owner._emulatorConfigurations.Get(systemId);
+            }
+            catch (Exception ex)
+            {
+                owner._logger.Warning($"Handheld: could not read the emulator for {systemId}.", ex);
+                return null;
+            }
+            if (OperatingSystem.IsAndroid())
+            {
+                if (!AndroidEmulatorChoiceCatalog.BySystem.TryGetValue(systemId, out var choices) || choices.Count == 0)
+                    return null;
+                var chosen = configuration is null
+                    ? null
+                    : choices.FirstOrDefault(choice => choice.Matches(configuration.EmulatorId, configuration.CorePath));
+                return (chosen ?? choices[0]).DisplayName;
+            }
+            var emulatorId = configuration?.EmulatorId;
+            return owner._emulators.FirstOrDefault(emulator => string.Equals(emulator.Id, emulatorId, StringComparison.Ordinal))?.Name
+                ?? owner._emulators.FirstOrDefault(emulator => emulator.Supports(systemId))?.Name;
+        }
+
+        public async Task<bool> SelectDiscAsync(HandheldGameEntry game, int discNumber)
+        {
+            if (game.ViewModel is not { } viewModel ||
+                viewModel.Discs.FirstOrDefault(disc => disc.Number == discNumber) is not { } disc)
+                return false;
+            return await owner.RememberSelectedDiscAsync(viewModel, disc);
+        }
+
+        public void RememberLaunchScreen(string systemId, GameLaunchScreen screen) =>
+            owner._launchScreens.Remember(systemId, screen);
+
+        public Task<bool> LaunchAsync(HandheldGameEntry game, GameLaunchScreen screen) =>
+            game.ViewModel is { } viewModel
+                ? owner.LaunchGameCoreAsync(viewModel, screenOverride: screen)
+                : Task.FromResult(false);
 
         public Task SwitchModeAsync(InterfaceMode mode) => owner.SetInterfaceModeAsync(mode);
 

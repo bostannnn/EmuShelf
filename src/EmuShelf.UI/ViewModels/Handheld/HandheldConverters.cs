@@ -22,6 +22,20 @@ public static class HandheldIcons
     public static readonly Geometry Plus = Geometry.Parse("M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z");
 
     public static readonly Geometry Sort = Geometry.Parse("M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z");
+
+    public static readonly Geometry Play = GamepadOptionIcons.Launch;
+
+    /// <summary>A disc: a ring with a hole (even-odd fill).</summary>
+    public static readonly Geometry Disc = Geometry.Parse(
+        "F0 M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6z");
+
+    public static readonly Geometry Check = Geometry.Parse("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z");
+
+    /// <summary>Two stacked screens with the top one filled: the Thor's top (main) display.</summary>
+    public static readonly Geometry ScreenTop = Geometry.Parse("F0 M4 2h16v9H4zM4 13h16v9H4zM6 15h12v5H6z");
+
+    /// <summary>Two stacked screens with the bottom one filled: the Thor's bottom (second) display.</summary>
+    public static readonly Geometry ScreenBottom = Geometry.Parse("F0 M4 2h16v9H4zM6 4h12v5H6zM4 13h16v9H4z");
 }
 
 /// <summary>Small view-only mappings for the Handheld views.</summary>
@@ -30,6 +44,7 @@ public static class HandheldViewConverters
     private static readonly IBrush Selector = new SolidColorBrush(Color.Parse("#5B58D9"));
     private static readonly IBrush Dot = new SolidColorBrush(Color.Parse("#38465088"));
     private static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1E2235"));
+    private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5B6176"));
 
     /// <summary>A <see cref="HandheldGlyph"/> as the vector the views draw.</summary>
     public static readonly Avalonia.Data.Converters.IValueConverter GlyphGeometry =
@@ -57,6 +72,9 @@ public static class HandheldViewConverters
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowBrush =
         new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Selector : Brushes.Transparent);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter MenuRowNote =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Muted);
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowText =
         new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Ink);

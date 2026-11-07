@@ -12,6 +12,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Handheld;
+using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.ViewModels;
@@ -31,6 +32,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The Stage's cover decodes from the full cover at roughly its on-screen height.</summary>
     public const int StageDecodeWidth = 640;
 
+    /// <summary>The Title page's cover on the Launcher (about 400 px wide on the 1240×1080 canvas).</summary>
+    public const int TitleCoverDecodeWidth = 480;
+
     // One column either side of the realized window keeps its covers, so a step back is instant.
     private const int CoverKeepMarginColumns = 1;
 
@@ -41,6 +45,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private HandheldHomePosition _home = new(0, 0);
     private CancellationTokenSource? _folderLoad;
     private CancellationTokenSource? _stageArtLoad;
+    private CancellationTokenSource? _titleLoad;
     private DispatcherTimer? _statusTimer;
     private SecondScreenViewModel? _companion;
     private bool _disposed;
@@ -84,6 +89,17 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     public bool IsFolderOpen => OpenFolder is not null;
     public bool IsHomeVisible => OpenFolder is null;
+
+    /// <summary>The open Title page (A on a game), drawn over the grid it was opened from; null while browsing.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTitleOpen))]
+    [NotifyPropertyChangedFor(nameof(TitleGame))]
+    public partial HandheldTitlePageViewModel? TitlePage { get; private set; }
+
+    public bool IsTitleOpen => TitlePage is not null;
+
+    /// <summary>The Title page's game as the rest of the app knows it (the companion's achievements follow it).</summary>
+    public GameViewModel? TitleGame => TitlePage?.Entry.ViewModel;
 
     [ObservableProperty]
     public partial int DockIndex { get; private set; }
@@ -150,6 +166,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return;
             _companion = value;
             RebuildDock();
+            // The Title page's Achievements button depends on a companion to open in.
+            if (TitlePage is { } title)
+            {
+                BuildTitleButtons(title);
+                UpdateHints();
+            }
             OnPropertyChanged();
         }
     }
@@ -215,6 +237,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (IsMenuOpen)
             return DispatchMenuAction(action);
 
+        if (TitlePage is { } title)
+            return DispatchTitleAction(title, action);
+
         switch (action)
         {
             case GamepadAction.NavigateUp:
@@ -260,6 +285,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
             return companion.DispatchGamepadAction(GamepadAction.Cancel);
+        if (!IsMenuOpen && TitlePage is { } title)
+        {
+            BackOnTitle(title);
+            return true;
+        }
         if (IsMenuOpen || OpenFolder is not null || Zone != HandheldZone.Grid)
         {
             if (IsMenuOpen)
@@ -431,9 +461,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
         if (OpenFolder is { } folder)
         {
-            // H1 launches straight through the existing path; H2 puts the Title page in front of it.
+            // A on a game opens its Title page; Play there is the second press (spec decision 13).
             if (folder.SelectedTile is { } tile)
-                _ = _library.LaunchAsync(tile.Entry);
+                OpenTitle(tile.Entry);
             return;
         }
 
@@ -502,10 +532,43 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         UpdateFocus();
     }
 
+    /// <summary>
+    /// Re-reads the open folder's games (after a play was recorded, so last played, play time and the sorts
+    /// are current), keeping the selected game. Skipped while a Title page is up; it closes into a fresh read.
+    /// </summary>
+    public async Task RefreshOpenFolderAsync()
+    {
+        if (OpenFolder is not { IsLoaded: true } folder || TitlePage is not null)
+            return;
+        IReadOnlyList<HandheldGameEntry> games;
+        try
+        {
+            games = await _library.GetGamesAsync(folder.Platform.SystemId);
+        }
+        catch (Exception)
+        {
+            return; // the folder keeps its last read
+        }
+        if (!ReferenceEquals(OpenFolder, folder) || TitlePage is not null)
+        {
+            _library.ReleaseGames(games);
+            return;
+        }
+        var previous = folder.Source;
+        folder.Source = games;
+        _stageGameId = -1; // the Stage re-reads the selected game's facts
+        var firstColumn = folder.FirstVisibleColumn;
+        ApplySort(folder, folder.Sort, keepColumn: firstColumn);
+        OnPropertyChanged(nameof(OpenFolder));
+        _library.ReleaseGames(previous);
+    }
+
     public void CloseFolder()
     {
         if (OpenFolder is not { } folder)
             return;
+        // A Title page belongs to its folder's entries, which are released below.
+        CloseTitle();
         _folderLoad?.Cancel();
         _folderLoad?.Dispose();
         _folderLoad = null;
@@ -520,7 +583,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         UpdateFocus();
     }
 
-    private void ApplySort(HandheldFolderViewModel folder, HandheldFolderSort sort, bool selectFirst = false)
+    private void ApplySort(HandheldFolderViewModel folder, HandheldFolderSort sort, bool selectFirst = false, int keepColumn = 0)
     {
         var selectedId = folder.SelectedTile?.Entry.Id;
         foreach (var tile in folder.Items)
@@ -535,7 +598,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             game => game.PlayCount);
         folder.Items = sorted.Select((entry, index) => new HandheldGameTileViewModel(index, entry)).ToList();
         folder.Sort = sort;
-        folder.FirstVisibleColumn = 0;
+        // A re-read keeps the scroll window where it was (clamped by the selection); a re-sort starts at the left.
+        folder.FirstVisibleColumn = keepColumn;
         // Re-sorting keeps the same game selected; the first open starts at the first game.
         var index = selectFirst || selectedId is null
             ? 0
@@ -754,6 +818,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void UpdateStage()
     {
+        if (TitlePage is { } title)
+        {
+            ShowHeroStage(title.Entry);
+            return;
+        }
+
         if (Zone == HandheldZone.Dock && DockItems.Count > DockIndex)
         {
             var item = DockItems[DockIndex];
@@ -816,6 +886,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.Monogram = string.Empty;
         Stage.AchievementText = null;
         Stage.AppIcon = null;
+        Stage.HeroTint = Brushes.Gray;
         Stage.Glyph = kind switch
         {
             HandheldStageKind.AllApps => HandheldGlyph.AllApps,
@@ -842,7 +913,34 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        _ = LoadStageArtAsync(game);
+        _ = LoadStageArtAsync(game, hero: false);
+    }
+
+    /// <summary>
+    /// The Title page's hero: the fan art full-bleed with the logo and a meta line, or — for a game with no
+    /// fan art — the cover large on a backdrop tinted from it, with the name plate.
+    /// </summary>
+    private void ShowHeroStage(HandheldGameEntry game)
+    {
+        if (Stage.Kind == HandheldStageKind.Hero && _stageGameId == game.Id)
+            return;
+        ShowStage(HandheldStageKind.Hero, game.Title, HeroSubtitle(game));
+        _stageGameId = game.Id;
+        Stage.AchievementText = game.AchievementText;
+        if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
+            Stage.HeroTint = new SolidColorBrush(accent);
+        _ = LoadStageArtAsync(game, hero: true);
+    }
+
+    private string HeroSubtitle(HandheldGameEntry game)
+    {
+        var now = _clock.GetLocalNow();
+        var played = game.PlayCount == 0
+            ? "Not played yet"
+            : game.Playtime.TotalMinutes >= 1
+                ? $"{HandheldText.Duration(game.Playtime)} played · {HandheldText.LastPlayed(game.LastPlayedAt, now)}"
+                : $"Played {HandheldText.LastPlayed(game.LastPlayedAt, now).ToLowerInvariant()}";
+        return $"{game.SystemName} · {played}";
     }
 
     private static string GameSubtitle(HandheldGameEntry game)
@@ -854,24 +952,84 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         return $"{game.SystemName} · {played}{unavailable}";
     }
 
-    private async Task LoadStageArtAsync(HandheldGameEntry game)
+    /// <summary>
+    /// Loads what the Stage draws for a game, one decode at a time and only while that game is still on the
+    /// Stage. Browsing: the cover, then the tiny fan art for the soft backdrop. Hero: the fan art and logo;
+    /// the cover (and the tint picked from it) only when there is no fan art to show.
+    /// </summary>
+    private async Task LoadStageArtAsync(HandheldGameEntry game, bool hero)
     {
         var cancellation = new CancellationTokenSource();
         _stageArtLoad?.Dispose();
         _stageArtLoad = cancellation;
+        var token = cancellation.Token;
+        bool Current() => !token.IsCancellationRequested && _stageGameId == game.Id;
         try
         {
-            var bitmap = await _library.LoadCoverAsync(game, StageDecodeWidth, fullSize: true, cancellation.Token);
-            if (cancellation.IsCancellationRequested || _stageGameId != game.Id)
+            if (hero)
             {
-                bitmap?.Dispose();
+                var fanart = await LoadArtSafeAsync(game, HandheldArtKind.Fanart, token);
+                if (!Assign(fanart, bitmap => Stage.Fanart = bitmap))
+                    return;
+                if (fanart is not null)
+                {
+                    var logo = await LoadArtSafeAsync(game, HandheldArtKind.Logo, token);
+                    Assign(logo, bitmap => Stage.Logo = bitmap);
+                    return;
+                }
+            }
+
+            var cover = await _library.LoadCoverAsync(game, StageDecodeWidth, fullSize: true, token);
+            if (!Assign(cover, bitmap => Stage.Art = bitmap))
+                return;
+            if (hero)
+            {
+                if (cover is not null && await PickTintAsync(cover) is { } tint && Current())
+                    Stage.HeroTint = tint;
                 return;
             }
-            Stage.Art = bitmap;
+
+            var backdrop = await LoadArtSafeAsync(game, HandheldArtKind.Backdrop, token);
+            Assign(backdrop, bitmap => Stage.Backdrop = bitmap);
         }
         catch (OperationCanceledException)
         {
         }
+
+        // Hands a decoded bitmap to the Stage if the game is still showing; otherwise drops it and stops.
+        bool Assign(Bitmap? bitmap, Action<Bitmap?> assign)
+        {
+            if (!Current())
+            {
+                bitmap?.Dispose();
+                return false;
+            }
+            assign(bitmap);
+            return true;
+        }
+    }
+
+    // Fan art and logos are decoration: a broken file leaves the cover fallback, never a fault.
+    private async Task<Bitmap?> LoadArtSafeAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken token)
+    {
+        try
+        {
+            return await _library.LoadArtAsync(game, kind, token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The cover's strongest hue as a brush (the artwork palette engine's accent), or null for grey art.</summary>
+    private static async Task<IBrush?> PickTintAsync(Bitmap cover)
+    {
+        // Copying the pixels touches the live bitmap, so it stays on this (UI) thread; the analysis does not.
+        if (ArtworkPaletteExtractor.CopyPixels(cover) is not { } pixels)
+            return null;
+        var palette = await Task.Run(() => ArtworkPaletteExtractor.FromBgraPixels(pixels, previousIsDark: false));
+        return palette is not null && Color.TryParse(palette.Accent, out var accent) ? new SolidColorBrush(accent) : null;
     }
 
     private void CancelStageArt()
@@ -880,11 +1038,14 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _stageArtLoad?.Dispose();
         _stageArtLoad = null;
         _stageGameId = -1;
-        if (Stage.Art is { } art)
-        {
-            Stage.Art = null;
-            art.Dispose();
-        }
+        // Take each bitmap off the Stage before disposing it, so no frame can draw a disposed image.
+        var released = new[] { Stage.Art, Stage.Fanart, Stage.Logo, Stage.Backdrop };
+        Stage.Art = null;
+        Stage.Fanart = null;
+        Stage.Logo = null;
+        Stage.Backdrop = null;
+        foreach (var bitmap in released)
+            bitmap?.Dispose();
     }
 
     private void UpdateHints()
@@ -894,6 +1055,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         {
             Hints.Add(new HandheldHint("A", "Select"));
             Hints.Add(new HandheldHint("B", "Close"));
+            return;
+        }
+        if (TitlePage is { } title)
+        {
+            AddTitleHints(title);
             return;
         }
         switch (Zone)
@@ -925,6 +1091,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         _disposed = true;
         StopStatusUpdates();
+        CloseTitle();
         CloseFolder();
         CancelStageArt();
     }

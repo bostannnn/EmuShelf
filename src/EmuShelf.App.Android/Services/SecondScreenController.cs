@@ -860,7 +860,8 @@ internal sealed class SecondScreenController
         var surfaceRevision = _navigation.Revision;
         ResetAchievementTarget();
 
-        var focused = _viewModel?.FocusedGame;
+        // In Handheld mode the Title page's game is the one in focus (its Achievements button opened this).
+        var focused = _viewModel?.Handheld is { } handheld ? handheld.TitleGame : _viewModel?.FocusedGame;
         var gameId = SecondScreenTargetResolver.Resolve(_runningGameId, focused?.Id);
         var title = _runningGameId is not null
             ? _runningGameTitle ?? "Now playing"

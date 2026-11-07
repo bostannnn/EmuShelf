@@ -47,11 +47,76 @@
     </Style>
   </UserControl.Styles>
 
+  <Panel>
+  <!--
+    Backdrops fill the whole window. Browsing a game: its fan art decoded tiny and stretched, which is the
+    softening (no blur runs per frame). The Title page with no fan art: a wash of the colour picked from the
+    cover. The Title page with fan art: the art itself, full-bleed, darkened toward the logo and meta line.
+  -->
+  <Image Source="{Binding Stage.Backdrop}" IsVisible="{Binding Stage.HasBackdrop}" Stretch="UniformToFill"
+         Opacity="0.5" RenderOptions.BitmapInterpolationMode="HighQuality" />
+  <Border IsVisible="{Binding Stage.IsHeroFallback}" Background="{Binding Stage.HeroTint}" Opacity="0.32">
+    <Border.OpacityMask>
+      <RadialGradientBrush Center="50%,42%" GradientOrigin="50%,42%" RadiusX="75%" RadiusY="95%">
+        <GradientStop Offset="0" Color="#FF000000" />
+        <GradientStop Offset="1" Color="#00000000" />
+      </RadialGradientBrush>
+    </Border.OpacityMask>
+  </Border>
+  <Panel IsVisible="{Binding Stage.IsHeroArt}">
+    <Image Source="{Binding Stage.Fanart}" Stretch="UniformToFill" />
+    <Border>
+      <Border.Background>
+        <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
+          <GradientStop Offset="0" Color="#9E080A14" />
+          <GradientStop Offset="0.52" Color="#2E080A14" />
+          <GradientStop Offset="1" Color="#00080A14" />
+        </LinearGradientBrush>
+      </Border.Background>
+    </Border>
+    <Border>
+      <Border.Background>
+        <LinearGradientBrush StartPoint="50%,100%" EndPoint="50%,0%">
+          <GradientStop Offset="0" Color="#8C080A14" />
+          <GradientStop Offset="0.42" Color="#00080A14" />
+        </LinearGradientBrush>
+      </Border.Background>
+    </Border>
+  </Panel>
+
   <Viewbox Stretch="Uniform">
     <Grid Width="1920" Height="1080">
 
+      <!-- The Title page hero over the fan art: the logo (or the title set in type), then the meta line. -->
+      <Panel IsVisible="{Binding Stage.IsHeroArt}">
+        <Panel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="112,128,0,0" Width="808" Height="560">
+          <Image Source="{Binding Stage.Logo}" IsVisible="{Binding Stage.HasLogo}" Stretch="Uniform"
+                 HorizontalAlignment="Left" VerticalAlignment="Center">
+            <Image.Effect>
+              <DropShadowEffect OffsetX="0" OffsetY="10" BlurRadius="26" Color="#8C000000" />
+            </Image.Effect>
+          </Image>
+          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding !Stage.HasLogo}" FontSize="96" FontWeight="SemiBold"
+                     Foreground="White" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+                     VerticalAlignment="Center" />
+        </Panel>
+        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="112,0,0,76" MaxWidth="1150" Spacing="8">
+          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding Stage.HasLogo}" FontSize="40" FontWeight="SemiBold"
+                     Foreground="White" TextTrimming="CharacterEllipsis" />
+          <StackPanel Orientation="Horizontal" Spacing="24">
+            <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Stage.HasAchievements}">
+              <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="34" Height="34" Foreground="#F2AE2E" />
+              <TextBlock Text="{Binding Stage.AchievementText}" FontSize="32" FontWeight="SemiBold" Foreground="White"
+                         VerticalAlignment="Center" FontFeatures="+tnum" />
+            </StackPanel>
+            <TextBlock Text="{Binding Stage.Subtitle}" FontSize="32" Foreground="#E6FFFFFF" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
+          </StackPanel>
+        </StackPanel>
+      </Panel>
+
       <!-- Centre: a folder, a game's cover, an app icon, or a glyph card; it sits above the plate. -->
-      <Panel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,160">
+      <Panel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,0,0,160" IsVisible="{Binding Stage.IsCentreVisible}">
         <Border IsVisible="{Binding Stage.IsFolder}" Width="416" Height="416" CornerRadius="100"
                 Background="{Binding Stage.AccentBrush}" BoxShadow="0 24 56 0 #2E000000">
           <Grid>
@@ -131,7 +196,7 @@
       </Border>
 
       <!-- Achievements pill (games with RetroAchievements data). -->
-      <Border Classes="pill" IsVisible="{Binding Stage.HasAchievements}"
+      <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}"
               HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="48,0,0,76">
         <StackPanel Orientation="Horizontal" Spacing="12">
           <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
@@ -166,4 +231,5 @@
       </Border>
     </Grid>
   </Viewbox>
+  </Panel>
 </UserControl>

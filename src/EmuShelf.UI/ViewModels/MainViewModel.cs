@@ -77,6 +77,7 @@ public partial class MainViewModel : ViewModelBase
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
     // Non-null only on the Android head; gates the per-system launch-screen chooser (see LaunchGameCoreAsync).
     private IExternalDisplayProbe? _externalDisplays;
+    private readonly LaunchScreenPlanner _launchScreens;
     private readonly SteamAchievementsService? _steamAchievements;
     public SteamAchievementsService? SteamAchievements => _steamAchievements;
     private readonly IReadOnlyList<EmulatorDefinition> _emulators;
@@ -1755,6 +1756,7 @@ public partial class MainViewModel : ViewModelBase
         _hotkeys = hotkeys;
         _gameSaveSync = gameSaveSync ?? cloudSaveSync;
         _logger = logger ?? NullAppLogger.Instance;
+        _launchScreens = new LaunchScreenPlanner(_emulatorConfigurations, () => _externalDisplays, _logger);
         // Build the theme choices before assigning CurrentTheme: the generated setter fires
         // OnCurrentThemeChanged, which reads ThemeChoices, whenever the saved theme differs from the
         // System default.
@@ -2153,8 +2155,12 @@ public partial class MainViewModel : ViewModelBase
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
         NotifySaveSyncPresentationChanged();
 
-    partial void OnIsBlockingLaunchSaveSyncChanged(bool value) =>
+    partial void OnIsBlockingLaunchSaveSyncChanged(bool value)
+    {
         NotifySaveSyncPresentationChanged();
+        // Handheld mode shows the blocking sync panel on its Title page.
+        Handheld?.SetLaunchSaveSync(value);
+    }
 
     private void NotifySaveSyncPresentationChanged()
     {
@@ -3701,17 +3707,8 @@ public partial class MainViewModel : ViewModelBase
     // never the active-emulator selection, so remembering a screen for a system the user has never opened
     // in Settings can't corrupt which emulator launches. Best-effort: a write failure must never block the
     // launch the user just asked for.
-    private void RememberLaunchScreenPreference(string systemId, GameLaunchScreen screen)
-    {
-        try
-        {
-            _emulatorConfigurations.SetLaunchScreen(systemId, screen);
-        }
-        catch (Exception ex)
-        {
-            _logger.Warning($"Could not save the launch-screen preference for {systemId}.", ex);
-        }
-    }
+    private void RememberLaunchScreenPreference(string systemId, GameLaunchScreen screen) =>
+        _launchScreens.Remember(systemId, screen);
 
     private void AddOption(
         string label, ICommand command, bool isDestructive = false, bool isCancel = false,
@@ -6501,47 +6498,42 @@ public partial class MainViewModel : ViewModelBase
         await _shelfLaunchCompletion.Task;
     }
 
-    private async Task LaunchGameCoreAsync(GameViewModel? game, GameLaunchScreen? screenOverride = null)
+    /// <summary>
+    /// The one launch core every mode calls. Returns true once the emulator was started (its play was
+    /// recorded and the launch reported success), so Handheld mode's Title page knows whether to step back
+    /// to the grid or stay up with the failure.
+    /// </summary>
+    private async Task<bool> LaunchGameCoreAsync(GameViewModel? game, GameLaunchScreen? screenOverride = null)
     {
         if (game is null || IsBusy)
-            return;
+            return false;
 
         // Decide which physical screen this launch targets. Only meaningful with a live second screen
-        // (the Thor); everywhere else _externalDisplays is null and the launch always goes to the
-        // built-in display. screenOverride is set when the one-time chooser has already resolved it, so
-        // that path skips straight to launching. Done before IsBusy so opening the chooser doesn't lock
-        // the UI into a busy launch that never happened.
-        // The chooser is a couch overlay, so it only makes sense in gamepad mode — which is exactly where
-        // the Android head that owns this feature always runs. In desktop mode there is no couch overlay to
-        // show, so fall through to the built-in default rather than silently swallowing the launch.
+        // (the Thor); everywhere else the planner answers the built-in display. screenOverride is set when a
+        // chooser has already resolved it, so that path skips straight to launching. Done before IsBusy so
+        // opening the chooser doesn't lock the UI into a busy launch that never happened. The chooser is a
+        // couch overlay, so it only makes sense in the controller modes; in desktop mode fall through to the
+        // built-in default rather than silently swallowing the launch.
         var targetScreen = screenOverride ?? GameLaunchScreen.BuiltIn;
-        // A dual-screen console (DS/3DS) always launches on the built-in display: its emulator draws
-        // both console screens itself, so there is no single physical screen to choose and no prompt to
-        // show. The resolver owns that rule (below); here it only lets us skip the SQLite preference read.
+        // A dual-screen console (DS/3DS) always launches on the built-in display: its emulator draws both
+        // console screens itself. The planner owns that rule; this only skips its preference read.
         var isDualScreenSystem =
             _systemsById.TryGetValue(game.SystemId, out var launchSystem) && launchSystem.IsDualScreen;
-        // Handheld mode honours a system's pinned screen too; it has no chooser overlay yet (H2 puts the
-        // chooser on the Title page), so an "Ask" system launches on the built-in screen there for now.
-        if (screenOverride is null && (IsGamepadMode || IsHandheldMode) && _externalDisplays?.HasExternalDisplay == true)
+        if (screenOverride is null && (IsGamepadMode || IsHandheldMode))
         {
-            // Read the preference off the UI thread: it hits SQLite, and the Android launch path keeps
-            // such reads off the launch frame (Preflight) to avoid a hitch — or an ANR on slow storage.
-            // A dual-screen system ignores the preference, so don't pay for the read at all.
-            var preference = isDualScreenSystem
-                ? GameLaunchScreen.Ask
-                : await Task.Run(
-                    () => _emulatorConfigurations.Get(game.SystemId)?.LaunchScreen ?? GameLaunchScreen.Ask);
-            switch (LaunchScreenResolver.Resolve(preference, externalDisplayAvailable: true, isDualScreenSystem))
+            switch (await _launchScreens.ResolveAsync(game.SystemId, isDualScreenSystem))
             {
                 case LaunchScreenDecision.External:
                     targetScreen = GameLaunchScreen.External;
                     break;
                 case LaunchScreenDecision.Prompt when IsHandheldMode:
+                    // Handheld mode asks on the Title page and passes the pick in; anything that reaches here
+                    // without one (none today) takes the built-in screen rather than a Gamepad overlay.
                     targetScreen = GameLaunchScreen.BuiltIn;
                     break;
                 case LaunchScreenDecision.Prompt:
                     OpenLaunchScreenPrompt(game);
-                    return;
+                    return false;
                 default:
                     targetScreen = GameLaunchScreen.BuiltIn;
                     break;
@@ -6561,7 +6553,7 @@ public partial class MainViewModel : ViewModelBase
                 + "there, then start the game again.",
                 StatusSeverity.Error);
             _externalDisplays.RequestSecondScreenReturn();
-            return;
+            return false;
         }
 
         // The name the user sees on the tile (the normalized scraped title when one exists), reused
@@ -6570,7 +6562,7 @@ public partial class MainViewModel : ViewModelBase
         var displayTitle = game.DisplayTitle;
         var launchDisc = game.Discs.FirstOrDefault(disc => disc.Game.Id == game.LaunchModel.Id);
         if (launchDisc is null)
-            return;
+            return false;
 
         var launchGame = launchDisc.Game;
         if (!launchGame.IsAvailable)
@@ -6583,7 +6575,7 @@ public partial class MainViewModel : ViewModelBase
                     ? $"Cannot launch Disc {launchDisc.Number} of {displayTitle}: its game file could not be found."
                     : game.UnavailableLaunchStatus,
                 StatusSeverity.Error);
-            return;
+            return false;
         }
 
         IsBusy = true;
@@ -6593,6 +6585,7 @@ public partial class MainViewModel : ViewModelBase
         // recorded (including a game stamped just before a start failure), and a refresh error must
         // never be able to overwrite the launch-completion status with a false failure message.
         var recordedPlay = false;
+        var started = false;
         try
         {
             CloudSaveSyncOutcome? beforeSync = null;
@@ -6646,6 +6639,8 @@ public partial class MainViewModel : ViewModelBase
             // than in front of it — the mirror of what the outward launch already does, and for the
             // same reason: the upload is the wait the choreography exists to cover. Awaited in
             // sequence, the player watched the shelf reassemble and only then began waiting.
+            // A game that ran and then exited (even with an error code) was played; only a start failure is not.
+            started = recordedPlay && (result.Succeeded || result.ProcessExited);
             var shelfRestore = RestorePhysicalShelfAfterLaunchAsync();
             if (!result.Succeeded)
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
@@ -6721,6 +6716,7 @@ public partial class MainViewModel : ViewModelBase
                 }
             }
         }
+        return started;
     }
 
     // The longest wall-clock gap between launch and return that is still credited as play time. Beyond
@@ -6832,6 +6828,9 @@ public partial class MainViewModel : ViewModelBase
     // cached tiles so the next visit rebuilds from the DB — no reflow of the scope they returned to.
     private async Task RefreshAfterPlayRecordedAsync()
     {
+        // Handheld mode: the open folder's play data (and its last-played / most-played sorts) is stale.
+        if (Handheld is { } handheld)
+            _ = handheld.RefreshOpenFolderAsync();
         if (CurrentLibraryScope == LibraryScope.RecentlyPlayed)
             await ReloadGamesAsync();
         else
