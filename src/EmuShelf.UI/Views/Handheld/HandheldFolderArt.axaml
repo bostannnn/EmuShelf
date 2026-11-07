@@ -75,7 +75,7 @@
   <!-- Not clipped: the shadow spills past the folder's own square. -->
   <Viewbox Stretch="Uniform" ClipToBounds="False">
     <Panel x:Name="ArtRoot" Width="416" Height="416" ClipToBounds="False">
-      <vh:HandheldShadow x:Name="ArtShadow" Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" />
+      <vh:HandheldShadow x:Name="ArtShadow" Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" Filled="True" />
       <!-- Back plate: the platform colour, darker. -->
       <Border x:Name="ArtBack" Margin="12,54,12,16" CornerRadius="76" Background="{Binding AccentBrush}">
         <Border CornerRadius="76" Background="#47141830" />

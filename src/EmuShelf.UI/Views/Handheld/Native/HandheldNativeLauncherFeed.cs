@@ -530,7 +530,7 @@ internal sealed class HandheldNativeLauncherFeed
     /// <summary>A game tile's deeper shadow while lifted (the XAML's `lift` shadow, which never shows here).</summary>
     private static StageImage LiftShadow()
     {
-        var shadow = new HandheldShadow { Radius = 56, Blur = 32, Color = Color.Parse("#33000000"), Width = 296, Height = 296 };
+        var shadow = new HandheldShadow { Radius = 56, Blur = 32, Color = Color.Parse("#33000000"), Width = 296, Height = 296, Filled = true };
         return HandheldStageShots.Picture(shadow, 0, 0, 296, 296);
     }
 

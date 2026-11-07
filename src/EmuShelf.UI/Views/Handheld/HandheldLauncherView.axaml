@@ -316,8 +316,8 @@
               <Border Classes="shot" Padding="48" Margin="-48" HorizontalAlignment="Left" VerticalAlignment="Center">
               <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
                      HorizontalAlignment="Left" VerticalAlignment="Center">
-                <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" />
-                <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" />
+                <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" Filled="True" />
+                <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" Filled="True" />
                 <!-- Covers crop from the top, where a box's title and art usually are. -->
                 <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4"
                         Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">

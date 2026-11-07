@@ -12985,3 +12985,13 @@ the UI thread (≈ 21% of a core at 5 presses/s, was ≈ 32%).
 
 - **Not done:** the first time a shell type (cartridge, case) is shown in a session, the native Stage shows
   an empty centre for a frame or two while the model loads; it could keep the previous centre until then.
+
+## 2026-11-07 — Handheld shadows under solid things are filled, not rings
+
+The owner saw a grey/pale border around the focused folder on the top screen. `HandheldShadow` drew a box
+shadow, which leaves its own shape empty; a drop shadow sits lower than what casts it (the folder's sits
+24 px below the folder), so the strip of the shape the caster did not cover showed the backdrop, lighter
+than the shadow around it: a pale rim hugging the folder. It was in the Avalonia screens too. `Filled` draws
+the shape filled and blurred (`BlurEffect`), a true drop shadow; the folder art, game tiles and their lift
+shadow use it. The selector's glow and the dock stay rings (a filled glow would tint the focused tile violet;
+the dock pill is translucent).
