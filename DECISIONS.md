@@ -12595,9 +12595,16 @@ platform colour replaces it. The Title page keeps its fan-art hero.
   `Stage.IsMediumUnavailable` and every game falls back to the flat cover; so do platforms with no shell.
 - **Motion lives in `HandheldMediumMotion`** (pure, unit-tested): the Gamepad shelf's `MediaRotationModel`
   for the right stick and the idle sway, plus a spring (stiffness 140, damping 17, ≈0.72 damping ratio,
-  one small overshoot, ≈0.5 s) that carries every change of pose: a new game turns in from 50° on the
-  side the selection came from; R3 swings back from wherever the stick left it. The stick drives the model
-  directly while a settle finishes underneath, so taking it mid-arrival never jumps.
+  one small overshoot, ≈0.5 s) that carries every change of pose. The stick drives the model directly
+  while a settle finishes underneath, so taking it mid-arrival never jumps.
+- **A change of game retargets the spring, it never restarts it** (owner: "the animation restarts or starts
+  from a different sequence, so it looks chaotic"). The first build kicked each new game to ±50° from the
+  side the selection came from and reset the sway, so every press began a different sequence. Now, as in
+  Gamepad mode's shelf (a new game is presented face-on), the new medium starts from exactly the pose on
+  screen, keeps the spring's speed, and settles at rest; a game chosen at rest just stays at rest. R3 uses
+  the same retarget. The label also switches with the selection: the tile's already-decoded cover is
+  printed at once (borrowed, never disposed by the Stage, and taken off the Stage if the tile releases it)
+  until the Stage's sharper decode replaces it, so the medium never shows a blank label between games.
 - **The clock runs only while something moves:** a `DispatcherTimer` at 16 ms while the spring travels,
   50 ms for the sway (the shelf's sway rate), stopped for anything that is not a medium. The GL control
   only renders when its pose or cover changes. On the Thor the turn-in ticked at ~60 fps.

@@ -306,7 +306,6 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void Move(HandheldDirection direction)
     {
-        _lastMoveSign = direction is HandheldDirection.Left or HandheldDirection.Up ? -1 : 1;
         switch (Zone)
         {
             case HandheldZone.Dock:
@@ -685,12 +684,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
     }
 
-    private static void ReleaseCover(HandheldGameTileViewModel tile)
+    private void ReleaseCover(HandheldGameTileViewModel tile)
     {
         tile.CoverLoad?.Cancel();
         tile.CoverLoad = null;
         if (tile.Cover is { } cover)
         {
+            // The Stage may be borrowing this cover as its interim label: take it off the Stage first.
+            if (_stageArtBorrowed && ReferenceEquals(Stage.Art, cover))
+                ReplaceStageArt(null, borrowed: false);
             tile.Cover = null;
             cover.Dispose();
         }
@@ -860,7 +862,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             }
             if (folder.SelectedTile is { } tile)
             {
-                ShowGameStage(tile.Entry);
+                ShowGameStage(tile.Entry, tile.Cover);
                 return;
             }
             ShowFolderStage(folder.Platform, folder.IsLoaded ? folder.CountText : "Loading…");
@@ -881,9 +883,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 _platforms.Count == 0 ? "Add games from the menu in Gamepad mode" : "Folders you make will go here");
     }
 
-    private void ShowStage(HandheldStageKind kind, string title, string subtitle)
+    private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false)
     {
-        CancelStageArt();
+        CancelStageArt(keepArt);
         Stage.Kind = kind;
         Stage.Title = title;
         Stage.Subtitle = subtitle;
@@ -911,11 +913,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private long _stageGameId = -1;
 
-    private void ShowGameStage(HandheldGameEntry game)
+    private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {
         if (Stage.Kind == HandheldStageKind.Game && _stageGameId == game.Id)
             return;
-        ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game));
+        // Game to game keeps the label up until the next one is ready, rather than flashing it blank.
+        ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game), keepArt: Stage.Kind == HandheldStageKind.Game);
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
         if (_platforms.TryGetValue(game.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent))
@@ -924,8 +927,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             Stage.Tint = new SolidColorBrush(accent);
         }
         Stage.Medium = game.ViewModel?.ShelfMediaShell;
-        // The medium arrives turned toward the side the selection came from and springs to rest.
-        _medium.TurnIn(_lastMoveSign);
+        // The tile's cover is already decoded: print it on the medium now, so the label changes with the
+        // selection instead of going blank until the Stage's sharper decode lands.
+        if (interimCover is not null)
+            ReplaceStageArt(interimCover, borrowed: true);
+        // One continuous pose across games: the spring is retargeted at rest from what is on screen.
+        _medium.Recentre();
         PushMediumPose();
         UpdateMediumTimer();
         _ = LoadStageArtAsync(game, hero: false);
@@ -995,8 +1002,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             }
 
             var cover = await _library.LoadCoverAsync(game, StageDecodeWidth, fullSize: true, token);
-            if (!Assign(cover, bitmap => Stage.Art = bitmap))
+            if (!Current())
+            {
+                cover?.Dispose();
                 return;
+            }
+            // A game with no cover still replaces the borrowed interim label (with nothing).
+            ReplaceStageArt(cover, borrowed: false);
             if (hero && cover is not null && await PickTintAsync(cover) is { } tint && Current())
                 Stage.Tint = tint;
         }
@@ -1040,15 +1052,31 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         return palette is not null && Color.TryParse(palette.Accent, out var accent) ? new SolidColorBrush(accent) : null;
     }
 
-    private void CancelStageArt()
+    // Stage.Art is either the Stage's own decode (disposed when replaced) or a tile's cover borrowed for
+    // the moment between a selection and that decode (owned by the tile, never disposed here).
+    private bool _stageArtBorrowed;
+
+    private void ReplaceStageArt(Bitmap? bitmap, bool borrowed)
+    {
+        var previous = Stage.Art;
+        var previousBorrowed = _stageArtBorrowed;
+        // Off the Stage first, then disposed, so no frame can draw a disposed image.
+        Stage.Art = bitmap;
+        _stageArtBorrowed = bitmap is not null && borrowed;
+        if (previous is not null && !previousBorrowed && !ReferenceEquals(previous, bitmap))
+            previous.Dispose();
+    }
+
+    private void CancelStageArt(bool keepArt = false)
     {
         _stageArtLoad?.Cancel();
         _stageArtLoad?.Dispose();
         _stageArtLoad = null;
         _stageGameId = -1;
+        if (!keepArt)
+            ReplaceStageArt(null, borrowed: false);
         // Take each bitmap off the Stage before disposing it, so no frame can draw a disposed image.
-        var released = new[] { Stage.Art, Stage.Fanart, Stage.Logo };
-        Stage.Art = null;
+        var released = new[] { Stage.Fanart, Stage.Logo };
         Stage.Fanart = null;
         Stage.Logo = null;
         foreach (var bitmap in released)

@@ -14,36 +14,59 @@ public class HandheldMediumMotionTests
     }
 
     [Fact]
-    public void TurnIn_StartsTurnedFromTheSide_AndSpringsToTheRestingPose()
+    public void ANewGameAtRest_StaysAtRest_NothingRestarts()
     {
         var motion = new HandheldMediumMotion();
 
-        motion.TurnIn(1);
-
-        Assert.True(motion.IsSettling);
-        Assert.Equal(MediaRotationModel.RestYaw + HandheldMediumMotion.TurnInYaw, motion.Yaw, 3);
-
-        Run(motion, 1500);
+        Assert.False(motion.Recentre());
 
         Assert.False(motion.IsSettling);
         Assert.Equal(MediaRotationModel.RestYaw, motion.Yaw, 3);
     }
 
     [Fact]
-    public void TurnIn_FromTheLeft_StartsOnTheOtherSide()
+    public void ANewGameMidSway_ContinuesFromThePoseOnScreen_AndSettles()
     {
         var motion = new HandheldMediumMotion();
+        Run(motion, 3000, 50); // swaying
+        var onScreen = motion.Yaw;
+        Assert.NotEqual(MediaRotationModel.RestYaw, onScreen, 4);
 
-        motion.TurnIn(-1);
+        motion.Recentre(); // the selection changed
 
-        Assert.Equal(MediaRotationModel.RestYaw - HandheldMediumMotion.TurnInYaw, motion.Yaw, 3);
+        Assert.Equal(onScreen, motion.Yaw, 4); // no jump
+        Run(motion, 1500);
+        Assert.Equal(MediaRotationModel.RestYaw, motion.Yaw, 3);
+    }
+
+    [Fact]
+    public void ChangingGamesMidSettle_KeepsTheSpringsSpeed()
+    {
+        var motion = new HandheldMediumMotion();
+        for (var i = 0; i < 20; i++)
+            motion.ApplyStick(1f, 0f, 16);
+        motion.Recentre();
+        motion.Tick(48);
+        var before = motion.Yaw;
+        motion.Tick(16);
+        var stepBefore = motion.Yaw - before;
+
+        motion.Recentre(); // another game, mid-swing
+        var after = motion.Yaw;
+        motion.Tick(16);
+        var stepAfter = motion.Yaw - after;
+
+        Assert.Equal(before + stepBefore, after, 4); // retargeting did not move it
+        Assert.True(Math.Abs(stepAfter) > Math.Abs(stepBefore) * 0.8); // and the swing kept its speed
     }
 
     [Fact]
     public void TheSpring_OvershootsOnceRatherThanEasing()
     {
         var motion = new HandheldMediumMotion();
-        motion.TurnIn(1);
+        for (var i = 0; i < 20; i++)
+            motion.ApplyStick(1f, 0f, 16);
+        motion.Recentre();
         var crossed = false;
         for (var i = 0; i < 60; i++)
         {

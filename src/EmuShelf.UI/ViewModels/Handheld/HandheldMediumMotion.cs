@@ -6,14 +6,11 @@ namespace EmuShelf.App.ViewModels;
 /// <summary>
 /// The pose of the game's physical medium on the Handheld Stage: where the player has turned it with the
 /// right stick, the gamepad shelf's idle sway (both <see cref="MediaRotationModel"/>), and a spring that
-/// carries every change of pose instead of snapping it — a new game turns in from the side, R3 swings back
-/// to the resting three-quarter view. Pure and clock-free: the shell ticks it while it is settling or swaying.
+/// carries every change of pose instead of snapping it or restarting it: a new game and R3 both retarget
+/// it at the resting three-quarter view from whatever is on screen. Pure and clock-free: the shell ticks it while it is settling or swaying.
 /// </summary>
 public sealed class HandheldMediumMotion
 {
-    /// <summary>How far a newly focused medium starts turned away, in radians (about 50°).</summary>
-    public const float TurnInYaw = 0.88f;
-
     // A slightly under-damped spring (damping ratio ≈ 0.72): it settles in about half a second with one
     // small overshoot, which reads as a physical object coming to rest rather than an ease curve.
     private const float Stiffness = 140f;
@@ -37,30 +34,24 @@ public sealed class HandheldMediumMotion
     public bool IsSwaying => !IsSettling && _rotation.IdleSwayEnabled && _rotation.IsAtRest;
 
     /// <summary>
-    /// A new medium arrived: it starts turned <paramref name="direction"/> (+1 from the right, −1 from the
-    /// left) and springs to the resting pose. The stick's turn from the previous game is dropped.
+    /// Retargets the spring at the resting pose, starting from exactly the pose on screen and keeping its
+    /// speed: a new game arriving mid-sway or mid-settle carries on from where the eye is, never restarts,
+    /// and one already at rest simply stays there (as Gamepad mode's shelf presents a new game face-on).
+    /// R3 uses the same path to swing back from wherever the stick left it.
     /// </summary>
-    public void TurnIn(int direction)
-    {
-        _rotation.Recentre();
-        _yawOffset = TurnInYaw * Math.Sign(direction == 0 ? 1 : direction);
-        _pitchOffset = 0f;
-        _yawVelocity = 0f;
-        _pitchVelocity = 0f;
-    }
-
-    /// <summary>R3: swing back to the resting pose from wherever the stick left it.</summary>
     public bool Recentre()
     {
         var yaw = Yaw;
         var pitch = Pitch;
-        if (!_rotation.Recentre() && !IsSettling)
-            return false;
-        // Carry the pose the eye last saw as the spring's starting offset, so the swing has no jump.
+        _rotation.Recentre();
         _yawOffset = Wrap(yaw - _rotation.Yaw);
         _pitchOffset = pitch - _rotation.Pitch;
-        _yawVelocity = 0f;
-        _pitchVelocity = 0f;
+        if (MathF.Abs(_yawOffset) < RestEpsilon && MathF.Abs(_pitchOffset) < RestEpsilon &&
+            MathF.Abs(_yawVelocity) < RestEpsilon && MathF.Abs(_pitchVelocity) < RestEpsilon)
+        {
+            _yawOffset = _pitchOffset = _yawVelocity = _pitchVelocity = 0f;
+            return false;
+        }
         return true;
     }
 

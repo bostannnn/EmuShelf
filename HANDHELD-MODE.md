@@ -126,8 +126,9 @@ Added after H2 (owner, 2026-11-07):
 
 17. **A browsed game is its physical medium.** The Stage draws the focused game as its real case,
     cartridge or card in 3D with the cover printed on it (the Gamepad shelf's models), resting at a
-    three-quarter turn and swaying gently. It springs in from the side the selection came from, the
-    right stick turns it, and R3 swings it back. Behind it is a quiet wash of the platform colour,
+    three-quarter turn and swaying gently. Changing games never restarts the motion: the next
+    medium carries on from the pose on screen and settles at rest. The right stick turns it, and R3
+    swings it back. Behind it is a quiet wash of the platform colour,
     not the blurred fan art (too busy behind a medium). Platforms without an authored medium keep the
     flat cover. The Title page keeps the fan-art hero from decision 15.
 

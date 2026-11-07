@@ -15,7 +15,6 @@ public sealed partial class HandheldShellViewModel
     private readonly HandheldMediumMotion _medium = new();
     private DispatcherTimer? _mediumTimer;
     private long _mediumTickTimestamp;
-    private int _lastMoveSign = 1;
 
     /// <summary>The medium's pose, exposed for tests.</summary>
     public HandheldMediumMotion MediumMotion => _medium;
