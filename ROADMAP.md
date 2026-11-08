@@ -2353,27 +2353,72 @@ Played. Pad input already reaches one dispatcher from both displays
       shows the folder, with colour chips. Rename, recolour, delete (games kept, confirmation says
       so). Pin to home, remove from home, with every "Remove" naming its place. The Recent folder,
       made for you from the Recently Played source, newest first, sort chip hidden. The empty-folder
-      state. Sort chip Manual / A–Z / Last played / Most played. Tests cover the model, store and
+      state. Sort chip Manual / A–Z / Last played / Most played. Touch everywhere on the Launcher,
+      as the spec's controls table has it: tap selects, a second tap opens, swipe pages, long-press
+      lifts into move mode, drag carries (the Launcher view takes no pointer input today; only move
+      mode mentioned touch before the 2026-11-08 review). Tests cover the model, store and
       reconciliation on macOS. **Exit:** the layout survives a cold start and a reinstall-style
-      restore of `Settings/`.
+      restore of `Settings/`, and home can be browsed and arranged by touch alone.
 - [ ] **H5 — screen swap.** X re-hosts the Stage and Launcher between displays with the slide
       (precedent: `MainScreenCompanion` re-hosting in `SecondScreenController`). Selection, open
       folder and scroll position survive; `IsSwapped` is remembered. On the narrow screen the Stage
       moves its hint and achievement pills to the top-left and widens the plate, as in the mockup;
       the Launcher on the 16:9 screen gets a layout of its own (7×3 at the same tile size with the
-      page label in the spare height — decide and record), not the centred 5×4.
-- [ ] **H6 — companion, actions, system, idle and sound.** The in-game companion restyled on the
-      Launcher's dark palette with every feature kept (resting dim, one panel at a time with
-      Achievements / Photos on LB/RB, full badge grid with All / Locked / Unlocked, photo viewer,
-      dock) and the D-pad reaching all of it. The Y sheet with every Gamepad action plus the new
-      ones. The Start menu as a page of tiles (Search, Add games, Achievements, Settings, Switch
-      mode, Sounds). Settings as master-detail across the screens: sections and rows on the bottom
-      using today's row kinds from `GamepadSettingsViewModel`, the focused row's description and
-      value on the top. Search with the keyboard below and results above. Idle drift: after fifteen
-      seconds the Stage drifts through recent games on a slow crossfade, the first press only wakes
-      it. Five original sound effects (move, open, close, confirm, back) with an off switch. Dock
-      icons loaded at about 512 px with one colour picked per app. **Exit:** nothing a Gamepad-mode
-      user can do is missing in Handheld mode.
+      page label in the spare height — decide and record), not the centred 5×4. The companion
+      too: when a game takes the narrow screen the companion sits on the 16:9 one, which the mockup
+      never tried; decide its layout there (one panel at a time still holds) and record it.
+- **H6, split 2026-11-08.** The old H6 carried the companion, the Y sheet, the Start menu,
+      Settings, Search, idle drift, sounds and dock icons in one item; the owner's review found two
+      of them effectively missing (the in-game companion is still Gamepad mode's, and Settings cannot
+      be reached at all: today's Start menu holds only Switch mode and Quit). It is now four
+      sub-milestones, each with its own Thor check and `M45 H6<x>: …` commit, in this order.
+- [ ] **H6a — Settings tile, Start menu, Settings.** *Stop-gap first, its own small commit:* a
+      Settings row in today's Start menu that opens Gamepad mode's settings overlay on the Stage, so
+      Settings is reachable at all. Then the real entrance, as the 3DS and Cocoon do it: Settings is
+      an app on the grid. `HandheldSlotKind.SystemTile` with one kind for now, Settings (decision 18,
+      `DECISIONS.md` 2026-11-08): in the default layout right after the platform folders, movable and
+      foldable like any tile, never removable so there is always a way in; a glyph face on the indigo
+      accent so it reads as neither a platform nor a user folder; the Stage shows a plate for it like
+      a dock app's; A opens Settings. Settings as master-detail across the screens: sections and rows
+      on the Launcher using today's row kinds from `GamepadSettingsViewModel`, the focused row's
+      description and value on the Stage; every section (Library, Emulators, Achievements, Artwork &
+      metadata, Saves, About) including the per-platform emulator and folder choosers, with text rows
+      on the on-screen keyboard. The Start menu stays a list rather than a page of tiles, since the
+      tiles live on the grid: Settings, Search, Add games, Achievements, Sounds, Switch mode, Quit.
+      Tests: the default layout places the tile, reconciliation never drops it, remove is refused.
+      **Exit:** every setting Gamepad mode has can be changed from Handheld mode without leaving it,
+      from the tile and from the menu, and the tile survives a cold start in the slot you moved it to.
+- [ ] **H6b — the in-game companion.** Today `SecondScreenController.UpdateHandheldSurface` shows
+      Gamepad mode's companion unchanged while a game runs. Restyle it on the Launcher's dark palette
+      as the spec's Companion section describes, every feature kept: resting dim with the swallowed
+      wake press, the Now playing row, one panel at a time with Achievements / Photos on LB/RB, the
+      full badge grid with All / Locked / Unlocked, the photo viewer and the muted video, the dock;
+      the D-pad reaches all of it (dock, drawer and the overlay buttons are touch-only today). The
+      handoff both ways: Launcher → companion as the launch lands on the Stage, companion → Launcher
+      on return, landing on the launched game's own tile with the Recent folder already updated so two
+      presses resume. The companion on the 16:9 screen (H5) is checked here with a game running.
+      Dual-screen emulators (DS/3DS) stay deferred. **Exit:** on the Thor a whole session — launch,
+      play, check an achievement and a photo, open the dock, return — never shows the Gamepad-mode
+      companion.
+- [ ] **H6c — the Y sheet, Search, Add games, and the surfaces behind them.** The Y sheet with
+      every Gamepad action (Launch, Select disc, Achievements, Edit title, Set cover, Scrape with
+      ScreenScraper, Remove from library with its confirmation) plus Move, Add to folder…, Pin to home
+      / Remove from home, the folder actions (Rename, Colour, Delete folder) and the dock-slot actions
+      (Open, Change app…, Clear slot). Search with the keyboard on the Launcher and results on the
+      Stage. Add games through the existing folder picker. The screens those open that have no
+      Handheld face yet: the scraper, batch scraper and cover search (choices on the Launcher, preview
+      on the Stage), full-screen achievements while browsing, and errors and toasts beyond the status
+      pill (launch failed, sync failed, scrape finished, update available). **Exit:** every
+      Gamepad-mode action is reachable from Handheld mode and its outcome is visible without switching
+      modes.
+- [ ] **H6d — idle drift, sound, dock icons, first run.** Idle drift: after fifteen seconds the
+      Stage drifts through recent games on a slow crossfade, the first press only wakes it. Five
+      original sound effects (move, open, close, confirm, back) with an off switch. Dock icons loaded
+      at about 512 px with one colour picked per app. First run in Handheld mode, which M45 never
+      covered: the setup wizard's steps laid across the two screens (decision 10), and the
+      empty-library state (what home shows with no games, and the way to add some). **Exit:** a fresh
+      install on the Thor reaches a playable home without switching to Gamepad mode, and nothing a
+      Gamepad-mode user can do is missing in Handheld mode.
 - [ ] **H7 — console backdrops on the Thor (native Stage shaders).** Replace the era motif behind the
       Stage, on Android only, with the 53 animated backdrops the owner approved in the motion lab
       (`docs/prototypes/handheld-mode/backdrops-motion-study/`; the set is `picks.json`, the look and
@@ -2436,6 +2481,11 @@ Played. Pad input already reaches one dispatcher from both displays
         over 2 s and the Stage posts no frames; measured on the Thor, the whole system is then back at the
         floor of the app being in the background. Still open: battery saver, reduced motion, and checking
         that a lost GL context rebuilds the running backdrop.
+- [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
+      each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
+      full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
+      measurements for the heaviest backdrop of each draw path; H7c's battery saver, reduced motion
+      and the lost-GL-context rebuild; H2's Launcher-side look, which awaits the owner's hands-on check.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
