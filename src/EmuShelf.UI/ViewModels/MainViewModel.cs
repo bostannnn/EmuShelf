@@ -2598,7 +2598,8 @@ public partial class MainViewModel : ViewModelBase
     {
         // Building the projection awaits a database read, so a second press before it completes would
         // otherwise start an overlapping open and race on GamepadSettings. One in-flight open at a time.
-        if (!IsGamepadMode || IsBusy || _openingGamepadSettings)
+        // Handheld mode borrows the ordinary Settings until it has its own (M45 H6a); the wizard stays Gamepad mode's.
+        if (!(IsGamepadMode || (IsHandheldMode && setup is null)) || IsBusy || _openingGamepadSettings)
             return;
 
         _openingGamepadSettings = true;
@@ -2635,7 +2636,8 @@ public partial class MainViewModel : ViewModelBase
                     : GrantCloseOnReturnPrivilegeAsync,
                 setup: setup,
                 // The wizard is an Android first-run flow; desktop never shows the row.
-                runSetup: OperatingSystem.IsAndroid() ? OpenSetupWizardAsync : null,
+                // Handheld mode's first run is its own (M45 H6d), so it offers no "Run setup again" meanwhile.
+                runSetup: OperatingSystem.IsAndroid() && IsGamepadMode ? OpenSetupWizardAsync : null,
                 usageAccess: EmuShelf.App.App.UsageAccess,
                 refreshGameCounts: async () =>
                 {
@@ -3135,11 +3137,12 @@ public partial class MainViewModel : ViewModelBase
 
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing.
-        if (IsHandheldMode)
+        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing, except the
+        // Settings overlay Handheld mode borrows (M45 H6a), which owns the pad while it is open.
+        if (IsHandheldMode && !IsHandheldSettingsOverlayOpen)
             return IsGamepadInputSuspended || (Handheld?.DispatchGamepadAction(action) ?? false);
 
-        if (!IsGamepadMode)
+        if (!IsGamepadShellShown)
             return false;
 
         IsGamepadControllerInputActive = true;
@@ -3199,10 +3202,10 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public bool DispatchBackButton()
     {
-        if (IsHandheldMode)
+        if (IsHandheldMode && !IsHandheldSettingsOverlayOpen)
             return Handheld?.DispatchBack() ?? false;
 
-        if (!IsGamepadMode)
+        if (!IsGamepadShellShown)
             return false;
 
         // Nothing open to back out of → let the platform handle Back (Android exits). A soft keyboard, when
@@ -3510,7 +3513,8 @@ public partial class MainViewModel : ViewModelBase
 
     private void OpenGamepadOverlay(GamepadOverlayKind overlay)
     {
-        if (!IsGamepadMode)
+        // Handheld mode borrows only the Settings overlay (the M45 H6a stop-gap).
+        if (!IsGamepadMode && !(IsHandheldMode && overlay == GamepadOverlayKind.Settings))
             return;
 
         DisposeGamepadAchievementDetails();
@@ -4522,6 +4526,7 @@ public partial class MainViewModel : ViewModelBase
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
     {
         NotifyGamepadOverlayState();
+        NotifyHandheldSettingsOverlay();
         // Details may have been assigned before the overlay opened (row build is deferred while it is
         // closed), so slice the rows now that it is showing. SizeChanged corrects the column count.
         if (value == GamepadOverlayKind.Achievements)
@@ -7919,6 +7924,14 @@ public partial class MainViewModel : ViewModelBase
         // reaching the last step and pressing Finish counts as having walked it.
         var setupFinished = saved && GamepadSettings?.SetupCompleted == true;
         CloseGamepadSettingsProjection();
+        // Borrowed by Handheld mode (M45 H6a): closing Settings goes straight back to Handheld mode.
+        if (IsHandheldMode)
+        {
+            CloseGamepadOverlay();
+            if (saved)
+                SetStatus("Settings saved.");
+            return;
+        }
         if (!IsGamepadMode)
             return;
 

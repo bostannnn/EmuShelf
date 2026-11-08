@@ -131,6 +131,9 @@ public interface IHandheldLibrary
 
     Task SwitchModeAsync(InterfaceMode mode);
 
+    /// <summary>Opens Settings (a stop-gap: Gamepad mode's Settings overlay on the main display, M45 H6a).</summary>
+    Task OpenSettingsAsync() => Task.CompletedTask;
+
     void Quit();
 }
 

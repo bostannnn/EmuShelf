@@ -70,7 +70,7 @@
     <Grid x:Name="GamepadRoot" Classes="gamepad-root" Classes.overlay-open="{Binding HasGamepadOverlay}"
           Classes.tube="{Binding IsShelfTubeActive}"
           Classes.reduced-effects="{Binding IsReducedEffectsPlatform}"
-          IsVisible="{Binding IsGamepadMode}" IsHitTestVisible="False" RowDefinitions="100,*,0"
+          IsVisible="{Binding IsGamepadShellShown}" IsHitTestVisible="False" RowDefinitions="100,*,0"
           TextElement.FontFamily="{StaticResource EmuGamepadFontFamily}">
         <!-- Grid-mode ambient backdrop, painted over the flat EmuLibraryBrush root: a vertical light
              ramp (lit top, settling darker toward the dock) plus a soft radial wash in the focused

@@ -664,7 +664,7 @@ public partial class GamepadShellView : UserControl
 
     private void RevealGamepadOverlayFocus(int attempt)
     {
-        if (_gamepadViewModel is not { IsGamepadMode: true } viewModel)
+        if (_gamepadViewModel is not { IsGamepadShellShown: true } viewModel)
             return;
 
         // The View mode / Sort picker shares the option list's scroll region (see GamepadShellView.axaml).
@@ -1206,7 +1206,7 @@ public partial class GamepadShellView : UserControl
 
     private void OnGamepadTextInputKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is not MainViewModel viewModel || !viewModel.IsGamepadMode)
+        if (DataContext is not MainViewModel viewModel || !viewModel.IsGamepadShellShown)
             return;
 
         if (e.Key == Key.Escape)

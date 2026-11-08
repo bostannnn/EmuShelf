@@ -68,8 +68,29 @@ public partial class MainViewModel
 
     private SecondScreenViewModel? _handheldCompanion;
 
+    /// <summary>
+    /// Gamepad mode's Settings overlay is open over Handheld mode (the M45 H6a stop-gap, until Handheld mode has
+    /// Settings of its own): the Gamepad shell shows on the main display, and the main display's Handheld screen
+    /// gives way to it.
+    /// </summary>
+    public bool IsHandheldSettingsOverlayOpen => IsHandheldMode && IsGamepadSettingsOpen;
+
+    /// <summary>Whether the Gamepad shell is on screen: in Gamepad mode, or carrying its Settings over Handheld mode.</summary>
+    public bool IsGamepadShellShown => IsGamepadMode || IsHandheldSettingsOverlayOpen;
+
+    /// <summary>The main display's Handheld screen is shown (not while the Settings overlay is over it).</summary>
+    public bool IsHandheldScreenShown => IsHandheldMode && !IsHandheldSettingsOverlayOpen;
+
+    private void NotifyHandheldSettingsOverlay()
+    {
+        OnPropertyChanged(nameof(IsHandheldSettingsOverlayOpen));
+        OnPropertyChanged(nameof(IsGamepadShellShown));
+        OnPropertyChanged(nameof(IsHandheldScreenShown));
+    }
+
     partial void OnIsHandheldModeChanged(bool value)
     {
+        NotifyHandheldSettingsOverlay();
         if (value)
         {
             if (Handheld is not null)
@@ -406,6 +427,8 @@ public partial class MainViewModel
                 : Task.FromResult(false);
 
         public Task SwitchModeAsync(InterfaceMode mode) => owner.SetInterfaceModeAsync(mode);
+
+        public Task OpenSettingsAsync() => owner.RequestSettingsFromGamepadAsync();
 
         public void Quit() => owner._applicationLifetime?.Shutdown();
     }

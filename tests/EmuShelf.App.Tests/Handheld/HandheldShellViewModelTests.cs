@@ -115,6 +115,14 @@ public partial class HandheldShellViewModelTests
             return Task.CompletedTask;
         }
 
+        public int SettingsOpened { get; private set; }
+
+        public Task OpenSettingsAsync()
+        {
+            SettingsOpened++;
+            return Task.CompletedTask;
+        }
+
         public void Quit()
         {
         }
@@ -363,11 +371,26 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Menu);
         Assert.True(shell.IsMenuOpen);
-        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[0].Label);
+        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[1].Label);
+        Press(shell, GamepadAction.NavigateDown);
         Press(shell, GamepadAction.Confirm);
 
         Assert.False(shell.IsMenuOpen);
         Assert.Equal([InterfaceMode.Gamepad], library.ModeSwitches);
+    }
+
+    [Fact]
+    public async Task Menu_OpensSettings()
+    {
+        var library = new FakeLibrary().WithPlatform("ps2", 1);
+        var shell = await CreateAsync(library);
+
+        Press(shell, GamepadAction.Menu);
+        Assert.Equal("Settings", shell.MenuItems[0].Label);
+        Press(shell, GamepadAction.Confirm);
+
+        Assert.False(shell.IsMenuOpen);
+        Assert.Equal(1, library.SettingsOpened);
     }
 
     [Fact]

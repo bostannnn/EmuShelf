@@ -62,6 +62,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _heldDirection = new HandheldHeldDirection(_clock);
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
+        // A stop-gap until Handheld mode has its own Settings (M45 H6a): Gamepad mode's Settings, on the main display.
+        MenuItems.Add(new HandheldMenuItemViewModel("Settings", () => _library.OpenSettingsAsync()));
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
         MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
         RefreshStatus();
