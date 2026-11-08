@@ -13302,3 +13302,47 @@ session that asked for them). Built on macOS and tested there; checked on the Th
   crashes in logcat. The test folders were removed afterwards (the file deleted, so home is the default again).
   Not checked on the device: the look of the bottom screen (`FLAG_SECURE`; checked headlessly on macOS
   through `HandheldArrangeSnapshotTests`), touch drag, and the feel of move mode.
+
+## 2026-11-08 — M45 H4: polish and optimisation pass on arranging home
+
+The owner found H4 still looked unfinished. Both screens were rendered headlessly with real covers (pulled
+from the Thor into a scratch folder, never committed) and compared with the mockup; then the arranging flows
+were measured on the Thor.
+
+**Polish (against the mockup):**
+- Your folders, Recent and the folder being named sit on the soft tile grid (the cartridge motif) in their
+  own colour, as the mockup's top screen does, instead of a blank gradient. The backdrop follows the colour
+  chip while naming.
+- Home shows `<` / `>` edge hints when there is another page (spec: "edge hint and page dots"). They fade with
+  home on the native Launcher (the dots' group) and a tap turns the page.
+- In move mode a game held over a merge target is drawn over it (its cover, tilted, with a `+` badge), so
+  what you carry stays in sight; before, it vanished from home while over another tile.
+- The actions sheet leads with what it acts on: the game's cover, or the folder's colour with its glyph or
+  monogram (the mockup's thumbnail).
+- Pinned games take the same footprint as the folders beside them; the "New" ribbon sits on the folder's own
+  corner, where a focused tile above cannot cover it; an empty folder of yours says "empty", not "0 games".
+- Naming's hints follow what is typed ("B Delete" with text, "B Cancel" without).
+
+**Optimisation (measured on the Thor, Release JIT, CPU from `/proc/<pid>/stat` over each scripted scenario
+plus a 3 s settle; per-thread from `/proc/<pid>/task`):**
+
+| Scenario | Before | After |
+|---|---|---|
+| Idle on home (10 s) | 0.48 s CPU | 0.44 s |
+| Browsing home (10 presses) | 4.99 s | 4.85 s |
+| Sheet open and close ×5 | 1.57 s | 1.02 s |
+| Move mode, 6 carries | 3.82 s (UI thread 2.67 s) | 3.38 s (UI thread 1.18 s) |
+| Naming, ~35 presses | 6.34 s | 5.74 s |
+
+- **Slots update in place.** A home page's slots are an `ObservableCollection` and only a slot whose look
+  (`PictureKey`) changed gets a new view model; "move mode is on" is a property set on the existing slots.
+  Before, every move-mode step replaced whole pages, so Avalonia rebuilt 20 folder graphics a step, and
+  lifting a tile rebuilt all 40.
+- **The native Launcher no longer re-pictures everything when it takes the screen back** from a sheet,
+  naming, move mode or the menu. The surface host retains and replays every sprite and state, and the feed's
+  keys catch anything that changed meanwhile, so only focus and tracks are re-sent.
+- **Hints are rebuilt only when they differ**, which saves a layout of the hint pill on most presses.
+- The feed stops watching home slots that were replaced (it kept every one it had seen).
+- **Not changed:** browsing home is dominated by the native GL threads drawing the selector, lift and
+  breathing glow at the panel's rate (as designed and measured on 2026-11-07); the Avalonia Launcher's render
+  thread is the largest cost while move mode is on screen.

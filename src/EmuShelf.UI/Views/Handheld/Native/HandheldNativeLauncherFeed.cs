@@ -47,6 +47,8 @@ internal sealed class HandheldNativeLauncherFeed
     private readonly Control _folderEmpty;
     private readonly ItemsControl _pageDots;
     private readonly Control _pageIndicator;
+    private readonly Control _edgeLeft;
+    private readonly Control _edgeRight;
     private readonly Control _dockShadow;
     private readonly Control _dockPill;
     private readonly ItemsControl _dockItems;
@@ -92,6 +94,8 @@ internal sealed class HandheldNativeLauncherFeed
         _folderEmpty = Find("FolderEmpty");
         _pageDots = (ItemsControl)Find("PageDots");
         _pageIndicator = Find("PageIndicator");
+        _edgeLeft = Find("EdgeLeft");
+        _edgeRight = Find("EdgeRight");
         _dockShadow = Find("DockShadow");
         _dockPill = Find("DockPill");
         _dockItems = (ItemsControl)Find("DockItems");
@@ -154,9 +158,10 @@ internal sealed class HandheldNativeLauncherFeed
         _host.SetActive(active);
         if (active)
         {
-            // Pictures may be stale after the Avalonia Launcher had the screen: send everything again.
-            _sent.Clear();
-            _folderStates.Clear();
+            // The native side kept every picture and state while the Avalonia Launcher had the screen (the host
+            // retains and replays them), and anything that changed meanwhile has a new key, so only that is pictured
+            // again. Re-picturing every tile here cost ~0.3 s of CPU each time a sheet or naming closed (M45 H4 polish).
+            // Focus and tracks are re-sent: they are small and the selector may have moved.
             _focusSent = null;
             _tracksSent = null;
             Schedule();
@@ -453,6 +458,13 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void SyncHome(HandheldShellViewModel shell, HashSet<string> present)
     {
+        // Slots replaced by an edit or a move-mode step are not watched any longer.
+        var current = shell.Pages.SelectMany(page => page.Slots).ToHashSet();
+        foreach (var gone in _watched.OfType<HandheldHomeSlotViewModel>().Where(slot => !current.Contains(slot)).ToList())
+        {
+            gone.PropertyChanged -= OnWatchedChanged;
+            _watched.Remove(gone);
+        }
         foreach (var page in shell.Pages)
         {
             foreach (var slot in page.Slots)
@@ -482,6 +494,11 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void SyncDots(HandheldShellViewModel shell, HashSet<string> present)
     {
+        // The edge hints fade with home, like the dots.
+        if (shell.CanPageLeft)
+            Static("edge-l", "1", present, () => Sprite("edge-l", HandheldStageShots.Shot(_edgeLeft, _canvas), LauncherGroup.Dots));
+        if (shell.CanPageRight)
+            Static("edge-r", "1", present, () => Sprite("edge-r", HandheldStageShots.Shot(_edgeRight, _canvas), LauncherGroup.Dots));
         if (!shell.HasMultiplePages)
             return;
         Static("dots", shell.PageCount.ToString(System.Globalization.CultureInfo.InvariantCulture), present,

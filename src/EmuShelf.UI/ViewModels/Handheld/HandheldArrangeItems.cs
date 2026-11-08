@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using EmuShelf.Core.Handheld;
 
@@ -38,6 +39,18 @@ public sealed partial class HandheldSheetViewModel : ObservableObject
     public string Title { get; }
     public string? Subtitle { get; }
     public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
+
+    /// <summary>What the sheet acts on, beside its title (as in the mockup): a game's cover (owned elsewhere)…</summary>
+    public Bitmap? Thumbnail { get; init; }
+
+    /// <summary>…or a swatch in a folder's colour with its monogram or glyph.</summary>
+    public IBrush? Swatch { get; init; }
+
+    public string? SwatchText { get; init; }
+    public HandheldGlyph SwatchGlyph { get; init; }
+    public bool HasThumbnail => Thumbnail is not null;
+    public bool HasSwatch => Thumbnail is null && Swatch is not null;
+    public bool HasSwatchGlyph => SwatchGlyph != HandheldGlyph.None;
     public ObservableCollection<HandheldSheetItemViewModel> Items { get; } = [];
 
     [ObservableProperty]

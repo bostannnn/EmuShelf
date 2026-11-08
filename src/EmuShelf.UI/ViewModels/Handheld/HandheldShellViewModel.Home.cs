@@ -76,21 +76,30 @@ public sealed partial class HandheldShellViewModel
     {
         var slots = _move?.Preview ?? _layout.AllSlots();
         var pageCount = slots.Count / HandheldHomeLayout.SlotsPerPage;
+        var moving = _move is not null;
         for (var page = 0; page < pageCount; page++)
         {
-            var built = new List<HandheldHomeSlotViewModel>(HandheldHomeLayout.SlotsPerPage);
-            for (var slot = 0; slot < HandheldHomeLayout.SlotsPerPage; slot++)
-                built.Add(BuildSlot(page, slot, slots[(page * HandheldHomeLayout.SlotsPerPage) + slot]));
-            if (page < Pages.Count)
+            if (page >= Pages.Count)
             {
-                // A page whose slots all look the same keeps its view models (and its pictures on the Thor).
-                if (Pages[page].Slots.Select(s => s.PictureKey).SequenceEqual(built.Select(s => s.PictureKey)))
-                    continue;
-                Pages[page] = new HandheldHomePageViewModel(page, built);
+                Pages.Add(new HandheldHomePageViewModel(page, Enumerable.Range(0, HandheldHomeLayout.SlotsPerPage)
+                    .Select(slot => BuildSlot(page, slot, slots[(page * HandheldHomeLayout.SlotsPerPage) + slot]))));
+                continue;
             }
-            else
+            // Only a slot whose look changed gets a new view model (and a new tile, and a new picture on the Thor).
+            var existing = Pages[page].Slots;
+            for (var slot = 0; slot < HandheldHomeLayout.SlotsPerPage; slot++)
             {
-                Pages.Add(new HandheldHomePageViewModel(page, built));
+                var built = BuildSlot(page, slot, slots[(page * HandheldHomeLayout.SlotsPerPage) + slot]);
+                if (existing[slot].PictureKey != built.PictureKey)
+                {
+                    if (ReferenceEquals(_peekSlot, existing[slot]))
+                        _peekSlot = null;
+                    existing[slot] = built;
+                }
+                else
+                {
+                    existing[slot].IsMoving = moving;
+                }
             }
         }
         while (Pages.Count > pageCount)
@@ -102,8 +111,6 @@ public sealed partial class HandheldShellViewModel
                 PageDots.Add(new HandheldPageDotViewModel(page));
         }
         PageCount = Pages.Count;
-        // The peek covers belong to the focused slot's view model, which may just have been replaced.
-        _peekSlot = null;
     }
 
     private HandheldHomeSlotViewModel BuildSlot(int page, int slot, HandheldSlot content)
@@ -119,7 +126,15 @@ public sealed partial class HandheldShellViewModel
             _pins.TryGetValue(content.GameId, out game);
             _pinCovers.TryGetValue(content.GameId, out cover);
         }
-        return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look);
+        Bitmap? carriedCover = null;
+        string? carriedTitle = null;
+        if (look == HandheldMoveLook.DropTarget && _move is { Carried: { Kind: HandheldSlotKind.Game } carried })
+        {
+            _pinCovers.TryGetValue(carried.GameId, out carriedCover);
+            carriedTitle = _pins.GetValueOrDefault(carried.GameId)?.Title;
+        }
+        return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look,
+            carriedCover, carriedTitle);
     }
 
     // ---- Games pinned to home ----

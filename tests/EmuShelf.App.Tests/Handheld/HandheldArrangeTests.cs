@@ -484,4 +484,75 @@ public partial class HandheldShellViewModelTests
         Assert.True(shell.CurrentPage!.Slots[1].IsUnavailable);
         Assert.True(shell.Layout.IsPinned(library.Games["ps2"][0].Id));
     }
+
+    [Fact]
+    public async Task MoveMode_ReplacesOnlyTheSlotsThatChange_AndLightsTheRestInPlace()
+    {
+        var library = new FakeLibrary().WithPlatform("ps2", 3).WithPlatform("gc", 2).WithPlatform("wii", 2);
+        var shell = await CreateAsync(library);
+        var page = shell.CurrentPage!;
+        var before = page.Slots.ToList();
+        var replaced = 0;
+        page.Slots.CollectionChanged += (_, _) => replaced++;
+
+        Press(shell, GamepadAction.Actions);
+        RunSheetRow(shell, "Move");
+
+        // Lifting redraws only the lifted tile; every other slot keeps its view model, now marked as moving.
+        Assert.Equal(1, replaced);
+        Assert.True(page.Slots[10].IsLandingPlace);
+        Assert.Same(before[10], page.Slots[10]);
+
+        // Carried down a row: slot 0 empties and slot 5 shows the tile, two more slots and nothing else.
+        Press(shell, GamepadAction.NavigateDown);
+        Assert.Equal(3, replaced);
+        Assert.Same(shell.CurrentPage, page);
+
+        Press(shell, GamepadAction.Cancel);
+        Assert.False(page.Slots[10].IsLandingPlace);
+    }
+
+    [Fact]
+    public async Task Hints_AreNotRebuiltWhenTheyStayTheSame()
+    {
+        var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3).WithPlatform("gc", 2));
+        var changes = 0;
+        shell.Hints.CollectionChanged += (_, _) => changes++;
+
+        // Folder to folder: "A Open, Y More, Menu" both times.
+        Press(shell, GamepadAction.NavigateRight);
+
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public async Task EdgeHints_ShowWhereThereIsAnotherPage_AndHideInsideAFolder()
+    {
+        var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3));
+
+        Assert.False(shell.CanPageLeft);
+        Assert.True(shell.CanPageRight);
+        Press(shell, GamepadAction.NextPlatform);
+        Assert.True(shell.CanPageLeft);
+        Assert.False(shell.CanPageRight);
+        Press(shell, GamepadAction.PreviousPlatform);
+        Press(shell, GamepadAction.Confirm);
+        Assert.False(shell.CanPageRight);
+    }
+
+    [Fact]
+    public async Task Sheets_ShowWhatTheyActOn()
+    {
+        var library = new FakeLibrary().WithPlatform("ps2", 3);
+        var shell = await CreateAsync(library);
+
+        Press(shell, GamepadAction.Actions);
+        Assert.True(shell.Sheet!.HasSwatch);
+        Assert.Equal("PS2", shell.Sheet.SwatchText);
+        Press(shell, GamepadAction.Cancel);
+
+        FocusHome(shell, 2);
+        Press(shell, GamepadAction.Actions);
+        Assert.Equal(HandheldGlyph.Plus, shell.Sheet!.SwatchGlyph);
+    }
 }

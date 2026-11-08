@@ -469,22 +469,22 @@ public sealed partial class HandheldShellViewModel
             case HandheldTitleState.Launching:
                 return;
             case HandheldTitleState.Buttons:
-                Hints.Add(new HandheldHint("A", page.FocusedButton?.Kind switch
+                _nextHints.Add(new HandheldHint("A", page.FocusedButton?.Kind switch
                 {
                     HandheldTitleButtonKind.Disc => "Choose disc",
                     HandheldTitleButtonKind.Achievements => "Open",
                     _ => "Play",
                 }));
-                Hints.Add(new HandheldHint("Y", "More"));
-                Hints.Add(new HandheldHint("B", "Back"));
+                _nextHints.Add(new HandheldHint("Y", "More"));
+                _nextHints.Add(new HandheldHint("B", "Back"));
                 return;
             case HandheldTitleState.ScreenChooser:
-                Hints.Add(new HandheldHint("A", page.IsRememberFocused ? "Toggle" : "Play here"));
-                Hints.Add(new HandheldHint("B", "Back"));
+                _nextHints.Add(new HandheldHint("A", page.IsRememberFocused ? "Toggle" : "Play here"));
+                _nextHints.Add(new HandheldHint("B", "Back"));
                 return;
             default:
-                Hints.Add(new HandheldHint("A", "Select"));
-                Hints.Add(new HandheldHint("B", "Back"));
+                _nextHints.Add(new HandheldHint("A", "Select"));
+                _nextHints.Add(new HandheldHint("B", "Back"));
                 return;
         }
     }

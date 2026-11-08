@@ -110,13 +110,29 @@
       <Setter Property="Background" Value="#5B58D9" />
       <Setter Property="CornerRadius" Value="16" />
       <Setter Property="Padding" Value="14,4" />
-      <Setter Property="Margin" Value="0,-10,-14,0" />
+      <Setter Property="Margin" Value="0,6,-12,0" />
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="2" />
       <Setter Property="BoxShadow" Value="0 3 8 0 #405B58D9" />
     </Style>
     <Style Selector="Border.ribbon TextBlock">
       <Setter Property="FontSize" Value="20" />
       <Setter Property="FontWeight" Value="Bold" />
       <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.edge">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="96" />
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Background" Value="#B3FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.edge PathIcon">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Foreground" Value="#5B6176" />
     </Style>
     <!-- The actions sheet's and the naming panel's rows. -->
     <Style Selector="Border.sheet-row">
@@ -339,9 +355,10 @@
                           <!-- A folder (a platform's, yours, Recent): its flap tilts while focused so the first covers peek out. -->
                           <vh:HandheldFolderArt IsVisible="{Binding IsFolder}" Classes.peek="{Binding IsFocused}" Margin="-8" />
                           <!-- A game pinned to home: its cover, cropped to the tile; dimmed when its file is missing. -->
-                          <Panel IsVisible="{Binding IsGame}">
-                            <vh:HandheldShadow Radius="44" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
-                            <Border CornerRadius="44" ClipToBounds="True" Background="#D5D9E4"
+                          <!-- Same footprint as a folder beside it (its back plate starts lower and sits a little wider). -->
+                          <Panel IsVisible="{Binding IsGame}" Margin="-3,17,-3,0">
+                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border CornerRadius="40" ClipToBounds="True" Background="#D5D9E4"
                                     Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
                               <Panel>
                                 <TextBlock Text="{Binding Name}" IsVisible="{Binding !HasCover}" FontSize="20" FontWeight="SemiBold"
@@ -364,13 +381,30 @@
                             <TextBlock Text="New" />
                           </Border>
                           <!-- Move mode: the game or folder the carried game would merge with. -->
-                          <Border IsVisible="{Binding IsDropTarget}" CornerRadius="56" Margin="-12" BorderBrush="#5B58D9"
-                                  BorderThickness="6" Background="#1F5B58D9">
-                            <Border Width="56" Height="56" CornerRadius="28" Background="#5B58D9" HorizontalAlignment="Right"
-                                    VerticalAlignment="Top" Margin="0,-20,-20,0">
-                              <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="32" Height="32" Foreground="White" />
+                          <!-- Move mode: a game held over another game or one of your folders, about to merge with it. -->
+                          <Panel IsVisible="{Binding IsDropTarget}">
+                            <Border CornerRadius="44" Margin="-3,17,-3,0" Background="#335B58D9" />
+                            <Panel Width="116" Height="116" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-14,-18,0"
+                                   RenderTransform="rotate(8deg)">
+                              <vh:HandheldShadow Radius="28" Blur="14" Margin="-14,-8,-14,-20" Color="#40000000" Filled="True" />
+                              <Border CornerRadius="28" ClipToBounds="True" Background="#D5D9E4" BorderBrush="White" BorderThickness="4">
+                                <Panel>
+                                  <TextBlock Text="{Binding CarriedTitle}" IsVisible="{Binding !HasCarriedCover}" FontSize="16"
+                                             FontWeight="SemiBold" Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center"
+                                             Margin="8" VerticalAlignment="Center" MaxLines="3" TextTrimming="CharacterEllipsis" />
+                                  <Border IsVisible="{Binding HasCarriedCover}">
+                                    <Border.Background>
+                                      <ImageBrush Source="{Binding CarriedCover}" Stretch="UniformToFill" AlignmentY="Top" />
+                                    </Border.Background>
+                                  </Border>
+                                </Panel>
+                              </Border>
+                            </Panel>
+                            <Border Width="52" Height="52" CornerRadius="26" Background="#5B58D9" BorderBrush="White" BorderThickness="3"
+                                    HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,10">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="28" Height="28" Foreground="White" />
                             </Border>
-                          </Border>
+                          </Panel>
                           <Border Classes="ring" CornerRadius="68" Margin="-24" />
                         </Panel>
                         </Border>
@@ -382,6 +416,14 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </Panel>
+
+        <!-- Edge hints: another page that way (a tap turns to it). -->
+        <Border x:Name="EdgeLeft" Classes="edge" IsVisible="{Binding CanPageLeft}" HorizontalAlignment="Left" Margin="8,0,0,0">
+          <PathIcon Data="{x:Static vm:HandheldIcons.ChevronLeft}" />
+        </Border>
+        <Border x:Name="EdgeRight" Classes="edge" IsVisible="{Binding CanPageRight}" HorizontalAlignment="Right" Margin="0,0,8,0">
+          <PathIcon Data="{x:Static vm:HandheldIcons.ChevronRight}" />
+        </Border>
 
         <!-- Page dots, with the current-page pill riding the track's position. -->
         <Panel Grid.Row="1" IsVisible="{Binding HasMultiplePages}" HorizontalAlignment="Center" VerticalAlignment="Center">
@@ -859,12 +901,33 @@
         <Border x:Name="SheetCard" VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="880" Margin="0,0,0,48"
                 CornerRadius="48" Background="#FFFFFF" Padding="24,32,24,24" BoxShadow="0 24 56 0 #40000000">
           <StackPanel Spacing="16">
-            <StackPanel Margin="28,0,28,8" Spacing="4">
-              <TextBlock Text="{Binding Sheet.Title}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
-                         TextTrimming="CharacterEllipsis" />
-              <TextBlock Text="{Binding Sheet.Subtitle}" IsVisible="{Binding Sheet.HasSubtitle}" FontSize="24" Foreground="#5B6176"
-                         TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
-            </StackPanel>
+            <Grid ColumnDefinitions="Auto,*" Margin="20,0,28,8">
+              <!-- What the sheet acts on: the game's cover, or the folder's colour with its glyph. -->
+              <Panel Width="104" Height="104" Margin="0,0,24,0" VerticalAlignment="Center"
+                     IsVisible="{Binding Sheet.HasThumbnail}">
+                <Border CornerRadius="26" ClipToBounds="True" BoxShadow="0 4 12 0 #26000000">
+                  <Border.Background>
+                    <ImageBrush Source="{Binding Sheet.Thumbnail}" Stretch="UniformToFill" AlignmentY="Top" />
+                  </Border.Background>
+                </Border>
+              </Panel>
+              <Border Width="104" Height="104" Margin="0,0,24,0" CornerRadius="26" VerticalAlignment="Center"
+                      Background="{Binding Sheet.Swatch}" BorderBrush="#141C2033" BorderThickness="1"
+                      IsVisible="{Binding Sheet.HasSwatch}" BoxShadow="0 4 12 0 #1F000000">
+                <Panel>
+                  <PathIcon Data="{Binding Sheet.SwatchGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                            IsVisible="{Binding Sheet.HasSwatchGlyph}" Width="52" Height="52" Foreground="White" />
+                  <TextBlock Text="{Binding Sheet.SwatchText}" FontSize="30" FontWeight="Bold" Foreground="White"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Panel>
+              </Border>
+              <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Sheet.Title}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                           TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding Sheet.Subtitle}" IsVisible="{Binding Sheet.HasSubtitle}" FontSize="24" Foreground="#5B6176"
+                           TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
+              </StackPanel>
+            </Grid>
             <ItemsControl ItemsSource="{Binding Sheet.Items}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>

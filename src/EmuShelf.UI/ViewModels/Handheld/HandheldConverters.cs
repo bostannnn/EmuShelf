@@ -36,6 +36,10 @@ public static class HandheldIcons
     public static readonly Geometry Clock = Geometry.Parse(
         "F0 M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm1 3v4.59l3.2 3.2-1.41 1.42L11 12.41V7z");
 
+    public static readonly Geometry ChevronLeft = Geometry.Parse("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z");
+
+    public static readonly Geometry ChevronRight = Geometry.Parse("M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z");
+
     public static readonly Geometry Check = Geometry.Parse("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z");
 
     /// <summary>Two stacked screens with the top one filled: the Thor's top (main) display.</summary>

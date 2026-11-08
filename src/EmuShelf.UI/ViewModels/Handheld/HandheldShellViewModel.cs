@@ -910,6 +910,23 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             MenuItems[i].IsFocused = i == MenuIndex;
     }
 
+    /// <summary>There is a page to the left / right of the one on screen (the edge hints).</summary>
+    public bool CanPageLeft => OpenFolder is null && CurrentPage is { Index: > 0 };
+
+    public bool CanPageRight => OpenFolder is null && CurrentPage is { } page && page.Index < PageCount - 1;
+
+    private void RaiseEdgeHints()
+    {
+        OnPropertyChanged(nameof(CanPageLeft));
+        OnPropertyChanged(nameof(CanPageRight));
+    }
+
+    partial void OnCurrentPageChanged(HandheldHomePageViewModel? value) => RaiseEdgeHints();
+
+    partial void OnPageCountChanged(int value) => RaiseEdgeHints();
+
+    partial void OnOpenFolderChanged(HandheldFolderViewModel? value) => RaiseEdgeHints();
+
     private void ShowPage(int page)
     {
         CurrentPage = Pages.Count > page ? Pages[page] : null;
@@ -1150,8 +1167,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void ShowFolderStage(HandheldFolderSource source, string subtitle)
     {
-        // Your folders and Recent sit on the plain light gradient; a platform's on its era motif.
-        ShowStage(HandheldStageKind.Folder, source.Name, subtitle, backdrop: BackdropFor(source.Platform));
+        // A platform's folder sits on its own backdrop; yours and Recent on the soft tile grid in their colour.
+        ShowStage(HandheldStageKind.Folder, source.Name, subtitle,
+            backdrop: source.Platform is { } platform ? BackdropFor(platform) : FolderBackdrop(source.AccentColor));
         Stage.Monogram = source.Monogram;
         Stage.FolderGlyph = source.Kind switch
         {
@@ -1164,6 +1182,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     private long _stageGameId = -1;
+
+    /// <summary>The backdrop behind your folders and Recent: the tile grid, in the folder's colour (as in the mockup).</summary>
+    internal static HandheldBackdrop? FolderBackdrop(string color) =>
+        Color.TryParse(color, out var parsed) ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
 
     /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
@@ -1340,13 +1362,27 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             bitmap?.Dispose();
     }
 
+    // The hints the current state wants, built fresh on every update and copied into Hints only when they differ:
+    // most moves keep the same hints, and rebuilding the pill's items each time cost a layout pass for nothing.
+    private readonly List<HandheldHint> _nextHints = [];
+
     private void UpdateHints()
     {
+        _nextHints.Clear();
+        BuildHints();
+        if (_nextHints.SequenceEqual(Hints))
+            return;
         Hints.Clear();
+        foreach (var hint in _nextHints)
+            Hints.Add(hint);
+    }
+
+    private void BuildHints()
+    {
         if (IsMenuOpen)
         {
-            Hints.Add(new HandheldHint("A", "Select"));
-            Hints.Add(new HandheldHint("B", "Close"));
+            _nextHints.Add(new HandheldHint("A", "Select"));
+            _nextHints.Add(new HandheldHint("B", "Close"));
             return;
         }
         if (Naming is not null || Sheet is not null || _move is not null)
@@ -1362,28 +1398,28 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         switch (Zone)
         {
             case HandheldZone.Dock:
-                Hints.Add(new HandheldHint("A", "Open"));
-                Hints.Add(new HandheldHint("B", "Back"));
+                _nextHints.Add(new HandheldHint("A", "Open"));
+                _nextHints.Add(new HandheldHint("B", "Back"));
                 return;
             case HandheldZone.Header:
-                Hints.Add(new HandheldHint("A", OpenFolder?.IsSortFocused == true ? "Change" : "Back"));
-                Hints.Add(new HandheldHint("B", "Close"));
+                _nextHints.Add(new HandheldHint("A", OpenFolder?.IsSortFocused == true ? "Change" : "Back"));
+                _nextHints.Add(new HandheldHint("B", "Close"));
                 return;
         }
         if (OpenFolder is { } folder)
         {
             if (folder.SelectedTile is not null)
             {
-                Hints.Add(new HandheldHint("A", "Play"));
-                Hints.Add(new HandheldHint("Y", "More"));
+                _nextHints.Add(new HandheldHint("A", "Play"));
+                _nextHints.Add(new HandheldHint("Y", "More"));
             }
-            Hints.Add(new HandheldHint("B", "Back"));
+            _nextHints.Add(new HandheldHint("B", "Back"));
             return;
         }
         var focused = _layout.SlotAt(_home.Page, _home.Slot);
-        Hints.Add(new HandheldHint("A", focused.IsEmpty ? "New folder" : "Open"));
-        Hints.Add(new HandheldHint("Y", "More"));
-        Hints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));
+        _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? "New folder" : "Open"));
+        _nextHints.Add(new HandheldHint("Y", "More"));
+        _nextHints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));
     }
 
     public void Dispose()

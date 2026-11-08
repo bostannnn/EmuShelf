@@ -171,8 +171,8 @@ public sealed record HandheldFolderSource(
     /// <summary>The Stage's line under the folder's name.</summary>
     public string Description => Kind switch
     {
-        HandheldFolderKind.User => $"Your folder · {HandheldText.GameCount(GameCount)}",
-        HandheldFolderKind.Recent => $"Made for you · {HandheldText.GameCount(GameCount)}",
+        HandheldFolderKind.User => $"Your folder · {(GameCount == 0 ? "empty" : HandheldText.GameCount(GameCount))}",
+        HandheldFolderKind.Recent => GameCount == 0 ? "Made for you · games you play appear here" : $"Made for you · {HandheldText.GameCount(GameCount)}",
         _ => $"Folder · {HandheldText.GameCount(GameCount)}",
     };
 
@@ -205,14 +205,17 @@ public enum HandheldMoveLook
 public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 {
     public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldFolderSource? folder, HandheldGameEntry? game = null,
-        Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None)
+        Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None,
+        Bitmap? carriedCover = null, string? carriedTitle = null)
     {
+        CarriedCover = carriedCover;
+        CarriedTitle = carriedTitle;
         Index = index;
         Slot = slot;
         Folder = folder;
         Game = game;
         Cover = cover;
-        IsMoving = isMoving;
+        _isMoving = isMoving;
         MoveLook = moveLook;
         var colour = folder?.AccentColor;
         AccentBrush = colour is not null && Color.TryParse(colour, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
@@ -253,17 +256,33 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     public IBrush AccentBrush { get; }
     public string CountText => Folder is null ? string.Empty : HandheldText.GameCount(Folder.GameCount);
 
-    /// <summary>Move mode is on: empty slots light up as places to land.</summary>
-    public bool IsMoving { get; }
+    private bool _isMoving;
+
+    /// <summary>Move mode is on: empty slots light up as places to land. Set in place, so lifting a tile rebuilds nothing.</summary>
+    public bool IsMoving
+    {
+        get => _isMoving;
+        set
+        {
+            if (SetProperty(ref _isMoving, value))
+                OnPropertyChanged(nameof(IsLandingPlace));
+        }
+    }
 
     public HandheldMoveLook MoveLook { get; }
     public bool IsCarried => MoveLook == HandheldMoveLook.Carried;
     public bool IsDropTarget => MoveLook == HandheldMoveLook.DropTarget;
     public bool IsLandingPlace => IsMoving && IsEmpty;
 
+    /// <summary>On a merge target: the carried game, held over it (owned by the shell's pin cache).</summary>
+    public Bitmap? CarriedCover { get; }
+
+    public string? CarriedTitle { get; }
+    public bool HasCarriedCover => CarriedCover is not null;
+
     /// <summary>What the slot looks like, for deciding whether a rebuilt page changed and must be pictured again.</summary>
     public string PictureKey =>
-        $"{Slot}|{Folder?.Name}|{Folder?.AccentColor}|{Folder?.GameCount}|{Game?.Title}|{Game?.IsAvailable}|{RuntimeRef(Cover)}|{IsMoving}|{MoveLook}";
+        $"{Slot}|{Folder?.Name}|{Folder?.AccentColor}|{Folder?.GameCount}|{Game?.Title}|{Game?.IsAvailable}|{RuntimeRef(Cover)}|{MoveLook}|{RuntimeRef(CarriedCover)}";
 
     private static int RuntimeRef(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 
@@ -281,10 +300,12 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     public partial Bitmap? PeekC { get; set; }
 }
 
-public sealed class HandheldHomePageViewModel(int index, IReadOnlyList<HandheldHomeSlotViewModel> slots)
+/// <summary>One home page. Its slots are replaced one at a time when what they show changes, so an edit or a step in
+/// move mode rebuilds the tiles that changed, not the page.</summary>
+public sealed class HandheldHomePageViewModel(int index, IEnumerable<HandheldHomeSlotViewModel> slots)
 {
     public int Index { get; } = index;
-    public IReadOnlyList<HandheldHomeSlotViewModel> Slots { get; } = slots;
+    public ObservableCollection<HandheldHomeSlotViewModel> Slots { get; } = new(slots);
 }
 
 public sealed partial class HandheldPageDotViewModel(int index) : ObservableObject

@@ -163,7 +163,11 @@ public sealed partial class HandheldShellViewModel
             return new HandheldSheetViewModel("Empty slot", $"Page {page}",
             [
                 new HandheldSheetItemViewModel("New folder here", null, () => StartNaming(isNew: true, index, [], null, -1)),
-            ]);
+            ])
+            {
+                Swatch = BrushOf("#A7AEC6"),
+                SwatchGlyph = HandheldGlyph.Plus,
+            };
         }
         if (slot.Kind == HandheldSlotKind.Game)
             return _pins.TryGetValue(slot.GameId, out var game) ? GameSheet(game, folder: null) : null;
@@ -184,7 +188,13 @@ public sealed partial class HandheldShellViewModel
             HandheldFolderKind.Recent => $"Made for you · the last {HandheldText.GameCount(source.GameCount)} you played",
             _ => source.Description,
         };
-        return new HandheldSheetViewModel(source.Name, subtitle, items);
+        return new HandheldSheetViewModel(source.Name, subtitle, items) { Swatch = BrushOf(source.AccentColor), SwatchText = source.Monogram,
+            SwatchGlyph = source.Kind switch
+            {
+                HandheldFolderKind.User => HandheldGlyph.Star,
+                HandheldFolderKind.Recent => HandheldGlyph.Clock,
+                _ => HandheldGlyph.None,
+            } };
     }
 
     /// <summary>One sheet for a game wherever it is focused: on home (a pin), inside a folder, or on its Title page.</summary>
@@ -197,7 +207,7 @@ public sealed partial class HandheldShellViewModel
         if (folder is null)
             items.Add(new("Move", "Drop on a game to make a folder", StartMove));
         items.AddRange(PlaceItems(game, folder?.Source));
-        return new HandheldSheetViewModel(game.Title, game.SystemName, items);
+        return new HandheldSheetViewModel(game.Title, game.SystemName, items) { Thumbnail = CoverFor(game.Id) };
     }
 
     /// <summary>The rows that change where a game is: Add to folder…, Pin / Remove from home, Remove from this folder.</summary>
@@ -224,8 +234,17 @@ public sealed partial class HandheldShellViewModel
             var already = folder.Contains(game.Id);
             items.Add(new(folder.Name, already ? "Already in it" : null, () => AddToFolder(id, game.Id)));
         }
-        return new HandheldSheetViewModel("Add to folder", game.Title, items);
+        return new HandheldSheetViewModel("Add to folder", game.Title, items) { Thumbnail = CoverFor(game.Id) };
     }
+
+    /// <summary>A cover already decoded for this game (its pin, its tile in the open folder, its Title page); null if none.</summary>
+    private Avalonia.Media.Imaging.Bitmap? CoverFor(long gameId) =>
+        _pinCovers.GetValueOrDefault(gameId)
+        ?? OpenFolder?.Items.FirstOrDefault(tile => tile.Entry.Id == gameId)?.Cover
+        ?? (TitlePage?.Entry.Id == gameId ? TitlePage.Cover : null);
+
+    private static Avalonia.Media.IBrush BrushOf(string color) =>
+        Avalonia.Media.Color.TryParse(color, out var parsed) ? new Avalonia.Media.SolidColorBrush(parsed) : Avalonia.Media.Brushes.Gray;
 
     private void ConfirmDelete(string folderId)
     {
@@ -236,7 +255,11 @@ public sealed partial class HandheldShellViewModel
             [
                 new HandheldSheetItemViewModel("Delete folder", null, () => DeleteFolder(folderId)),
                 new HandheldSheetItemViewModel("Keep it", null, () => { }),
-            ]));
+            ])
+        {
+            Swatch = BrushOf(folder.Color),
+            SwatchGlyph = HandheldGlyph.Star,
+        });
     }
 
     // ---- Edits ----
@@ -689,6 +712,9 @@ public sealed partial class HandheldShellViewModel
             return;
         Stage.Title = naming.Name;
         Stage.AccentBrush = naming.ColorBrush;
+        Stage.Backdrop = FolderBackdrop(naming.Color);
+        // "B Delete" or "B Cancel" depends on whether anything is typed (the field takes a hardware keyboard too).
+        UpdateHints();
     }
 
     private void ShowNamingStage(HandheldNamingViewModel naming)
@@ -696,7 +722,8 @@ public sealed partial class HandheldShellViewModel
         var count = naming.IsNew
             ? naming.GameIds.Count
             : _layout.FindFolder(naming.FolderId)?.GameIds.Count ?? 0;
-        ShowStage(HandheldStageKind.Folder, naming.Name, $"Your folder · {HandheldText.GameCount(count)}");
+        ShowStage(HandheldStageKind.Folder, naming.Name, count == 0 ? "Your folder · empty" : $"Your folder · {HandheldText.GameCount(count)}",
+            backdrop: FolderBackdrop(naming.Color));
         Stage.Monogram = string.Empty;
         Stage.FolderGlyph = HandheldGlyph.Star;
         Stage.AccentBrush = naming.ColorBrush;
@@ -706,27 +733,27 @@ public sealed partial class HandheldShellViewModel
     {
         if (Naming is { } naming)
         {
-            Hints.Add(new HandheldHint("A", naming.Zone == HandheldNamingZone.Colours ? "Colour" : "Type"));
-            Hints.Add(new HandheldHint("B", naming.Text.Length > 0 ? "Delete" : "Cancel"));
-            Hints.Add(new HandheldHint("Y", "Space"));
-            Hints.Add(new HandheldHint("X", "Done"));
+            _nextHints.Add(new HandheldHint("A", naming.Zone == HandheldNamingZone.Colours ? "Colour" : "Type"));
+            _nextHints.Add(new HandheldHint("B", naming.Text.Length > 0 ? "Delete" : "Cancel"));
+            _nextHints.Add(new HandheldHint("Y", "Space"));
+            _nextHints.Add(new HandheldHint("X", "Done"));
             return;
         }
         if (Sheet is not null)
         {
-            Hints.Add(new HandheldHint("A", "Select"));
-            Hints.Add(new HandheldHint("B", "Close"));
+            _nextHints.Add(new HandheldHint("A", "Select"));
+            _nextHints.Add(new HandheldHint("B", "Close"));
             return;
         }
         if (_move is { } move)
         {
-            Hints.Add(new HandheldHint("A", move.Drop switch
+            _nextHints.Add(new HandheldHint("A", move.Drop switch
             {
                 HandheldDropKind.MakeFolder => "Make folder",
                 HandheldDropKind.AddToFolder => "Add",
                 _ => "Drop",
             }));
-            Hints.Add(new HandheldHint("B", "Put back"));
+            _nextHints.Add(new HandheldHint("B", "Put back"));
         }
     }
 

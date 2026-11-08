@@ -1,3 +1,4 @@
+using EmuShelf.Core.Handheld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -144,6 +145,10 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.NavigateRight);
         Assert.Equal(new HandheldBackdrop(Color.Parse("#3D6DB5"), SystemEra.Disc), shell.Stage.Backdrop);
+
+        // Recent (and your folders) sit on the tile grid in their own colour.
+        Press(shell, GamepadAction.NavigateRight);
+        Assert.Equal(new HandheldBackdrop(Color.Parse(HandheldHomeLayout.RecentColor), SystemEra.Cartridge), shell.Stage.Backdrop);
 
         // An empty slot has no system: the plain light gradient.
         Press(shell, GamepadAction.NavigateRight);

@@ -94,6 +94,13 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             // A press on the field itself is left to the field (a hardware keyboard types there).
             return;
         }
+        // The edge hints turn the page.
+        if (IsInside(source, "EdgeLeft") || IsInside(source, "EdgeRight"))
+        {
+            shell.SwipePage(IsInside(source, "EdgeRight") ? 1 : -1);
+            e.Handled = true;
+            return;
+        }
         _pressAt = e.GetPosition(this);
         _pressedSlot = SlotAt(source);
         if (_pressedSlot is not null && !shell.IsMoving)
