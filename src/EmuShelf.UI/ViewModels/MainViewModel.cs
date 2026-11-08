@@ -6593,6 +6593,7 @@ public partial class MainViewModel : ViewModelBase
         // recorded (including a game stamped just before a start failure), and a refresh error must
         // never be able to overwrite the launch-completion status with a false failure message.
         var recordedPlay = false;
+        long? playSessionId = null;
         var started = false;
         try
         {
@@ -6635,8 +6636,10 @@ public partial class MainViewModel : ViewModelBase
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
-                    // Stamps last-played and increments the play count in one write.
-                    await Task.Run(
+                    // Opens the play session, stamps last-played and increments the play count in one
+                    // write. On Android the session stays open until EmuShelf returns
+                    // (CompleteDeferredPlaySessionAsync); on desktop it closes below when the emulator exits.
+                    playSessionId = await Task.Run(
                         () => _library.RecordLaunchStarted(launchGame.Id, DateTimeOffset.UtcNow),
                         cancellationToken);
                     recordedPlay = true;
@@ -6654,14 +6657,18 @@ public partial class MainViewModel : ViewModelBase
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
-            // A tracked exit reports the emulator's runtime; accrue it as play time. Guarded and off the
-            // UI thread so a write failure can never turn a completed launch into a reported error. The
-            // Recently Played refresh in the finally then rebuilds the collection with the new total.
-            if (result is { ProcessExited: true, PlayDuration: { } playDuration })
+            // A tracked exit reports the emulator's runtime; it closes the session and accrues as play time.
+            // Guarded and off the UI thread so a write failure can never turn a completed launch into a
+            // reported error. The Recently Played refresh in the finally then rebuilds the collection with
+            // the new total. A launch that never exited normally leaves its session open: unknown length.
+            if (result is { ProcessExited: true, PlayDuration: { } playDuration } && playSessionId is { } sessionId)
             {
                 try
                 {
-                    await Task.Run(() => _library.AddPlaytime(launchGame.Id, playDuration));
+                    await Task.Run(() => _library.CompletePlaySession(
+                        sessionId,
+                        playDuration,
+                        PlaySessionMeasurement.TrackedProcess));
                 }
                 catch (Exception ex)
                 {
@@ -6761,7 +6768,17 @@ public partial class MainViewModel : ViewModelBase
         {
             try
             {
-                await Task.Run(() => _library.AddPlaytime(gameId, playDuration));
+                // The open session is this launch's: Android keeps at most one pending session, recorded
+                // just after its row was opened. None is open when the launch never opened one: Steam
+                // (GameNative) launches skip the pre-launch callback, and a pending record can predate the
+                // play log (v21). Record that play as a finished session then, so its time is not lost.
+                await Task.Run(() =>
+                {
+                    var sessionId = _library.FindOpenPlaySession(gameId)
+                        ?? _library.RecordLaunchStarted(gameId, DateTimeOffset.UtcNow - playDuration);
+                    if (sessionId is { } id)
+                        _library.CompletePlaySession(id, playDuration, PlaySessionMeasurement.WallClockEstimate);
+                });
             }
             catch (Exception ex)
             {

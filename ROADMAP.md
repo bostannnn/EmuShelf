@@ -2490,7 +2490,7 @@ Played. Pad input already reaches one dispatcher from both displays
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
 
-## M46 — Play log: sessions, accurate handheld timing, an Activity screen (planned)
+## M46 — Play log: sessions, accurate handheld timing, an Activity screen (in progress)
 
 Builds on M43, whose two totals per game (`Games.PlaytimeSeconds`, `Games.PlayCount`) can't say when
 a game was played or for how long each time. The goal is what the 3DS Activity Log and Cocoon's Log
@@ -2511,7 +2511,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
   session whose EmuShelf was killed adds no time at all.
 - **Per-device totals can't be merged** later by a sync, and a wrong session can't be corrected.
 
-- [ ] **P1 — the sessions table.** Schema v21: `PlaySessions` (id, game id, started at UTC, duration
+- [x] **P1 — the sessions table.** ✅ (2026-11-08; built and tested on macOS, the v20 → v21 upgrade
+      checked in the Release app against a scratch library; the launch-and-exit path is covered by
+      view-model tests with the real library, not by a hands-on launch, and the Thor check is still to
+      come. Choices in `DECISIONS.md` 2026-11-08 "M46 P1".) Schema v21: `PlaySessions` (id, game id, started at UTC, duration
       in seconds or null while open, device id, how the duration was measured: tracked process / usage
       access / wall-clock estimate / edited). A row is inserted at launch where `RecordLaunchStarted`
       runs today, and closed where `AddPlaytime` runs (desktop exit, Android

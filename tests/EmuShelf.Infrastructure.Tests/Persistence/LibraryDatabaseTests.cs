@@ -35,6 +35,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.Contains("RetroAchievementGameDetails", GetTableNames(database));
         Assert.Contains("RetroAchievementDetails", GetTableNames(database));
         Assert.Contains("GameDiscSelections", GetTableNames(database));
+        Assert.Contains("PlaySessions", GetTableNames(database));
         Assert.Contains("SchemaVersion", GetTableNames(database));
     }
 
@@ -66,7 +67,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         command.CommandText = "SELECT COUNT(*) FROM SchemaVersion;";
         Assert.Equal(1L, (long)command.ExecuteScalar()!);
         command.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(20L, (long)command.ExecuteScalar()!);
+        Assert.Equal(21L, (long)command.ExecuteScalar()!);
     }
 
     [Fact]
@@ -85,6 +86,47 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         Assert.True(reader.Read());
         Assert.Equal(0L, reader.GetInt64(0));
         Assert.Equal(0L, reader.GetInt64(1));
+    }
+
+    [Fact]
+    public void Initialize_FromVersion20_AddsPlaySessions_AndKeepsTotalsAsEarlierPlay()
+    {
+        // Schema v21 (M46): the play log. A v20 library's totals stay exactly as they were and no
+        // sessions are invented for them; that play reads as "earlier play".
+        var database = new LibraryDatabase(AppPaths);
+        database.Initialize();
+        using (var seed = database.CreateConnection())
+        using (var command = seed.CreateCommand())
+        {
+            command.CommandText =
+                """
+                DROP TABLE PlaySessions;
+                UPDATE SchemaVersion SET Version = 20;
+                INSERT INTO Games (SystemId, Path, Title, IsAvailable, DateAdded, PlaytimeSeconds, PlayCount,
+                                   LastPlayedUnixMilliseconds)
+                VALUES ('playstation', 'PS1/played.cue', 'Played', 1, '2026-07-12', 7200, 3, 1786000000000);
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        database.Initialize();
+
+        Assert.Contains("PlaySessions", GetTableNames(database));
+        using var check = database.CreateConnection();
+        using var query = check.CreateCommand();
+        query.CommandText =
+            """
+            SELECT PlaytimeSeconds, PlayCount, LastPlayedUnixMilliseconds,
+                   (SELECT COUNT(*) FROM PlaySessions), (SELECT Version FROM SchemaVersion)
+            FROM Games;
+            """;
+        using var reader = query.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(7200L, reader.GetInt64(0));
+        Assert.Equal(3L, reader.GetInt64(1));
+        Assert.Equal(1786000000000L, reader.GetInt64(2));
+        Assert.Equal(0L, reader.GetInt64(3));
+        Assert.Equal(21L, reader.GetInt64(4));
     }
 
     [Fact]
@@ -208,7 +250,7 @@ public class LibraryDatabaseTests : TempAppDirectoryTestBase
         using var check = database.CreateConnection();
         using var version = check.CreateCommand();
         version.CommandText = "SELECT Version FROM SchemaVersion LIMIT 1;";
-        Assert.Equal(20L, (long)version.ExecuteScalar()!);
+        Assert.Equal(21L, (long)version.ExecuteScalar()!);
 
         using var origins = check.CreateCommand();
         origins.CommandText = "SELECT TitleOrigin, CoverOrigin FROM Games LIMIT 1;";

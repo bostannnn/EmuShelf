@@ -13288,3 +13288,45 @@ so M46 adds `PlaySessions`.
   This only touches EmuShelf's own database, never the game's files.
 - **Handheld mode gets a second system tile, Activity,** when M46 P4 is built. That amends M45
   decision 18 ("only Settings for now"); the amendment is recorded then, not now.
+
+## 2026-11-08 — M46 P1: how the sessions table is kept in step with the totals
+
+The P1 slice of the play log. The choices the roadmap left open:
+
+- **Earlier play is derived, not stored.** It is the game's totals minus what its sessions account for
+  (`GamePlayHistory.From`), so there is no second set of columns to keep right. The invariant is that every
+  write moves the session row and the totals in the same transaction: `RecordLaunchStarted` opens the row,
+  stamps last-played and adds one play; `CompletePlaySession` closes it and adds its seconds. `AddPlaytime`
+  is gone; nothing adds time without a session any more.
+- **Closing a row is idempotent.** Only an open row closes, so the same session can never add its
+  minutes twice. A zero or negative span closes the row at zero rather
+  than leaving it open; a session the Android path drops as implausible (over 12 h) stays open, which is
+  what "a play of unknown length" means.
+- **Android finds its session instead of carrying its id.** The launch service writes the pending record,
+  but the row is opened in the view model's `beforeStart` callback, and the launch interface has no way to
+  hand an id back. Changing that delegate touches every launcher and fake for no gain: Android keeps at
+  most one pending session, written just after its row was opened, so on return the game's newest open
+  session *is* that launch's. When none is open, the returned play is recorded as a finished session
+  (started its duration ago): Steam launches through GameNative skip the pre-launch callback that opens
+  the row, and a pending record can predate v21. That also counts the Steam play, which M43 never did.
+  The cost: a return retried because its pending record failed to clear finds no open row and adds a
+  second session, as M43 double-added in the same case. That file delete in app-private storage
+  essentially never fails, while losing every Android Steam session is certain.
+- **A desktop launch that never reports a tracked exit stays open**, a play of unknown length, the same
+  as a killed session. Nothing closes it later.
+- **Removing a game keeps its sessions; re-adding the same file relinks them.** The rows carry no foreign
+  key. On removal the game's stored path and latest title are stamped on its sessions; when a game is later
+  inserted at that path (any import path, compared case-insensitively like `Games.Path`; only rows the
+  import itself inserted, so a game that just moved there by a folder relocation never takes them), the
+  sessions move to the new id and their count, time and latest start are *added* to its totals. Games ids are
+  AUTOINCREMENT, so an orphaned session can never attach to an unrelated game by id. Play from before the
+  log lived only on the removed row and is not recovered.
+- **The device id is `Settings/device.json`**, a random id made on first use and kept with the portable
+  folder. Copying a whole install to a second machine therefore copies its id too; a sync (later, beside
+  M33) must treat two installs that share an id as one device. A damaged file gets a fresh id.
+- **Running the desktop app from a worktree on macOS** writes to `~/Library/Application Support/EmuShelf`,
+  the owner's real library. To check the upgrade without touching it, the Release build was started with
+  `HOME` pointed at a scratch folder (and `DOTNET_ROOT` at the user-local SDK). The Debug build doesn't
+  start that way: `AvaloniaUI.DiagnosticsSupport` is `PrivateAssets="All"` in `EmuShelf.UI`, so it's never
+  copied beside the desktop head, yet Debug attaches the dev tools. It's not fixed here (outside P1).
+

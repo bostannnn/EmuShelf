@@ -20,18 +20,27 @@ public interface IGameLibrary
     IReadOnlyList<Game> GetRecentlyAddedGames(int limit);
 
     /// <summary>
-    /// Records that a game was launched: stamps its last-played time (so it surfaces in the Recently
-    /// Played collection) and increments its play count, in one atomic update. Called at launch start,
-    /// so a session ended by an app kill still counts. Only EmuShelf's own record changes; no game file
-    /// is touched.
+    /// Records that a game was launched: opens a play session (M46), stamps last-played (so the game
+    /// surfaces in Recently Played) and increments its play count, in one transaction. Called at launch
+    /// start, so a session ended by an app kill still counts, as an open session of unknown length. Returns
+    /// the session's id, or null when the game is not in the library. Only EmuShelf's own records change;
+    /// no game file is touched.
     /// </summary>
-    void RecordLaunchStarted(long gameId, DateTimeOffset startedAt);
+    long? RecordLaunchStarted(long gameId, DateTimeOffset startedAt);
 
     /// <summary>
-    /// Adds a completed session's duration to a game's accumulated play time. Called when a tracked
-    /// emulator process exits; a zero or negative span is ignored. Only EmuShelf's own record changes.
+    /// Closes an open play session with its length and adds that length to the game's play time. Called
+    /// when a tracked emulator exits, or when EmuShelf returns on Android. A negative span closes it at
+    /// zero. Returns false, changing nothing, when the session is unknown or already closed, so a retried
+    /// completion never counts twice.
     /// </summary>
-    void AddPlaytime(long gameId, TimeSpan duration);
+    bool CompletePlaySession(long sessionId, TimeSpan duration, PlaySessionMeasurement measurement);
+
+    /// <summary>The game's newest session that is still open, or null.</summary>
+    long? FindOpenPlaySession(long gameId);
+
+    /// <summary>The game's play sessions, newest first.</summary>
+    IReadOnlyList<PlaySession> GetPlaySessions(long gameId);
 
     /// <summary>
     /// Inserts games that aren't already present (matched by path). Returns the
@@ -75,7 +84,10 @@ public interface IGameLibrary
     /// <summary>Remembers a disc after it has launched successfully.</summary>
     void SetDiscSelection(string titleSetKey, long gameId);
 
-    /// <summary>Removes only the library record. Game and cover files are never touched.</summary>
+    /// <summary>
+    /// Removes only the library record; its play sessions are kept and return if the same file is added
+    /// again. Game and cover files are never touched.
+    /// </summary>
     void RemoveGame(long gameId);
 
     /// <summary>Removes only the specified library records in one transaction. Game and cover files are never touched.</summary>

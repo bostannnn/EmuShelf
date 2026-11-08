@@ -3158,6 +3158,94 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task LaunchGame_TrackedExit_ClosesThePlaySessionWithTheProcessRuntime()
+    {
+        // M46: the desktop path opens a session at launch and closes it at the tracked exit.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(
+                new GameLaunchResult(true, "Alpha finished", ProcessExited: true, PlayDuration: TimeSpan.FromMinutes(7))));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(7), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.TrackedProcess, session.Measurement);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.FromMinutes(7), stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_ClosesTheLaunchOpenSession_AsAWallClockEstimate()
+    {
+        // M46: the Android path leaves the session open at launch (no process to await) and closes that
+        // same row on return rather than adding another.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+        Assert.Null(Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromMinutes(25));
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(25), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.WallClockEstimate, session.Measurement);
+        Assert.Equal(TimeSpan.FromMinutes(25), _library.GetGames().Single().Playtime);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_WithNoOpenSession_RecordsTheReturnedPlay()
+    {
+        // Steam (GameNative) launches on Android skip the pre-launch callback that opens the session, and a
+        // pending record can predate the play log; the returned minutes must still be kept.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromMinutes(40));
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(40), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.WallClockEstimate, session.Measurement);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.FromMinutes(40), stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_BeyondTwelveHours_LeavesThePlayOfUnknownLength()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromHours(30));
+
+        Assert.Null(Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.Zero, stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
+    }
+
+    [AvaloniaFact]
     public async Task CompleteDeferredPlaySession_ReplacesTheSyncingProgressToastWhenTheBackgroundSyncFinishes()
     {
         // The Android post-exit (deferred) path raises the "Syncing saves…" progress toast, which never
