@@ -60,6 +60,8 @@ internal sealed class HandheldScreenHost
     private bool _inGame;
 
     private ContentControl? _mainSlot;
+    // A new slot has replaced the one the pair was in: the pair joins it on a later pass, not this one.
+    private bool _mainSlotPending;
     private HandheldShellViewModel? _shell;
     private ThorSecondScreenPresentation? _presentation;
     private bool _presentationShowsHandheld;
@@ -107,12 +109,18 @@ internal sealed class HandheldScreenHost
         if (ReferenceEquals(slot, _mainSlot))
             return;
         // A recreated activity brings a new slot: the pair leaves the old one first and joins the new one on a later
-        // pass (never detach and attach in the same pass, DECISIONS 2026-11-07).
+        // pass (never detach and attach in the same pass, DECISIONS 2026-11-07) — including when Update places the
+        // screens in between, as the new activity's resume does.
         if (_mainSlot is { } old)
         {
             old.Content = null;
             _mainSlot = slot;
-            Dispatcher.UIThread.Post(Place, DispatcherPriority.Background);
+            _mainSlotPending = true;
+            Dispatcher.UIThread.Post(() =>
+            {
+                _mainSlotPending = false;
+                Place();
+            }, DispatcherPriority.Background);
             return;
         }
         _mainSlot = slot;
@@ -182,7 +190,7 @@ internal sealed class HandheldScreenHost
             }
             return;
         }
-        if (_mainSlot is { } slot && !ReferenceEquals(slot.Content, _mainRoot))
+        if (_mainSlot is { } slot && !_mainSlotPending && !ReferenceEquals(slot.Content, _mainRoot))
             slot.Content = _mainRoot;
         _presentation?.ShowHandheld(_secondRoot, [NativeSceneSurface.StageSecond, NativeSceneSurface.LauncherSecond]);
         var companion = shell.CompanionScreen;

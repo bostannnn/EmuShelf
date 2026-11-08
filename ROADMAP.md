@@ -2529,19 +2529,20 @@ Played. Pad input already reaches one dispatcher from both displays
         idle drift together, and lifting it puts the ordinary minute rule back; the surface captures the old
         compositor's running backdrop and rest state and applies them after the retained replay. Idle measured over
         five minutes, not an hour: two and five minutes after the last press the app was at 0.0–1.5% of a core with no
-        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run. The rebuilt Stage is only
-        seen in logcat for now: the recreation crash below kills the app right after.
+        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run, and a look at the rebuilt
+        Stage now that the recreation crash (below, fixed the same day) no longer kills the app right after.
+    - [x] **Recreating the activity crashes Handheld mode.** ✅ (2026-11-08; found by the font-scale change used
+          to check the GL-context rebuild, which recreates `MainActivity`. The process died in Avalonia's layout
+          because the Screen-2 Presentation's Avalonia top level was never disposed with its window; it is now.
+          `DECISIONS.md` 2026-11-08 "M45 H7c: a recreated activity no longer kills Handheld mode".)
 - [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
       each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
       full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
       measurements for the heaviest backdrop of each draw path; H7c's hour-long idle run; H2's
-      Launcher-side look, which awaits the owner's hands-on check.
-- [ ] **Recreating the activity crashes Handheld mode** (found 2026-11-08 while checking H7c's rebuild; not H7's
-      to fix): a configuration change the activity does not handle itself (font scale, locale) recreates
-      `MainActivity`, and the app dies in Avalonia's layout ("Attempt to call InvalidateArrange on wrong LayoutManager")
-      while the Screen-2 presentation's views are re-hosted. The native surfaces rebuild fine (StageSecond logged its
-      resume first). Reproduce: `adb shell settings put system font_scale 1.15` with the app up. Either handle
-      `FontScale`/`Locale` in `ConfigurationChanges` or make `HandheldScreenHost` survive a new main TopLevel.
+      Launcher-side look, which awaits the owner's hands-on check;
+      H6d's real fresh install on the Thor (cleared data or a second device: the pre-boot steps, then Handheld mode, the
+      wizard and a playable home, end to end; the device check faked "fresh" in the owner's settings), its empty library on
+      the device (checked headlessly only), and the owner's ear on the five sounds (character and level).
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).

@@ -74,6 +74,38 @@ public sealed record SecondScreenDock
         return this;
     }
 
+    /// <summary>
+    /// Follows apps whose launcher entry moved: an update can rename the activity an app launches with (Apple Music's
+    /// splash screen became its main activity), which leaves the pinned name pointing at nothing and the slot drawn empty.
+    /// A slot whose component is not in <paramref name="launchable"/> takes its package's launcher entry instead, when the
+    /// package has exactly one and it is not pinned elsewhere. An uninstalled app, or one with several entries, stays as
+    /// it is. Returns this dock when nothing moved.
+    /// </summary>
+    public SecondScreenDock FollowMovedApps(IReadOnlyCollection<string> launchable)
+    {
+        ArgumentNullException.ThrowIfNull(launchable);
+        var known = new HashSet<string>(launchable, StringComparer.Ordinal);
+        var next = Components.ToArray();
+        var moved = false;
+        for (var slot = 0; slot < SlotCount; slot++)
+        {
+            if (next[slot] is not { } pinned || known.Contains(pinned) || Package(pinned) is not { } package)
+                continue;
+            var entries = known.Where(component => Package(component) == package).Take(2).ToList();
+            if (entries.Count != 1 || next.Contains(entries[0], StringComparer.Ordinal))
+                continue;
+            next[slot] = entries[0];
+            moved = true;
+        }
+        return moved ? new SecondScreenDock(next) : this;
+    }
+
+    private static string? Package(string component)
+    {
+        var slash = component.IndexOf('/', StringComparison.Ordinal);
+        return slash > 0 ? component[..slash] : null;
+    }
+
     public SecondScreenDock Clear(int slot)
     {
         ValidateSlot(slot);

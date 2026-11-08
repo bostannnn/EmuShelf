@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Android.App;
 using Android.Content;
@@ -10,13 +11,17 @@ namespace EmuShelf.App.Android.Services;
 /// Hosts the Thor companion surface as an embedded Avalonia top level on the Presentation display, so it
 /// renders with the app's theme, Inter font, and controls. All state and behaviour live on
 /// <see cref="Model"/> (pushed in and wired by <see cref="SecondScreenController"/>); this type is just
-/// the Android window that carries the Avalonia view onto Screen-2.
+/// the Android window that carries the Avalonia view onto Screen-2. The embedded Avalonia top level lives and dies
+/// with the window: <see cref="ReleaseResources"/> empties it, <see cref="Dispose(bool)"/> disposes it once the window
+/// is gone (see there for why that order).
 /// </summary>
 internal sealed class ThorSecondScreenPresentation : Presentation
 {
     private readonly global::Avalonia.Android.AvaloniaView _avaloniaView;
     private readonly global::EmuShelf.App.Views.SecondScreenView _companionView;
     private bool _released;
+    // The AvaloniaView's top level, taken as the view is emptied and disposed with this window (Dispose below).
+    private IDisposable? _embeddedTopLevel;
 
     /// <summary>
     /// True while Screen-2 shows Handheld mode (its Launcher, or its own companion while a game runs, M45 H6b) rather
@@ -167,7 +172,38 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         Model.ClearAchievements();
         Model.ClearMedia();
         // Detach the embedded Avalonia top level before the Presentation window is torn down, so its
-        // render loop and input handlers do not outlive the display.
+        // render loop and input handlers do not outlive the display. The top level itself (reached through its
+        // content, which has to be attached to find it) is disposed once the window is gone, in Dispose below.
+        _embeddedTopLevel = _avaloniaView.Content is global::Avalonia.Visual content
+            ? global::Avalonia.Controls.TopLevel.GetTopLevel(content) as IDisposable
+            : null;
         _avaloniaView.Content = null;
+    }
+
+    /// <summary>
+    /// Disposes the embedded Avalonia top level once the window is gone (<see cref="SecondScreenController"/> dismisses,
+    /// then disposes). Left alone it outlives the Presentation: an <c>AvaloniaView</c> only disposes its top level from
+    /// Avalonia's own assembly, so the top level's layout manager stays live with whatever Handheld mode's views queued in
+    /// it as they left — and its next pass finds those views in the new Presentation's top level and throws "Attempt to
+    /// call InvalidateArrange on wrong LayoutManager", which killed the process whenever Android recreated the activity
+    /// (a font-scale change; DECISIONS 2026-11-08). A disposed layout manager drops its queue instead. Disposed after the
+    /// window rather than in <see cref="ReleaseResources"/>: disposing the top level disposes the managed peer of its
+    /// surface view, and Android still delivers that view's surface-destroyed callback while the window closes.
+    /// </summary>
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing && _embeddedTopLevel is { } topLevel)
+        {
+            _embeddedTopLevel = null;
+            try
+            {
+                topLevel.Dispose();
+            }
+            catch (Exception ex)
+            {
+                global::Android.Util.Log.Warn("EmuShelfHandheld", $"Could not dispose the second screen's Avalonia top level: {ex.Message}");
+            }
+        }
+        base.Dispose(disposing);
     }
 }

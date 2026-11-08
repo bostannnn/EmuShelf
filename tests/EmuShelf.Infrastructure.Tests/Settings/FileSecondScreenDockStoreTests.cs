@@ -41,6 +41,46 @@ public sealed class FileSecondScreenDockStoreTests : IDisposable
     }
 
     [Fact]
+    public void FollowMovedApps_RepinsAnAppWhoseLauncherEntryWasRenamed()
+    {
+        // The owner's Thor: Apple Music's launcher entry moved from its splash screen to its main activity in an update.
+        var dock = new SecondScreenDock(
+        [
+            "com.android.chrome/com.google.android.apps.chrome.Main",
+            "com.apple.android.music/com.apple.android.music.onboarding.activities.SplashActivity",
+            "gone.app/.Main",
+            "two.entries/.Old",
+            null,
+        ]);
+        string[] launchable =
+        [
+            "com.android.chrome/com.google.android.apps.chrome.Main",
+            "com.apple.android.music/com.apple.android.music.common.MainActivity",
+            "two.entries/.First",
+            "two.entries/.Second",
+        ];
+
+        var followed = dock.FollowMovedApps(launchable);
+
+        Assert.Equal("com.android.chrome/com.google.android.apps.chrome.Main", followed[0]);
+        Assert.Equal("com.apple.android.music/com.apple.android.music.common.MainActivity", followed[1]);
+        // Uninstalled: nothing to follow. Several entries: no telling which one was meant.
+        Assert.Equal("gone.app/.Main", followed[2]);
+        Assert.Equal("two.entries/.Old", followed[3]);
+        Assert.Null(followed[4]);
+        // Nothing left to move: the same dock comes back, so the caller has nothing to save.
+        Assert.Same(followed, followed.FollowMovedApps(launchable));
+    }
+
+    [Fact]
+    public void FollowMovedApps_LeavesAnEntryAlreadyPinnedInAnotherSlot()
+    {
+        var dock = new SecondScreenDock(["music/.Splash", "music/.Main", null, null, null]);
+
+        Assert.Same(dock, dock.FollowMovedApps(["music/.Main"]));
+    }
+
+    [Fact]
     public void Dock_DoesNotExposeMutableBackingStorage()
     {
         var dock = SecondScreenDock.Empty.Pin(0, "app.one/.Main");
