@@ -20,6 +20,11 @@ public partial class HandheldPanelView : UserControl
     {
         InitializeComponent();
         _rows = this.FindControl<ItemsControl>("PanelRows")!;
+        var host = this.FindControl<Panel>("PanelScrollHost")!;
+        var scroller = this.FindControl<ScrollViewer>("PanelScroller")!;
+        // Every row is 100 px with a 12 px gap below it: the scroller shows whole rows, never one cut at an edge.
+        host.SizeChanged += (_, _) => HandheldScrolling.FitWholeRows(scroller, host.Bounds.Height, RowPitch);
+        HandheldScrolling.KeepOnWholeRows(scroller, () => RowPitch);
         DataContextChanged += (_, _) =>
         {
             if (_panel is { } old)
@@ -47,6 +52,9 @@ public partial class HandheldPanelView : UserControl
         if (_panel is { FocusIndex: >= 0 and var index } panel && index < panel.Rows.Count && panel.IsListing)
             _rows.ScrollIntoView(index);
     }
+
+    // A row's slot: its 100 px and the 12 px gap under it (HandheldPanelView.axaml).
+    private const double RowPitch = 112;
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

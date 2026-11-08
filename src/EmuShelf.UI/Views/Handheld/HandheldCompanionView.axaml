@@ -568,9 +568,10 @@
             the selector ring and its glow fit between them. Row-virtualized, so a 400-badge set realizes only what shows.
           -->
           <!-- The outer badges' 25 px margins sit inside the 48 px edge, so the grid lines up with the header. -->
-          <Panel Grid.Row="2" Margin="23,16,23,0">
+          <!-- Whole rows only: the view fits the list to the most 170 px rows the space holds (HandheldScrolling). -->
+          <Panel x:Name="BadgeHost" Grid.Row="2" Margin="23,16,23,0">
             <ListBox x:Name="BadgeList" ItemsSource="{Binding Model.AchievementRows}" IsVisible="{Binding IsAchievementsLayer}"
-                     Background="Transparent" BorderThickness="0" Padding="0,24" ClipToBounds="True"
+                     Background="Transparent" BorderThickness="0" Padding="0" ClipToBounds="True" VerticalAlignment="Top"
                      AutoScrollToSelectedItem="False" HorizontalAlignment="Center"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden">
               <ListBox.ItemsPanel>
@@ -692,9 +693,19 @@
               <PathIcon Data="{DynamicResource EmuCloseGeometry}" Width="22" Height="22" />
             </Border>
           </Grid>
-          <!-- Padded so the selector ring (and the lift) on the first and last rows is never cut by the scroller. -->
-          <ScrollViewer x:Name="DrawerScroll" Grid.Row="1" Margin="0,8,0,0" Padding="48,40,48,24"
+          <!--
+            Whole rows only: the view sizes the scroller to a whole number of rows and scrolls a row at a time, so no row ever
+            shows cut at an edge (HandheldScrolling). The scroller does not clip, so the lifted ring and its glow reach past
+            its top edge; the view hides every row not wholly inside it instead.
+          -->
+          <Panel x:Name="DrawerScrollHost" Grid.Row="1" Margin="0,8,0,0">
+          <ScrollViewer x:Name="DrawerScroll" Padding="48,0" VerticalAlignment="Top" ClipToBounds="False"
                         HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden">
+            <ScrollViewer.Styles>
+              <Style Selector="ScrollViewer#DrawerScroll /template/ ScrollContentPresenter">
+                <Setter Property="ClipToBounds" Value="False" />
+              </Style>
+            </ScrollViewer.Styles>
             <ItemsControl x:Name="DrawerApps" ItemsSource="{Binding DrawerApps}" ClipToBounds="False">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -703,7 +714,11 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:HandheldDrawerAppViewModel">
-                  <StackPanel Spacing="40" Margin="0,0,0,40" Background="Transparent" Tapped="OnDrawerAppTapped"
+                  <!--
+                    One row is 216 px, so four fit on either screen: 20 above the icon, the 112 px icon, 36 to a 32 px label,
+                    16 below. The lifted ring reaches 28 px past the icon, clearing both labels by 8.
+                  -->
+                  <StackPanel Spacing="36" Margin="0,20,0,16" Background="Transparent" Tapped="OnDrawerAppTapped"
                               ai:InputElement.IsHoldingEnabled="True" Holding="OnDrawerAppHolding">
                     <Panel Classes="lift" Classes.focused="{Binding IsFocused}" Width="112" Height="112"
                            HorizontalAlignment="Center">
@@ -715,12 +730,13 @@
                       </Border>
                     </Panel>
                     <TextBlock Text="{Binding App.Label}" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" MaxLines="1" MaxWidth="200" />
+                               TextTrimming="CharacterEllipsis" MaxLines="1" MaxWidth="200" Height="32" />
                   </StackPanel>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
+          </Panel>
           <ItemsControl Grid.Row="2" ItemsSource="{Binding DrawerHints}" HorizontalAlignment="Right" Margin="48,0,48,40">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>

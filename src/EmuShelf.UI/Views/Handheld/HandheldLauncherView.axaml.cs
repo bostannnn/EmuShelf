@@ -65,6 +65,24 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _settingsSections = this.FindControl<ItemsControl>("SettingsSections")!;
         _settingsThemes = this.FindControl<ItemsControl>("SettingsThemes")!;
         _settingsChoices = this.FindControl<ItemsControl>("SettingsChoices")!;
+        // Settings' lists show whole rows: each scroller is fitted to its space whenever that or its rows change size.
+        foreach (var (hostName, scrollerName, items) in new[]
+        {
+            ("SettingsSectionHost", "SettingsSectionScroller", _settingsSections),
+            ("SettingsRowHost", "SettingsRowScroller", _settingsRows),
+            ("SettingsThemeHost", "SettingsThemeScroller", _settingsThemes),
+        })
+        {
+            var hostPanel = this.FindControl<Panel>(hostName)!;
+            var scrollViewer = this.FindControl<ScrollViewer>(scrollerName)!;
+            void Fit() => FitWholeRows(hostPanel, scrollViewer, items);
+            hostPanel.SizeChanged += (_, _) => Fit();
+            items.SizeChanged += (_, _) => Fit();
+            HandheldScrolling.KeepOnWholeRows(scrollViewer, () => HandheldScrolling.RowPitch(items));
+        }
+        // The sheet and the choice picker: 88 px rows with 4 px gaps (their scrollers' MaxHeight holds eight).
+        HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SheetScroller")!, () => 92);
+        HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SettingsChoiceScroller")!, () => 92);
         _panelCanvas = this.FindControl<Control>("PanelCanvas")!;
         _sheetRows = this.FindControl<ItemsControl>("SheetRows")!;
         // View wiring only: the motion follows whichever shell the view shows.
@@ -184,6 +202,10 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             Reveal(_settingsRows, projection.FocusedRowIndex);
         Reveal(_settingsSections, settings.Sections.ToList().FindIndex(section => section.IsSelected));
     }
+
+    // A list's rows are one height (its first row's slot, margins included): the scroller takes the most whole rows that fit.
+    private static void FitWholeRows(Panel host, ScrollViewer scroller, ItemsControl items) =>
+        HandheldScrolling.FitWholeRows(scroller, host.Bounds.Height, HandheldScrolling.RowPitch(items));
 
     private static void Reveal(ItemsControl items, int index)
     {

@@ -135,9 +135,10 @@
       <Setter Property="Foreground" Value="#5B6176" />
     </Style>
     <!-- The actions sheet's and the naming panel's rows. -->
+    <!-- One height, so the sheet and the choice list scroll in whole rows. -->
     <Style Selector="Border.sheet-row">
       <Setter Property="CornerRadius" Value="20" />
-      <Setter Property="MinHeight" Value="88" />
+      <Setter Property="Height" Value="88" />
       <Setter Property="Padding" Value="28,12" />
       <Setter Property="Background" Value="Transparent" />
     </Style>
@@ -322,7 +323,7 @@
     </Style>
     <Style Selector="Border.settings-section">
       <Setter Property="CornerRadius" Value="24" />
-      <Setter Property="MinHeight" Value="88" />
+      <Setter Property="Height" Value="88" />
       <Setter Property="Padding" Value="24,10" />
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="BorderThickness" Value="1" />
@@ -354,9 +355,10 @@
     <Style Selector="Border.settings-section.focused TextBlock">
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <!-- One height for every row, so the lists scroll in whole rows and never show one cut at an edge. -->
     <Style Selector="Border.settings-row">
       <Setter Property="CornerRadius" Value="24" />
-      <Setter Property="MinHeight" Value="92" />
+      <Setter Property="Height" Value="92" />
       <Setter Property="Padding" Value="28,12" />
       <Setter Property="Background" Value="#FFFFFF" />
       <Setter Property="BorderBrush" Value="#141C2033" />
@@ -364,7 +366,6 @@
     </Style>
     <Style Selector="Border.settings-row.grouped">
       <Setter Property="Margin" Value="48,0,0,0" />
-      <Setter Property="MinHeight" Value="84" />
     </Style>
     <Style Selector="Border.settings-row.save">
       <Setter Property="Background" Value="#E9E8FB" />
@@ -1153,8 +1154,11 @@
                            TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
               </StackPanel>
             </Grid>
-            <!-- A game's sheet holds every action (M45 H6c), more rows than fit: the list scrolls to keep the focus in view. -->
-            <ScrollViewer x:Name="SheetScroller" MaxHeight="780" VerticalScrollBarVisibility="Hidden">
+            <!--
+              A game's sheet holds every action (M45 H6c), more rows than fit: the list scrolls to keep the focus in view, and
+              shows whole rows only (eight 88 px rows and their 4 px gaps), so a row is never cut at the edge.
+            -->
+            <ScrollViewer x:Name="SheetScroller" MaxHeight="732" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SheetRows" ItemsSource="{Binding Sheet.Items}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -1329,7 +1333,8 @@
           <TextBlock Grid.Column="1" Text="{Binding SectionTitle}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033"
                      VerticalAlignment="Center" Margin="40,0,0,0" TextTrimming="CharacterEllipsis" />
 
-          <ScrollViewer Grid.Row="1" x:Name="SettingsSectionScroller" Margin="0,24,0,0" VerticalScrollBarVisibility="Hidden">
+          <Panel Grid.Row="1" x:Name="SettingsSectionHost" Margin="0,24,0,0">
+          <ScrollViewer x:Name="SettingsSectionScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SettingsSections" ItemsSource="{Binding Sections}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:HandheldSettingsSectionViewModel">
@@ -1345,10 +1350,11 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
+          </Panel>
 
           <!-- The rows: label left, then the one thing that ends a row (a switch, ‹ a choice ›, a value, a chevron). -->
-          <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="SettingsRowScroller" Margin="40,24,0,0"
-                        VerticalScrollBarVisibility="Hidden" IsVisible="{Binding IsRows}">
+          <Panel Grid.Row="1" Grid.Column="1" x:Name="SettingsRowHost" Margin="40,24,0,0" IsVisible="{Binding IsRows}">
+          <ScrollViewer x:Name="SettingsRowScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SettingsRows" ItemsSource="{Binding Rows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
@@ -1389,10 +1395,11 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
+          </Panel>
 
           <!-- Themes: the gallery, three to a row as the pad moves through it. -->
-          <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="SettingsThemeScroller" Margin="40,24,0,0"
-                        VerticalScrollBarVisibility="Hidden" IsVisible="{Binding IsThemes}">
+          <Panel Grid.Row="1" Grid.Column="1" x:Name="SettingsThemeHost" Margin="40,24,0,0" IsVisible="{Binding IsThemes}">
+          <ScrollViewer x:Name="SettingsThemeScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SettingsThemes" ItemsSource="{Binding ThemeChoices}" HorizontalAlignment="Left">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -1425,6 +1432,7 @@
               </ItemsControl.ItemTemplate>
             </ItemsControl>
           </ScrollViewer>
+          </Panel>
         </Grid>
 
         <!-- State: a choice's list, a card over a scrim (A picks, B leaves it as it was). -->
@@ -1435,7 +1443,8 @@
             <Grid RowDefinitions="Auto,*">
               <TextBlock Text="{Binding Projection.ChoicePickerTitle}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
                          Margin="24,8,24,12" TextTrimming="CharacterEllipsis" />
-              <ScrollViewer Grid.Row="1" x:Name="SettingsChoiceScroller" VerticalScrollBarVisibility="Hidden">
+              <!-- Whole rows: eight 88 px choices with their 4 px gaps. -->
+              <ScrollViewer Grid.Row="1" x:Name="SettingsChoiceScroller" MaxHeight="736" VerticalScrollBarVisibility="Hidden">
                 <ItemsControl x:Name="SettingsChoices" ItemsSource="{Binding ChoiceOptions}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="vm:GamepadChoiceOptionViewModel">

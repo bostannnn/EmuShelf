@@ -13775,3 +13775,20 @@ corrected or deleted from the timeline or the game page.
 - **Not done:** on the swapped (narrow) Stage a two-line toast can briefly cover the top of a tall panel card (Search's
   fan); the card cannot move down without shrinking it. The scraper and batch scraper panels are checked headlessly only:
   the Thor's build has no ScreenScraper credentials, so there they say "ScreenScraper is unavailable right now".
+
+## 2026-11-08 — M45 H6c follow-up: pinning from All apps, and whole rows in every Handheld list
+
+- **Y on an app in All apps pins it to the dock** (or a long press): the first free slot, said under the title ("ARMSX3 is in
+  the dock, slot 2"); an app already there says which slot, a full dock says Y on a dock app changes or clears one. A slot whose app is no longer a
+  launcher entry (uninstalled, or its activity renamed by an update) counts as free: on the owner's Thor an "empty"
+  slot held a stale Apple Music component, so the dock read as full with a gap in it.
+- **Scrolling lists show whole rows only** (owner, from a photo of All apps: the top row's icons and selector ring cut at
+  the scroller's edge, a half row behind the A/Y/B hints). Each list's viewport is sized to a whole number of rows of one
+  pitch (`HandheldScrolling.FitWholeRows`) with no vertical padding, so bringing the focus into view moves it by whole
+  rows; a drag settles on the nearest row and the wheel goes on to the next (`KeepOnWholeRows`). Applied to All apps,
+  the badge grid, the game sheet, panels (a 112 px pitch), and Settings' sections, rows, themes and choices. Settings'
+  rows are now a fixed 92 px (grouped ones were 84) and sections 88, so a list has one pitch.
+- **All apps does not clip its scroller** (*why:* a whole-row viewport left no room above the top row for the lifted
+  ring and its glow, and giving every row that room fit only three rows): rows not wholly inside the viewport are hidden
+  instead, and the ring draws past the edge. One row is 216 px (20 above the 112 px icon, 36 to a fixed 32 px label, 16
+  below), so four rows fit on either screen and the 1.13× ring clears both labels by 8 px.

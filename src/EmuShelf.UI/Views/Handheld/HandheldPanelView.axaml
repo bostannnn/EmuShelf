@@ -26,6 +26,10 @@
     <Style Selector="Border.settings-row.primary.focused TextBlock.label">
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <!-- One height for every row (a thumbnail, a line under the label), so the list scrolls in whole rows. -->
+    <Style Selector="Border.settings-row">
+      <Setter Property="Height" Value="100" />
+    </Style>
     <Style Selector="Border.settings-row TextBlock.detail">
       <Setter Property="FontSize" Value="22" />
       <Setter Property="Foreground" Value="#5B6176" />
@@ -119,8 +123,9 @@
     </StackPanel>
 
     <!-- The rows: label (and a line under it), a value, then a switch or a chevron; a thumbnail first where there is one. -->
-    <Panel Grid.Row="2" Margin="0,24,0,0" IsVisible="{Binding IsListing}">
-      <ScrollViewer x:Name="PanelScroller" VerticalScrollBarVisibility="Hidden">
+    <Panel Grid.Row="2" x:Name="PanelScrollHost" Margin="0,24,0,0" IsVisible="{Binding IsListing}">
+      <!-- Whole rows only: the view fits the scroller to the most 100 px rows (and their 12 px gaps) the space holds. -->
+      <ScrollViewer x:Name="PanelScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
         <ItemsControl x:Name="PanelRows" ItemsSource="{Binding Rows}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>

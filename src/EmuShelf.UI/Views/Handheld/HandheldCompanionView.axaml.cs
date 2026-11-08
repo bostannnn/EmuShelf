@@ -10,6 +10,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using EmuShelf.App.Controls;
 using EmuShelf.App.ViewModels;
+using EmuShelf.App.Views.Handheld;
 
 namespace EmuShelf.App.Views;
 
@@ -36,6 +37,26 @@ public partial class HandheldCompanionView : UserControl
         // Every touch keeps the companion lit; the tunnel pass with handled events too, so a tap a button takes still counts.
         AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         DataContextChanged += (_, _) => Bind(DataContext as HandheldCompanionViewModel);
+        // The space under All apps' title changes with the screen: the scroller is fitted to whole rows again.
+        var drawerScroll = this.FindControl<ScrollViewer>("DrawerScroll")!;
+        var drawerApps = this.FindControl<ItemsControl>("DrawerApps")!;
+        this.FindControl<Panel>("DrawerScrollHost")!.SizeChanged += (_, _) => FitDrawer();
+        // …and once its rows are laid out (the first time All apps opens, they are not yet when the space is known).
+        drawerApps.SizeChanged += (_, _) => FitDrawer();
+        HandheldScrolling.KeepOnWholeRows(drawerScroll, () => HandheldScrolling.RowPitch(drawerApps));
+        // The scroller does not clip (the ring reaches past it): only rows wholly inside it show.
+        drawerApps.LayoutUpdated += (_, _) => HandheldScrolling.HideRowsOutside(drawerScroll, drawerApps);
+        drawerScroll.ScrollChanged += (_, _) => HandheldScrolling.HideRowsOutside(drawerScroll, drawerApps);
+        // The badge grid shows whole rows too.
+        var badgeHost = this.FindControl<Panel>("BadgeHost")!;
+        var badges = this.FindControl<ListBox>("BadgeList")!;
+        badgeHost.SizeChanged += (_, _) => FitBadges(badgeHost, badges);
+        badges.SizeChanged += (_, _) => FitBadges(badgeHost, badges);
+        badges.TemplateApplied += (_, _) =>
+        {
+            if (badges.Scroll is ScrollViewer badgeScroll)
+                HandheldScrolling.KeepOnWholeRows(badgeScroll, () => HandheldScrolling.RowPitch(badges));
+        };
     }
 
     /// <summary>Drawn for the 16:9 screen.</summary>
@@ -61,7 +82,7 @@ public partial class HandheldCompanionView : UserControl
 
     private void OnCompanionChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(HandheldCompanionViewModel.DrawerIndex))
+        if (e.PropertyName is nameof(HandheldCompanionViewModel.DrawerIndex) or nameof(HandheldCompanionViewModel.IsDrawerLayer))
             Dispatcher.UIThread.Post(BringDrawerSelectionIntoView, DispatcherPriority.Loaded);
     }
 
@@ -210,7 +231,20 @@ public partial class HandheldCompanionView : UserControl
         if (Companion is not { } companion || this.FindControl<ItemsControl>("DrawerApps") is not { } apps ||
             companion.DrawerIndex >= companion.DrawerApps.Count)
             return;
-        apps.ContainerFromIndex(companion.DrawerIndex)?.BringIntoView();
+        FitDrawer();
+        if (apps.ContainerFromIndex(companion.DrawerIndex) is Control container)
+            container.BringIntoView();
+    }
+
+    private static void FitBadges(Panel host, ListBox badges) =>
+        HandheldScrolling.FitWholeRows(badges, host.Bounds.Height, HandheldScrolling.RowPitch(badges));
+
+    // All apps shows whole rows: the scroller takes the most rows that fit the space under the title, never a part of one.
+    private void FitDrawer()
+    {
+        if (this.FindControl<Panel>("DrawerScrollHost") is { } host && this.FindControl<ScrollViewer>("DrawerScroll") is { } scroll &&
+            this.FindControl<ItemsControl>("DrawerApps") is { } apps)
+            HandheldScrolling.FitWholeRows(scroll, host.Bounds.Height, HandheldScrolling.RowPitch(apps));
     }
 
     // ---- The photo viewer ----
