@@ -101,6 +101,12 @@ public partial class App : Application
     public static Func<string, bool>? InstalledPackageProbe { get; set; }
 
     /// <summary>
+    /// Set by the Android head: the Usage access grant and the foreground events it unlocks, which time play
+    /// by the emulator's on-screen time (M46 P2). Desktop leaves this null; it times the emulator process.
+    /// </summary>
+    public static IAppUsageAccess? UsageAccess { get; set; }
+
+    /// <summary>
     /// Raised by the Android head when EmuShelf becomes the top-resumed activity again. The device state
     /// Settings reports — the Shizuku grant, whether an emulator app is installed — is changed from
     /// outside EmuShelf, so this is when a screen holding cached probe results re-reads them. Desktop

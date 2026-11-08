@@ -439,6 +439,17 @@ public sealed class DialogService : IDialogService
         finally { viewModel.CloseRequested -= dialog.Close; _activeDialog = null; }
     }
 
+    public async Task ShowActivityAsync(ActivityViewModel viewModel)
+    {
+        var owner = DialogOwner;
+        if (owner is null) return;
+        var dialog = new ActivityWindow { DataContext = viewModel };
+        viewModel.CloseRequested += dialog.Close;
+        _activeDialog = dialog;
+        try { await dialog.ShowDialog(owner); }
+        finally { viewModel.CloseRequested -= dialog.Close; _activeDialog = null; }
+    }
+
     public async Task ShowAchievementDetailsAsync(string gameTitle, int retroAchievementsGameId)
     {
         var owner = DialogOwner;

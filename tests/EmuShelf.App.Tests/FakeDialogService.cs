@@ -8,6 +8,14 @@ namespace EmuShelf.App.Tests;
 /// <summary>Scripts the pickers so view-model flows can be driven without real dialogs.</summary>
 internal sealed class FakeDialogService : IDialogService
 {
+    public List<EmuShelf.App.ViewModels.ActivityViewModel> ShownActivities { get; } = [];
+
+    public Task ShowActivityAsync(EmuShelf.App.ViewModels.ActivityViewModel viewModel)
+    {
+        ShownActivities.Add(viewModel);
+        return Task.CompletedTask;
+    }
+
     public IReadOnlyList<string> FilesToReturn { get; set; } = [];
     public string? FolderToReturn { get; set; }
     public GameSystem? SystemToReturn { get; set; }

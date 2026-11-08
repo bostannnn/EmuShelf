@@ -262,6 +262,12 @@
                         <PathIcon Width="17" Height="17"
                                   Data="M4,6 H16 A3,3 0 0 1 19,9 V14 A3,3 0 0 1 16,17 H4 A3,3 0 0 1 1,14 V9 A3,3 0 0 1 4,6 Z M5,11 H9 M7,9 V13 M14,10 A1,1 0 1 0 14,12 A1,1 0 1 0 14,10 M17,12 A1,1 0 1 0 17,14 A1,1 0 1 0 17,12" />
                     </Button>
+                    <Button x:Name="ActivityButton" Classes="toolbar-button" Command="{Binding OpenActivityCommand}"
+                            WindowDecorationProperties.ElementRole="User"
+                            IsEnabled="{Binding !IsBusy}" ToolTip.Tip="Activity: what you played and for how long">
+                        <PathIcon Width="17" Height="17"
+                                  Data="M10,2 A8,8 0 1 0 10,18 A8,8 0 1 0 10,2 Z M10,4 A6,6 0 1 1 10,16 A6,6 0 1 1 10,4 Z M9,6 H11 V9.6 L13.6,11.2 L12.6,12.9 L9,10.7 Z" />
+                    </Button>
                     <Button x:Name="SettingsButton" Classes="toolbar-button" Command="{Binding OpenSettingsCommand}"
                             WindowDecorationProperties.ElementRole="User"
                             IsEnabled="{Binding !IsBusy}" ToolTip.Tip="Settings">
@@ -349,6 +355,9 @@
                                         <MenuItem Header="Achievements…"
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="Play history…"
+                                                  Command="{Binding OpenPlayHistoryCommand}"
                                                   CommandParameter="{Binding}" />
                                         <MenuItem Header="{x:Static vm:GameViewModel.ShowInFolderLabel}"
                                                   Command="{Binding ShowInFolderCommand}"
@@ -620,6 +629,9 @@
                                         <MenuItem Header="Achievements…"
                                                   IsVisible="{Binding CanOpenAchievementDetails}"
                                                   Command="{Binding OpenAchievementsCommand}"
+                                                  CommandParameter="{Binding}" />
+                                        <MenuItem Header="Play history…"
+                                                  Command="{Binding OpenPlayHistoryCommand}"
                                                   CommandParameter="{Binding}" />
                                         <MenuItem Header="{x:Static vm:GameViewModel.ShowInFolderLabel}"
                                                   Command="{Binding ShowInFolderCommand}"

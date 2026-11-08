@@ -1,0 +1,19 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:EmuShelf.App.ViewModels"
+        xmlns:views="using:EmuShelf.App.Views"
+        x:Class="EmuShelf.App.Views.ActivityWindow"
+        x:DataType="vm:ActivityViewModel"
+        Title="Activity"
+        Icon="avares://EmuShelf.UI/Assets/emushelf.ico"
+        Width="760" Height="640"
+        MinWidth="560" MinHeight="420"
+        Background="{DynamicResource EmuWindowBackgroundBrush}"
+        WindowStartupLocation="CenterOwner">
+    <!-- The play log (M46 P3) on Desktop: the shared view, with Escape backing out of the editor or a game
+         page before it closes the window. -->
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Escape" Command="{Binding GoBackCommand}" />
+    </Window.KeyBindings>
+    <views:ActivityView Margin="24" />
+</Window>

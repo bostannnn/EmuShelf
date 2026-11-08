@@ -15,7 +15,18 @@ public class GameLibraryTests : TempAppDirectoryTestBase
         AppPaths.EnsureDirectoriesExist();
         var database = new LibraryDatabase(AppPaths);
         database.Initialize();
-        _library = new GameLibrary(database, new RelativePathResolver(AppPaths));
+        _library = new GameLibrary(
+            database,
+            new RelativePathResolver(AppPaths),
+            new FixedDeviceIdentity("test-device"));
+    }
+
+    // One finished sitting: opened at launch, closed at the tracked exit.
+    private long Play(long gameId, TimeSpan duration, DateTimeOffset? startedAt = null)
+    {
+        var sessionId = _library.RecordLaunchStarted(gameId, startedAt ?? DateTimeOffset.UtcNow)!.Value;
+        Assert.True(_library.CompletePlaySession(sessionId, duration, PlaySessionMeasurement.TrackedProcess));
+        return sessionId;
     }
 
     private Game NewGame(string system, string path, string title) => new()
@@ -37,7 +48,7 @@ public class GameLibraryTests : TempAppDirectoryTestBase
         _library.AddGames([game]);
         var original = Assert.Single(_library.GetGames());
         _library.UpdateTitle(original.Id, "My title");
-        _library.AddPlaytime(original.Id, TimeSpan.FromMinutes(10));
+        Play(original.Id, TimeSpan.FromMinutes(10));
         File.Move(firstPath, secondPath);
         Assert.Equal(0, _library.AddGames([game with { Path = secondPath, Title = "New" }]));
         var relocated = Assert.Single(_library.GetGames());
@@ -228,28 +239,311 @@ public class GameLibraryTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void Playtime_DefaultsToZero_AndAddPlaytimeAccumulates()
+    public void Playtime_DefaultsToZero_AndCompletedSessionsAccumulate()
     {
         _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
         var game = _library.GetGames("playstation").Single();
         Assert.Equal(TimeSpan.Zero, game.Playtime);
 
-        _library.AddPlaytime(game.Id, TimeSpan.FromMinutes(20));
-        _library.AddPlaytime(game.Id, TimeSpan.FromMinutes(25));
+        Play(game.Id, TimeSpan.FromMinutes(20));
+        Play(game.Id, TimeSpan.FromMinutes(25));
 
         Assert.Equal(TimeSpan.FromMinutes(45), _library.GetGames("playstation").Single().Playtime);
     }
 
     [Fact]
-    public void AddPlaytime_IgnoresZeroAndNegativeDurations()
+    public void CompletePlaySession_ClosesZeroAndNegativeSpansAtZero_WithoutAddingTime()
     {
         _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
         var game = _library.GetGames("playstation").Single();
 
-        _library.AddPlaytime(game.Id, TimeSpan.Zero);
-        _library.AddPlaytime(game.Id, TimeSpan.FromSeconds(-30));
+        Play(game.Id, TimeSpan.Zero);
+        Play(game.Id, TimeSpan.FromSeconds(-30));
 
         Assert.Equal(TimeSpan.Zero, _library.GetGames("playstation").Single().Playtime);
+        Assert.All(_library.GetPlaySessions(game.Id), session => Assert.Equal(TimeSpan.Zero, session.Duration));
+    }
+
+    [Fact]
+    public void RecordLaunchStarted_OpensASession_WithTheGameSnapshotAndDevice()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "Alpha")]);
+        var game = _library.GetGames("playstation").Single();
+        var startedAt = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+
+        var sessionId = _library.RecordLaunchStarted(game.Id, startedAt);
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(sessionId, session.Id);
+        Assert.Equal(game.Id, session.GameId);
+        Assert.Equal("Alpha", session.GameTitle);
+        Assert.Equal("playstation", session.SystemId);
+        Assert.Equal(startedAt, session.StartedAt);
+        Assert.Null(session.Duration);
+        Assert.Null(session.Measurement);
+        Assert.Equal("test-device", session.DeviceId);
+        Assert.Equal(sessionId, _library.FindOpenPlaySession(game.Id));
+    }
+
+    [Fact]
+    public void RecordLaunchStarted_ForAGameNotInTheLibrary_ReturnsNull_AndWritesNothing()
+    {
+        Assert.Null(_library.RecordLaunchStarted(424242, DateTimeOffset.UtcNow));
+        Assert.Empty(_library.GetPlaySessions(424242));
+    }
+
+    [Fact]
+    public void CompletePlaySession_ClosesOnce_SoARetriedCompletionNeverCountsTwice()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var sessionId = _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow)!.Value;
+
+        Assert.True(_library.CompletePlaySession(
+            sessionId, TimeSpan.FromMinutes(30), PlaySessionMeasurement.WallClockEstimate));
+        Assert.False(_library.CompletePlaySession(
+            sessionId, TimeSpan.FromMinutes(30), PlaySessionMeasurement.WallClockEstimate));
+        Assert.False(_library.CompletePlaySession(999999, TimeSpan.FromMinutes(5), PlaySessionMeasurement.TrackedProcess));
+
+        Assert.Equal(TimeSpan.FromMinutes(30), _library.GetGames("playstation").Single().Playtime);
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(30), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.WallClockEstimate, session.Measurement);
+        Assert.Null(_library.FindOpenPlaySession(game.Id));
+    }
+
+    [Fact]
+    public void AnUnclosedSession_AfterAKill_CountsAsAPlayOfUnknownLength()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        Play(game.Id, TimeSpan.FromMinutes(40), DateTimeOffset.UtcNow.AddDays(-1));
+        // EmuShelf was killed mid-session: the row was opened at launch and never closed.
+        var killed = _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow)!.Value;
+
+        var reloaded = _library.GetGames("playstation").Single();
+        Assert.Equal(2, reloaded.PlayCount);
+        Assert.Equal(TimeSpan.FromMinutes(40), reloaded.Playtime);
+        var sessions = _library.GetPlaySessions(game.Id);
+        Assert.Equal(killed, sessions[0].Id); // newest first
+        Assert.Null(sessions[0].Duration);
+        Assert.Equal(killed, _library.FindOpenPlaySession(game.Id));
+    }
+
+    [Fact]
+    public void Totals_MatchTheSumOfSessions_PlusEarlierPlay()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        SeedEarlierPlay(game.Id, TimeSpan.FromHours(2), plays: 3);
+        Play(game.Id, TimeSpan.FromMinutes(15));
+        Play(game.Id, TimeSpan.FromMinutes(45));
+        _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow);
+
+        var reloaded = _library.GetGames("playstation").Single();
+        var sessions = _library.GetPlaySessions(game.Id);
+        var history = GamePlayHistory.From(reloaded, sessions);
+
+        Assert.Equal(TimeSpan.FromHours(2), history.EarlierPlaytime);
+        Assert.Equal(3, history.EarlierPlayCount);
+        Assert.Null(history.FirstPlayedAt); // the true first play predates the log
+        Assert.Equal(
+            reloaded.Playtime,
+            history.EarlierPlaytime + TimeSpan.FromSeconds(sessions.Sum(s => s.Duration?.TotalSeconds ?? 0)));
+        Assert.Equal(reloaded.PlayCount, history.EarlierPlayCount + sessions.Count);
+    }
+
+    [Fact]
+    public void FirstPlayed_IsTheEarliestSession_WhenEveryPlayIsLogged()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var first = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(game.Id, TimeSpan.FromMinutes(10), first);
+        Play(game.Id, TimeSpan.FromMinutes(10), first.AddDays(2));
+
+        var history = GamePlayHistory.From(_library.GetGames("playstation").Single(), _library.GetPlaySessions(game.Id));
+
+        Assert.Equal(first, history.FirstPlayedAt);
+        Assert.Equal(TimeSpan.Zero, history.EarlierPlaytime);
+        Assert.Equal(0, history.EarlierPlayCount);
+    }
+
+    [Fact]
+    public void RemovingAGame_KeepsItsSessions_AndReAddingTheSameFileRelinksThem()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "Alpha")]);
+        var game = _library.GetGames("playstation").Single();
+        var lastStart = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(game.Id, TimeSpan.FromMinutes(20), lastStart.AddDays(-1));
+        Play(game.Id, TimeSpan.FromMinutes(30), lastStart);
+
+        _library.RemoveGame(game.Id);
+        Assert.Empty(_library.GetGames());
+        Assert.Equal(2L, CountSessions());
+
+        _library.AddGames([NewGame("playstation", "/G/A.CUE", "Alpha again")]);
+        var readded = _library.GetGames("playstation").Single();
+
+        Assert.NotEqual(game.Id, readded.Id);
+        Assert.Equal(2, readded.PlayCount);
+        Assert.Equal(TimeSpan.FromMinutes(50), readded.Playtime);
+        Assert.Equal(lastStart, readded.LastPlayedAt);
+        var sessions = _library.GetPlaySessions(readded.Id);
+        Assert.Equal(2, sessions.Count);
+        Assert.All(sessions, session => Assert.Equal(readded.Id, session.GameId));
+        Assert.Empty(_library.GetPlaySessions(game.Id));
+    }
+
+    [Fact]
+    public void ASessionClosedAfterItsGameWasRemoved_JoinsTheTotalsOnlyWhenReAdded()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A"), NewGame("playstation", "/g/b.cue", "B")]);
+        var game = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var other = _library.GetGames("playstation").Single(g => g.Title == "B");
+        var sessionId = _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow)!.Value;
+
+        _library.RemoveGame(game.Id);
+        Assert.True(_library.CompletePlaySession(sessionId, TimeSpan.FromMinutes(12), PlaySessionMeasurement.TrackedProcess));
+        Assert.Equal(TimeSpan.Zero, _library.GetGames("playstation").Single().Playtime);
+
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var readded = _library.GetGames("playstation").Single(g => g.Title == "A");
+        Assert.Equal(TimeSpan.FromMinutes(12), readded.Playtime);
+        Assert.Equal(1, readded.PlayCount);
+        Assert.Equal(TimeSpan.Zero, _library.GetGames("playstation").Single(g => g.Id == other.Id).Playtime);
+    }
+
+    [Fact]
+    public void AGameAbsorbedByAnImport_KeepsItsSessionsUnderItsLastTitle()
+    {
+        _library.AddGames([NewGame("playstation", "/g/disc1.cue", "Disc 1")]);
+        var disc = _library.GetGames("playstation").Single();
+        Play(disc.Id, TimeSpan.FromMinutes(5));
+        _library.UpdateTitle(disc.Id, "Renamed disc");
+
+        // A playlist now owns the disc: the import suppresses its row.
+        _library.ReconcileImport("playstation", [NewGame("playstation", "/g/game.m3u", "Game")], ["/g/disc1.cue"]);
+
+        Assert.Equal("Game", _library.GetGames("playstation").Single().Title);
+        Assert.Equal(1L, CountSessions());
+        _library.AddGames([NewGame("playstation", "/g/disc1.cue", "Disc 1")]);
+        var back = _library.GetGames("playstation").Single(g => g.Path.EndsWith("disc1.cue", StringComparison.Ordinal));
+        var session = Assert.Single(_library.GetPlaySessions(back.Id));
+        Assert.Equal("Renamed disc", session.GameTitle);
+        Assert.Equal(TimeSpan.FromMinutes(5), back.Playtime);
+    }
+
+    [Fact]
+    public void RemovingAGame_ThatIsAlreadyGone_ChangesNoSession()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        Play(game.Id, TimeSpan.FromMinutes(5));
+        _library.RemoveGame(game.Id);
+
+        _library.RemoveGame(game.Id);
+        _library.RemoveGame(987654);
+
+        Assert.Equal(1L, CountSessions());
+    }
+
+    [Fact]
+    public void GetPlaySessionsBetween_ReturnsTheWindowNewestFirst_IncludingRemovedGames()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A"), NewGame("playstation", "/g/b.cue", "B")]);
+        var a = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var b = _library.GetGames("playstation").Single(g => g.Title == "B");
+        var day = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(a.Id, TimeSpan.FromMinutes(5), day.AddDays(-2));
+        Play(a.Id, TimeSpan.FromMinutes(10), day);
+        Play(b.Id, TimeSpan.FromMinutes(20), day.AddHours(3));
+        _library.RemoveGame(b.Id);
+
+        var window = _library.GetPlaySessionsBetween(day.AddDays(-1), day.AddDays(1));
+
+        Assert.Equal(["B", "A"], window.Select(session => session.GameTitle));
+        Assert.True(window[0].IsGameRemoved);
+        Assert.False(window[1].IsGameRemoved);
+    }
+
+    [Fact]
+    public void EditPlaySession_SetsTheLength_MarksItEdited_AndMovesThePlayTimeByTheDifference()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var played = Play(game.Id, TimeSpan.FromMinutes(90));
+        var open = _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow)!.Value;
+
+        Assert.True(_library.EditPlaySession(played, TimeSpan.FromMinutes(30)));
+        Assert.True(_library.EditPlaySession(open, TimeSpan.FromMinutes(15)));
+        Assert.False(_library.EditPlaySession(999999, TimeSpan.FromMinutes(1)));
+
+        Assert.Equal(TimeSpan.FromMinutes(45), _library.GetGames("playstation").Single().Playtime);
+        Assert.All(_library.GetPlaySessions(game.Id), session =>
+            Assert.Equal(PlaySessionMeasurement.Edited, session.Measurement));
+        Assert.Null(_library.FindOpenPlaySession(game.Id));
+    }
+
+    [Fact]
+    public void DeletePlaySession_TakesItOutOfTheTotals_AndMovesLastPlayedBack()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var earlier = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(game.Id, TimeSpan.FromMinutes(20), earlier);
+        var latest = Play(game.Id, TimeSpan.FromMinutes(40), earlier.AddDays(1));
+
+        Assert.True(_library.DeletePlaySession(latest));
+        Assert.False(_library.DeletePlaySession(latest));
+
+        var reloaded = _library.GetGames("playstation").Single();
+        Assert.Equal(TimeSpan.FromMinutes(20), reloaded.Playtime);
+        Assert.Equal(1, reloaded.PlayCount);
+        Assert.Equal(earlier, reloaded.LastPlayedAt);
+        Assert.Single(_library.GetPlaySessions(game.Id));
+    }
+
+    [Fact]
+    public void DeletingTheLastSession_ClearsLastPlayed_UnlessEarlierPlayRemains()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A"), NewGame("playstation", "/g/b.cue", "B")]);
+        var onlyLogged = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var withEarlier = _library.GetGames("playstation").Single(g => g.Title == "B");
+        SeedEarlierPlay(withEarlier.Id, TimeSpan.FromHours(1), plays: 2);
+        var first = Play(onlyLogged.Id, TimeSpan.FromMinutes(5));
+        var second = Play(withEarlier.Id, TimeSpan.FromMinutes(5));
+
+        _library.DeletePlaySession(first);
+        _library.DeletePlaySession(second);
+
+        var a = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var b = _library.GetGames("playstation").Single(g => g.Title == "B");
+        Assert.Null(a.LastPlayedAt);
+        Assert.Equal(0, a.PlayCount);
+        Assert.NotNull(b.LastPlayedAt);
+        Assert.Equal(2, b.PlayCount);
+        Assert.Equal(TimeSpan.FromHours(1), b.Playtime);
+    }
+
+    private void SeedEarlierPlay(long gameId, TimeSpan playtime, int plays)
+    {
+        // Play recorded before schema v21: it lives only in the totals.
+        using var connection = new LibraryDatabase(AppPaths).CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Games SET PlaytimeSeconds = $seconds, PlayCount = $plays WHERE Id = $id;";
+        command.Parameters.AddWithValue("$seconds", (long)playtime.TotalSeconds);
+        command.Parameters.AddWithValue("$plays", plays);
+        command.Parameters.AddWithValue("$id", gameId);
+        command.ExecuteNonQuery();
+    }
+
+    private long CountSessions()
+    {
+        using var connection = new LibraryDatabase(AppPaths).CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM PlaySessions;";
+        return (long)command.ExecuteScalar()!;
     }
 
     [Fact]

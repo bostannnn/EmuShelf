@@ -1196,7 +1196,7 @@ public class MainWindowVisualSnapshotTests
             // An empty library still opens the menu, and it offers only library-level entries — no
             // game-specific actions.
             Assert.Equal(
-                ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+                ["Search", "Activity", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
                 viewModel.GamepadOverlayOptions.Select(option => option.Label));
         }
         finally
