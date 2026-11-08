@@ -192,7 +192,8 @@ public partial class HandheldShellViewModelTests
         var shell = await CreateWithSettingsAsync(library);
 
         Press(shell, GamepadAction.Menu);
-        Assert.Equal(["Settings", "Switch to Gamepad mode", "Quit EmuShelf"], shell.MenuItems.Select(item => item.Label));
+        Assert.Equal(["Search", "Add games", "Settings", "Switch to Gamepad mode", "Quit EmuShelf"], shell.MenuItems.Select(item => item.Label));
+        Press(shell, GamepadAction.NavigateDown, 2);
         Press(shell, GamepadAction.Confirm);
         await Task.Yield();
         var settings = Assert.IsType<HandheldSettingsViewModel>(shell.Settings);

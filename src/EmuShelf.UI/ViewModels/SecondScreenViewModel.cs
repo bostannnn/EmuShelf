@@ -675,6 +675,9 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     public Action? AchievementsRequested { get; set; }
     public Action? OverlayClosed { get; set; }
     public Action? SlotCleared { get; set; }
+
+    /// <summary>Clears one dock slot without its picker open (Handheld mode's dock sheet, M45 H6c). Wired by the controller.</summary>
+    public Action<int>? SlotClearRequested { get; set; }
     public Action? AchievementsRefreshed { get; set; }
     public Action<int>? SlotActivated { get; set; }
     public Action<int>? SlotEditRequested { get; set; }
@@ -698,6 +701,15 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearSlot() => SlotCleared?.Invoke();
+
+    /// <summary>Clears the slot at <paramref name="index"/> (the app stays on the device); false when nothing can clear it.</summary>
+    public bool ClearSlotAt(int index)
+    {
+        if (SlotClearRequested is not { } clear)
+            return false;
+        clear(index);
+        return true;
+    }
 
     [RelayCommand]
     private void Refresh() => AchievementsRefreshed?.Invoke();

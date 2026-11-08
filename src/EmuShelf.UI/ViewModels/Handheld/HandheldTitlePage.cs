@@ -19,7 +19,6 @@ public enum HandheldTitleState
     Buttons,
     DiscChooser,
     ScreenChooser,
-    Actions,
     Launching,
 }
 
@@ -118,6 +117,9 @@ public sealed partial class HandheldTitlePageViewModel : ObservableObject
         : null;
 
     public bool HasAchievements => !string.IsNullOrEmpty(Entry.AchievementText);
+
+    /// <summary>The sheet's Play opened this page: it plays as soon as its details are in (M45 H6c).</summary>
+    internal bool PlayWhenReady { get; set; }
     public string AchievementLine => $"{Entry.AchievementText} achievements";
     public double AchievementRatio => Entry.AchievementRatio;
 
@@ -137,7 +139,6 @@ public sealed partial class HandheldTitlePageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsButtons))]
     [NotifyPropertyChangedFor(nameof(IsDiscChooser))]
     [NotifyPropertyChangedFor(nameof(IsScreenChooser))]
-    [NotifyPropertyChangedFor(nameof(IsActions))]
     [NotifyPropertyChangedFor(nameof(IsOptionList))]
     [NotifyPropertyChangedFor(nameof(IsLaunching))]
     [NotifyPropertyChangedFor(nameof(IsBrowsable))]
@@ -147,14 +148,14 @@ public sealed partial class HandheldTitlePageViewModel : ObservableObject
     public bool IsButtons => State == HandheldTitleState.Buttons;
     public bool IsDiscChooser => State == HandheldTitleState.DiscChooser;
     public bool IsScreenChooser => State == HandheldTitleState.ScreenChooser;
-    public bool IsActions => State == HandheldTitleState.Actions;
-    public bool IsOptionList => State is HandheldTitleState.DiscChooser or HandheldTitleState.Actions;
+    // The actions sheet (Y) is the Launcher's game sheet since M45 H6c; the disc chooser is the page's one list state.
+    public bool IsOptionList => State == HandheldTitleState.DiscChooser;
     public bool IsLaunching => State == HandheldTitleState.Launching;
 
     /// <summary>The facts and buttons are on screen (everything but the launching panel).</summary>
     public bool IsBrowsable => State != HandheldTitleState.Launching;
 
-    public string OptionsHeading => State == HandheldTitleState.DiscChooser ? "Which disc?" : "More actions";
+    public string OptionsHeading => "Which disc?";
 
     [ObservableProperty]
     public partial int ButtonIndex { get; set; }

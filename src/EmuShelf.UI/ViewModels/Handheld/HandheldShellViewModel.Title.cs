@@ -14,8 +14,11 @@ namespace EmuShelf.App.ViewModels;
 // never starts before every question is answered. Play runs the app's one launch core through the library.
 public sealed partial class HandheldShellViewModel
 {
-    /// <summary>Opens a game's Title page over the grid it was picked from.</summary>
-    public void OpenTitle(HandheldGameEntry entry)
+    /// <summary>
+    /// Opens a game's Title page over the grid it was picked from. <paramref name="playWhenReady"/> (the sheet's Play) presses
+    /// Play as soon as the page knows where the game runs, so a launch from the sheet still asks what the page asks.
+    /// </summary>
+    public void OpenTitle(HandheldGameEntry entry, bool playWhenReady = false)
     {
         CloseTitle();
         var page = new HandheldTitlePageViewModel(entry, OpenFolder?.Name ?? "Home", entry.SystemName, _clock.GetLocalNow())
@@ -23,6 +26,7 @@ public sealed partial class HandheldShellViewModel
             AccentBrush = _platforms.TryGetValue(entry.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent)
                 ? new SolidColorBrush(accent)
                 : Brushes.Gray,
+            PlayWhenReady = playWhenReady,
         };
         BuildTitleButtons(page);
         TitlePage = page;
@@ -88,6 +92,11 @@ public sealed partial class HandheldShellViewModel
         page.Details = details;
         BuildTitleButtons(page);
         UpdateHints();
+        if (page.PlayWhenReady)
+        {
+            page.PlayWhenReady = false;
+            _ = PlayAsync(page);
+        }
 
         try
         {
@@ -123,8 +132,8 @@ public sealed partial class HandheldShellViewModel
         page.FocusButton(Math.Max(0, page.IndexOf(focusedKind)));
     }
 
-    // The full badge grid is the companion's (on Screen-2); without one (a desktop head) there is nowhere to show it.
-    private bool CanShowAchievements(HandheldTitlePageViewModel page) => page.HasAchievements && _companion is not null;
+    // The game's achievements open full-screen across both screens (M45 H6c), with or without a companion.
+    private bool CanShowAchievements(HandheldTitlePageViewModel page) => _library.HasAchievementDetails(page.Entry);
 
     private bool DispatchTitleAction(HandheldTitlePageViewModel page, GamepadAction action)
     {
@@ -193,16 +202,9 @@ public sealed partial class HandheldShellViewModel
                 OpenDiscChooser(page);
                 break;
             case HandheldTitleButtonKind.Achievements:
-                OpenTitleAchievements();
+                _ = OpenAchievementsAsync(page.Entry);
                 break;
         }
-    }
-
-    /// <summary>The companion's badge grid on Screen-2, for this game; B there comes back to the page.</summary>
-    private void OpenTitleAchievements()
-    {
-        if (_companion is { } companion && companion.Overlay == SecondScreenOverlayKind.None)
-            companion.ToggleAchievementsCommand.Execute(null);
     }
 
     /// <summary>
@@ -375,50 +377,10 @@ public sealed partial class HandheldShellViewModel
     }
 
     /// <summary>
-    /// Y: the actions sheet. It holds what the page itself can do; the editing and library actions
-    /// (Edit title, Set cover, Scrape, Remove from library) join it with the restyled sheet in H6.
+    /// Y: the game's actions sheet (M45 H6c), the same one Y opens on the game's tile, with what the page itself can do
+    /// first (Play, another screen, the disc). It is the Launcher's sheet, which scrolls when the rows outgrow it.
     /// </summary>
-    private void OpenTitleActions(HandheldTitlePageViewModel page)
-    {
-        page.Options.Clear();
-        page.Options.Add(new HandheldTitleOptionViewModel("Play", null, () =>
-        {
-            ReturnToTitleButtons(page);
-            _ = PlayAsync(page);
-        }));
-        if (page.Details is { HasSecondScreen: true, IsDualScreenSystem: false })
-        {
-            page.Options.Add(new HandheldTitleOptionViewModel("Play on another screen…", "Ask which screen this time", () =>
-            {
-                ReturnToTitleButtons(page);
-                OpenScreenChooser(page);
-            }));
-        }
-        if (page.Details is { IsMultiDisc: true })
-            page.Options.Add(new HandheldTitleOptionViewModel("Choose disc…", page.DiscText, () => OpenDiscChooser(page)));
-        if (CanShowAchievements(page))
-        {
-            page.Options.Add(new HandheldTitleOptionViewModel("Achievements", page.Entry.AchievementText, () =>
-            {
-                ReturnToTitleButtons(page);
-                OpenTitleAchievements();
-            }));
-        }
-        // Where the game is (decision 12): these open the Launcher's sheet, or change home and say so.
-        foreach (var place in PlaceItems(page.Entry, OpenFolder?.Source))
-        {
-            var row = place;
-            page.Options.Add(new HandheldTitleOptionViewModel(row.Label, row.Note, () =>
-            {
-                ReturnToTitleButtons(page);
-                row.Run();
-            }));
-        }
-        page.Options.Add(new HandheldTitleOptionViewModel($"Back to {page.Crumb}", null, CloseTitle));
-        page.State = HandheldTitleState.Actions;
-        page.FocusOption(0);
-        UpdateHints();
-    }
+    private void OpenTitleActions(HandheldTitlePageViewModel page) => ShowSheet(GameSheet(page.Entry, OpenFolder, page));
 
     private void DispatchTitleOptions(HandheldTitlePageViewModel page, GamepadAction action)
     {
@@ -440,7 +402,6 @@ public sealed partial class HandheldShellViewModel
                 page.Options[page.OptionIndex].Run();
                 break;
             case GamepadAction.Cancel:
-            case GamepadAction.Actions when page.State == HandheldTitleState.Actions:
                 ReturnToTitleButtons(page);
                 break;
         }

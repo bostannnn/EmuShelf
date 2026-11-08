@@ -2423,7 +2423,15 @@ Played. Pad input already reaches one dispatcher from both displays
       Dual-screen emulators (DS/3DS) stay deferred. **Exit:** on the Thor a whole session — launch,
       play, check an achievement and a photo, open the dock, return — never shows the Gamepad-mode
       companion.
-- [ ] **H6c — the Y sheet, Search, Add games, and the surfaces behind them.** The Y sheet with
+- [x] **H6c — the Y sheet, Search, Add games, and the surfaces behind them.** ✅ (2026-11-08; checked on the Thor over
+      adb with both screens read back (native surfaces by `glReadPixels`, the Avalonia Launcher rendered to a bitmap; not
+      kept), on the owner's library, swapped and not: the game sheet in a folder and over a Title page (scrolling to Remove
+      from library), Achievements from both with the real set, badges, filters and the badge on the Stage, Edit title
+      (cancelled), Set cover with real web results (none picked), the Remove confirmation (kept), Search typed on the drawn
+      keyboard with the matches fanned on the Stage and opened as a folder, a folder's and a dock app's sheets, Add games
+      opening Android's picker (cancelled), and the failure toast. This build has no ScreenScraper credentials, so the
+      scraper and batch scraper show their "unavailable" toast on the device and their panels are checked headlessly.
+      Choices in `DECISIONS.md` 2026-11-08 "M45 H6c".) The Y sheet with
       every Gamepad action (Launch, Select disc, Achievements, Edit title, Set cover, Scrape with
       ScreenScraper, Remove from library with its confirmation) plus Move, Add to folder…, Pin to home
       / Remove from home, the folder actions (Rename, Colour, Delete folder) and the dock-slot actions

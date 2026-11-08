@@ -57,7 +57,8 @@ public partial class HandheldShellViewModelTests
         Press(shell, GamepadAction.Confirm);
         Press(shell, GamepadAction.NavigateDown);
         Press(shell, GamepadAction.Actions);
-        Assert.Equal(["Title page", "Add to folder…", "Pin to home"], shell.Sheet!.Items.Select(item => item.Label));
+        Assert.Equal(["Play", "Add to folder…", "Pin to home", "Edit title", "Set cover", "Scrape with ScreenScraper", "Remove from library"],
+            shell.Sheet!.Items.Select(item => item.Label));
         RunSheetRow(shell, "Pin to home");
 
         Assert.Null(shell.Sheet);
@@ -291,7 +292,8 @@ public partial class HandheldShellViewModelTests
         FocusHome(shell, 1);
 
         Press(shell, GamepadAction.Actions);
-        Assert.Equal(["Open", "Move", "Rename or recolour…", "Delete folder"], shell.Sheet!.Items.Select(item => item.Label));
+        Assert.Equal(["Open", "Move", "Rename or recolour…", "Delete folder", "Scrape all in this folder"],
+            shell.Sheet!.Items.Select(item => item.Label));
         Assert.Equal("Games stay in the library", shell.Sheet.Items[3].Note);
         RunSheetRow(shell, "Delete folder");
         Assert.Equal("Delete \"Mine\"?", shell.Sheet!.Title);

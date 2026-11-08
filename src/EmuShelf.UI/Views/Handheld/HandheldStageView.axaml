@@ -113,6 +113,59 @@
     <Style Selector="Grid.narrow Border#SettingCard">
       <Setter Property="Width" Value="1048" />
     </Style>
+    <!-- A panel's card (M45 H6c), the same width as Settings'; its picture shrinks on the narrow canvas. -->
+    <Style Selector="Border#PanelCard">
+      <Setter Property="Width" Value="1400" />
+    </Style>
+    <Style Selector="Grid.narrow Border#PanelCard">
+      <Setter Property="Width" Value="1048" />
+    </Style>
+    <Style Selector="Border.panel-picture">
+      <Setter Property="Width" Value="360" />
+      <Setter Property="Height" Value="480" />
+    </Style>
+    <Style Selector="Border.panel-picture.square">
+      <Setter Property="Width" Value="320" />
+      <Setter Property="Height" Value="320" />
+    </Style>
+    <Style Selector="Grid.narrow Border.panel-picture">
+      <Setter Property="Width" Value="280" />
+      <Setter Property="Height" Value="380" />
+    </Style>
+    <Style Selector="Grid.narrow Border.panel-picture.square">
+      <Setter Property="Width" Value="240" />
+      <Setter Property="Height" Value="240" />
+    </Style>
+    <Style Selector="TextBlock.panel-value">
+      <Setter Property="Foreground" Value="#5B58D9" />
+    </Style>
+    <Style Selector="TextBlock.panel-value.warning">
+      <Setter Property="Foreground" Value="#B4531A" />
+    </Style>
+    <!-- The app's messages (M45 H6c): the pill's look, two lines at most, marked by what kind of message it is. -->
+    <Style Selector="Border.toast">
+      <Setter Property="Background" Value="#F2FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="32" />
+      <Setter Property="MinHeight" Value="64" />
+      <Setter Property="Padding" Value="24,12,32,12" />
+      <Setter Property="BoxShadow" Value="0 4 16 0 #14000000" />
+      <Setter Property="MaxWidth" Value="1240" />
+    </Style>
+    <Style Selector="Border.toast.error">
+      <Setter Property="Background" Value="#FFFFF4EC" />
+      <Setter Property="BorderBrush" Value="#59B4531A" />
+    </Style>
+    <Style Selector="Border.toast PathIcon">
+      <Setter Property="Foreground" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.toast.error PathIcon">
+      <Setter Property="Foreground" Value="#B4531A" />
+    </Style>
+    <Style Selector="Grid.narrow Border.toast">
+      <Setter Property="MaxWidth" Value="1144" />
+    </Style>
     <!-- In styles, not on the element: a value set on the element would beat the warning style. -->
     <Style Selector="TextBlock.setting-value">
       <Setter Property="Foreground" Value="#5B58D9" />
@@ -279,6 +332,66 @@
           </StackPanel>
         </Border>
 
+        <!--
+          A panel open (M45 H6c): the scraper's field or preview, a cover found on the web, an achievement's badge, Search's
+          matches fanned out, a title as typed. Where it is, what it is, its value large, a description, a status line.
+        -->
+        <Border x:Name="PanelCard" IsVisible="{Binding Stage.IsPanel}" MinHeight="420" CornerRadius="56"
+                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 24 56 0 #1F000000"
+                Padding="64,52">
+          <Grid ColumnDefinitions="Auto,*" DataContext="{Binding Stage.PanelCard}" x:DataType="vm:HandheldPanelCard">
+            <Border Classes="panel-picture" Classes.square="{Binding IsSquareImage}" IsVisible="{Binding HasImage}"
+                    CornerRadius="28" ClipToBounds="True" Background="#EEF0F5" Margin="0,0,56,0" VerticalAlignment="Center">
+              <Image Source="{Binding Image}" Stretch="Uniform" />
+            </Border>
+            <StackPanel Grid.Column="1" Spacing="18" VerticalAlignment="Center">
+              <!-- Search's first matches, fanned out. -->
+              <ItemsControl ItemsSource="{Binding FanCovers}" IsVisible="{Binding HasFan}" HorizontalAlignment="Center" Margin="0,0,0,16">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel Orientation="Horizontal" Spacing="-44" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:HandheldFanCover">
+                    <Border Width="172" Height="236" CornerRadius="20" ClipToBounds="True" Background="#D5D9E4"
+                            BorderBrush="#FFFFFF" BorderThickness="6" BoxShadow="0 12 28 0 #2E000000"
+                            RenderTransform="{Binding Transform}">
+                      <Image Source="{Binding Cover}" Stretch="UniformToFill" />
+                    </Border>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+              <StackPanel Orientation="Horizontal" Spacing="16">
+                <Border Width="56" Height="56" CornerRadius="16" Background="#5B58D9" VerticalAlignment="Center"
+                        IsVisible="{Binding HasGlyph}">
+                  <PathIcon Data="{Binding Glyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}" Width="32" Height="32"
+                            Foreground="White" />
+                </Border>
+                <TextBlock Text="{Binding Eyebrow}" FontSize="30" FontWeight="SemiBold" Foreground="#5B6176"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="1100" />
+              </StackPanel>
+              <TextBlock Text="{Binding Title}" FontSize="60" FontWeight="SemiBold" Foreground="#1C2033"
+                         TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="panel-value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}"
+                         IsVisible="{Binding HasValue}" FontSize="44" FontWeight="SemiBold"
+                         TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
+              <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}" FontSize="32"
+                         Foreground="#4B5274" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="44" />
+              <!-- A run's progress (the batch scraper): a static bar, pictured once per step. -->
+              <Border IsVisible="{Binding HasProgress}" Height="16" CornerRadius="8" Background="#E4E8EF" ClipToBounds="True">
+                <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}" Height="16" MinHeight="16"
+                             CornerRadius="8" Background="Transparent" Foreground="#5B58D9" />
+              </Border>
+              <Border IsVisible="{Binding HasStatus}" Background="#F2F4F8" CornerRadius="20" Padding="24,14"
+                      Margin="0,6,0,0" HorizontalAlignment="Left">
+                <TextBlock Text="{Binding Status}" FontSize="26" Foreground="#4B5274" TextWrapping="Wrap" MaxLines="3"
+                           TextTrimming="CharacterEllipsis" />
+              </Border>
+            </StackPanel>
+          </Grid>
+        </Border>
+
         <!-- All apps, the menu, an empty slot, the folder header: a quiet card with what it is. -->
         <Border IsVisible="{Binding Stage.IsGlyph}" Width="384" Height="384" CornerRadius="96"
                 Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 16 40 0 #1F000000">
@@ -314,10 +427,18 @@
         <Image x:Name="LaunchFlyImage" Stretch="UniformToFill" />
       </Border>
 
-      <!-- The app's status message (launching, a failure), which Gamepad mode shows as a toast. -->
+      <!--
+        The app's messages, which Gamepad mode shows as a toast (M45 H6c): a launch, a sync, a scan, a scrape finished, an
+        update to install, what an edit did; a failure says so in the warning colour with the alert mark.
+      -->
       <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top">
-      <Border Classes="pill" IsVisible="{Binding HasStatusMessage}" MaxWidth="1080">
-        <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+      <Border Classes="toast" Classes.error="{Binding IsStatusError}" IsVisible="{Binding HasStatusMessage}">
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <PathIcon Data="{Binding StatusGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}" Width="30" Height="30"
+                    VerticalAlignment="Center" IsVisible="{Binding HasStatusGlyph}" />
+          <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxLines="2" LineHeight="34"
+                     TextTrimming="CharacterEllipsis" MaxWidth="1080" />
+        </StackPanel>
       </Border>
       </Border>
 

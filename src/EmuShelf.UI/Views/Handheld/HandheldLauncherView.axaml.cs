@@ -65,6 +65,8 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _settingsSections = this.FindControl<ItemsControl>("SettingsSections")!;
         _settingsThemes = this.FindControl<ItemsControl>("SettingsThemes")!;
         _settingsChoices = this.FindControl<ItemsControl>("SettingsChoices")!;
+        _panelCanvas = this.FindControl<Control>("PanelCanvas")!;
+        _sheetRows = this.FindControl<ItemsControl>("SheetRows")!;
         // View wiring only: the motion follows whichever shell the view shows.
         _motion = new HandheldLauncherMotion(this);
         // On a platform with a native Launcher this view stays laid out but invisible, and lends it pictures.
@@ -81,6 +83,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             if (_shell is { } shell)
                 shell.PropertyChanged += OnShellChanged;
             WatchSettings(_shell?.Settings);
+            WatchSheet(_shell?.Sheet);
             _motion.Attach(_shell);
             _feed?.Attach(_shell);
             ApplyScreen();
@@ -104,6 +107,9 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private readonly ItemsControl _settingsSections;
     private readonly ItemsControl _settingsThemes;
     private readonly ItemsControl _settingsChoices;
+    private readonly Control _panelCanvas;
+    private readonly ItemsControl _sheetRows;
+    private HandheldSheetViewModel? _sheet;
     private HandheldHomeScreenViewModel? _screen;
     private HandheldSettingsViewModel? _settings;
     private (Point At, GamepadSettingsRowViewModel Row)? _settingsPress;
@@ -114,6 +120,35 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             ApplyScreen();
         else if (e.PropertyName == nameof(HandheldShellViewModel.Settings))
             WatchSettings(_shell?.Settings);
+        else if (e.PropertyName == nameof(HandheldShellViewModel.Sheet))
+            WatchSheet(_shell?.Sheet);
+    }
+
+    // ---- The actions sheet (M45 H6c): a long one scrolls, keeping its focused row in view ----
+
+    private void WatchSheet(HandheldSheetViewModel? sheet)
+    {
+        if (ReferenceEquals(sheet, _sheet))
+            return;
+        if (_sheet is { } old)
+            old.PropertyChanged -= OnSheetChanged;
+        _sheet = sheet;
+        if (sheet is null)
+            return;
+        sheet.PropertyChanged += OnSheetChanged;
+        Dispatcher.UIThread.Post(RevealSheetFocus, DispatcherPriority.Loaded);
+    }
+
+    private void OnSheetChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(HandheldSheetViewModel.Index))
+            Dispatcher.UIThread.Post(RevealSheetFocus, DispatcherPriority.Loaded);
+    }
+
+    private void RevealSheetFocus()
+    {
+        if (_sheet is { } sheet && ReferenceEquals(sheet, _shell?.Sheet))
+            Reveal(_sheetRows, sheet.Index);
     }
 
     // ---- Settings (M45 H6a): keep what has the focus in view ----
@@ -168,6 +203,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _canvas.Width = width;
         _selectorLayer.Width = width;
         _settingsCanvas.Width = width;
+        _panelCanvas.Width = width;
         _motion.SetScreen(screen);
         _feed?.SetScreen(screen);
     }
@@ -188,6 +224,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         if (shell.Settings is { } settings)
         {
             OnSettingsPressed(settings, source, e);
+            return;
+        }
+        if (shell.Panel is { } panel)
+        {
+            OnPanelPressed(shell, panel, source, e);
             return;
         }
         // The overlays take taps on their own rows; a tap on the sheet's scrim closes it.
@@ -261,7 +302,10 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         }
         if (Find<HandheldDockItemViewModel>(source) is { } dockItem)
         {
-            shell.TapDockItem(dockItem);
+            _dockPress = dockItem;
+            _dockLongPressed = false;
+            _pressAt = e.GetPosition(this);
+            _longPress.Start();
             e.Handled = true;
             return;
         }
@@ -307,6 +351,27 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
                 _shell?.Settings?.TapRow(press.Row);
             return;
         }
+        if (_panelPress is { } panelPress)
+        {
+            // The same for a panel's rows (a long list of achievements scrolls under the finger).
+            _panelPress = null;
+            var moved = e.GetPosition(this) - panelPress.At;
+            if (Math.Abs(moved.X) <= DragSlop && Math.Abs(moved.Y) <= DragSlop)
+                _shell?.TapPanelRow(panelPress.Row);
+            return;
+        }
+        if (_dockPress is { } dockPress)
+        {
+            // A dock button acts on release, so a hold can open its sheet instead (the companion's hold-to-manage).
+            _dockPress = null;
+            var dockMoved = _pressAt is { } dockStart ? e.GetPosition(this) - dockStart : default;
+            // A finger that slid away is not a tap.
+            if (_shell is { } tapped && !_dockLongPressed && Math.Abs(dockMoved.X) <= DragSlop && Math.Abs(dockMoved.Y) <= DragSlop)
+                tapped.TapDockItem(dockPress);
+            _dockLongPressed = false;
+            _pressAt = null;
+            return;
+        }
         if (_shell is not { } shell || _pressAt is not { } start)
             return;
         _pressAt = null;
@@ -344,6 +409,12 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _longPress.Stop();
         if (_shell is not { } shell)
             return;
+        if (_dockPress is { } dockItem)
+        {
+            _dockLongPressed = true;
+            shell.LongPressDockItem(dockItem);
+            return;
+        }
         if (_pressedSlot is { } slot)
         {
             shell.LongPressHomeSlot(slot.Page, slot.Slot);
@@ -356,6 +427,41 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             shell.LongPressFolderTile(tile.Index);
         }
     }
+
+    // A panel takes its own taps: Back, a filter chip, a key of its keyboard, or a row (on release, so the list can scroll).
+    private void OnPanelPressed(HandheldShellViewModel shell, HandheldPanelViewModel panel, Visual? source, PointerPressedEventArgs e)
+    {
+        _panelPress = null;
+        if (IsInside(source, "PanelBack"))
+        {
+            shell.TapPanelBack();
+            e.Handled = true;
+            return;
+        }
+        if (panel.IsTyping)
+        {
+            if (Find<HandheldKeyViewModel>(source) is { } key)
+            {
+                shell.TapPanelKey(key);
+                e.Handled = true;
+            }
+            // A press on the field itself is left to the field (a hardware keyboard types there).
+            return;
+        }
+        if (Find<HandheldPanelChipViewModel>(source) is { } chip)
+        {
+            shell.TapPanelChip(chip);
+            e.Handled = true;
+        }
+        else if (Find<HandheldPanelRowViewModel>(source) is { } row)
+        {
+            _panelPress = (e.GetPosition(this), row);
+        }
+    }
+
+    private (Point At, HandheldPanelRowViewModel Row)? _panelPress;
+    private HandheldDockItemViewModel? _dockPress;
+    private bool _dockLongPressed;
 
     // Settings takes its own taps: a section shows it, a row does what A does (on release, so the list can scroll), a
     // choice or an answer is picked, and a tap outside an open chooser closes it.

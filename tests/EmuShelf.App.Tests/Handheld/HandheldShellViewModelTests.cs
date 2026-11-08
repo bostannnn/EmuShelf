@@ -15,7 +15,7 @@ namespace EmuShelf.App.Tests.Handheld;
 
 public partial class HandheldShellViewModelTests
 {
-    private sealed class FakeLibrary : IHandheldLibrary
+    private sealed partial class FakeLibrary : IHandheldLibrary
     {
         public List<HandheldPlatform> Platforms { get; } = [];
         public Dictionary<string, List<HandheldGameEntry>> Games { get; } = new();
@@ -85,8 +85,11 @@ public partial class HandheldShellViewModelTests
                 CoverRequests.Add(game.Id);
             if (decodeWidth == HandheldShellViewModel.PeekDecodeWidth)
                 PeekRequests.Add(game.Id);
-            return Task.FromResult<Bitmap?>(null);
+            return Task.FromResult(CoverMaker?.Invoke(game));
         }
+
+        /// <summary>Makes a fresh cover per request (the shell owns and disposes it); null leaves every game without one.</summary>
+        public Func<HandheldGameEntry, Bitmap?>? CoverMaker { get; set; }
 
         public Task<Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken cancellationToken) =>
             Task.FromResult<Bitmap?>(null);
@@ -388,8 +391,8 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Menu);
         Assert.True(shell.IsMenuOpen);
-        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[1].Label);
-        Press(shell, GamepadAction.NavigateDown);
+        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[3].Label);
+        Press(shell, GamepadAction.NavigateDown, 3);
         Press(shell, GamepadAction.Confirm);
 
         Assert.False(shell.IsMenuOpen);
@@ -403,7 +406,8 @@ public partial class HandheldShellViewModelTests
         var shell = await CreateAsync(library);
 
         Press(shell, GamepadAction.Menu);
-        Assert.Equal("Settings", shell.MenuItems[0].Label);
+        Assert.Equal("Settings", shell.MenuItems[2].Label);
+        Press(shell, GamepadAction.NavigateDown, 2);
         Press(shell, GamepadAction.Confirm);
 
         Assert.False(shell.IsMenuOpen);
@@ -634,28 +638,33 @@ public partial class HandheldShellViewModelTests
     }
 
     [Fact]
-    public async Task Y_OpensTheActionsSheet_WithWhatThePageCanDo()
+    public async Task Y_OpensTheGamesSheet_WithWhatThePageCanDoFirst()
     {
         var (library, shell, _) = await OpenTitleAsync(Details(LaunchScreenDecision.External, discs: 2));
         var page = shell.TitlePage!;
 
         Press(shell, GamepadAction.Actions);
 
-        Assert.True(page.IsActions);
-        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Add to folder…", "Pin to home", "Back to GC System"],
-            page.Options.Select(option => option.Label));
+        // M45 H6c: the Launcher's game sheet, the same one Y opens on the tile, with the page's own rows first.
+        Assert.True(shell.IsSheetOpen);
+        Assert.True(page.IsButtons);
+        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Add to folder…", "Pin to home", "Edit title", "Set cover",
+            "Scrape with ScreenScraper", "Remove from library"], shell.Sheet!.Items.Select(item => item.Label));
 
         // "Play on another screen…" asks even though the platform is pinned to the bottom screen.
         Press(shell, GamepadAction.NavigateDown);
         Press(shell, GamepadAction.Confirm);
+        Assert.False(shell.IsSheetOpen);
         Assert.True(page.IsScreenChooser);
         Assert.Empty(library.Launched);
 
+        // B on the sheet leaves the page as it was.
         Press(shell, GamepadAction.Cancel);
         Press(shell, GamepadAction.Actions);
-        Press(shell, GamepadAction.NavigateDown, 5);
-        Press(shell, GamepadAction.Confirm);
-        Assert.False(shell.IsTitleOpen);
+        Press(shell, GamepadAction.Cancel);
+        Assert.False(shell.IsSheetOpen);
+        Assert.True(shell.IsTitleOpen);
+        Assert.True(page.IsButtons);
     }
 
     [Fact]

@@ -17,6 +17,9 @@ public sealed partial class HandheldSheetItemViewModel(string label, string? not
     public bool HasNote => !string.IsNullOrEmpty(Note);
     internal Action Run { get; } = run;
 
+    /// <summary>A row that takes something away for good (Remove from library): drawn in the warning colour.</summary>
+    public bool IsDestructive { get; init; }
+
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
 }

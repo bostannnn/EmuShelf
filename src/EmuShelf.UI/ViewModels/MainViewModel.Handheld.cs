@@ -86,7 +86,8 @@ public partial class MainViewModel
                 LaunchLead = HandheldMotion.LaunchLead,
             };
             Handheld = handheld;
-            handheld.ShowStatus(StatusText);
+            handheld.ShowStatus(StatusText, StatusSeverity);
+            AnnounceHandheldUpdate();
             handheld.SetLaunchSaveSync(IsBlockingLaunchSaveSync);
             handheld.StartStatusUpdates();
             _ = handheld.InitializeAsync();
@@ -96,6 +97,24 @@ public partial class MainViewModel
             Handheld = null;
             handheld.Dispose();
         }
+    }
+
+    // An update found by the launch check: Gamepad mode shows it in Settings → About only; Handheld mode says so on the Stage
+    // once (M45 H6c), as soon as the shell exists or the check finds one.
+    private bool _handheldUpdateAnnounced;
+
+    private void AnnounceHandheldUpdate()
+    {
+        if (_handheldUpdateAnnounced || Handheld is not { } handheld || _updates is not { IsBannerVisible: true } updates)
+            return;
+        _handheldUpdateAnnounced = true;
+        handheld.Announce($"{updates.Headline}. Install it from Settings → About.", HandheldGlyph.Update, TimeSpan.FromSeconds(10));
+    }
+
+    private void OnUpdatesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(AppUpdateCoordinator.IsBannerVisible))
+            AnnounceHandheldUpdate();
     }
 
     // Handheld mode's Settings (M45 H6a): the same projection Gamepad mode's overlay shows, laid across the two screens by
@@ -468,5 +487,120 @@ public partial class MainViewModel
         public void CloseSettings(GamepadSettingsViewModel settings, bool saved) => owner.CloseHandheldSettings(settings, saved);
 
         public void Quit() => owner._applicationLifetime?.Shutdown();
+
+        // ---- M45 H6c: the Y sheet's actions, Search, Add games and the screens behind them, all Gamepad mode's ----
+
+        public bool IsBusy => owner.IsBusy;
+
+        public Task<IReadOnlyList<long>> SearchAsync(string query, CancellationToken cancellationToken = default)
+        {
+            var text = query.Trim();
+            if (text.Length == 0)
+                return Task.FromResult<IReadOnlyList<long>>([]);
+            return Task.Run<IReadOnlyList<long>>(() =>
+            {
+                var scraped = owner.ReadProviderTitles();
+                return AllTitleSets()
+                    .Where(set => owner._systemsById.ContainsKey(set.DisplayGame.SystemId))
+                    .Select(set => (Set: set, Shown: ShownTitle(set, scraped)))
+                    .Where(match =>
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        // As Gamepad mode's search: the name shown, or the library's own title.
+                        return match.Shown.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                            match.Set.DisplayTitle.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                            match.Set.DisplayGame.Title.Contains(text, StringComparison.OrdinalIgnoreCase);
+                    })
+                    .OrderBy(match => match.Shown, StringComparer.OrdinalIgnoreCase)
+                    .Select(match => match.Set.DisplayGame.Id)
+                    .ToList();
+            }, cancellationToken);
+        }
+
+        // The name a game's tile shows: a scraped title unless you renamed it yourself (GameViewModel.DisplayTitle).
+        private static string ShownTitle(GameDiscSet set, IReadOnlyDictionary<long, string> scraped) =>
+            scraped.TryGetValue(set.DisplayGame.Id, out var title) && !string.IsNullOrWhiteSpace(title) &&
+            set.DisplayGame.TitleOrigin != GameTitleOrigin.User
+                ? title
+                : set.DisplayTitle;
+
+        public async Task<IReadOnlyList<long>> GetPlatformGameIdsAsync(string systemId, CancellationToken cancellationToken = default)
+        {
+            if (!owner._systemsById.ContainsKey(systemId))
+                return [];
+            var library = owner._library;
+            return await Task.Run<IReadOnlyList<long>>(() => GameDiscSetBuilder.Build(library.GetGames(systemId), library.GetDiscSelections())
+                .Select(set => set.DisplayGame.Id)
+                .ToList(), cancellationToken);
+        }
+
+        public bool HasAchievementDetails(HandheldGameEntry game) => game.ViewModel?.CanOpenAchievementDetails ?? false;
+
+        public Task<AchievementDetailsViewModel?> CreateAchievementsAsync(HandheldGameEntry game) =>
+            game.ViewModel is { } viewModel ? owner.CreateAchievementDetailsAsync(viewModel) : Task.FromResult<AchievementDetailsViewModel?>(null);
+
+        public async Task<bool> RenameAsync(HandheldGameEntry game, string title)
+        {
+            if (game.ViewModel is not { } viewModel)
+                return false;
+            if (owner.IsBusy)
+            {
+                owner.SetStatus("Renaming can happen once the current task finishes.");
+                return false;
+            }
+            viewModel.DraftTitle = title;
+            await owner.SaveGameTitleAsync(viewModel);
+            return string.Equals(viewModel.Title, title.Trim(), StringComparison.Ordinal);
+        }
+
+        public async Task<bool> RemoveFromLibraryAsync(HandheldGameEntry game)
+        {
+            if (game.ViewModel is not { } viewModel)
+                return false;
+            return await owner.RemoveGameCoreAsync(viewModel);
+        }
+
+        public GamepadScraperViewModel? CreateScraper(HandheldGameEntry game) =>
+            game.ViewModel is { } viewModel ? owner.CreateGamepadScraper(viewModel) : null;
+
+        public async Task CloseScraperAsync(GamepadScraperViewModel scraper)
+        {
+            // As Gamepad mode's overlay closing: an apply that wrote something reloads the library.
+            var reload = scraper.HasAppliedChanges;
+            scraper.Dispose();
+            if (reload)
+                await owner.ReloadGamesAsync();
+        }
+
+        public GamepadBatchScraperViewModel? CreateBatchScraper(IReadOnlyList<long> gameIds, string name) =>
+            owner.CreateGamepadBatchScraper(gameIds, name);
+
+        public async Task CloseBatchScraperAsync(GamepadBatchScraperViewModel batch)
+        {
+            var reload = batch.Batch.AppliedChanges;
+            batch.Dispose();
+            if (reload)
+                await owner.ReloadGamesAsync();
+        }
+
+        public GamepadCoverSearchViewModel? CreateCoverSearch(HandheldGameEntry game) =>
+            game.ViewModel is { } viewModel && owner.CanGamepadCoverSearch ? owner.CreateGamepadCoverSearch(viewModel, offersLocalFile: false) : null;
+
+        public string CoverSearchUnavailableReason => owner._artworkSearch is null || owner._artworkDownloader is null
+            ? "Web image search is not available in this build."
+            : "Web image search is off. Turn it on in Settings → Artwork & metadata.";
+
+        public Task ApplyCoverAsync(HandheldGameEntry game, PickedGameCover cover) =>
+            game.ViewModel is { } viewModel ? owner.ImportPickedCoverAsync(viewModel, cover) : Task.CompletedTask;
+
+        public Task<string?> PickImportFolderAsync() => owner._dialogs.PickFolderAsync();
+
+        public IReadOnlyList<HandheldImportSystem> ImportSystems => owner.Systems
+            .Where(system => system.Id != "playstation3")
+            .Select(system => new HandheldImportSystem(system.Id, system.Name, system.ShortName, system.AccentColor))
+            .ToList();
+
+        public Task ImportFolderAsync(string folder, string systemId) =>
+            owner._systemsById.TryGetValue(systemId, out var system) ? owner.ImportFolderForSystemAsync(folder, system) : Task.CompletedTask;
     }
 }

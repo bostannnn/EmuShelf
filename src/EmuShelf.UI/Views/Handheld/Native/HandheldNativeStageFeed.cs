@@ -83,7 +83,7 @@ internal sealed class HandheldNativeStageFeed
             ("status", Find("StatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.IsCharging}|{s.WifiOpacity}|{s.HasWifiState}"),
             ("hints", Find("HintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}"))),
             ("achievements", Find("AchievementShot"), s => $"{s.Stage.ShowAchievementPill}|{s.Stage.AchievementText}"),
-            ("message", Find("MessageShot"), s => $"{s.HasStatusMessage}|{s.StatusMessage}"),
+            ("message", Find("MessageShot"), s => $"{s.HasStatusMessage}|{s.StatusMessage}|{s.StatusGlyph}"),
         ];
 
         // The Avalonia Stage only lends its pieces now: its own backdrop never draws, and its medium neither
@@ -229,6 +229,7 @@ internal sealed class HandheldNativeStageFeed
             case nameof(HandheldShellViewModel.Hints):
             case nameof(HandheldShellViewModel.StatusMessage):
             case nameof(HandheldShellViewModel.HasStatusMessage):
+            case nameof(HandheldShellViewModel.StatusGlyph):
                 Schedule(centre: false, pop: false, chrome: true);
                 break;
             case nameof(HandheldShellViewModel.IsSwapped) when _active && !IsPaused:
@@ -268,6 +269,11 @@ internal sealed class HandheldNativeStageFeed
                 break;
             case nameof(HandheldStageViewModel.AchievementText):
                 Schedule(centre: false, pop: false, chrome: true);
+                break;
+            case nameof(HandheldStageViewModel.PanelCard):
+                // A panel's card changed in place (a switch flipped, a key typed, a badge or a search's covers arriving): pictured
+                // again without the pop (a new subject pops through its title), with the hints, which change with it.
+                Schedule(centre: true, pop: false, chrome: true);
                 break;
             case nameof(HandheldStageViewModel.SettingVersion):
                 // Settings' card changed in place (a switch flipped, a chooser opened on the same row, a key typed):

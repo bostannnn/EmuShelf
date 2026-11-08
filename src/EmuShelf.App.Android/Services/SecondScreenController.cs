@@ -363,6 +363,14 @@ internal sealed class SecondScreenController
         CloseOverlay();
     }
 
+    // Handheld mode's dock sheet clears a slot without the picker open (M45 H6c).
+    private void ClearDockSlot(int slot)
+    {
+        _dock = _dock.Clear(slot);
+        _dockStore.Save(_dock);
+        RenderDock();
+    }
+
     public void OnDisplayAdded(int displayId)
     {
         _logger.Information($"Second-screen display added: {displayId}.");
@@ -503,6 +511,7 @@ internal sealed class SecondScreenController
         model.AchievementsRequested = () => OpenAchievementsCore(forceRefresh: false);
         model.OverlayClosed = CloseOverlay;
         model.SlotCleared = OnClearSlot;
+        model.SlotClearRequested = ClearDockSlot;
         model.AchievementsRefreshed = RefreshAchievements;
         model.SlotActivated = ActivateDockSlot;
         model.SlotEditRequested = EditDockSlot;

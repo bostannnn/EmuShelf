@@ -60,6 +60,30 @@ public static class HandheldIcons
 
     /// <summary>Two stacked screens with the bottom one filled: the Thor's bottom (second) display.</summary>
     public static readonly Geometry ScreenBottom = Geometry.Parse("F0 M4 2h16v9H4zM6 4h12v5H6zM4 13h16v9H4z");
+
+    // The panels and the menu (M45 H6c): Gamepad mode's couch glyphs, so both modes speak the same vocabulary.
+    public static readonly Geometry Search = GamepadOptionIcons.Search;
+
+    public static readonly Geometry Scrape = GamepadOptionIcons.Scrape;
+
+    public static readonly Geometry Cover = GamepadOptionIcons.Cover;
+
+    public static readonly Geometry Edit = GamepadOptionIcons.Edit;
+
+    public static readonly Geometry Add = GamepadOptionIcons.Add;
+
+    public static readonly Geometry Remove = GamepadOptionIcons.Remove;
+
+    /// <summary>A toast about something that went wrong: a circle with an exclamation mark (even-odd fill).</summary>
+    public static readonly Geometry Alert = Geometry.Parse(
+        "F0 M12 2a10 10 0 1 1 0 20a10 10 0 1 1 0-20zM11 6.5h2v7h-2zM11 15.5h2v2h-2z");
+
+    /// <summary>A toast about work still running: three dots.</summary>
+    public static readonly Geometry Working = Geometry.Parse(
+        "M5 10a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM12 10a2 2 0 1 1 0 4a2 2 0 1 1 0-4zM19 10a2 2 0 1 1 0 4a2 2 0 1 1 0-4z");
+
+    /// <summary>An update to install: an arrow down onto a line.</summary>
+    public static readonly Geometry Update = Geometry.Parse("M11 3h2v10.17l3.59-3.58L18 11l-6 6-6-6 1.41-1.41L11 13.17zM5 19h14v2H5z");
 }
 
 /// <summary>Small view-only mappings for the Handheld views.</summary>
@@ -82,6 +106,17 @@ public static class HandheldViewConverters
             HandheldGlyph.Back => HandheldIcons.Back,
             HandheldGlyph.Sort => HandheldIcons.Sort,
             HandheldGlyph.Settings => HandheldIcons.Settings,
+            HandheldGlyph.Search => HandheldIcons.Search,
+            HandheldGlyph.Scrape => HandheldIcons.Scrape,
+            HandheldGlyph.Cover => HandheldIcons.Cover,
+            HandheldGlyph.Edit => HandheldIcons.Edit,
+            HandheldGlyph.Trophy => HandheldIcons.Trophy,
+            HandheldGlyph.Add => HandheldIcons.Add,
+            HandheldGlyph.Remove => HandheldIcons.Remove,
+            HandheldGlyph.Alert => HandheldIcons.Alert,
+            HandheldGlyph.Working => HandheldIcons.Working,
+            HandheldGlyph.Check => HandheldIcons.Check,
+            HandheldGlyph.Update => HandheldIcons.Update,
             _ => null,
         });
 

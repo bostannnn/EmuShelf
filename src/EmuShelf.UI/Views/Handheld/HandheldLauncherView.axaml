@@ -156,6 +156,13 @@
     <Style Selector="Border.sheet-row.focused TextBlock">
       <Setter Property="Foreground" Value="White" />
     </Style>
+    <!-- Remove from library: the one row that takes a game away, in the warning colour until focused. -->
+    <Style Selector="Border.sheet-row TextBlock.label.destructive">
+      <Setter Property="Foreground" Value="#C23B3B" />
+    </Style>
+    <Style Selector="Border.sheet-row.focused TextBlock.label.destructive">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
     <Style Selector="Border.colour-chip">
       <Setter Property="Width" Value="88" />
       <Setter Property="Height" Value="88" />
@@ -1146,7 +1153,9 @@
                            TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
               </StackPanel>
             </Grid>
-            <ItemsControl ItemsSource="{Binding Sheet.Items}">
+            <!-- A game's sheet holds every action (M45 H6c), more rows than fit: the list scrolls to keep the focus in view. -->
+            <ScrollViewer x:Name="SheetScroller" MaxHeight="780" VerticalScrollBarVisibility="Hidden">
+            <ItemsControl x:Name="SheetRows" ItemsSource="{Binding Sheet.Items}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
                   <StackPanel Spacing="4" />
@@ -1156,7 +1165,8 @@
                 <DataTemplate x:DataType="vm:HandheldSheetItemViewModel">
                   <Border Classes="sheet-row" Classes.focused="{Binding IsFocused}">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Classes="label" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="label" Classes.destructive="{Binding IsDestructive}" Text="{Binding Label}"
+                                 VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                       <TextBlock Classes="note" Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}"
                                  VerticalAlignment="Center" Margin="24,0,0,0" />
                     </Grid>
@@ -1164,9 +1174,29 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
+            </ScrollViewer>
           </StackPanel>
         </Border>
       </Border>
+    </Viewbox>
+  </Border>
+
+  <!--
+    ===== A panel (M45 H6c): the scraper, the batch scraper, cover search, achievements, Search, Edit title =====
+    Laid across the screens the way Settings is: its rows (or the keyboard) here, the focused row's card on the Stage. It
+    takes this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets PanelCanvas's width.
+  -->
+  <Border x:Name="PanelLayer" IsVisible="{Binding IsPanelOpen}">
+    <Border.Background>
+      <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+        <GradientStop Offset="0" Color="#FAFBFD" />
+        <GradientStop Offset="1" Color="#E4E8EF" />
+      </LinearGradientBrush>
+    </Border.Background>
+    <Viewbox Stretch="Uniform" ClipToBounds="False">
+      <Grid x:Name="PanelCanvas" Width="1240" Height="1080" ClipToBounds="False">
+        <vh:HandheldPanelView x:Name="PanelView" DataContext="{Binding Panel}" />
+      </Grid>
     </Viewbox>
   </Border>
 

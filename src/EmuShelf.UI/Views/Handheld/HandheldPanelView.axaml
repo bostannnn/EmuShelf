@@ -1,0 +1,225 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.Handheld.HandheldPanelView"
+             x:DataType="vm:HandheldPanelViewModel">
+
+  <!--
+    A Handheld panel on the Launcher (M45 H6c): the scraper, the batch scraper, cover search, a game's achievements, Search
+    and Edit title. The heading and what it acts on, the status line (what it is doing, what happened), the filter chips
+    when it has them, then its rows, or the drawn keyboard while something is typed. The Stage shows the card for the
+    focused row. Drawn in the Launcher's own look (its styles: settings-row, switch, chip, key), on either canvas (1240
+    wide, or 1920 on the 16:9 screen); the list keeps to a readable column in the middle.
+  -->
+
+  <UserControl.Styles>
+    <Style Selector="Border.settings-row.primary">
+      <Setter Property="Background" Value="#E9E8FB" />
+      <Setter Property="BorderBrush" Value="#335B58D9" />
+    </Style>
+    <Style Selector="Border.settings-row.primary TextBlock.label">
+      <Setter Property="Foreground" Value="#3F3CB8" />
+    </Style>
+    <Style Selector="Border.settings-row.primary.focused">
+      <Setter Property="Background" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.settings-row.primary.focused TextBlock.label">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.settings-row TextBlock.detail">
+      <Setter Property="FontSize" Value="22" />
+      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Border.settings-row.focused TextBlock.detail">
+      <Setter Property="Foreground" Value="#E4E3FA" />
+    </Style>
+    <Style Selector="Border.thumb">
+      <Setter Property="Width" Value="72" />
+      <Setter Property="Height" Value="72" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Background" Value="#E4E8EF" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Margin" Value="0,0,24,0" />
+    </Style>
+    <Style Selector="Image.dimmed">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Border.filter">
+      <Setter Property="Height" Value="56" />
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="Padding" Value="28,0" />
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.filter.selected">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.filter TextBlock">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <Style Selector="Border.filter.selected TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="TextBlock.panel-status">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="Foreground" Value="#4B5274" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxLines" Value="2" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+
+  <!-- One column, the narrow canvas's width less its margins, centred: on the 16:9 screen the heading lines up with the list. -->
+  <Grid RowDefinitions="Auto,Auto,*" Margin="48,40,48,32" MaxWidth="1144" HorizontalAlignment="Stretch">
+    <!-- The heading: Back, what the panel is, and what it acts on. -->
+    <Grid ColumnDefinitions="Auto,*">
+      <Border x:Name="PanelBack" Classes="chip" VerticalAlignment="Center">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+          <TextBlock Classes="chip-text" Text="Back" />
+        </StackPanel>
+      </Border>
+      <StackPanel Grid.Column="1" Margin="28,0,0,0" VerticalAlignment="Center" Spacing="2">
+        <TextBlock Text="{Binding Heading}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding Subheading}" IsVisible="{Binding HasSubheading}" FontSize="24" Foreground="#5B6176"
+                   TextTrimming="CharacterEllipsis" />
+      </StackPanel>
+    </Grid>
+
+    <!-- What it is doing or what happened, then the filter chips (LB / RB) when it has them. -->
+    <StackPanel Grid.Row="1" Spacing="20" Margin="0,24,0,0" IsVisible="{Binding IsListing}">
+      <StackPanel Orientation="Horizontal" Spacing="16" IsVisible="{Binding HasStatus}">
+        <PathIcon Data="{x:Static vm:HandheldIcons.Working}" Width="32" Height="32" Foreground="#5B58D9"
+                  IsVisible="{Binding IsBusy}" VerticalAlignment="Center" />
+        <TextBlock Classes="panel-status" Text="{Binding Status}" MaxWidth="1040" />
+      </StackPanel>
+      <ItemsControl x:Name="PanelChips" ItemsSource="{Binding Chips}" IsVisible="{Binding HasChips}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="12" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HandheldPanelChipViewModel">
+            <Border Classes="filter" Classes.selected="{Binding IsSelected}">
+              <TextBlock Text="{Binding Label}" />
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <!-- The rows: label (and a line under it), a value, then a switch or a chevron; a thumbnail first where there is one. -->
+    <Panel Grid.Row="2" Margin="0,24,0,0" IsVisible="{Binding IsListing}">
+      <ScrollViewer x:Name="PanelScroller" VerticalScrollBarVisibility="Hidden">
+        <ItemsControl x:Name="PanelRows" ItemsSource="{Binding Rows}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <VirtualizingStackPanel />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldPanelRowViewModel">
+              <Border Classes="settings-row" Classes.focused="{Binding IsFocused}" Classes.primary="{Binding IsPrimary}"
+                      Classes.disabled="{Binding !IsEnabled}" Margin="0,0,0,12">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                  <Border Classes="thumb" IsVisible="{Binding HasImageSlot}">
+                    <Image Source="{Binding Image}" Stretch="UniformToFill" Classes.dimmed="{Binding IsDimmed}" />
+                  </Border>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Classes="label" Text="{Binding Label}" />
+                    <TextBlock Classes="detail" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" />
+                  </StackPanel>
+                  <TextBlock Grid.Column="2" Classes="value" Text="{Binding Value}" IsVisible="{Binding HasValue}" MaxWidth="440"
+                             Margin="24,0,0,0" />
+                  <Panel Grid.Column="3" Margin="24,0,0,0" VerticalAlignment="Center">
+                    <Border Classes="switch" Classes.on="{Binding IsOn}" IsVisible="{Binding IsToggle}">
+                      <Border />
+                    </Border>
+                    <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.Edit}" IsVisible="{Binding IsText}" />
+                  </Panel>
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+      <TextBlock Text="{Binding EmptyText}" IsVisible="{Binding HasEmptyText}" FontSize="30" Foreground="#5B6176"
+                 HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="900" />
+    </Panel>
+
+    <!-- Typing: the field as typed, the keys, and what the buttons do (the Settings keyboard's look). -->
+    <Grid x:Name="PanelKeyboard" Grid.Row="1" Grid.RowSpan="2" DataContext="{Binding Keyboard}"
+          x:DataType="vm:HandheldTextKeyboardViewModel" RowDefinitions="Auto,Auto,*,Auto" Width="1112" Margin="0,32,0,0"
+          HorizontalAlignment="Center"
+          IsVisible="{Binding $parent[UserControl].((vm:HandheldPanelViewModel)DataContext).IsTyping, FallbackValue=False}">
+      <Border Classes="name-field" Classes.focused="True">
+        <Grid ColumnDefinitions="Auto,*">
+          <TextBlock Text="{Binding Title}" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center"
+                     Margin="0,0,24,0" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+          <TextBox x:Name="PanelField" Grid.Column="1" Classes="name-input" Text="{Binding Text, Mode=TwoWay}"
+                   PasswordChar="{Binding MaskChar}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                   Background="Transparent" BorderThickness="0" MinHeight="80" VerticalContentAlignment="Center"
+                   Focusable="True" />
+        </Grid>
+      </Border>
+      <TextBlock Grid.Row="1" Classes="panel-status" Margin="8,16,8,0"
+                 Text="{Binding $parent[UserControl].((vm:HandheldPanelViewModel)DataContext).Status, FallbackValue=''}"
+                 IsVisible="{Binding $parent[UserControl].((vm:HandheldPanelViewModel)DataContext).HasStatus, FallbackValue=False}" />
+      <ItemsControl Grid.Row="2" ItemsSource="{Binding KeyRows}" VerticalAlignment="Center">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="14" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HandheldKeyRowViewModel">
+            <ItemsControl ItemsSource="{Binding Keys}" HorizontalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="12" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldKeyViewModel">
+                  <Border Classes="key" Classes.mid="{Binding IsMid}" Classes.space="{Binding IsSpace}"
+                          Classes.done="{Binding IsDone}" Classes.focused="{Binding IsFocused}">
+                    <TextBlock Text="{Binding Label}" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <ItemsControl Grid.Row="3" ItemsSource="{Binding $parent[UserControl].((vm:HandheldPanelViewModel)DataContext).Hints, FallbackValue={x:Null}}"
+                    HorizontalAlignment="Center">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Orientation="Horizontal" Spacing="40" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HandheldHint">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Border Classes="hint-glyph">
+                <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="Bold" Foreground="White"
+                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+              <TextBlock Text="{Binding Label}" FontSize="24" Foreground="#5B6176" VerticalAlignment="Center" />
+            </StackPanel>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
+  </Grid>
+</UserControl>

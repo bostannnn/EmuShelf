@@ -62,8 +62,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _heldDirection = new HandheldHeldDirection(_clock);
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
-        // The Start menu stays a list (decision 18); Settings is also a tile on home. Search, Add games, Achievements and
-        // Sounds join it with their screens (M45 H6c, H6d).
+        // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds joins it with its switch (H6d).
+        MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync));
+        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync));
         MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
         MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
@@ -300,6 +301,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (Settings is { } settings)
             return DispatchSettingsAction(settings, action);
 
+        // So is a panel (the scraper, cover search, achievements, Search, Edit title).
+        if (Panel is { } panel)
+            return DispatchPanelAction(panel, action);
+
         if (IsMenuOpen)
             return DispatchMenuAction(action);
 
@@ -372,6 +377,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return companion.Back();
         if (Settings is { } settings)
             return DispatchSettingsAction(settings, GamepadAction.Cancel);
+        if (Panel is { } panel)
+            return DispatchPanelAction(panel, GamepadAction.Cancel);
         if (!IsMenuOpen && (Naming is not null || Sheet is not null || _move is not null))
             return DispatchGamepadAction(GamepadAction.Cancel);
         if (!IsMenuOpen && TitlePage is { } title)
@@ -394,6 +401,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         HandheldFolderKind.Platform => source.Platform is { } platform && _platforms.ContainsKey(platform.SystemId),
         HandheldFolderKind.User => _layout.FindFolder(source.FolderId) is not null,
+        // Platform, Recent and Search's matches: a game that left the library is dropped when the folder is read again.
         _ => true,
     };
 
@@ -635,7 +643,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         var folder = new HandheldFolderViewModel(source, homeSlot)
         {
             HomeIndex = index,
-            RibbonIndex = index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
+            // Search's matches are not on home: they never take a folder's "New" ribbon off.
+            RibbonIndex = !source.IsSearch && index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
         };
         OpenFolder = folder;
         Zone = HandheldZone.Grid;
@@ -1115,6 +1124,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             ShowSettingsStage(settings);
             return;
         }
+        if (Panel is { } panel)
+        {
+            ShowPanelStage(panel);
+            return;
+        }
         if (Naming is { } naming)
         {
             ShowNamingStage(naming);
@@ -1140,7 +1154,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                     ShowStage(HandheldStageKind.AllApps, "All apps", "Every app on this device");
                     break;
                 case HandheldDockKind.Menu:
-                    ShowStage(HandheldStageKind.Menu, "Menu", "Switch mode, quit");
+                    ShowStage(HandheldStageKind.Menu, "Menu", "Search, add games, settings and more");
                     break;
                 default:
                     var label = item.Slot?.Label;
@@ -1266,6 +1280,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         {
             HandheldFolderKind.User => HandheldGlyph.Star,
             HandheldFolderKind.Recent => HandheldGlyph.Clock,
+            HandheldFolderKind.Search => HandheldGlyph.Search,
             _ => HandheldGlyph.None,
         };
         Stage.AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
@@ -1466,6 +1481,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Hints.Clear();
         foreach (var hint in _nextHints)
             Hints.Add(hint);
+        // The native Stage pictures the hints when told they changed (a sheet over the Title page changes them without
+        // changing anything else on the Stage, M45 H6c).
+        OnPropertyChanged(nameof(Hints));
     }
 
     private void BuildHints()
@@ -1473,6 +1491,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (Settings is { } settings)
         {
             AddSettingsHints(settings);
+            return;
+        }
+        if (Panel is { } panel)
+        {
+            _nextHints.AddRange(panel.Hints);
             return;
         }
         if (IsMenuOpen)
@@ -1495,6 +1518,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         {
             case HandheldZone.Dock:
                 _nextHints.Add(new HandheldHint("A", "Open"));
+                if (DockItems.Count > DockIndex && DockItems[DockIndex].Kind == HandheldDockKind.App)
+                    _nextHints.Add(new HandheldHint("Y", "More"));
                 _nextHints.Add(new HandheldHint("B", "Back"));
                 return;
             case HandheldZone.Header:
@@ -1525,6 +1550,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _disposed = true;
         if (Settings is { } settings)
             CloseSettings(settings, saved: false);
+        if (Panel is { } panel)
+            ClosePanel(panel);
         StopStatusUpdates();
         StopMediumTimer();
         _mediumTimer?.Dispose();

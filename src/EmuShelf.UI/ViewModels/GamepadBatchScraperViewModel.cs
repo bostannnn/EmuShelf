@@ -55,6 +55,15 @@ public sealed partial class GamepadBatchScraperViewModel : ObservableObject, IDi
     /// <summary>D-pad Up/Down: move the focus ring one step within the current state's target list.</summary>
     public void MoveFocus(int delta) => SetFocus(FocusIndex + delta);
 
+    /// <summary>Puts the ring on one target (a tap in Handheld mode, which draws the targets as rows).</summary>
+    public void FocusOn(int index) => SetFocus(index);
+
+    /// <summary>The current state's targets in focus order, for a view that draws them as one list (Handheld mode).</summary>
+    public IReadOnlyList<GamepadBatchScraperTargetKind> Targets => _targets.Select(target => target.Kind).ToList();
+
+    /// <summary>Counts rebuilds of the target list (a new state).</summary>
+    public int TargetsVersion { get; private set; }
+
     /// <summary>A: activate the focused target — toggle the replace choice, or run a command.</summary>
     public void Activate()
     {
@@ -117,6 +126,8 @@ public sealed partial class GamepadBatchScraperViewModel : ObservableObject, IDi
                 SetFocus(0);
                 break;
         }
+        TargetsVersion++;
+        OnPropertyChanged(nameof(TargetsVersion));
     }
 
     private void SetFocus(int index)

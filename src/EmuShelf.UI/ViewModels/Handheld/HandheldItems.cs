@@ -141,7 +141,95 @@ public interface IHandheldLibrary
     void CloseSettings(GamepadSettingsViewModel settings, bool saved) => settings.Dispose();
 
     void Quit();
+
+    // ---- The Y sheet's actions, Search, Add games and the surfaces behind them (M45 H6c) ----
+    // Each is Gamepad mode's: the same view models and the same library calls, so both modes do the same thing. The
+    // defaults are what a head without them (a test fake) has: nothing to open, and nothing changes.
+
+    /// <summary>
+    /// The ids of the games whose name contains <paramref name="query"/> (the library's title or the name shown, as Gamepad
+    /// mode's search matches), one per title set, A–Z by the name shown.
+    /// </summary>
+    Task<IReadOnlyList<long>> SearchAsync(string query, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<long>>([]);
+
+    /// <summary>A platform's game ids (one per title set), without a view model per game: what a folder's batch scrape takes.</summary>
+    async Task<IReadOnlyList<long>> GetPlatformGameIdsAsync(string systemId, CancellationToken cancellationToken = default)
+    {
+        var games = await GetGamesAsync(systemId, cancellationToken);
+        var ids = games.Select(game => game.Id).ToList();
+        ReleaseGames(games);
+        return ids;
+    }
+
+    /// <summary>A game's discs and the one it starts on (one disc for most games).</summary>
+    HandheldDiscs DiscsOf(HandheldGameEntry game) => game.ViewModel is { } viewModel
+        ? new HandheldDiscs(viewModel.Discs.Select(disc => disc.Number).ToList(), viewModel.SelectedDiscNumber)
+        : new HandheldDiscs([1], 1);
+
+    /// <summary>Whether the game has an achievements screen (a RetroAchievements set, or Steam achievements).</summary>
+    bool HasAchievementDetails(HandheldGameEntry game) => !string.IsNullOrEmpty(game.AchievementText);
+
+    /// <summary>Gamepad mode's full-screen achievements for the game, cache first (it refreshes itself when stale).</summary>
+    Task<AchievementDetailsViewModel?> CreateAchievementsAsync(HandheldGameEntry game) =>
+        Task.FromResult<AchievementDetailsViewModel?>(null);
+
+    /// <summary>The name to start editing from: the library's own title (a scraped name shown over it stays as it is).</summary>
+    string EditableTitle(HandheldGameEntry game) => game.ViewModel?.Title ?? game.Title;
+
+    /// <summary>Renames the game in EmuShelf's library (never its file). False when it was refused; the status line says why.</summary>
+    Task<bool> RenameAsync(HandheldGameEntry game, string title) => Task.FromResult(false);
+
+    /// <summary>Removes the game from EmuShelf's library only; its files are never touched.</summary>
+    Task<bool> RemoveFromLibraryAsync(HandheldGameEntry game) => Task.FromResult(false);
+
+    /// <summary>Gamepad mode's ScreenScraper overlay for one game (not yet loading); null when ScreenScraper is unavailable.</summary>
+    GamepadScraperViewModel? CreateScraper(HandheldGameEntry game) => null;
+
+    /// <summary>The scraper closed: let go of it, and refresh the library if it applied anything.</summary>
+    Task CloseScraperAsync(GamepadScraperViewModel scraper)
+    {
+        scraper.Dispose();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Gamepad mode's batch scraper over these games; null when it cannot run.</summary>
+    GamepadBatchScraperViewModel? CreateBatchScraper(IReadOnlyList<long> gameIds, string name) => null;
+
+    /// <summary>The batch scraper closed: let go of it, and refresh the library if it wrote anything.</summary>
+    Task CloseBatchScraperAsync(GamepadBatchScraperViewModel batch)
+    {
+        batch.Dispose();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Gamepad mode's web cover search for the game (not yet searching); null when web image search is off.</summary>
+    GamepadCoverSearchViewModel? CreateCoverSearch(HandheldGameEntry game) => null;
+
+    /// <summary>Sets a picked web cover on the game (Gamepad mode's import: thumbnail, palette, status line).</summary>
+    Task ApplyCoverAsync(HandheldGameEntry game, PickedGameCover cover) => Task.CompletedTask;
+
+    /// <summary>Why Set cover cannot search here (web image search off, or unavailable), for the notice it shows instead.</summary>
+    string CoverSearchUnavailableReason => "Web image search is off. Turn it on in Settings → Artwork & metadata.";
+
+    /// <summary>The platform folder picker (Android's on the Thor); null when cancelled or unusable.</summary>
+    Task<string?> PickImportFolderAsync() => Task.FromResult<string?>(null);
+
+    /// <summary>The systems a folder can be imported for, in the library's order (PlayStation 3 imports only from RPCS3).</summary>
+    IReadOnlyList<HandheldImportSystem> ImportSystems => [];
+
+    /// <summary>Scans the folder for the system and adds what it finds (Gamepad mode's import; the status line reports it).</summary>
+    Task ImportFolderAsync(string folder, string systemId) => Task.CompletedTask;
+
+    /// <summary>The app is busy with library work (an import, a rename): a new one waits.</summary>
+    bool IsBusy => false;
 }
+
+/// <summary>A game's disc numbers and the one it starts on.</summary>
+public sealed record HandheldDiscs(IReadOnlyList<int> Numbers, int Selected);
+
+/// <summary>A system a folder of games can be added for (Add games' chooser).</summary>
+public sealed record HandheldImportSystem(string Id, string Name, string ShortName, string AccentColor);
 
 public enum HandheldZone
 {
@@ -156,6 +244,9 @@ public enum HandheldFolderKind
     Platform,
     User,
     Recent,
+
+    /// <summary>Search's matches (M45 H6c), opened from the keyboard's Done; not on home.</summary>
+    Search,
 }
 
 /// <summary>
@@ -177,6 +268,7 @@ public sealed record HandheldFolderSource(
 {
     public bool IsUser => Kind == HandheldFolderKind.User;
     public bool IsRecent => Kind == HandheldFolderKind.Recent;
+    public bool IsSearch => Kind == HandheldFolderKind.Search;
 
     /// <summary>The Stage's line under the folder's name.</summary>
     public string Description => Kind switch
@@ -185,6 +277,7 @@ public sealed record HandheldFolderSource(
             $"Your folder · {(GameCount == 0 ? "Settings" : $"{HandheldText.GameCount(GameCount)} and Settings")}",
         HandheldFolderKind.User => $"Your folder · {(GameCount == 0 ? "empty" : HandheldText.GameCount(GameCount))}",
         HandheldFolderKind.Recent => GameCount == 0 ? "Made for you · games you play appear here" : $"Made for you · {HandheldText.GameCount(GameCount)}",
+        HandheldFolderKind.Search => $"Search · {HandheldText.GameCount(GameCount)}",
         _ => $"Folder · {HandheldText.GameCount(GameCount)}",
     };
 
@@ -199,6 +292,14 @@ public sealed record HandheldFolderSource(
     public static HandheldFolderSource ForRecent(IReadOnlyList<long> gameIds) =>
         new(HandheldFolderKind.Recent, "r:recent", "Recent", HandheldHomeLayout.RecentColor, string.Empty, gameIds.Count,
             GameIds: gameIds);
+
+    /// <summary>Search's matches as a folder: named for the query, on the Launcher's indigo, A–Z as the search found them.</summary>
+    public static HandheldFolderSource ForSearch(string query, IReadOnlyList<long> gameIds, int generation) =>
+        new(HandheldFolderKind.Search, $"s:{generation}", $"“{query}”", SearchColor, string.Empty, gameIds.Count, GameIds: gameIds,
+            Sort: HandheldFolderSort.Title);
+
+    /// <summary>The Search folder's colour: the Launcher's indigo accent (it is EmuShelf's own, like Settings).</summary>
+    public const string SearchColor = "#5B58D9";
 }
 
 /// <summary>How a home slot looks in move mode.</summary>
@@ -541,6 +642,9 @@ public enum HandheldStageKind
 
     /// <summary>Settings is open: what the focused row (or section, or choice) is, its value and its description.</summary>
     Setting,
+
+    /// <summary>A panel is open (M45 H6c: the scraper, cover search, achievements, Search, Edit title): its card.</summary>
+    Panel,
 }
 
 /// <summary>What the Stage (the top screen) shows for the current focus.</summary>
@@ -561,6 +665,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     [NotifyPropertyChangedFor(nameof(IsSettingsTile))]
     [NotifyPropertyChangedFor(nameof(IsSetting))]
+    [NotifyPropertyChangedFor(nameof(IsPanel))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -696,6 +801,14 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool IsApp => Kind == HandheldStageKind.App;
     public bool IsSettingsTile => Kind == HandheldStageKind.SettingsTile;
     public bool IsSetting => Kind == HandheldStageKind.Setting;
+    public bool IsPanel => Kind == HandheldStageKind.Panel;
+
+    /// <summary>
+    /// The open panel's card (M45 H6c): a new record whenever it changes, so the view follows it and the native Stage
+    /// pictures it again (a new subject also pops, through the title).
+    /// </summary>
+    [ObservableProperty]
+    public partial HandheldPanelCard? PanelCard { get; set; }
 
     // ---- Settings open (Kind Setting): the card that is the detail half of Settings' master-detail (M45 H6a) ----
 
@@ -744,7 +857,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     /// <summary>The corner achievements pill; the fan-art hero carries the count in its meta line instead.</summary>
     public bool ShowAchievementPill => HasAchievements && !IsHeroArt;
     // Settings' card carries its own title, so it has no plate under it.
-    public bool HasPlate => Kind is not (HandheldStageKind.None or HandheldStageKind.Setting) && !IsHeroArt && !string.IsNullOrEmpty(Title);
+    public bool HasPlate => Kind is not (HandheldStageKind.None or HandheldStageKind.Setting or HandheldStageKind.Panel) && !IsHeroArt &&
+        !string.IsNullOrEmpty(Title);
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>
@@ -765,6 +879,19 @@ public enum HandheldGlyph
 
     /// <summary>The Settings tile (decision 18).</summary>
     Settings,
+
+    // The panels, the Search folder and the toasts (M45 H6c).
+    Search,
+    Scrape,
+    Cover,
+    Edit,
+    Trophy,
+    Add,
+    Remove,
+    Alert,
+    Working,
+    Check,
+    Update,
 }
 
 /// <summary>One button hint in the Stage's hint pill, e.g. (A, "Open"); a button with no letter draws <see cref="Icon"/>.</summary>

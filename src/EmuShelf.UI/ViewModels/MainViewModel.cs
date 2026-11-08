@@ -1727,6 +1727,8 @@ public partial class MainViewModel : ViewModelBase
         // this feature. See DECISIONS 2026-08-24 (on-device Thor profiling).
         _shelfHeroRotation.IdleSwayEnabled = true;
         _updates = updates;
+        if (updates is not null)
+            updates.PropertyChanged += OnUpdatesChanged;
         _libraryViewState = libraryViewState ?? new NullLibraryViewStateService();
         _screenScraperAccount = screenScraperAccount;
         _screenScraperPreview = screenScraperPreview;
@@ -2186,8 +2188,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(HasStatusMessage));
         OnPropertyChanged(nameof(ShowGamepadStatusToast));
         ScheduleStatusDismiss();
-        // Handheld mode has no Gamepad toast on screen; its Stage shows the same message.
-        Handheld?.ShowStatus(value);
+        // Handheld mode has no Gamepad toast on screen; its Stage shows the same message, marked by its severity.
+        Handheld?.ShowStatus(value, StatusSeverity);
     }
 
     partial void OnIsSyncingSavesForLaunchChanged(bool value) =>
@@ -2423,6 +2425,22 @@ public partial class MainViewModel : ViewModelBase
             return Task.CompletedTask;
         }
 
+        var details = CreateGamepadCoverSearch(game, offersLocalFile: true)!;
+        details.Search.CloseRequested += picked => OnGamepadCoverPicked(game, picked);
+
+        OpenGamepadOverlay(GamepadOverlayKind.CoverSearch);
+        GamepadCoverSearchDetails = details;
+        return details.LoadAsync();
+    }
+
+    /// <summary>
+    /// The controller web cover search for one game, not yet searching (Gamepad mode's overlay; Handheld mode's panel, which
+    /// has no Desktop to hand a local file to, M45 H6c). Null without a search provider and downloader.
+    /// </summary>
+    private GamepadCoverSearchViewModel? CreateGamepadCoverSearch(GameViewModel game, bool offersLocalFile)
+    {
+        if (_artworkSearch is null || _artworkDownloader is null)
+            return null;
         var preferredAspectRatio = _systemsById.TryGetValue(game.SystemId, out var system)
             ? system.CoverAspectRatio
             : game.CoverAspectRatio;
@@ -2434,14 +2452,10 @@ public partial class MainViewModel : ViewModelBase
             _artworkDownloader,
             () => Task.FromResult<string?>(null),
             _logger);
-        search.CloseRequested += picked => OnGamepadCoverPicked(game, picked);
-        var details = new GamepadCoverSearchViewModel(
+        return new GamepadCoverSearchViewModel(
             search,
-            () => OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff));
-
-        OpenGamepadOverlay(GamepadOverlayKind.CoverSearch);
-        GamepadCoverSearchDetails = details;
-        return details.LoadAsync();
+            () => OpenGamepadOverlay(GamepadOverlayKind.CoverDesktopHandoff),
+            offersLocalFile);
     }
 
     // Raised when the wrapped picker resolves — either a downloaded web cover (import it) or a cancel
@@ -2482,22 +2496,32 @@ public partial class MainViewModel : ViewModelBase
 
     private Task OpenGamepadScraperAsync(GameViewModel game)
     {
+        if (CreateGamepadScraper(game) is not { } details)
+            return Task.CompletedTask;
+
+        OpenGamepadOverlay(GamepadOverlayKind.Scraper);
+        GamepadScraperDetails = details;
+        return details.LoadAsync();
+    }
+
+    /// <summary>
+    /// The controller scraper for one game, not yet loading (Gamepad mode's overlay, and Handheld mode's panel, M45 H6c);
+    /// null, with the status line saying so, when ScreenScraper is unavailable.
+    /// </summary>
+    private GamepadScraperViewModel? CreateGamepadScraper(GameViewModel game)
+    {
         if (_screenScraperPreview is null || _scrapeApply is null ||
             _screenScraperAccount is null || _settingsService is null)
         {
             SetStatus("ScreenScraper is unavailable right now.", StatusSeverity.Error);
-            return Task.CompletedTask;
+            return null;
         }
 
         var settings = _settingsService.Load().Scraping.ScreenScraper;
         var scraper = new GameScraperViewModel(
             game.Id, game.Title, _screenScraperPreview, _scrapeApply, _screenScraperAccount,
             settings, _artworkDownloader, _logger);
-        var details = new GamepadScraperViewModel(scraper);
-
-        OpenGamepadOverlay(GamepadOverlayKind.Scraper);
-        GamepadScraperDetails = details;
-        return scraper.LoadAsync();
+        return new GamepadScraperViewModel(scraper);
     }
 
     /// <summary>Whether a controller-native batch scrape can be started over the games now in view.</summary>
@@ -2524,13 +2548,22 @@ public partial class MainViewModel : ViewModelBase
             ? Games[0].SystemName
             : "selected";
 
-        var settings = _settingsService.Load().Scraping.ScreenScraper;
-        var batch = new GameBatchScraperViewModel(gameIds, systemName, _scrapeBatch, settings, _logger);
-        batch.CloseRequested += CloseGamepadOverlay;
-        var details = new GamepadBatchScraperViewModel(batch);
+        if (CreateGamepadBatchScraper(gameIds, systemName) is not { } details)
+            return;
+        details.Batch.CloseRequested += CloseGamepadOverlay;
 
         OpenGamepadOverlay(GamepadOverlayKind.BatchScraper);
         GamepadBatchScraperDetails = details;
+    }
+
+    /// <summary>The controller batch scraper over these games (Gamepad mode's overlay, Handheld mode's panel); null when it cannot run.</summary>
+    private GamepadBatchScraperViewModel? CreateGamepadBatchScraper(IReadOnlyList<long> gameIds, string systemName)
+    {
+        if (_scrapeBatch is null || _settingsService is null || gameIds.Count == 0)
+            return null;
+        var settings = _settingsService.Load().Scraping.ScreenScraper;
+        var batch = new GameBatchScraperViewModel(gameIds.Distinct().ToList(), systemName, _scrapeBatch, settings, _logger);
+        return new GamepadBatchScraperViewModel(batch);
     }
 
     [RelayCommand]
@@ -5216,6 +5249,22 @@ public partial class MainViewModel : ViewModelBase
     // Overlays the normalized scraped title onto each game for display (grid, list, and spotlight),
     // in one bulk read. Runs on the build worker before the view models are bound, so no cross-thread
     // notify occurs. DisplayTitle keeps a user rename ahead of the scraped name.
+    /// <summary>Every scraped (provider) title by game id; empty when there are none or the read failed.</summary>
+    private IReadOnlyDictionary<long, string> ReadProviderTitles()
+    {
+        if (_metadataStore is null)
+            return new Dictionary<long, string>();
+        try
+        {
+            return _metadataStore.GetProviderTitles();
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning($"Could not load scraped titles for the library: {ex.Message}");
+            return new Dictionary<long, string>();
+        }
+    }
+
     private void ApplyScrapedTitles(IReadOnlyList<GameViewModel> viewModels)
     {
         if (_metadataStore is null || viewModels.Count == 0)
@@ -7250,6 +7299,43 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// The full-screen achievements for a game (RetroAchievements or Steam), cache first, badges loading as the focus moves:
+    /// what Gamepad mode's overlay shows, for Handheld mode's panel (M45 H6c). Null, with the status line saying why, when
+    /// there are none or they cannot open.
+    /// </summary>
+    private async Task<AchievementDetailsViewModel?> CreateAchievementDetailsAsync(GameViewModel game)
+    {
+        try
+        {
+            if (game.SystemId == "steam")
+            {
+                if (_steamAchievements is null || game.SteamAchievementAppId is not { } appId)
+                    return null;
+                var reference = new AchievementGameRef("steam", appId);
+                var cached = await Task.Run(() => _steamAchievements.GetCached(reference));
+                return new AchievementDetailsViewModel(game.DisplayTitle, reference, _steamAchievements, cached, logger: _logger,
+                    deferBadgeLoading: true);
+            }
+            if (game.RetroAchievementsGameId is not { } retroAchievementsGameId)
+                return null;
+            if (_retroDetails is null || _retroAccount is null)
+            {
+                SetStatus("Achievement details are unavailable right now.", StatusSeverity.Error);
+                return null;
+            }
+            var snapshot = await Task.Run(() => _retroDetails.GetCached(retroAchievementsGameId));
+            return new AchievementDetailsViewModel(game.DisplayTitle, retroAchievementsGameId, _retroDetails, _retroAccount, _retroBadges,
+                snapshot, logger: _logger, deferBadgeLoading: true);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Could not open achievements for game id {game.Id}.", ex);
+            SetStatus($"Could not open achievements for {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
+            return null;
+        }
+    }
+
     [RelayCommand]
     private async Task OpenAchievementDetailsAsync(GameViewModel? game)
     {
@@ -7608,10 +7694,11 @@ public partial class MainViewModel : ViewModelBase
         await RemoveGameCoreAsync(game);
     }
 
-    private async Task RemoveGameCoreAsync(GameViewModel game)
+    /// <summary>Removes the game's discs from EmuShelf's library only (never its files). False when busy or it failed.</summary>
+    private async Task<bool> RemoveGameCoreAsync(GameViewModel game)
     {
         if (IsBusy)
-            return;
+            return false;
 
         IsBusy = true;
         try
@@ -7619,11 +7706,13 @@ public partial class MainViewModel : ViewModelBase
             await Task.Run(() => _library.RemoveGames(game.Discs.Select(disc => disc.Game.Id).ToArray()));
             await ReloadGamesAsync();
             SetStatus($"Removed {game.DisplayTitle} from the library — game files were not touched");
+            return true;
         }
         catch (Exception ex)
         {
             _logger.Error($"Could not remove game id {game.Id} from the library.", ex);
             SetStatus($"Could not remove {game.DisplayTitle}: {ex.Message}", StatusSeverity.Error);
+            return false;
         }
         finally
         {

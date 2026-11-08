@@ -33,6 +33,7 @@ public sealed partial class GamepadCoverSearchViewModel : ObservableObject, IDis
 
     private readonly List<FocusTarget> _targets = [];
     private readonly Action _chooseLocalOnDesktop;
+    private readonly bool _offersLocalFile;
     private bool _disposed;
 
     public CoverSearchViewModel Search { get; }
@@ -51,10 +52,15 @@ public sealed partial class GamepadCoverSearchViewModel : ObservableObject, IDis
     [ObservableProperty] public partial bool IsSearchFocused { get; set; }
     [ObservableProperty] public partial bool IsChooseLocalFocused { get; set; }
 
-    public GamepadCoverSearchViewModel(CoverSearchViewModel search, Action chooseLocalOnDesktop)
+    /// <param name="offersLocalFile">
+    /// False leaves out the "Choose a file on Desktop instead" target: Handheld mode has no Desktop to hand off to on the
+    /// Thor, and no file picker of its own (M45 H6c).
+    /// </param>
+    public GamepadCoverSearchViewModel(CoverSearchViewModel search, Action chooseLocalOnDesktop, bool offersLocalFile = true)
     {
         Search = search;
         _chooseLocalOnDesktop = chooseLocalOnDesktop;
+        _offersLocalFile = offersLocalFile;
         Search.Results.CollectionChanged += OnResultsChanged;
         RebuildTargets();
         SetFocus(0);
@@ -71,6 +77,16 @@ public sealed partial class GamepadCoverSearchViewModel : ObservableObject, IDis
 
     /// <summary>D-pad Up/Down: move the focus ring one step across the current target list.</summary>
     public void MoveFocus(int delta) => SetFocus(FocusIndex + delta);
+
+    /// <summary>Puts the ring on one target (a tap in Handheld mode, which draws the targets as rows).</summary>
+    public void FocusOn(int index) => SetFocus(index);
+
+    /// <summary>The targets in focus order, for a view that draws them as one list (Handheld mode).</summary>
+    public IReadOnlyList<(GamepadCoverSearchTargetKind Kind, object? Item)> Targets =>
+        _targets.Select(target => (target.Kind, target.Item)).ToList();
+
+    /// <summary>Counts rebuilds of the target list (results arriving one by one).</summary>
+    public int TargetsVersion { get; private set; }
 
     /// <summary>A: activate the focused target — run the search, pick a cover, or hand off to Desktop.</summary>
     public void Activate()
@@ -134,12 +150,17 @@ public sealed partial class GamepadCoverSearchViewModel : ObservableObject, IDis
                 Activate = () => Execute(result.SelectCommand),
             });
         }
-        _targets.Add(new FocusTarget
+        if (_offersLocalFile)
         {
-            Kind = GamepadCoverSearchTargetKind.ChooseLocal,
-            SetFocused = value => IsChooseLocalFocused = value,
-            Activate = () => Execute(ChooseLocalCommand),
-        });
+            _targets.Add(new FocusTarget
+            {
+                Kind = GamepadCoverSearchTargetKind.ChooseLocal,
+                SetFocused = value => IsChooseLocalFocused = value,
+                Activate = () => Execute(ChooseLocalCommand),
+            });
+        }
+        TargetsVersion++;
+        OnPropertyChanged(nameof(TargetsVersion));
     }
 
     private int FirstTargetIndex(GamepadCoverSearchTargetKind kind)

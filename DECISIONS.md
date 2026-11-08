@@ -13713,3 +13713,65 @@ corrected or deleted from the timeline or the game page.
 - **Not checked on the Thor:** the companion on the 16:9 screen with a game running on the bottom one. The Thor's
   EmuShelf accessibility watcher is off, so the launch refuses the bottom screen; that layout is checked in headless
   snapshots only. Dual-screen emulators (DS/3DS) stay deferred, as the roadmap says.
+
+
+## 2026-11-08 — M45 H6c: the Y sheet, Search, Add games, and the screens behind them
+
+- **One game sheet everywhere.** Y on a game (pinned on home, in a folder, or on its Title page) opens the same Launcher
+  sheet: Play, Choose disc…, Achievements, Move (home only), Add to folder…, Pin to home / Remove from home, Remove from
+  *folder*, Edit title, Set cover, Scrape with ScreenScraper, Remove from library. On the Title page the page's own rows
+  lead (Play, Play on another screen…, its disc). The Title page's old natively drawn "More actions" list (H2) is gone:
+  it could not hold eleven rows, and a second list of the same actions would drift. The sheet scrolls when its rows
+  outgrow it, keeping the focus in view. H4's "Title page" row became Play, since A already opens the page.
+- **Play from the sheet goes through the Title page** (it opens the page and presses Play once the page knows where the
+  game runs), so the screen chooser, the disc and the save sync still ask, as H2 requires of every launch.
+- **Gamepad mode's view models, Handheld faces.** The scraper, the batch scraper, cover search and a game's full-screen
+  achievements are `GamepadScraperViewModel`, `GamepadBatchScraperViewModel`, `GamepadCoverSearchViewModel` and
+  `AchievementDetailsViewModel`, built by the same `MainViewModel` builders Gamepad mode uses (extracted, not copied).
+  Each opens as a *panel* (`HandheldPanelViewModel`): what you choose from on the Launcher (one row per focus target of
+  the wrapped view model, in its order; it gained read-only `Targets`, `TargetsVersion` and `FocusOn`) and a card on the
+  Stage for the focused row (a field's proposed and current value, a scraped image or cover large, a badge with its
+  description, a run's progress). The card is one generic `HandheldPanelCard`, pictured by the native Stage like
+  Settings' card. Panels take the Launcher the way Settings does (`IsLauncherOverlayOpen`), on both canvases.
+- **Text on the drawn keyboard.** Settings' keyboard became shared (`HandheldTextKeyboardViewModel` over any text, with
+  one `Dispatch`/`Press` returning what happened); Search, Edit title, the scraper's username, password and title to
+  search, and cover search's query all type on it. Done on a search field also searches. The panel's Back chip leaves
+  the keyboard without keeping what was typed (B deletes a letter, as everywhere else).
+- **Search is the mockup's "keyboard below, results fanning above".** Typing (debounced 250 ms) shows on the Stage how
+  many games match, the first five covers fanned out and the first three names. Done opens the matches as a folder (a
+  new `HandheldFolderKind.Search`, not on home, A–Z, its own peek key per search) where A opens a game's Title page, as
+  in any folder; B goes back. No matches says so and stays on the keyboard. Matching is Gamepad mode's (the name shown,
+  or the library's title). Search opens again on the last query.
+- **Add games** is Gamepad mode's import: the platform folder picker, then a sheet of the importable systems (PS3
+  excluded, as in Gamepad mode), then the scan, whose progress and result arrive as toasts; the new platform's folder
+  appears on home with its "New" ribbon.
+- **Achievements while browsing are full-screen across both screens**, from the Y sheet and from the Title page's
+  Achievements button (which opened the companion's badge grid in H6b): a list of badges with All / Locked / Unlocked on
+  LB/RB, X for the sort, Y to refresh, A to reveal a hidden one, and the focused badge large on the Stage. It needs no
+  companion, so the button now shows for any game with a set or Steam achievements. The companion's grid stays the
+  in-game one.
+- **Scrape all in this folder** is a row of every folder's sheet (a platform's, yours, Recent), as the mockup had it; it
+  is Gamepad mode's "Scrape all in view". Its result, and a single scrape's, is said on the Stage as the panel closes.
+- **Set cover** without web image search says why (it is off, or not in this build) instead of opening; Handheld mode
+  has no Desktop to hand a local file to, so the cover search leaves out "Choose a file".
+- **Remove from library asks first**, naming that the files stay and, when it applies, that home and your folders lose
+  the game too; the destructive row is drawn in the warning colour. Removing, renaming, a new cover or scraped data read
+  the game again: home's pins and peeks, the open folder, and a Title page open on it (closed and reopened on a fresh
+  read).
+- **The dock's slots have a sheet** (Y, or a long press): Open, Change app… (the companion's picker), Clear slot (new
+  `SecondScreenViewModel.ClearSlotAt`); an empty slot offers Choose an app…. Dock taps now act on release so a hold can
+  open the sheet.
+- **Toasts are marked by kind.** The Stage's message pill shows the app's severity: a check for a result, three dots for
+  work still running, an alert in the warning colour for a failure (a launch or a sync that failed); it wraps to two
+  lines. An update found by the launch check is announced once for ten seconds ("… Install it from Settings → About"),
+  since Android has no update banner.
+- **The Start menu** is Search, Add games, Settings, Switch to Gamepad mode, Quit. *Achievements is not a menu row:*
+  Gamepad mode has no library-wide achievements screen to give it, a row there would have to pick a game, and a game's
+  achievements are a Y (or a Title-page button) away. Play history stays with M46 P4 (Handheld's Activity).
+- **Fixed on the way:** the native Stage re-pictured the hints only when something else on it changed, so a sheet over the
+  Title page kept the page's hints; the shell now says when its hints change. Achievements opened before their set was
+  cached showed the stale (disposed) rows without badges: the panel follows the shown list, which a refresh replaces
+  whole, not the full list it refills row by row.
+- **Not done:** on the swapped (narrow) Stage a two-line toast can briefly cover the top of a tall panel card (Search's
+  fan); the card cannot move down without shrinking it. The scraper and batch scraper panels are checked headlessly only:
+  the Thor's build has no ScreenScraper credentials, so there they say "ScreenScraper is unavailable right now".

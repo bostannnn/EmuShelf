@@ -37,22 +37,34 @@ public sealed partial class HandheldShellViewModel
     /// Something the Avalonia Launcher draws is open (the menu, a sheet, naming, move mode, Settings): on the Thor the
     /// native Launcher hands the screen back to it while this is true.
     /// </summary>
-    public bool IsLauncherOverlayOpen => IsMenuOpen || Sheet is not null || Naming is not null || IsMoving || Settings is not null;
+    public bool IsLauncherOverlayOpen => IsMenuOpen || Sheet is not null || Naming is not null || IsMoving || Settings is not null ||
+        Panel is not null;
 
     partial void OnIsMenuOpenChanged(bool value) => OnPropertyChanged(nameof(IsLauncherOverlayOpen));
 
     // ---- Notices: a short line on the Stage that says what an edit did, then the app's status comes back ----
 
     private string? _appStatus;
+    private HandheldGlyph _appStatusGlyph;
     private string? _notice;
     private DispatcherTimer? _noticeTimer;
 
     public static readonly TimeSpan NoticeDuration = TimeSpan.FromSeconds(3);
 
-    /// <summary>Mirrors the app's status line; it clears itself when the app's message is dismissed.</summary>
-    public void ShowStatus(string? message)
+    /// <summary>
+    /// Mirrors the app's status line (Gamepad mode's toast): a launch, a sync, a scan, a failure. It clears itself when the
+    /// app's message is dismissed. The severity picks the toast's mark (M45 H6c): a check for a result, the working dots
+    /// for something still running, the alert for a failure, which also draws in the warning colour.
+    /// </summary>
+    public void ShowStatus(string? message, StatusSeverity severity = StatusSeverity.Info)
     {
         _appStatus = message;
+        _appStatusGlyph = severity switch
+        {
+            StatusSeverity.Error => HandheldGlyph.Alert,
+            StatusSeverity.Progress => HandheldGlyph.Working,
+            _ => HandheldGlyph.Check,
+        };
         // A new message from the app (a launch, a failure) matters more than an edit's notice: it shows at once.
         if (_notice is not null && !string.IsNullOrWhiteSpace(message))
         {
@@ -60,29 +72,54 @@ public sealed partial class HandheldShellViewModel
             _notice = null;
         }
         if (_notice is null)
-            StatusMessage = message;
+            SetStatusLine(message, _appStatusGlyph);
     }
 
     /// <summary>The last notice an edit showed (tests read it; the Stage shows <see cref="StatusMessage"/>).</summary>
     public string? Notice => _notice;
 
-    private void ShowNotice(string text)
+    /// <summary>The toast's mark: a check, the working dots, the alert, or an update to install.</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyPropertyChangedFor(nameof(IsStatusError))]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyPropertyChangedFor(nameof(HasStatusGlyph))]
+    public partial HandheldGlyph StatusGlyph { get; private set; }
+
+    public bool HasStatusGlyph => StatusGlyph != HandheldGlyph.None;
+
+    /// <summary>The toast says something failed: it draws in the warning colour.</summary>
+    public bool IsStatusError => StatusGlyph == HandheldGlyph.Alert;
+
+    private void SetStatusLine(string? message, HandheldGlyph glyph)
+    {
+        StatusGlyph = glyph;
+        StatusMessage = message;
+    }
+
+    /// <summary>
+    /// Says something on the Stage for a while (what an edit did, an update to install), then the app's own status line
+    /// comes back.
+    /// </summary>
+    public void Announce(string text, HandheldGlyph glyph = HandheldGlyph.Check, TimeSpan? duration = null) =>
+        ShowNotice(text, glyph, duration);
+
+    private void ShowNotice(string text, HandheldGlyph glyph = HandheldGlyph.Check, TimeSpan? duration = null)
     {
         _notice = text;
-        StatusMessage = text;
+        SetStatusLine(text, glyph);
         if (_disposed)
             return;
         if (_noticeTimer is null)
         {
-            _noticeTimer = new DispatcherTimer { Interval = NoticeDuration };
+            _noticeTimer = new DispatcherTimer();
             _noticeTimer.Tick += (_, _) =>
             {
                 _noticeTimer?.Stop();
                 _notice = null;
-                StatusMessage = _appStatus;
+                SetStatusLine(_appStatus, _appStatusGlyph);
             };
         }
         _noticeTimer.Stop();
+        _noticeTimer.Interval = duration ?? NoticeDuration;
         _noticeTimer.Start();
     }
 
@@ -90,6 +127,11 @@ public sealed partial class HandheldShellViewModel
 
     private void OpenActions()
     {
+        if (Zone == HandheldZone.Dock && DockIndex < DockItems.Count && DockSheet(DockItems[DockIndex]) is { } dockSheet)
+        {
+            ShowSheet(dockSheet);
+            return;
+        }
         if (Zone != HandheldZone.Grid)
         {
             Bumped?.Invoke(HandheldDirection.Up);
@@ -187,6 +229,8 @@ public sealed partial class HandheldShellViewModel
             items.Add(new("Rename or recolour…", null, () => StartRename(folderId)));
             items.Add(new("Delete folder", "Games stay in the library", () => ConfirmDelete(folderId)));
         }
+        if (source.GameCount > 0)
+            items.Add(new("Scrape all in this folder", HandheldText.GameCount(source.GameCount), () => _ = OpenBatchScraperAsync(source)));
         var subtitle = source.Kind switch
         {
             HandheldFolderKind.Recent => $"Made for you · the last {HandheldText.GameCount(source.GameCount)} you played",
@@ -201,16 +245,38 @@ public sealed partial class HandheldShellViewModel
             } };
     }
 
-    /// <summary>One sheet for a game wherever it is focused: on home (a pin), inside a folder, or on its Title page.</summary>
-    private HandheldSheetViewModel GameSheet(HandheldGameEntry game, HandheldFolderViewModel? folder)
+    /// <summary>
+    /// One sheet for a game wherever it is focused: on home (a pin), inside a folder, or on its Title page (M45 H6c). It
+    /// holds every action Gamepad mode's game sheet has (Play, Choose disc, Achievements, Edit title, Set cover, Scrape,
+    /// Remove from library) and the places it can be (Move, Add to folder…, Pin to home or Remove from it).
+    /// </summary>
+    private HandheldSheetViewModel GameSheet(HandheldGameEntry game, HandheldFolderViewModel? folder, HandheldTitlePageViewModel? title = null)
     {
-        var items = new List<HandheldSheetItemViewModel>
+        var items = new List<HandheldSheetItemViewModel>();
+        if (title is null)
         {
-            new("Title page", null, () => OpenTitle(game)),
-        };
-        if (folder is null)
+            // Play goes through the Title page as every launch does (H2): its choosers and the save sync still ask.
+            items.Add(new("Play", null, () => OpenTitle(game, playWhenReady: true)));
+        }
+        else
+        {
+            items.Add(new("Play", null, () => _ = PlayAsync(title)));
+            if (title.Details is { HasSecondScreen: true, IsDualScreenSystem: false })
+                items.Add(new("Play on another screen…", "Ask which screen this time", () => OpenScreenChooser(title)));
+        }
+        if (title?.Details is { IsMultiDisc: true })
+            items.Add(new("Choose disc…", title.DiscText, () => OpenDiscChooser(title)));
+        else if (title is null && _library.DiscsOf(game) is { Numbers.Count: > 1 } discs)
+            items.Add(new("Choose disc…", $"Disc {discs.Selected} of {discs.Numbers.Count}", () => ShowSheet(DiscSheet(game))));
+        if (_library.HasAchievementDetails(game))
+            items.Add(new("Achievements", game.AchievementText, () => _ = OpenAchievementsAsync(game)));
+        if (folder is null && title is null)
             items.Add(new("Move", "Drop on a game to make a folder", StartMove));
         items.AddRange(PlaceItems(game, folder?.Source));
+        items.Add(new("Edit title", null, () => OpenTitleEdit(game)));
+        items.Add(new("Set cover", null, () => OpenCoverSearch(game)));
+        items.Add(new("Scrape with ScreenScraper", null, () => OpenScraper(game)));
+        items.Add(new("Remove from library", "Its files stay where they are", () => ConfirmRemoveFromLibrary(game)) { IsDestructive = true });
         return new HandheldSheetViewModel(game.Title, game.SystemName, items) { Thumbnail = CoverFor(game.Id) };
     }
 

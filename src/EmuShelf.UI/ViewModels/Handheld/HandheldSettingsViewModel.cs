@@ -185,76 +185,25 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
 
     // ---- The keyboard ----
 
-    private void DispatchKeyboard(HandheldTextKeyboardViewModel keyboard, GamepadAction action)
+    private void DispatchKeyboard(HandheldTextKeyboardViewModel keyboard, GamepadAction action) =>
+        Apply(keyboard.Dispatch(action));
+
+    private void Press(HandheldTextKeyboardViewModel keyboard, HandheldKeyViewModel key) => Apply(keyboard.Press(key));
+
+    // What a key or a button did on the keyboard: the projection commits, cancels or reveals; anything else re-pictures.
+    private void Apply(HandheldKeyOutcome outcome)
     {
-        switch (action)
+        switch (outcome)
         {
-            case GamepadAction.NavigateUp:
-                keyboard.MoveKey(-1, 0);
-                break;
-            case GamepadAction.NavigateDown:
-                keyboard.MoveKey(1, 0);
-                break;
-            case GamepadAction.NavigateLeft:
-                keyboard.MoveKey(0, -1);
-                break;
-            case GamepadAction.NavigateRight:
-                keyboard.MoveKey(0, 1);
-                break;
-            case GamepadAction.Confirm:
-                Press(keyboard, keyboard.FocusedKey);
-                return;
-            case GamepadAction.Cancel:
-                // B deletes, as on the naming keyboard; with nothing left to delete it leaves without saving.
-                if (!keyboard.DeleteLast())
-                    Projection.CancelTextEntry();
-                break;
-            case GamepadAction.Actions:
-                // Y shows or hides a secret (as in Gamepad mode's Settings), and is a space anywhere else.
-                if (keyboard.IsSecret)
-                    Projection.RevealSecret = !Projection.RevealSecret;
-                else
-                    keyboard.Type(" ");
-                break;
-            case GamepadAction.PreviousPlatform:
-                keyboard.ToggleShift();
-                break;
-            case GamepadAction.NextPlatform:
-                keyboard.ToggleSymbols();
-                break;
-            case GamepadAction.Search:
-            case GamepadAction.Menu:
+            case HandheldKeyOutcome.Commit:
                 Projection.CommitTextEntry();
                 return;
-        }
-        RaiseChanged();
-    }
-
-    private void Press(HandheldTextKeyboardViewModel keyboard, HandheldKeyViewModel key)
-    {
-        switch (key.Kind)
-        {
-            case HandheldKeyKind.Character:
-                keyboard.Type(key.Label);
-                break;
-            case HandheldKeyKind.Space:
-                keyboard.Type(" ");
-                break;
-            case HandheldKeyKind.Delete:
-                keyboard.DeleteLast();
-                break;
-            case HandheldKeyKind.Shift:
-                keyboard.ToggleShift();
-                break;
-            case HandheldKeyKind.Symbols:
-                keyboard.ToggleSymbols();
-                break;
-            case HandheldKeyKind.Cancel:
+            case HandheldKeyOutcome.Cancel:
                 Projection.CancelTextEntry();
                 return;
-            case HandheldKeyKind.Done:
-                Projection.CommitTextEntry();
-                return;
+            case HandheldKeyOutcome.ToggleReveal:
+                Projection.RevealSecret = !Projection.RevealSecret;
+                break;
         }
         RaiseChanged();
     }
@@ -351,10 +300,8 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         {
             if (Keyboard is { } keyboard)
             {
-                yield return new HandheldHint("A", "Type");
-                yield return new HandheldHint("B", keyboard.HasText ? "Delete" : "Cancel");
-                yield return new HandheldHint("Y", keyboard.IsSecret ? Projection.RevealSecret ? "Hide" : "Show" : "Space");
-                yield return new HandheldHint("X", "Done");
+                foreach (var hint in keyboard.Hints())
+                    yield return hint;
                 yield break;
             }
             if (Projection.IsChoicePickerOpen || Projection.IsConfirmationOpen)
@@ -483,10 +430,30 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     }
 }
 
+/// <summary>What a press on the drawn keyboard did, for its owner to act on.</summary>
+public enum HandheldKeyOutcome
+{
+    /// <summary>Nothing the owner needs to do (an edge of the keys).</summary>
+    None,
+
+    /// <summary>The text, the focus or the keys changed.</summary>
+    Changed,
+
+    /// <summary>Done (the key, X or Start).</summary>
+    Commit,
+
+    /// <summary>Cancel (the key, or B with nothing left to delete).</summary>
+    Cancel,
+
+    /// <summary>Y on a secret: show or hide it.</summary>
+    ToggleReveal,
+}
+
 /// <summary>
-/// The drawn keyboard Settings' text rows type on (a name, a key, a password): the naming keyboard's look, with digits,
-/// capitals (Shift, or LB) and symbols (RB), Cancel and Done. It types straight into the projection's draft, so the field
-/// above it and the Stage both follow every key, and a hardware keyboard typing into the field works too.
+/// The drawn keyboard Handheld mode types on (M45 H6a, shared by Search, Edit title and the scraper's fields in H6c): the
+/// naming keyboard's look, with digits, capitals (Shift, or LB) and symbols (RB), Cancel and Done. It types straight into
+/// its owner's text (Settings' draft, a search, a title), so the field above it and the Stage both follow every key, and a
+/// hardware keyboard typing into the field works too. Android's own keyboard cannot open on the Thor's second screen.
 /// </summary>
 public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
 {
@@ -495,11 +462,24 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     private static readonly string[] LetterRows = ["1234567890", "qwertyuiop", "asdfghjkl@", "zxcvbnm-_."];
     private static readonly string[] SymbolRows = ["1234567890", "!@#$%^&*()", "-_=+[]{}\\|", ";:'\",.<>/?"];
 
-    private readonly GamepadSettingsViewModel _projection;
+    private readonly Func<string> _getText;
+    private readonly Action<string> _setText;
+    private readonly Func<string> _title;
+    private readonly Func<bool> _isRevealed;
 
     internal HandheldTextKeyboardViewModel(GamepadSettingsViewModel projection)
+        : this(() => projection.DraftText, text => projection.DraftText = text, () => projection.TextEntryTitle,
+            () => projection.RevealSecret)
     {
-        _projection = projection;
+    }
+
+    /// <summary>A keyboard over any text: read and written through <paramref name="getText"/> / <paramref name="setText"/>.</summary>
+    internal HandheldTextKeyboardViewModel(Func<string> getText, Action<string> setText, Func<string> title, Func<bool>? isRevealed = null)
+    {
+        _getText = getText;
+        _setText = setText;
+        _title = title;
+        _isRevealed = isRevealed ?? (() => false);
         Build();
     }
 
@@ -508,18 +488,20 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     /// <summary>The draft as typed (the field binds it two-way, so a hardware keyboard types there).</summary>
     public string Text
     {
-        get => _projection.DraftText;
+        get => _getText();
         set
         {
             var text = value.Length > MaxLength ? value[..MaxLength] : value;
-            if (text != _projection.DraftText)
-                _projection.DraftText = text;
+            if (text == _getText())
+                return;
+            _setText(text);
+            OnDraftChanged();
         }
     }
 
     public bool HasText => Text.Length > 0;
 
-    public string Title => _projection.TextEntryTitle;
+    public string Title => _title();
 
     /// <summary>A secret (a password, an API key): masked until Y shows it.</summary>
     [ObservableProperty]
@@ -542,11 +524,95 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     }
 
     /// <summary>The field's mask: a secret shows dots until Y shows it ('\0' shows the text).</summary>
-    public char MaskChar => IsSecret && !_projection.RevealSecret ? '●' : '\0';
+    public char MaskChar => IsSecret && !_isRevealed() ? '●' : '\0';
+
+    /// <summary>Whether a secret is showing (Y toggled it).</summary>
+    public bool IsRevealed => _isRevealed();
 
     partial void OnIsSecretChanged(bool value) => OnPropertyChanged(nameof(MaskChar));
 
-    internal void OnRevealChanged() => OnPropertyChanged(nameof(MaskChar));
+    internal void OnRevealChanged()
+    {
+        OnPropertyChanged(nameof(MaskChar));
+        OnPropertyChanged(nameof(IsRevealed));
+    }
+
+    /// <summary>
+    /// A pad button on the keyboard: the D-pad moves over the keys, A types the focused one, B deletes (and with nothing
+    /// left to delete, cancels), Y is a space (or shows a secret), LB is Shift, RB the symbols, X and Start are Done.
+    /// </summary>
+    internal HandheldKeyOutcome Dispatch(GamepadAction action)
+    {
+        switch (action)
+        {
+            case GamepadAction.NavigateUp:
+                return MoveKey(-1, 0) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+            case GamepadAction.NavigateDown:
+                return MoveKey(1, 0) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+            case GamepadAction.NavigateLeft:
+                return MoveKey(0, -1) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+            case GamepadAction.NavigateRight:
+                return MoveKey(0, 1) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+            case GamepadAction.Confirm:
+                return Press(FocusedKey);
+            case GamepadAction.Cancel:
+                return DeleteLast() ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Cancel;
+            case GamepadAction.Actions when IsSecret:
+                return HandheldKeyOutcome.ToggleReveal;
+            case GamepadAction.Actions:
+                Type(" ");
+                return HandheldKeyOutcome.Changed;
+            case GamepadAction.PreviousPlatform:
+                ToggleShift();
+                return HandheldKeyOutcome.Changed;
+            case GamepadAction.NextPlatform:
+                ToggleSymbols();
+                return HandheldKeyOutcome.Changed;
+            case GamepadAction.Search:
+            case GamepadAction.Menu:
+                return HandheldKeyOutcome.Commit;
+            default:
+                return HandheldKeyOutcome.None;
+        }
+    }
+
+    /// <summary>A key: A on it, or a tap (the caller focuses it first).</summary>
+    internal HandheldKeyOutcome Press(HandheldKeyViewModel key)
+    {
+        FocusKey(key);
+        switch (key.Kind)
+        {
+            case HandheldKeyKind.Character:
+                Type(key.Label);
+                break;
+            case HandheldKeyKind.Space:
+                Type(" ");
+                break;
+            case HandheldKeyKind.Delete:
+                DeleteLast();
+                break;
+            case HandheldKeyKind.Shift:
+                ToggleShift();
+                break;
+            case HandheldKeyKind.Symbols:
+                ToggleSymbols();
+                break;
+            case HandheldKeyKind.Cancel:
+                return HandheldKeyOutcome.Cancel;
+            case HandheldKeyKind.Done:
+                return HandheldKeyOutcome.Commit;
+        }
+        return HandheldKeyOutcome.Changed;
+    }
+
+    /// <summary>The hints a keyboard shows (the Stage's pill, and the row under the keys).</summary>
+    public IEnumerable<HandheldHint> Hints(string done = "Done")
+    {
+        yield return new HandheldHint("A", "Type");
+        yield return new HandheldHint("B", HasText ? "Delete" : "Cancel");
+        yield return new HandheldHint("Y", IsSecret ? IsRevealed ? "Hide" : "Show" : "Space");
+        yield return new HandheldHint("X", done);
+    }
 
     internal bool Type(string character)
     {
