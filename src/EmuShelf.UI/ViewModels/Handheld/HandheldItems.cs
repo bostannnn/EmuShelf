@@ -24,7 +24,9 @@ public sealed record HandheldPlatform(string SystemId, string Name, string Short
 /// <paramref name="Animated"/> is the system's animated backdrops (the same list instance for every move
 /// within a system), which the Thor's native Stage draws instead of the era motif (M45 H7).
 /// </summary>
-public sealed record HandheldBackdrop(Color Color, SystemEra Era, IReadOnlyList<string>? Animated = null);
+/// <remarks><paramref name="Sweep"/> (M45 H6d): a focused dock app's coloured sweep instead of an era, in the colour picked
+/// from its icon.</remarks>
+public sealed record HandheldBackdrop(Color Color, SystemEra Era, IReadOnlyList<string>? Animated = null, bool Sweep = false);
 
 /// <summary>
 /// One game in a Handheld folder: the facts the tiles, the Stage and the sorts need, plus the shared
@@ -136,6 +138,12 @@ public interface IHandheldLibrary
     /// settings model. Null when it cannot open now (the app is busy, or the read failed and the status line says why).
     /// </summary>
     Task<GamepadSettingsViewModel?> CreateSettingsAsync() => Task.FromResult<GamepadSettingsViewModel?>(null);
+
+    /// <summary>
+    /// Builds the setup wizard for Handheld mode (M45 H6d): the same projection in setup mode, as Gamepad mode's first run
+    /// opens it. Closing it through <see cref="CloseSettings"/> after its last step records the wizard as done.
+    /// </summary>
+    Task<GamepadSettingsViewModel?> CreateSetupAsync() => Task.FromResult<GamepadSettingsViewModel?>(null);
 
     /// <summary>Settings closed (saved or not): the projection is let go of.</summary>
     void CloseSettings(GamepadSettingsViewModel settings, bool saved) => settings.Dispose();
@@ -319,8 +327,9 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 {
     public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldFolderSource? folder, HandheldGameEntry? game = null,
         Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None,
-        Bitmap? carriedCover = null, string? carriedTitle = null)
+        Bitmap? carriedCover = null, string? carriedTitle = null, bool isAddGames = false)
     {
+        IsAddGames = isAddGames && slot.IsEmpty;
         CarriedCover = carriedCover;
         CarriedTitle = carriedTitle;
         Index = index;
@@ -349,6 +358,9 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     public HandheldPlatform? Platform => Folder?.Platform;
 
     public bool IsEmpty => Slot.IsEmpty;
+
+    /// <summary>The library has no games and this is home's first empty slot: it shows the way to add some (M45 H6d).</summary>
+    public bool IsAddGames { get; }
     public bool IsFolder => Folder is not null;
     public bool IsGame => Slot.Kind == HandheldSlotKind.Game;
 
@@ -398,7 +410,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
     /// <summary>What the slot looks like, for deciding whether a rebuilt page changed and must be pictured again.</summary>
     public string PictureKey =>
-        $"{Slot}|{Folder?.Name}|{Folder?.AccentColor}|{Folder?.GameCount}|{Game?.Title}|{Game?.IsAvailable}|{RuntimeRef(Cover)}|{MoveLook}|{RuntimeRef(CarriedCover)}";
+        $"{Slot}|{Folder?.Name}|{Folder?.AccentColor}|{Folder?.GameCount}|{Game?.Title}|{Game?.IsAvailable}|{RuntimeRef(Cover)}|{MoveLook}|{RuntimeRef(CarriedCover)}|{IsAddGames}";
 
     private static int RuntimeRef(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 
@@ -734,6 +746,13 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public partial Bitmap? Logo { get; set; }
 
     /// <summary>
+    /// The hero is the idle drift's (M45 H6d), not a Title page's: a recent game shown at rest, labelled "Recently played",
+    /// crossfading slowly into the next.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsDrift { get; set; }
+
+    /// <summary>
     /// The era motif behind a folder or a game, in the system's colour (on a Title page without fan art, the
     /// colour picked from the cover). Null (an app, an empty slot, the menu) leaves the plain light gradient.
     /// </summary>
@@ -907,6 +926,13 @@ public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> i
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
+
+    /// <summary>A row's state at its right edge ("On" for Sounds); null for none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNote))]
+    public partial string? Note { get; set; }
+
+    public bool HasNote => !string.IsNullOrEmpty(Note);
 }
 
 /// <summary>The words the Settings tile uses wherever it appears.</summary>

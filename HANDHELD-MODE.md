@@ -343,7 +343,9 @@ The motions:
 - **Move mode.** The lifted tile scales up, gains a shadow and wobbles gently. Other tiles slide
   aside to open a gap where it would land. Dropping it gives a small squash-and-settle.
 - **Sounds** (Phase 5): soft original effects for move, open, close, swap and launch, and an off
-  switch in Settings. They must be self-made or CC0-licensed. No Nintendo sounds.
+  switch in Settings. They must be self-made or CC0-licensed. No Nintendo sounds. *As built (M45 H6d):* move, open,
+  close, confirm and back, synthesised in code; Play is confirm and the swap is silent; the switch is the Start menu's
+  Sounds row and Settings → Display.
 
 **Numbers as built (M45 H3, 2026-11-07; folder open/close and the backdrop revised in M45 H4).** One
 table, in code as `HandheldMotion`; the device tuning edits both. They are still the mockup's and the
@@ -362,6 +364,7 @@ folder lab's values: the owner's feel check on the Thor is what moves them.
 | Folder open (Zoom through) | tile 1 → 2.6× and fading, 300 ms, cubic-bezier(.4, 0, .2, 1); home fades out over 240 ms from 40 ms; the page (header + grid, one surface) 0.55× → 1 about the tile's centre, 380 ms from 60 ms on a 600/32 spring (≈ 2.5% over), opacity 0 → 1 over its first 45%; selector hidden until 260 ms, then fades in over 140 ms; the top screen holds the open folder 300 ms |
 | Folder close | the page's picture 1 → 0.55× about the tile's centre, 260 ms, opacity gone by 70%; home fades in over 240 ms from 60 ms; tile 2.6× → 1 on a 576/38.8 spring (≈ 1% under) and fading in, 320 ms from 40 ms; selector as on open; the Stage's folder arrives open and closes its flap after 220 ms |
 | Stage backdrop (era motif) | a change waits for 250 ms without another, then crossfades over 450 ms (one leaving layer at most); motion stepped in whole pixels, 4×/s for the blocks and 6×/s for the bar, stopped while hidden or in the background. Cartridge: tint hsl(h 40% 92%) → hsl(h 38% 86%); grid 22 px pitch, 2 px lines, hsl(h 50% 60% / .10); blocks 22 px, 8 per 176×132 tile, hsl(h−20/h/h+20 55% 62% / .22), drifting (176, 132) px per 22 s; pool hsl(h 35% 97% / .8) → clear at 75% of a 55% × 70% ellipse. Disc: radial hsl(h 35% 90%) → hsl(h 30% 78%) over 90% × 120% from (50%, 40%); scanlines 2 px of 5, hsl(h 40% 30% / .09); bar 140 px, hsl(h 60% 96% / .35) at its middle, top to bottom (1220 px) every 24 s; vignette clear to 55% then hsl(h 40% 40% / .18) |
+| Idle drift (M45 H6d) | starts 15 s after the last press or touch; each recent game as its hero, held 6 s, 1.2 s crossfade (the outgoing hero stays under the arriving one); once round and back to the newest, then rests; not navigation, so the Stage's own rest after a minute still applies |
 | Launch | Launcher cover presses to 0.94×, pops to 1.1× (260 ms) and lifts off (420 ms); the Stage's cover lands from below after 140 ms (520 ms) and zooms to 1.7× fading (460 ms); the emulator starts as it lands (660 ms after Play) |
 
 

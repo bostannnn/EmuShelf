@@ -231,6 +231,9 @@
                      VerticalAlignment="Center" />
         </Panel>
         <StackPanel x:Name="HeroMeta" HorizontalAlignment="Left" VerticalAlignment="Bottom" Spacing="8">
+          <!-- The idle drift (M45 H6d) says why this game is on screen. -->
+          <TextBlock Text="Recently played" IsVisible="{Binding Stage.IsDrift}" FontSize="30" FontWeight="SemiBold"
+                     Foreground="#D9FFFFFF" />
           <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding Stage.HasLogo}" FontSize="40" FontWeight="SemiBold"
                      Foreground="White" TextTrimming="CharacterEllipsis" />
           <StackPanel Orientation="Horizontal" Spacing="24">
@@ -470,7 +473,8 @@
       </Border>
 
       <!-- Button hints. -->
-      <Border x:Name="HintsShot" Classes="shot">
+      <!-- No hints (the idle drift, M45 H6d): no pill. -->
+      <Border x:Name="HintsShot" Classes="shot" IsVisible="{Binding !!Hints.Count}">
       <Border Classes="pill">
         <ItemsControl ItemsSource="{Binding Hints}" VerticalAlignment="Center">
           <ItemsControl.ItemsPanel>

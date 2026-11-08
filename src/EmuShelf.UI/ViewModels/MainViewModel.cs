@@ -2666,7 +2666,7 @@ public partial class MainViewModel : ViewModelBase
     /// and Handheld mode across its two screens (M45 H6a).
     /// </summary>
     private async Task<GamepadSettingsViewModel> CreateGamepadSettingsProjectionAsync(SetupWizardOptions? setup,
-        Func<Task>? openHotkeys, Func<Task>? runSetup)
+        Func<Task>? openHotkeys, Func<Task>? runSetup, GamepadSettingsSwitch? handheldSounds = null)
     {
         var settings = await CreateSettingsViewModelAsync();
         // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
@@ -2699,6 +2699,7 @@ public partial class MainViewModel : ViewModelBase
             setup: setup,
             runSetup: runSetup,
             usageAccess: EmuShelf.App.App.UsageAccess,
+            handheldSounds: handheldSounds,
             refreshGameCounts: async () =>
             {
                 try
@@ -6487,11 +6488,18 @@ public partial class MainViewModel : ViewModelBase
     private async Task OfferSetupWizardAtStartupAsync()
     {
         var completed = _settingsService?.Load().SetupCompletedVersion;
-        var wanted = OperatingSystem.IsAndroid() && IsGamepadMode && completed is { } version && version < SetupWizardVersion;
+        var wanted = OperatingSystem.IsAndroid() && (IsGamepadMode || IsHandheldMode) && completed is { } version && version < SetupWizardVersion;
         _logger.Information(
-            $"Setup wizard at startup: {(wanted ? "opening" : "not needed")} (android={OperatingSystem.IsAndroid()}, couch={IsGamepadMode}, completedVersion={completed?.ToString() ?? "n/a"}, current={SetupWizardVersion}).");
+            $"Setup wizard at startup: {(wanted ? "opening" : "not needed")} (android={OperatingSystem.IsAndroid()}, couch={IsGamepadMode}, handheld={IsHandheldMode}, completedVersion={completed?.ToString() ?? "n/a"}, current={SetupWizardVersion}).");
         if (!wanted)
             return;
+
+        // Handheld mode walks it across its two screens (M45 H6d).
+        if (IsHandheldMode)
+        {
+            await OfferHandheldSetupWizardAsync();
+            return;
+        }
 
         // Up to 30 s for the shell to go idle; the open is skipped while it is busy or another open is in flight.
         for (var attempt = 0; attempt < 60 && (IsBusy || _openingGamepadSettings || GamepadOverlay != GamepadOverlayKind.None); attempt++)

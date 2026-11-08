@@ -69,6 +69,76 @@ public partial class MainViewModel
 
     private SecondScreenViewModel? _handheldCompanion;
 
+    /// <summary>What plays Handheld mode's interface sounds (M45 H6d). The Android head sets it; elsewhere they are silent.</summary>
+    public IHandheldSoundPlayer? HandheldSoundPlayer
+    {
+        get => _handheldSoundPlayer;
+        set
+        {
+            _handheldSoundPlayer = value;
+            if (Handheld is { } handheld)
+                handheld.SoundPlayer = value ?? SilentHandheldSoundPlayer.Instance;
+        }
+    }
+
+    private IHandheldSoundPlayer? _handheldSoundPlayer;
+
+    /// <summary>The Sounds switch changed (the Start menu, or Settings → Display): remembered for the next start.</summary>
+    private void SaveHandheldSounds(bool enabled)
+    {
+        if (_settingsService is not { } settings)
+            return;
+        _handheldSoundsSave = _handheldSoundsSave.ContinueWith(_ =>
+        {
+            try
+            {
+                settings.Update(latest => latest with { HandheldSounds = enabled });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Could not remember the Handheld sounds switch.", ex);
+            }
+        }, TaskScheduler.Default);
+    }
+
+    private Task _handheldSoundsSave = Task.CompletedTask;
+
+    // Settings → Display's Sounds row in Handheld mode: the shell's switch, so the menu row and the Settings row agree.
+    private GamepadSettingsSwitch? HandheldSoundsSwitch() => Handheld is { } shell
+        ? new GamepadSettingsSwitch(() => shell.SoundsEnabled, enabled =>
+        {
+            if (shell.SoundsEnabled == enabled)
+                return;
+            shell.SoundsEnabled = enabled;
+            shell.SaveSounds?.Invoke(enabled);
+        })
+        : null;
+
+    /// <summary>
+    /// The setup wizard on a first start in Handheld mode (M45 H6d): once home has been read and nothing else is running,
+    /// it opens across the two screens, as Gamepad mode's opens over its shelf.
+    /// </summary>
+    private async Task OfferHandheldSetupWizardAsync()
+    {
+        // Up to 30 s for the shell to go idle and home to be read (a scan or the startup pass may still be running).
+        for (var attempt = 0; attempt < 60 && (IsBusy || _openingHandheldSettings || Handheld is not { IsLoaded: true }); attempt++)
+            await Task.Delay(500);
+        if (Handheld is not { } shell)
+        {
+            _logger.Warning("Setup wizard not opened: Handheld mode is no longer on.");
+            return;
+        }
+        if (shell.IsSettingsOpen)
+        {
+            _logger.Warning("Setup wizard not opened: Settings is open.");
+            return;
+        }
+        await shell.OpenSetupAsync();
+        _logger.Information(shell.Settings?.IsSetup == true
+            ? "Setup wizard opened (Handheld mode)."
+            : $"Setup wizard did not open in Handheld mode (busy={IsBusy}, opening={_openingHandheldSettings}).");
+    }
+
     partial void OnIsHandheldModeChanged(bool value)
     {
         if (value)
@@ -84,6 +154,9 @@ public partial class MainViewModel
             {
                 Companion = _handheldCompanion,
                 LaunchLead = HandheldMotion.LaunchLead,
+                SoundPlayer = _handheldSoundPlayer ?? SilentHandheldSoundPlayer.Instance,
+                SoundsEnabled = _settingsService?.Load().HandheldSounds ?? true,
+                SaveSounds = SaveHandheldSounds,
             };
             Handheld = handheld;
             handheld.ShowStatus(StatusText, StatusSeverity);
@@ -122,7 +195,7 @@ public partial class MainViewModel
     private GamepadSettingsViewModel? _handheldSettings;
     private bool _openingHandheldSettings;
 
-    private async Task<GamepadSettingsViewModel?> CreateHandheldSettingsAsync()
+    private async Task<GamepadSettingsViewModel?> CreateHandheldSettingsAsync(bool setup = false)
     {
         if (!IsHandheldMode || _openingHandheldSettings || _handheldSettings is not null)
             return null;
@@ -135,8 +208,13 @@ public partial class MainViewModel
         _openingHandheldSettings = true;
         try
         {
-            // No Hotkeys overlay (Android has none) and no "Run setup again": Handheld mode's first run is its own (H6d).
-            var settings = await CreateGamepadSettingsProjectionAsync(setup: null, openHotkeys: null, runSetup: null);
+            // No Hotkeys overlay (Android has none). The setup wizard is this projection in setup mode, and "Run setup again"
+            // reopens it the same way (M45 H6d); the Sounds switch is Handheld mode's own row in Display.
+            var settings = await CreateGamepadSettingsProjectionAsync(
+                setup: setup ? BuildSetupWizardOptions() : null,
+                openHotkeys: null,
+                runSetup: setup || !OperatingSystem.IsAndroid() ? null : RunHandheldSetupAgainAsync,
+                handheldSounds: HandheldSoundsSwitch());
             if (!IsHandheldMode)
             {
                 settings.Dispose();
@@ -165,10 +243,23 @@ public partial class MainViewModel
             EmuShelf.App.App.ForegroundReturned -= RefreshHandheldSettingsDeviceState;
             _handheldSettings = null;
         }
+        var wasSetup = settings.IsSetupMode;
+        // Only the last step's Finish counts as having walked the wizard; leaving early saves the answers but offers it
+        // again next start, as in Gamepad mode.
+        var setupFinished = wasSetup && saved && settings.SetupCompleted;
         settings.Dispose();
-        if (saved)
+        if (setupFinished)
+        {
+            _settingsService?.Update(latest => latest with { SetupCompletedVersion = SetupWizardVersion });
+            SetStatus("Setup complete.");
+        }
+        else if (saved && !wasSetup)
+        {
             SetStatus("Settings saved.");
+        }
     }
+
+    private Task RunHandheldSetupAgainAsync() => Handheld?.RunSetupAgainAsync() ?? Task.CompletedTask;
 
     private void RefreshHandheldSettingsDeviceState() => _handheldSettings?.RefreshDeviceState();
 
@@ -483,6 +574,8 @@ public partial class MainViewModel
         public Task SwitchModeAsync(InterfaceMode mode) => owner.SetInterfaceModeAsync(mode);
 
         public Task<GamepadSettingsViewModel?> CreateSettingsAsync() => owner.CreateHandheldSettingsAsync();
+
+        public Task<GamepadSettingsViewModel?> CreateSetupAsync() => owner.CreateHandheldSettingsAsync(setup: true);
 
         public void CloseSettings(GamepadSettingsViewModel settings, bool saved) => owner.CloseHandheldSettings(settings, saved);
 

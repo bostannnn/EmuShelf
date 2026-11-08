@@ -53,6 +53,17 @@ public sealed partial class SecondScreenSlotViewModel(int index) : ObservableObj
     [ObservableProperty]
     public partial Bitmap? Icon { get; set; }
 
+    /// <summary>
+    /// The app's launcher icon at about 512 px, for the Handheld Stage (M45 H6d); the dock and drawer keep the small one.
+    /// Null until it is loaded, or off Android.
+    /// </summary>
+    [ObservableProperty]
+    public partial Bitmap? LargeIcon { get; set; }
+
+    /// <summary>The colour picked once from the app's icon (the Handheld Stage's sweep behind it); null until picked.</summary>
+    [ObservableProperty]
+    public partial Avalonia.Media.Color? AccentColor { get; set; }
+
     public bool IsEmpty => string.IsNullOrEmpty(Label);
     public bool HasIcon => Icon is not null;
 

@@ -240,8 +240,27 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        // A waking touch whose release never arrived (a cancelled gesture) must not swallow this one.
+        _wakeTouch = false;
         if (_shell is not { } shell)
             return;
+        // The first touch after the idle drift only wakes the Stage: the whole touch is let go (M45 H6d).
+        if (shell.WakeOnTouch())
+        {
+            _wakeTouch = true;
+            e.Handled = true;
+            return;
+        }
+        // One touch is one interaction for the sounds (M45 H6d).
+        using var touch = shell.BeginTouch();
+        OnPointerPressedCore(shell, e);
+    }
+
+    // Set while the touch that woke the idle drift is down; it does nothing else.
+    private bool _wakeTouch;
+
+    private void OnPointerPressedCore(HandheldShellViewModel shell, PointerPressedEventArgs e)
+    {
         var source = e.Source as Visual;
         if (shell.Settings is { } settings)
         {
@@ -347,7 +366,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
 
     private void OnPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_shell is not { } shell || _pressAt is not { } start)
+        if (_wakeTouch || _shell is not { } shell || _pressAt is not { } start)
             return;
         var delta = e.GetPosition(this) - start;
         if (shell.IsMoving && _carrying)
@@ -364,6 +383,20 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         _longPress.Stop();
+        if (_wakeTouch)
+        {
+            _wakeTouch = false;
+            e.Handled = true;
+            return;
+        }
+        if (_shell is not { } touched)
+            return;
+        using var touch = touched.BeginTouch();
+        OnPointerReleasedCore(e);
+    }
+
+    private void OnPointerReleasedCore(PointerReleasedEventArgs e)
+    {
         if (_settingsPress is { } press)
         {
             // A row is pressed on release, and only if the finger stayed put: a drag scrolls the list instead.
@@ -431,6 +464,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _longPress.Stop();
         if (_shell is not { } shell)
             return;
+        using var touch = shell.BeginTouch();
         if (_dockPress is { } dockItem)
         {
             _dockLongPressed = true;
@@ -521,6 +555,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         if (IsInside(source, "SettingsBack"))
         {
             settings.Back();
+            e.Handled = true;
+        }
+        else if (IsInside(source, "SettingsStart"))
+        {
+            settings.TapStart();
             e.Handled = true;
         }
         else if (Find<HandheldSettingsSectionViewModel>(source) is { } section)

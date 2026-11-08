@@ -321,6 +321,13 @@
         </LinearGradientBrush>
       </Setter>
     </Style>
+    <!-- The setup wizard keeps room under its steps for the Continue button (M45 H6d). -->
+    <Style Selector="Panel#SettingsSectionHost">
+      <Setter Property="Margin" Value="0,24,0,0" />
+    </Style>
+    <Style Selector="Panel#SettingsSectionHost.setup">
+      <Setter Property="Margin" Value="0,24,0,128" />
+    </Style>
     <Style Selector="Border.settings-section">
       <Setter Property="CornerRadius" Value="24" />
       <Setter Property="Height" Value="88" />
@@ -593,6 +600,19 @@
                           <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out; in move mode it lights up. -->
                           <Border IsVisible="{Binding IsEmpty}" Classes="empty-slot" Classes.landing="{Binding IsLandingPlace}"
                                   CornerRadius="44" BorderBrush="#29465088" BorderThickness="2" Background="#40FFFFFF" />
+                          <!--
+                            No games yet (M45 H6d): the first empty slot says where games come from. A on any empty slot adds
+                            games then, since there is nothing to put in a folder.
+                          -->
+                          <Border IsVisible="{Binding IsAddGames}" CornerRadius="44" BorderBrush="#995B58D9"
+                                  BorderThickness="3" Background="#D9FFFFFF">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Add}" Width="64" Height="64" Foreground="#5B58D9"
+                                        HorizontalAlignment="Center" />
+                              <TextBlock Text="Add games" FontSize="22" FontWeight="SemiBold" Foreground="#5B58D9"
+                                         HorizontalAlignment="Center" />
+                            </StackPanel>
+                          </Border>
                           <!-- A platform folder that arrived since you last looked. -->
                           <Border IsVisible="{Binding IsNew}" Classes="ribbon" HorizontalAlignment="Right" VerticalAlignment="Top">
                             <TextBlock Text="New" />
@@ -1104,8 +1124,14 @@
                   <!-- Card radius 40 − padding 24 = 16 for the rows inside it. -->
                   <Border CornerRadius="16" Height="80" Padding="24,0"
                           Background="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
-                    <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
-                               Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                                 Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
+                      <!-- A switch's state (Sounds, M45 H6d). -->
+                      <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="26"
+                                 VerticalAlignment="Center" Margin="24,0,0,0" Opacity="0.75"
+                                 Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
+                    </Grid>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
@@ -1328,12 +1354,26 @@
                 <TextBlock Classes="chip-text" Text="Back" />
               </StackPanel>
             </Border>
-            <TextBlock Text="Settings" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Heading}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033" VerticalAlignment="Center" />
           </StackPanel>
           <TextBlock Grid.Column="1" Text="{Binding SectionTitle}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033"
                      VerticalAlignment="Center" Margin="40,0,0,0" TextTrimming="CharacterEllipsis" />
 
-          <Panel Grid.Row="1" x:Name="SettingsSectionHost" Margin="0,24,0,0">
+          <!-- The setup wizard's way forward (M45 H6d): Start, or a tap here, goes to the next step (Finish on the last). -->
+          <Border Grid.Row="1" x:Name="SettingsStart" IsVisible="{Binding IsSetup}" VerticalAlignment="Bottom" CornerRadius="24"
+                  Padding="28,18" Background="#5B58D9" BoxShadow="0 10 24 0 #405B58D9">
+            <Grid ColumnDefinitions="*,Auto">
+              <StackPanel Spacing="2">
+                <TextBlock Text="{Binding StartLabel}" FontSize="28" FontWeight="SemiBold" Foreground="White" />
+                <TextBlock Text="{Binding StartDetail}" FontSize="20" Foreground="#D9FFFFFF" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+              <Border Grid.Column="1" Width="52" Height="52" CornerRadius="26" Background="#33FFFFFF" VerticalAlignment="Center"
+                      Margin="16,0,0,0">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="26" Height="26" Foreground="White" />
+              </Border>
+            </Grid>
+          </Border>
+          <Panel Grid.Row="1" x:Name="SettingsSectionHost" Classes.setup="{Binding IsSetup}">
           <ScrollViewer x:Name="SettingsSectionScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SettingsSections" ItemsSource="{Binding Sections}">
               <ItemsControl.ItemTemplate>

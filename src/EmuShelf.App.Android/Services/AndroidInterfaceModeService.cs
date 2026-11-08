@@ -6,7 +6,8 @@ namespace EmuShelf.App.Android.Services;
 /// Android runs the couch modes only: Gamepad, and Handheld (M45) on a dual-screen handheld with a
 /// presentation display. There is no desktop window shell, so Desktop is never offered and a request for
 /// it is ignored. The choice between Gamepad and Handheld is persisted in <see cref="AppSettings"/>; a saved
-/// Handheld choice falls back to Gamepad when the second screen is not there at startup.
+/// Handheld choice falls back to Gamepad when the second screen is not there at startup, and a fresh install on a
+/// dual-screen handheld starts (and stays) in Handheld mode (<see cref="AndroidStartMode"/>, M45 H6d).
 /// </summary>
 public sealed class AndroidInterfaceModeService : IInterfaceModeService
 {
@@ -17,10 +18,25 @@ public sealed class AndroidInterfaceModeService : IInterfaceModeService
     {
         _settings = settings;
         _hasPresentationDisplay = hasPresentationDisplay;
-        Current = settings.Load().InterfaceMode == InterfaceMode.Handheld && hasPresentationDisplay()
-            ? InterfaceMode.Handheld
-            : InterfaceMode.Gamepad;
-        global::Android.Util.Log.Info(LogTag, $"Interface mode at start: {Current} (Handheld available: {hasPresentationDisplay()})");
+        var saved = settings.Load();
+        var hasDisplay = hasPresentationDisplay();
+        Current = AndroidStartMode.Resolve(saved, hasDisplay);
+        // A fresh install's Handheld start is remembered as a choice, so it does not depend on the setup wizard staying
+        // unfinished: the next start reads Handheld back like any switch to it.
+        if (Current == InterfaceMode.Handheld && saved.InterfaceMode != InterfaceMode.Handheld)
+        {
+            try
+            {
+                settings.Update(latest => latest with { InterfaceMode = InterfaceMode.Handheld });
+            }
+            catch (Exception ex)
+            {
+                // Not remembered this time; the next start resolves the same way while the wizard is unfinished.
+                global::Android.Util.Log.Warn(LogTag, $"Could not remember the Handheld start: {ex.Message}");
+            }
+        }
+        global::Android.Util.Log.Info(LogTag,
+            $"Interface mode at start: {Current} (Handheld available: {hasDisplay}, fresh install: {AndroidStartMode.IsFreshInstall(saved)})");
     }
 
     private const string LogTag = "EmuShelfBoot";

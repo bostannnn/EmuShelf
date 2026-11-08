@@ -28,7 +28,10 @@ public sealed partial class HandheldShellViewModel
     private HandheldSettingsCard? _settingCard;
 
     /// <summary>Opens Settings (A on its tile, or the Start menu's Settings row). Nothing happens if it cannot open now.</summary>
-    public async Task OpenSettingsAsync()
+    public Task OpenSettingsAsync() => OpenSettingsCoreAsync(_library.CreateSettingsAsync);
+
+    // Settings and the setup wizard (Settings in setup mode, M45 H6d) open the same way.
+    private async Task OpenSettingsCoreAsync(Func<Task<GamepadSettingsViewModel?>> create)
     {
         if (Settings is not null || _openingSettings || _disposed)
             return;
@@ -36,7 +39,7 @@ public sealed partial class HandheldShellViewModel
         GamepadSettingsViewModel? projection;
         try
         {
-            projection = await _library.CreateSettingsAsync();
+            projection = await create();
         }
         finally
         {
@@ -49,10 +52,11 @@ public sealed partial class HandheldShellViewModel
             _library.CloseSettings(projection, saved: false);
             return;
         }
-        // Whatever was open on the Launcher goes first: Settings takes the whole screen.
+        // Whatever was open on the Launcher goes first: Settings takes the whole screen. So does the idle drift.
         if (IsMenuOpen)
             CloseMenu();
         Sheet = null;
+        StopDrift(refreshStage: false);
         var settings = new HandheldSettingsViewModel(projection);
         settings.Changed += OnSettingsChanged;
         projection.CloseRequested += saved => CloseSettings(settings, saved);

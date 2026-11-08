@@ -126,6 +126,13 @@ public static class HandheldMotion
     public const double LaunchZoomMilliseconds = 460;
     public const double LaunchZoomScale = 1.7;
 
+    // Idle drift (M45 H6d, decision 14): after fifteen seconds without input the Stage drifts through the recently played
+    // games, one every six seconds on a slow crossfade (the one Stage change nothing on the Launcher caused, so not a pop),
+    // once round and back to the newest, where it rests.
+    public static readonly TimeSpan IdleDriftDelay = TimeSpan.FromSeconds(15);
+    public static readonly TimeSpan IdleDriftHold = TimeSpan.FromSeconds(6);
+    public const float IdleDriftCrossfadeMilliseconds = 1200;
+
     /// <summary>The launch waits for the cover to land on the Stage before the emulator starts.</summary>
     public static readonly TimeSpan LaunchLead = TimeSpan.FromMilliseconds(LaunchLandDelayMilliseconds + LaunchLandMilliseconds);
 

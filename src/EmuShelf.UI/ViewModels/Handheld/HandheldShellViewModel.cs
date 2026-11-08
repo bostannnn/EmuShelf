@@ -39,6 +39,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private const int CoverKeepMarginColumns = 1;
 
     private readonly IHandheldLibrary _library;
+    private readonly HandheldMenuItemViewModel _soundsMenuItem;
     private readonly TimeProvider _clock;
     private readonly Dictionary<string, HandheldPlatform> _platforms = new(StringComparer.Ordinal);
     private HandheldHomeLayout _layout = HandheldHomeLayout.CreateDefault([]);
@@ -62,12 +63,21 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _heldDirection = new HandheldHeldDirection(_clock);
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
-        // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds joins it with its switch (H6d).
+        // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds is its switch, with its state (H6d).
         MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync));
         MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync));
         MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
+        _soundsMenuItem = new HandheldMenuItemViewModel("Sounds", () =>
+        {
+            ToggleSounds();
+            return Task.CompletedTask;
+        })
+        { Note = SoundsNote };
+        MenuItems.Add(_soundsMenuItem);
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
         MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
+        // A move into a wall is not a move: the sounds hear about it (M45 H6d).
+        Bumped += _ => _soundBumped = true;
         RefreshStatus();
         NarrowHome.PropertyChanged += OnScreenChanged;
         WideHome.PropertyChanged += OnScreenChanged;
@@ -193,6 +203,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             if (ReferenceEquals(_companion, value))
                 return;
             _companion = value;
+            WatchDockSlots(value);
             CompanionScreen?.Dispose();
             CompanionScreen = value is null
                 ? null
@@ -236,6 +247,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _platforms.Clear();
         foreach (var platform in platforms)
             _platforms[platform.SystemId] = platform;
+        var firstRead = !_libraryRead;
+        _libraryRead = true;
         _recentIds = recent;
         // A carried tile and an open sheet were arranged against the layout being replaced: they go. A name being
         // typed stays (Done finds a free slot if its own was taken meanwhile).
@@ -253,9 +266,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         BuildPages();
         _ = EnsurePinsAsync();
 
-        // Keep the selection where it was if it still exists (a library refresh), else start at the top.
+        // Keep the selection where it was if it still exists (a library refresh), else start at the top. A first start with
+        // no games starts on the slot that says how to add some (M45 H6d).
         if (_home.Page >= ViewPageCount)
             _home = new HandheldHomePosition(0, 0);
+        if (firstRead && IsLibraryEmpty)
+            _home = PositionOf(FirstEmptySlotIndex());
         if (OpenFolder is { } folder && !FolderStillExists(folder.Source))
             CloseFolder();
         ShowPage(_home.Page);
@@ -267,6 +283,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     public void StartStatusUpdates()
     {
         RefreshStatus();
+        // The mode is on screen: the idle drift may start once nothing is pressed (M45 H6d).
+        EnableIdle();
         if (_statusTimer is not null)
             return;
         _statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
@@ -278,6 +296,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         _statusTimer?.Stop();
         _statusTimer = null;
+        DisableIdle();
     }
 
     public void RefreshStatus()
@@ -291,6 +310,25 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
     public bool DispatchGamepadAction(GamepadAction action)
+    {
+        // The first press after the idle drift only wakes the Stage (decision 14).
+        if (WakeOnInput())
+        {
+            PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
+            return true;
+        }
+        BeginSoundScope(action);
+        try
+        {
+            return DispatchGamepadActionCore(action);
+        }
+        finally
+        {
+            EndSoundScope();
+        }
+    }
+
+    private bool DispatchGamepadActionCore(GamepadAction action)
     {
         // A game runs (the companion is the bottom screen), or the companion's All apps or badge grid is open over the
         // Launcher: it owns the pad until that ends.
@@ -372,6 +410,24 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// true; with nothing open it returns false so the platform can leave the app, as Gamepad mode does.
     /// </summary>
     public bool DispatchBack()
+    {
+        if (WakeOnInput())
+        {
+            PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
+            return true;
+        }
+        BeginSoundScope(GamepadAction.Cancel);
+        try
+        {
+            return DispatchBackCore();
+        }
+        finally
+        {
+            EndSoundScope();
+        }
+    }
+
+    private bool DispatchBackCore()
     {
         if (CompanionScreen is { OwnsPad: true } companion)
             return companion.Back();
@@ -597,6 +653,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         switch (slot.Kind)
         {
+            case HandheldSlotKind.Empty when IsLibraryEmpty:
+                // With no games there is nothing to put in a folder: an empty slot is where games are added (M45 H6d).
+                _ = AddGamesAsync();
+                return;
             case HandheldSlotKind.Empty:
                 // A on an empty slot makes a folder there, the 3DS gesture (decision 11).
                 StartNaming(isNew: true, HomeIndex, [], null, -1);
@@ -1119,6 +1179,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void UpdateStageCore()
     {
+        if (_drift?.Shown is { } drift)
+        {
+            if (CanDrift)
+            {
+                ShowDriftStage(drift);
+                return;
+            }
+            // Something opened over the Launcher without a press (the setup wizard at startup): the drift gives way.
+            StopDrift(refreshStage: false);
+        }
         if (Settings is { } settings)
         {
             ShowSettingsStage(settings);
@@ -1157,10 +1227,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                     ShowStage(HandheldStageKind.Menu, "Menu", "Search, add games, settings and more");
                     break;
                 default:
-                    var label = item.Slot?.Label;
-                    ShowStage(HandheldStageKind.App, label ?? "Empty dock slot",
-                        label is null ? "Pin an app from All apps" : "Android app");
-                    Stage.AppIcon = item.Slot?.Icon;
+                    ShowDockAppStage(item.Slot);
                     break;
             }
             return;
@@ -1211,9 +1278,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         if (FolderSourceFor(slot) is { } source)
             ShowFolderStage(source, slot.IsNew ? $"New · {source.Description}" : source.Description);
+        else if (IsLibraryEmpty)
+            ShowEmptyLibraryStage();
         else
-            ShowStage(HandheldStageKind.EmptySlot, "Empty space",
-                _platforms.Count == 0 ? "Add games from the menu in Gamepad mode" : "Press A to make a folder here");
+            ShowStage(HandheldStageKind.EmptySlot, "Empty space", "Press A to make a folder here");
     }
 
     private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false,
@@ -1255,6 +1323,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.FolderGlyph = HandheldGlyph.None;
         Stage.AchievementText = null;
         Stage.AppIcon = null;
+        Stage.IsDrift = false;
         // Set once per change, never cleared first: the view crossfades only when colour or era really change.
         Stage.Backdrop = backdrop;
         Stage.Medium = null;
@@ -1263,7 +1332,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         {
             HandheldStageKind.AllApps => HandheldGlyph.AllApps,
             HandheldStageKind.Menu => HandheldGlyph.Menu,
-            HandheldStageKind.EmptySlot => HandheldGlyph.Plus,
+            HandheldStageKind.EmptySlot => IsLibraryEmpty ? HandheldGlyph.Add : HandheldGlyph.Plus,
             HandheldStageKind.Header => OpenFolder?.IsSortFocused == true ? HandheldGlyph.Sort : HandheldGlyph.Back,
             HandheldStageKind.SettingsTile => HandheldGlyph.Settings,
             _ => HandheldGlyph.None,
@@ -1488,6 +1557,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void BuildHints()
     {
+        // The drift is the Stage at rest: no hints over it (any button wakes it).
+        if (IsDrifting)
+            return;
         if (Settings is { } settings)
         {
             AddSettingsHints(settings);
@@ -1538,7 +1610,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         }
         var focused = HomeSlotAt(HomeIndex);
-        _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? "New folder" : "Open"));
+        _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? IsLibraryEmpty ? "Add games" : "New folder" : "Open"));
         _nextHints.Add(new HandheldHint("Y", "More"));
         _nextHints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));
     }
@@ -1553,6 +1625,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (Panel is { } panel)
             ClosePanel(panel);
         StopStatusUpdates();
+        WatchDockSlots(null);
+        _idleTimer?.Stop();
         StopMediumTimer();
         _mediumTimer?.Dispose();
         _mediumTimer = null;

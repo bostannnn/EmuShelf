@@ -288,6 +288,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     private bool _cachedSecondScreenReady;
     private bool _storageGrantedRead;
     private readonly IAppUsageAccess? _usageAccess;
+
+    // Handheld mode's interface sounds (M45 H6d): a Display row only when Handheld mode builds this projection.
+    private readonly GamepadSettingsSwitch? _handheldSounds;
     private readonly IRelayCommand _requestUsageAccessCommand;
     private bool _usageAccessGranted;
     private bool _usageAccessRead;
@@ -504,8 +507,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             "Reconcile emulator saves through your own Google Drive. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
-        SettingsSection.Display =>
-            "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them.",
+        SettingsSection.Display => _handheldSounds is null
+            ? "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them."
+            : "How EmuShelf looks and sounds in the couch modes. Each setting takes effect as you change it.",
         SettingsSection.About =>
             "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
@@ -744,9 +748,11 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         Func<Task>? refreshGameCounts = null,
         SetupWizardOptions? setup = null,
         Func<Task>? runSetup = null,
-        IAppUsageAccess? usageAccess = null)
+        IAppUsageAccess? usageAccess = null,
+        GamepadSettingsSwitch? handheldSounds = null)
     {
         _settings = settings;
+        _handheldSounds = handheldSounds;
         _usageAccess = usageAccess;
         // The grant is made on Android's own screen; the answer is read again on return (RefreshDeviceState).
         _requestUsageAccessCommand = new RelayCommand(() => _usageAccess?.RequestGrant());
@@ -2241,6 +2247,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 : "the theme is used everywhere",
             AmbientThemeFromArtwork,
             value => AmbientThemeFromArtwork = value) with { ExcludeFromParity = true };
+        if (_handheldSounds is { } sounds)
+        {
+            yield return ToggleRow(
+                "display.sounds",
+                "Sounds",
+                "a soft tone as you move, open, close, confirm and go back · Handheld mode",
+                sounds.Get(),
+                sounds.Set) with { ExcludeFromParity = true };
+        }
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildArtworkMetadataRows()
@@ -3199,6 +3214,14 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             ? "Open the library"
             : $"Next: {SetupStepLabels.For(_liveSetupSteps[_setupIndex + 1])}";
         SetupRail.IsStartEnabled = !_settings.IsBusy;
+    }
+
+    /// <summary>Shows <paramref name="step"/>'s rows (a tap on it in Handheld mode's list of steps, M45 H6d).</summary>
+    public void GoToSetupStep(SetupStep step)
+    {
+        var index = _liveSetupSteps.IndexOf(step);
+        if (index >= 0 && IsNormal)
+            SelectSetupStep(index);
     }
 
     private void SelectSetupStep(int index)

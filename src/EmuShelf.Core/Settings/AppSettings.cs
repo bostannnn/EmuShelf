@@ -32,6 +32,12 @@ public sealed record AppSettings
     public bool HandheldScreensSwapped { get; init; }
 
     /// <summary>
+    /// Handheld mode (M45 H6d): the five interface sounds (move, open, close, confirm, back). On unless switched off from
+    /// the Start menu's Sounds row or Settings → Display.
+    /// </summary>
+    public bool HandheldSounds { get; init; } = true;
+
+    /// <summary>
     /// Android only: when true, EmuShelf force-stops the launched emulator's process the moment EmuShelf
     /// returns to the foreground, so a heavy emulator does not linger in the background draining the battery.
     /// Defaults on because that drain is the whole reason for the option; a user who wants the emulator kept

@@ -92,7 +92,10 @@ public partial class HandheldShellViewModelTests
         public Func<HandheldGameEntry, Bitmap?>? CoverMaker { get; set; }
 
         public Task<Bitmap?> LoadArtAsync(HandheldGameEntry game, HandheldArtKind kind, CancellationToken cancellationToken) =>
-            Task.FromResult<Bitmap?>(null);
+            Task.FromResult(ArtMaker?.Invoke(game, kind));
+
+        /// <summary>Makes a fresh fan art or logo per request (the shell owns it); null leaves every game without one.</summary>
+        public Func<HandheldGameEntry, HandheldArtKind, Bitmap?>? ArtMaker { get; set; }
 
         public Task<HandheldTitleDetails> GetTitleDetailsAsync(HandheldGameEntry game, CancellationToken cancellationToken = default) =>
             Task.FromResult(Details.GetValueOrDefault(game.Id, HandheldTitleDetails.Default));
@@ -391,8 +394,9 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Menu);
         Assert.True(shell.IsMenuOpen);
-        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[3].Label);
-        Press(shell, GamepadAction.NavigateDown, 3);
+        // Search, Add games, Settings, Sounds (M45 H6d), then the switch.
+        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[4].Label);
+        Press(shell, GamepadAction.NavigateDown, 4);
         Press(shell, GamepadAction.Confirm);
 
         Assert.False(shell.IsMenuOpen);

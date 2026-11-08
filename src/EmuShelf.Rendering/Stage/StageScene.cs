@@ -74,7 +74,9 @@ public interface INativeScene : IDisposable
 /// backdrops (M45 H7, ids into <see cref="Backdrops.BackdropCatalog"/>): when one can be drawn it replaces the
 /// pictured layers, which stay as the fallback. The same list again keeps the running backdrop going.
 /// </summary>
-public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null) : StageCommand
+/// <remarks><paramref name="Drift"/>: sent by the idle drift (M45 H6d), which is not navigation, so it never wakes a
+/// resting backdrop.</remarks>
+public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false) : StageCommand
 {
     public override string? RetainKey => "backdrop";
 }
@@ -84,12 +86,21 @@ public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList
 /// focus change: the centre grows from 0.72× on the spring, the plate from 0.94×. Without it the pictures
 /// are simply replaced (a cover that finished loading, a folder flap that settled).
 /// </summary>
+/// <remarks>
+/// <paramref name="FadeIn"/> fades the new content in over <paramref name="FadeMilliseconds"/> instead of popping it (a
+/// Title page). <paramref name="Drift"/> (M45 H6d) is the idle drift's step: the hero that was showing stays under the
+/// new one until it has faded in (a crossfade), and the step is not navigation, so a resting backdrop stays at rest.
+/// </remarks>
 public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, StageImage? Plate, bool Pop,
     FolderArt? Folder = null, FolderArtState FolderState = FolderArtState.Closed,
-    IReadOnlyList<StageImage>? Hero = null, bool FadeIn = false) : StageCommand
+    IReadOnlyList<StageImage>? Hero = null, bool FadeIn = false, float FadeMilliseconds = StageCentreCommand.HeroFadeMilliseconds,
+    bool Drift = false) : StageCommand
 {
+    /// <summary>A Title page's fade.</summary>
+    public const float HeroFadeMilliseconds = 340f;
+
     public override string? RetainKey => "centre";
-    public override StageCommand ForReplay() => this with { Pop = false, FadeIn = false };
+    public override StageCommand ForReplay() => this with { Pop = false, FadeIn = false, Drift = false };
 }
 
 /// <summary>

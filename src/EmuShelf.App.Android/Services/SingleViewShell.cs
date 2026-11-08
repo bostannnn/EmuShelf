@@ -140,8 +140,9 @@ public sealed class SingleViewShell : IPlatformShell
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
-        // Handheld mode's status pill reads the battery and Wi-Fi from the system.
+        // Handheld mode's status pill reads the battery and Wi-Fi from the system, and its sounds play here (M45 H6d).
         viewModel.HandheldDeviceStatus = new AndroidDeviceStatusService(global::Android.App.Application.Context);
+        viewModel.HandheldSoundPlayer = new AndroidHandheldSoundPlayer(_logger);
         _secondScreen.Start(viewModel);
         // Feed the log-based perf sampler this view model's state snapshot (layout / CRT / platform / render
         // path), so each PerfTrace sample line is tagged with what the user is actually looking at. Sink and

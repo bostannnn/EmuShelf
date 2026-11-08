@@ -198,7 +198,8 @@ public sealed class HandheldEraBackdrop : Decorator
 
     private void UpdateDrift()
     {
-        var run = Moving is not null && this.IsAttachedToVisualTree() && IsEffectivelyVisible && !_backgrounded;
+        // A dock app's sweep is still: nothing steps.
+        var run = Moving is { Mover: not null } && this.IsAttachedToVisualTree() && IsEffectivelyVisible && !_backgrounded;
         if (!run)
         {
             _drift.Stop();
@@ -214,7 +215,7 @@ public sealed class HandheldEraBackdrop : Decorator
     /// <summary>Puts the moving layer where the clock says, in whole canvas pixels (one per panel pixel on the Thor).</summary>
     private void Step()
     {
-        if (Moving is not { } layer)
+        if (Moving is not { Mover: not null } layer)
         {
             _drift.Stop();
             return;
@@ -256,6 +257,12 @@ public sealed class HandheldEraBackdrop : Decorator
         }
 
         var layer = Build(backdrop);
+        if (layer.Mover is null)
+        {
+            // A dock app's sweep: one still picture, like the plain gradient.
+            return new StageBackdrop(HandheldStageShots.Picture(layer.Root, 0, 0, (float)CanvasWidth, (float)CanvasHeight), null, null,
+                null, System.Numerics.Vector2.Zero, 0, 0);
+        }
         var children = new List<Control>(layer.Root.Children);
         var moverIndex = children.IndexOf(layer.Mover);
         StageImage? Picture(Func<int, bool> keep)
@@ -287,6 +294,8 @@ public sealed class HandheldEraBackdrop : Decorator
 
     private static Layer Build(HandheldBackdrop backdrop)
     {
+        if (backdrop.Sweep)
+            return BuildSweep(backdrop.Color);
         var hue = backdrop.Color.ToHsl().H;
         var tiles = TileSet.For(backdrop);
         var root = new Panel { Width = CanvasWidth, Height = CanvasHeight };
@@ -340,6 +349,34 @@ public sealed class HandheldEraBackdrop : Decorator
             HandheldMotion.DiscBarStepMilliseconds);
     }
 
+    /// <summary>
+    /// A focused dock app's sweep (M45 H6d; the mockup's st-sweep): over the plain light gradient, a great circle from the
+    /// right edge in the colour picked from the app's icon, lighter toward its top left. Still, so nothing steps.
+    /// </summary>
+    private static Layer BuildSweep(Color color)
+    {
+        var root = new Panel { Width = CanvasWidth, Height = CanvasHeight };
+        root.Children.Add(Fill(new LinearGradientBrush
+        {
+            StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+        }));
+        // circle(80% at 92% 50%) on the 1920×1080 canvas: a radius of about 1246 px about (1766, 540).
+        const double radius = 1246, centreX = 1766, centreY = 540;
+        var light = Color.FromRgb((byte)((color.R * 0.8) + 51), (byte)((color.G * 0.8) + 51), (byte)((color.B * 0.8) + 51));
+        var sweep = Fill(new LinearGradientBrush
+        {
+            // 120°: toward the right and a little down.
+            StartPoint = new RelativePoint(0.07, 0.25, RelativeUnit.Relative),
+            EndPoint = new RelativePoint(0.93, 0.75, RelativeUnit.Relative),
+            GradientStops = { new GradientStop(light, 0), new GradientStop(color, 1) },
+        });
+        sweep.Clip = new EllipseGeometry(new Rect(centreX - radius, centreY - radius, radius * 2, radius * 2));
+        root.Children.Add(sweep);
+        return new Layer(root, null, default, 1, 1);
+    }
+
     private static Border Fill(IBrush brush) => new() { Background = brush };
 
     private static ImageBrush Tiled(Bitmap tile, double width, double height) => new(tile)
@@ -369,18 +406,21 @@ public sealed class HandheldEraBackdrop : Decorator
 
     private sealed class Layer
     {
-        public Layer(Panel root, Control mover, Vector travel, double loopMilliseconds, double stepMilliseconds)
+        public Layer(Panel root, Control? mover, Vector travel, double loopMilliseconds, double stepMilliseconds)
         {
             Root = root;
             Mover = mover;
             Travel = travel;
             LoopMilliseconds = loopMilliseconds;
             StepMilliseconds = stepMilliseconds;
-            mover.RenderTransform = Shift;
+            if (mover is not null)
+                mover.RenderTransform = Shift;
         }
 
         public Panel Root { get; }
-        public Control Mover { get; }
+
+        /// <summary>What moves (the blocks, or the bar); null for a still backdrop (a dock app's sweep).</summary>
+        public Control? Mover { get; }
         public TranslateTransform Shift { get; } = new();
         public Vector Travel { get; }
         public double LoopMilliseconds { get; }

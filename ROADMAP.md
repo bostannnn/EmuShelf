@@ -2442,7 +2442,14 @@ Played. Pad input already reaches one dispatcher from both displays
       pill (launch failed, sync failed, scrape finished, update available). **Exit:** every
       Gamepad-mode action is reachable from Handheld mode and its outcome is visible without switching
       modes.
-- [ ] **H6d — idle drift, sound, dock icons, first run.** Idle drift: after fifteen seconds the
+- [x] **H6d — idle drift, sound, dock icons, first run.** ✅ (2026-11-08; checked on the Thor over adb with both
+      screens read back (native surfaces by `glReadPixels`, the Avalonia Launcher rendered to a bitmap; not kept), on the
+      owner's library, swapped: the drift through Recent's heroes and the first press only waking it, the sounds' tracks
+      playing (Android's player list) and the Start menu's switch off and on, the docked apps' 512 px icons on their
+      colours, a fresh-install start (mode never chosen, wizard unfinished) coming up in Handheld mode with the wizard
+      across both screens walked to Finish, "Run setup again" and Settings → Display's Sounds row. The empty library is
+      checked headlessly only (emptying the owner's library on the Thor was not worth the risk to it). Choices in
+      `DECISIONS.md` 2026-11-08 "M45 H6d".) Idle drift: after fifteen seconds the
       Stage drifts through recent games on a slow crossfade, the first press only wakes it. Five
       original sound effects (move, open, close, confirm, back) with an off switch. Dock icons loaded
       at about 512 px with one colour picked per app. First run in Handheld mode, which M45 never

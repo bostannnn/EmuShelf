@@ -61,6 +61,12 @@ public partial class HandheldStageView : UserControl
             feed?.Attach(_shell);
         };
         ApplyCanvas();
+        // Any touch on the Stage counts as activity, and the first one after the idle drift only wakes it (M45 H6d).
+        AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (_shell?.WakeOnTouch() == true)
+                e.Handled = true;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel);
     }
 
     private readonly Grid _canvas;

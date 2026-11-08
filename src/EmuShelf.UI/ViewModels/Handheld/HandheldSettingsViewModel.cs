@@ -15,6 +15,9 @@ public sealed partial class HandheldSettingsSectionViewModel(SettingsSection sec
     /// <summary>The section; <see cref="SettingsSection.Themes"/> is the theme gallery.</summary>
     public SettingsSection Section { get; } = section;
 
+    /// <summary>In the setup wizard (M45 H6d) the list holds its steps instead of sections: this entry's step.</summary>
+    public SetupStep? Step { get; init; }
+
     public string Title { get; } = title;
 
     /// <summary>A word or two on what needs a look ("Steam needs attention", "1 connected"); empty hides it.</summary>
@@ -54,8 +57,21 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     public HandheldSettingsViewModel(GamepadSettingsViewModel projection)
     {
         Projection = projection;
-        foreach (var page in projection.Pages)
-            Sections.Add(new HandheldSettingsSectionViewModel(page, TitleOf(page)));
+        if (projection.IsSetupMode)
+        {
+            // The setup wizard (M45 H6d): its steps take the sections' place, each with its outcome line, and follow it.
+            foreach (var step in projection.SetupRail.Steps)
+            {
+                Sections.Add(new HandheldSettingsSectionViewModel(SettingsSection.General, step.Label) { Step = step.Step });
+                step.PropertyChanged += OnSetupStepChanged;
+            }
+            projection.SetupRail.PropertyChanged += OnSetupStepChanged;
+        }
+        else
+        {
+            foreach (var page in projection.Pages)
+                Sections.Add(new HandheldSettingsSectionViewModel(page, TitleOf(page)));
+        }
         projection.PropertyChanged += OnProjectionChanged;
         projection.Rows.CollectionChanged += (_, _) => RaiseChanged();
         SyncSections();
@@ -74,6 +90,28 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     public ObservableCollection<GamepadChoiceOptionViewModel> ChoiceOptions => Projection.ChoiceOptions;
 
     public string SectionTitle => Projection.SectionTitle;
+
+    /// <summary>The setup wizard, laid across the two screens like Settings (M45 H6d).</summary>
+    public bool IsSetup => Projection.IsSetupMode;
+
+    /// <summary>The list's heading: Settings, or Setup with where the wizard is.</summary>
+    public string Heading => IsSetup ? "Setup" : HandheldSettingsText.Name;
+
+    /// <summary>The wizard's way forward (Start): Continue, or Finish on the last step; and what comes next.</summary>
+    public string StartLabel => Projection.SetupRail.StartLabel;
+
+    public string StartDetail => Projection.SetupRail.StartDetail;
+
+    /// <summary>"Step 3 of 6": where the wizard is.</summary>
+    public string StepText
+    {
+        get
+        {
+            var steps = Projection.SetupRail.Steps;
+            var current = steps.ToList().FindIndex(step => step.IsCurrent);
+            return current < 0 ? string.Empty : $"Step {current + 1} of {steps.Count}";
+        }
+    }
 
     public bool IsThemes => Projection.IsThemesSection;
 
@@ -124,15 +162,24 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
 
     // ---- Touch (the Launcher's view wiring calls these) ----
 
-    /// <summary>A tap on a section: show it.</summary>
+    /// <summary>A tap on a section (a step, in the wizard): show it.</summary>
     public void TapSection(HandheldSettingsSectionViewModel section)
     {
         if (!Projection.IsNormal)
             return;
-        if (section.Section == SettingsSection.Themes)
+        if (section.Step is { } step)
+            Projection.GoToSetupStep(step);
+        else if (section.Section == SettingsSection.Themes)
             Projection.SelectThemesCommand.Execute(null);
         else
             Projection.SelectSectionCommand.Execute(section.Section);
+    }
+
+    /// <summary>A tap on the wizard's Continue (or Finish): what Start does.</summary>
+    public void TapStart()
+    {
+        if (IsSetup && Projection.IsNormal)
+            Projection.SetupRail.StartCommand?.Execute(null);
     }
 
     /// <summary>A tap on a row: it takes the focus and does what A does.</summary>
@@ -228,8 +275,11 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     {
         get
         {
-            var section = Projection.SectionTitle;
-            var status = Projection.HasStatus && !Projection.IsThemesSection ? Projection.StatusText : string.Empty;
+            // In the wizard the eyebrow says where it is ("Step 3 of 6 · Games & emulators"), and with nothing else to report
+            // the status line says what Continue leads to.
+            var section = IsSetup && StepText.Length > 0 ? $"{StepText} · {Projection.SectionTitle}" : Projection.SectionTitle;
+            var status = Projection.HasStatus && !Projection.IsThemesSection ? Projection.StatusText
+                : IsSetup ? StartDetail : string.Empty;
             if (Projection.IsTextEntryOpen)
             {
                 var draft = Projection.DraftText;
@@ -251,8 +301,8 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             if (Projection.IsRailFocused)
             {
                 var focused = Sections.FirstOrDefault(item => item.IsSelected);
-                return new(HandheldSettingsText.Name, section, focused?.Status ?? string.Empty, Projection.SectionDescription, status,
-                    focused?.IsWarning == true);
+                return new(IsSetup ? $"Setup · {StepText}" : HandheldSettingsText.Name, Projection.SectionTitle,
+                    focused?.Status ?? string.Empty, Projection.SectionDescription, status, focused?.IsWarning == true);
             }
             if (Projection.IsThemesSection)
             {
@@ -285,11 +335,16 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
 
     // A switch's description opens with its state ("Hidden · …") for Gamepad mode's one-line rows; the Stage already shows
     // the state large above it.
+    // The setup wizard's rows open with it as a sentence instead ("On. A game closed…", M45 H6d).
     private static string WithoutLeadingValue(string description, string value)
     {
-        if (value.Length == 0 || !description.StartsWith(value + " · ", StringComparison.Ordinal) || description.Length <= value.Length + 3)
+        if (value.Length == 0)
             return description;
-        var rest = description[(value.Length + 3)..];
+        var prefix = description.StartsWith(value + " · ", StringComparison.Ordinal) ? value + " · "
+            : description.StartsWith(value + ". ", StringComparison.Ordinal) ? value + ". " : null;
+        if (prefix is null || description.Length <= prefix.Length)
+            return description;
+        var rest = description[prefix.Length..];
         return char.ToUpperInvariant(rest[0]) + rest[1..];
     }
 
@@ -331,6 +386,13 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             }
             if (Projection.HasActionsHint)
                 yield return new HandheldHint("Y", Projection.ActionsHint);
+            if (IsSetup)
+            {
+                // The wizard walks with B (the previous step, or out on the first) and Start (the next, or Finish).
+                yield return new HandheldHint("B", "Back");
+                yield return new HandheldHint(string.Empty, StartLabel, HandheldGlyph.Menu);
+                yield break;
+            }
             yield return new HandheldHint("B", "Close");
             // Start, drawn as the menu glyph the home hints use for it.
             yield return new HandheldHint(string.Empty, "Save", HandheldGlyph.Menu);
@@ -375,8 +437,33 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         RaiseChanged();
     }
 
+    // A step's outcome line, the step on show, or the Start chip changed (the wizard refreshes them as it goes).
+    private void OnSetupStepChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_disposed)
+            return;
+        OnPropertyChanged(nameof(StartLabel));
+        OnPropertyChanged(nameof(StartDetail));
+        OnPropertyChanged(nameof(StepText));
+        SyncSections();
+        RaiseChanged();
+    }
+
     private void SyncSections()
     {
+        if (IsSetup)
+        {
+            foreach (var item in Sections)
+            {
+                if (Projection.SetupRail.Steps.FirstOrDefault(step => step.Step == item.Step) is not { } step)
+                    continue;
+                item.IsSelected = step.IsCurrent;
+                item.IsFocused = step.IsCurrent && Projection.IsRailFocused && Projection.IsNormal;
+                item.Status = step.Status;
+                item.IsWarning = step.IsWarning;
+            }
+            return;
+        }
         var current = Projection.IsThemesSection ? SettingsSection.Themes : Projection.SelectedSection;
         foreach (var item in Sections)
         {
@@ -426,6 +513,12 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             return;
         _disposed = true;
         Projection.PropertyChanged -= OnProjectionChanged;
+        if (IsSetup)
+        {
+            foreach (var step in Projection.SetupRail.Steps)
+                step.PropertyChanged -= OnSetupStepChanged;
+            Projection.SetupRail.PropertyChanged -= OnSetupStepChanged;
+        }
         Changed = null;
     }
 }

@@ -13792,3 +13792,62 @@ corrected or deleted from the timeline or the game page.
   ring and its glow, and giving every row that room fit only three rows): rows not wholly inside the viewport are hidden
   instead, and the ring draws past the edge. One row is 216 px (20 above the 112 px icon, 36 to a fixed 32 px label, 16
   below), so four rows fit on either screen and the 1.13× ring clears both labels by 8 px.
+
+## 2026-11-08 — M45 H6d: idle drift, sound, dock icons, first run
+
+- **The idle drift is the Title page's hero, crossfaded.** After 15 s without a press or a touch (either screen), the Stage
+  shows the Recent folder's games one at a time as their hero (fan art and logo, or the cover on its tint), labelled
+  "Recently played", each held 6 s with a 1.2 s crossfade (the mockup's slow fade; the only Stage change nothing on the
+  Launcher caused, so not a pop). Each step's art is decoded before it is shown, so a fade never waits on a decode. No
+  hints while it drifts. The first press or touch only wakes it (the Stage returns to the selection; that press does
+  nothing else, and plays the move sound). It never starts over an open sheet, menu, panel, Settings, naming, move mode, a
+  Title page or a running game, and only while the mode is on screen; when it cannot start (or nothing has been played)
+  no timer keeps ticking, and the next press arms the fifteen seconds again.
+- **It goes once round and rests, rather than drifting for ever.** The owner's fan and heat rule (2026-11-07, the Stage
+  rests after a minute) applies: the drift visits the recent games once and comes back to the newest, where it stops
+  (at most 13 steps, about 80 s), so a Thor left on home draws nothing after that. The native Stage does not count a
+  drift step or its backdrop as navigation (`StageCentreCommand.Drift`, `StageBackdropCommand.Drift`), so the animated
+  backdrop under it still rests a minute after the last real press. The compositor keeps the outgoing hero under the
+  arriving one until its fade ends (one leaving hero at most).
+- **Five sounds, the roadmap's set: move, open, close, confirm, back.** The spec's motion section named "swap" and
+  "launch" instead; Play is confirm and the swap is silent, since the roadmap's five cover every press without a sixth.
+  They are synthesised in code (`HandheldSoundSynth`, one or two sine/triangle tones each with an 8 ms rise and an
+  exponential fall, the mockup's Web Audio recipe), so there is no asset to license and nothing borrowed. On Android each
+  is one static `AudioTrack` (usage Game, so the media volume sets the level), played off the UI thread.
+- **Sounds come from what a press changed, not from call sites.** The shell notes which layers are open and where the
+  selector is before each press or touch and compares after: something opening is open; a folder or Title page closing is
+  close; another layer closing is back on B, confirm otherwise; with the same layers, a move that did not hit a wall is
+  move, A is confirm, B that stepped back is back. Touch goes through the same scope (the Launcher wraps each touch), so a
+  new screen gets its sounds by being a layer the shell already knows. The companion (a game running, or its layers) is
+  always silent.
+- **On by default; the off switch is the Start menu's Sounds row and Settings → Display.** The menu row shows On/Off and
+  flips it (as the mockup's menu did); the spec's "off switch in Settings" is a Display row that only Handheld mode's
+  Settings has (`GamepadSettingsSwitch`, injected by the head), since Gamepad mode makes no sounds. `AppSettings.HandheldSounds`.
+- **Dock icons: 512 px for the five docked apps only, one colour per app.** The drawer keeps the 96 px set (100+ apps at
+  512 px would be ~1 MB each); the docked apps are drawn again at 512 and their colour picked once from a 64 px copy
+  (`HandheldIconColor`: transparent, white, black and grey ignored, hues counted in 15° buckets weighted toward vivid
+  mid-light pixels, the strongest wins, lightness kept 35–62 % so it reads behind a white card; no colour → slate
+  #64708A). Kept in memory with the dock slot (`SecondScreenSlotViewModel.LargeIcon`, `AccentColor`) for the run, not
+  saved: the icon has to be loaded to be shown anyway. The Stage shows the icon on the mockup's sweep, a great circle from
+  the right in that colour (`HandheldBackdrop.Sweep`, still, so nothing steps).
+- **A fresh install on a dual-screen handheld starts in Handheld mode** (`AndroidStartMode`), which the exit needs: "fresh"
+  is no mode ever chosen on the device (Android never saves Desktop) and no setup wizard finished, so an install that has
+  used Gamepad mode is never moved. The start is then saved as a Handheld choice.
+- **The setup wizard is Settings in setup mode across the two screens** (decision 10), the same projection Gamepad mode's
+  first run opens: its steps take the sections' place on the Launcher with their outcome lines, the rows are the step's,
+  a Continue/Finish button (Start) sits under the steps, B goes back a step (out on the first), and the Stage card says
+  "Step 3 of 4 · …" and what Continue leads to. It opens once home is read on a start whose wizard is unfinished, and
+  from Settings' "Run setup again" (now offered in Handheld mode). Finish records `SetupCompletedVersion` as in Gamepad
+  mode. The pre-boot half (storage access, data folder) stays the pre-boot page on the top screen: it runs before the app
+  has a data folder, so before there is a mode or a second-screen presentation to lay it across.
+- **The empty library** is Settings and empty slots (H6a's default) with the first empty slot drawn as "Add games" and
+  the selector starting on it; A on any empty slot adds games (the folder picker, then the system sheet) instead of
+  making a folder, since there is nothing to put in one. The Stage says "Add games · Pick the folder your games are in".
+  Once games arrive, home's platform folders appear (with their "New" ribbon) and empty slots make folders again.
+- **Fixed on the way:** the Stage's hint pill drew as an empty capsule when there were no hints.
+- **Checked on the Thor** (owner's library, swapped; both screens read back): the drift, the wake, the sounds' tracks in
+  Android's player list (usage Game), the menu and Display switches, the docked apps on their colours (Chrome yellow,
+  NordPass teal, BlancVPN blue), a fresh-install start coming up in Handheld mode with the wizard walked to Finish, and
+  "Run setup again". **Not on the Thor:** the empty library (headless snapshots only), and how the sounds sound: the
+  readback cannot hear them, so their character and level are the owner's call. A dock slot whose app is no longer a
+  launcher entry still shows empty, with no large icon (the dock data's business, noted in H6c's follow-up).

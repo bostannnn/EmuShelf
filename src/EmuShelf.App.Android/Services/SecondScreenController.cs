@@ -44,6 +44,12 @@ internal sealed class SecondScreenController
     private readonly Handler _mainHandler = new(Looper.MainLooper!);
 
     private readonly Dictionary<string, SecondScreenApp> _apps = new(StringComparer.Ordinal);
+
+    // The docked apps' icons at about 512 px and the colour picked from each, for the Handheld Stage (M45 H6d). Kept for
+    // the run (a handful of apps), never re-picked.
+    private readonly Dictionary<string, (Avalonia.Media.Imaging.Bitmap? Icon, Avalonia.Media.Color Accent)> _largeIcons =
+        new(StringComparer.Ordinal);
+    private readonly HashSet<string> _largeIconLoads = new(StringComparer.Ordinal);
     private SecondScreenDock _dock;
     private SecondScreenNavigationState _navigation = SecondScreenNavigationState.Initial;
     private MainViewModel? _viewModel;
@@ -636,7 +642,83 @@ internal sealed class SecondScreenController
             var app = component is not null && _apps.TryGetValue(component, out var found) ? found : null;
             presentation.Model.Dock[slot].Label = app?.Label;
             presentation.Model.Dock[slot].Icon = app?.Icon;
+            var large = app is not null && _largeIcons.TryGetValue(app.Component, out var big) ? big : default((Avalonia.Media.Imaging.Bitmap?, Avalonia.Media.Color)?);
+            presentation.Model.Dock[slot].LargeIcon = large?.Item1;
+            presentation.Model.Dock[slot].AccentColor = large?.Item2;
         }
+        LoadLargeDockIcons();
+    }
+
+    /// <summary>
+    /// The Handheld Stage shows a focused dock app's icon large, on a sweep in its colour (M45 H6d): each docked app's
+    /// launcher icon is drawn again at 512 px (adaptive icons scale cleanly) and its colour picked from it once
+    /// (<see cref="EmuShelf.Core.Handheld.HandheldIconColor"/>). The drawer and the dock keep the 96 px set.
+    /// </summary>
+    private void LoadLargeDockIcons()
+    {
+        if (_activity is not { PackageManager: { } manager })
+            return;
+        var wanted = new List<string>();
+        for (var slot = 0; slot < SecondScreenDock.SlotCount; slot++)
+        {
+            if (_dock[slot] is { } component && _apps.ContainsKey(component) && !_largeIcons.ContainsKey(component) &&
+                _largeIconLoads.Add(component))
+                wanted.Add(component);
+        }
+        if (wanted.Count == 0)
+            return;
+        _ = Task.Run(() =>
+        {
+            var loaded = new List<(string Component, Avalonia.Media.Imaging.Bitmap? Icon, Avalonia.Media.Color Accent)>();
+            foreach (var component in wanted)
+            {
+                try
+                {
+                    using var name = ComponentName.UnflattenFromString(component);
+                    var (icon, accent) = RasteriseLargeIcon(name is null ? null : manager.GetActivityIcon(name));
+                    loaded.Add((component, icon, accent));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning($"Could not load the large dock icon for {component}.", ex);
+                    loaded.Add((component, null, Avalonia.Media.Color.FromUInt32(EmuShelf.Core.Handheld.HandheldIconColor.Slate)));
+                }
+            }
+            RunOnMain(() =>
+            {
+                foreach (var (component, icon, accent) in loaded)
+                {
+                    _largeIconLoads.Remove(component);
+                    _largeIcons[component] = (icon, accent);
+                }
+                RenderDock();
+            });
+        });
+    }
+
+    private const int LargeIconSize = 512;
+
+    // The icon at 512 px, and its colour picked from a 64 px copy (the same pixels, enough for a hue count).
+    private static (Avalonia.Media.Imaging.Bitmap? Icon, Avalonia.Media.Color Accent) RasteriseLargeIcon(Drawable? drawable)
+    {
+        var slate = Avalonia.Media.Color.FromUInt32(EmuShelf.Core.Handheld.HandheldIconColor.Slate);
+        if (drawable is null)
+            return (null, slate);
+        using var androidBitmap = global::Android.Graphics.Bitmap.CreateBitmap(LargeIconSize, LargeIconSize,
+            global::Android.Graphics.Bitmap.Config.Argb8888!);
+        using var canvas = new Canvas(androidBitmap);
+        drawable.SetBounds(0, 0, LargeIconSize, LargeIconSize);
+        drawable.Draw(canvas);
+        const int sample = 64;
+        using var small = global::Android.Graphics.Bitmap.CreateScaledBitmap(androidBitmap, sample, sample, true);
+        var pixels = new int[sample * sample];
+        small.GetPixels(pixels, 0, sample, 0, 0, sample, sample);
+        var accent = Avalonia.Media.Color.FromUInt32(
+            EmuShelf.Core.Handheld.HandheldIconColor.Pick(System.Runtime.InteropServices.MemoryMarshal.Cast<int, uint>(pixels)));
+        using var stream = new MemoryStream();
+        androidBitmap.Compress(global::Android.Graphics.Bitmap.CompressFormat.Png!, 100, stream);
+        stream.Position = 0;
+        return (new Avalonia.Media.Imaging.Bitmap(stream), accent);
     }
 
     private void CloseOverlay()

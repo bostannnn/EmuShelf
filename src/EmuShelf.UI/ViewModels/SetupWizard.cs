@@ -124,3 +124,6 @@ public sealed record SetupWizardOptions(
     string DataFolderStatus,
     Func<bool>? IsStoragePermissionGranted = null,
     Action? RequestStoragePermission = null);
+
+/// <summary>A switch a head adds to the Settings projection, read and written through the head (Handheld mode's sounds).</summary>
+public sealed record GamepadSettingsSwitch(Func<bool> Get, Action<bool> Set);

@@ -21,6 +21,7 @@ public sealed partial class HandheldShellViewModel
     private readonly Dictionary<long, HandheldGameEntry> _pins = [];
     private readonly Dictionary<long, Bitmap?> _pinCovers = [];
     private readonly HashSet<long> _pinLoading = [];
+    private int _addGamesIndex = -1;
 
     /// <summary>The home layout as it stands (saved after every edit).</summary>
     public HandheldHomeLayout Layout => _layout;
@@ -74,6 +75,8 @@ public sealed partial class HandheldShellViewModel
     /// <summary>Builds home in both shapes (the other one is the Launcher a swap brings in, M45 H5).</summary>
     private void BuildPages()
     {
+        // The empty library's "Add games" slot, found once per build rather than per slot (M45 H6d).
+        _addGamesIndex = IsLibraryEmpty ? FirstEmptySlotIndex() : -1;
         var slots = _move?.Preview ?? _layout.AllSlots();
         foreach (var screen in Screens)
             BuildPages(screen, PadToPages(slots, screen.Grid));
@@ -146,7 +149,7 @@ public sealed partial class HandheldShellViewModel
             carriedTitle = HandheldSettingsText.Name;
         }
         return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look,
-            carriedCover, carriedTitle);
+            carriedCover, carriedTitle, isAddGames: content.IsEmpty && index == _addGamesIndex);
     }
 
     // ---- Games pinned to home ----

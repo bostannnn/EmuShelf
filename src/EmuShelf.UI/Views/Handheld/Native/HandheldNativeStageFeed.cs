@@ -260,6 +260,10 @@ internal sealed class HandheldNativeStageFeed
                 else
                     Schedule(centre: true, pop: false);
                 break;
+            case nameof(HandheldStageViewModel.AppIcon):
+                // A dock app's large icon arrived after its slot took the Stage (M45 H6d).
+                Schedule(centre: true, pop: false);
+                break;
             case nameof(HandheldStageViewModel.PeekA):
             case nameof(HandheldStageViewModel.PeekB):
             case nameof(HandheldStageViewModel.PeekC):
@@ -357,11 +361,15 @@ internal sealed class HandheldNativeStageFeed
             _lastKind = stage.Kind;
         if (fade)
             pop = false;
+        // The idle drift (M45 H6d) crossfades slowly from one recent game to the next, and is not navigation.
+        var drift = stage.IsDrift;
+        var fadeMilliseconds = drift ? HandheldMotion.IdleDriftCrossfadeMilliseconds : StageCentreCommand.HeroFadeMilliseconds;
         if (stage.IsHeroArt)
         {
             var hero = new[] { HandheldStageShots.Shot(_heroBackdrop, _canvas), HandheldStageShots.Shot(_heroContent, _canvas) }
                 .Where(image => image is not null).Cast<StageImage>().ToArray();
-            _host.Post(new StageCentreCommand(null, null, null, pop, Hero: hero, FadeIn: fade));
+            _host.Post(new StageCentreCommand(null, null, null, pop, Hero: hero, FadeIn: fade, FadeMilliseconds: fadeMilliseconds,
+                Drift: drift));
             return;
         }
         // The same plate is the same picture (and the same texture on the other side).
@@ -391,7 +399,8 @@ internal sealed class HandheldNativeStageFeed
             _host.Post(new StageCentreCommand(null, null, plate, pop, folder, state, FadeIn: fade));
             return;
         }
-        _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop, FadeIn: fade));
+        _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop, FadeIn: fade,
+            FadeMilliseconds: fadeMilliseconds, Drift: drift));
     }
 
     /// <summary>The big folder as glidable parts, captured again only when what it shows changes.</summary>
@@ -454,7 +463,8 @@ internal sealed class HandheldNativeStageFeed
             return;
         _backdropSent = _stage?.Backdrop;
         _backdropSentOnce = true;
-        _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated));
+        _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated,
+            Drift: _stage?.IsDrift == true));
     }
 
     /// <summary>

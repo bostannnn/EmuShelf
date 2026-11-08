@@ -80,7 +80,13 @@ public partial class HandheldShellViewModelTests
             return Task.CompletedTask;
         }
 
-        public Task<string?> PickImportFolderAsync() => Task.FromResult(PickedFolder);
+        public int FolderPicks { get; private set; }
+
+        public Task<string?> PickImportFolderAsync()
+        {
+            FolderPicks++;
+            return Task.FromResult(PickedFolder);
+        }
 
         public IReadOnlyList<HandheldImportSystem> ImportSystems =>
             Platforms.Select(platform => new HandheldImportSystem(platform.SystemId, platform.Name, platform.ShortName, platform.AccentColor)).ToList();

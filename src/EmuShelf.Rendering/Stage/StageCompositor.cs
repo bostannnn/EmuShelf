@@ -125,8 +125,9 @@ public sealed class StageCompositor : INativeScene
 
     public void Apply(StageCommand command, float now)
     {
-        // Navigation wakes a resting backdrop; the medium's idle sway and the corner pills do not.
-        if (command is not (StageMediumPoseCommand or StageChromeCommand))
+        // Navigation wakes a resting backdrop; the medium's idle sway, the corner pills and the idle drift do not.
+        if (command is not (StageMediumPoseCommand or StageChromeCommand or StageCentreCommand { Drift: true } or
+            StageBackdropCommand { Drift: true }))
             _lastNavigation = now;
         switch (command)
         {
@@ -163,9 +164,14 @@ public sealed class StageCompositor : INativeScene
             }
             case StageCentreCommand centre:
                 Replace(ref _art, centre.Art, repeat: false);
-                ReplaceHero(centre.Hero);
+                // The drift crossfades: the hero on screen stays under the arriving one while it fades in (or, when the next
+                // step has no fan art, fades out under its centre).
+                ReplaceHero(centre.Hero, keepLeaving: centre.Drift && centre.FadeIn);
                 if (centre.FadeIn)
+                {
                     _fadeStart = now;
+                    _fadeMilliseconds = Math.Max(1f, centre.FadeMilliseconds);
+                }
                 if (!ReferenceEquals(_folder?.Art, centre.Folder))
                 {
                     _folder?.Dispose();
@@ -269,10 +275,25 @@ public sealed class StageCompositor : INativeScene
         var plateScale = StageCurves.PlateScale(sincePop);
         animating |= sincePop < Math.Max(StageCurves.PopMilliseconds, StageCurves.PlatePopMilliseconds);
 
-        // A Title page crossfades in (340 ms) rather than popping: the hero, the centre and the plate together.
+        // A Title page fades in (340 ms) rather than popping: the hero, the centre and the plate together. The idle drift
+        // fades slower, over the hero it replaces.
         var sinceFade = now - _fadeStart;
-        var content = sinceFade >= HeroFadeMilliseconds ? 1f : EaseInOutCubic(Math.Max(0f, sinceFade) / HeroFadeMilliseconds);
-        animating |= sinceFade < HeroFadeMilliseconds;
+        var content = sinceFade >= _fadeMilliseconds ? 1f : EaseInOutCubic(Math.Max(0f, sinceFade) / _fadeMilliseconds);
+        animating |= sinceFade < _fadeMilliseconds;
+        if (_leavingHero.Count > 0)
+        {
+            if (content >= 1f)
+            {
+                DeleteLayers(_leavingHero);
+            }
+            else
+            {
+                // Under an arriving hero (opaque fan art) the old one stays whole; under anything else it fades out.
+                var outgoing = _hero.Count > 0 ? 1f : 1f - content;
+                foreach (var layer in _leavingHero)
+                    DrawLayer(layer, outgoing, 1f, 0, 0);
+            }
+        }
         foreach (var layer in _hero)
             DrawLayer(layer, content, 1f, 0, 0);
 
@@ -304,18 +325,32 @@ public sealed class StageCompositor : INativeScene
         return animating;
     }
 
-    private const float HeroFadeMilliseconds = 340f;
+    private float _fadeMilliseconds = StageCentreCommand.HeroFadeMilliseconds;
+
+    // The idle drift's outgoing hero, drawn under the arriving one until its fade ends.
+    private List<Layer> _leavingHero = [];
 
     private static float EaseInOutCubic(float t) =>
         t < 0.5f ? 4f * t * t * t : 1f - (MathF.Pow((-2f * t) + 2f, 3f) / 2f);
 
-    private void ReplaceHero(IReadOnlyList<StageImage>? hero)
+    private void ReplaceHero(IReadOnlyList<StageImage>? hero, bool keepLeaving = false)
     {
         if (hero is not null && hero.Count == _hero.Count && hero.Select((image, i) => ReferenceEquals(image, _hero[i].Image)).All(same => same))
             return;
-        foreach (var layer in _hero)
-            _gl.DeleteTexture(layer.Texture);
+        // At most one hero leaves at a time; anything that is not a drift step lets the old one go at once.
+        DeleteLayers(_leavingHero);
+        if (keepLeaving)
+            _leavingHero = _hero;
+        else
+            DeleteLayers(_hero);
         _hero = hero?.Select(image => new Layer(image, SpriteTextures.Upload(_gl, image.Pixels, repeat: false))).ToList() ?? [];
+    }
+
+    private void DeleteLayers(List<Layer> layers)
+    {
+        foreach (var layer in layers)
+            _gl.DeleteTexture(layer.Texture);
+        layers.Clear();
     }
 
     // The launch, as the Avalonia Stage played it: after 140 ms the cover lands from 760 px below, growing
@@ -638,6 +673,7 @@ public sealed class StageCompositor : INativeScene
         _folder?.Dispose();
         _folder = null;
         ReplaceHero(null);
+        DeleteLayers(_leavingHero);
         Replace(ref _fly, null, false);
         foreach (var layer in _chrome.Values)
             _gl.DeleteTexture(layer.Texture);
