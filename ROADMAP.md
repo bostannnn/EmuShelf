@@ -2341,10 +2341,7 @@ Played. Pad input already reaches one dispatcher from both displays
       *Revised after the folder lab (2026-11-07, `DECISIONS.md` "M45 H4: Zoom through and the era
       motif"):* folder open/close is now the owner's pick, Zoom through (the spill is gone), and the
       Stage's backdrop is the era motif. Built and tested on macOS; the Thor feel check is still to come.
-- [x] **H4 — arranging home.** ✅ (2026-11-08; built and tested on macOS, then checked on the Thor by pad
-      and `Settings/handheld-home.json`: folders made and named, add to folder, pin, move, cold start and a
-      restore of `Settings/` all hold. Naming uses the mockup's drawn keyboard, because Android's keyboard
-      cannot open on Screen-2. Choices in `DECISIONS.md` 2026-11-08 "M45 H4: arranging home".) `HandheldHomeLayout` in Core (pages of slots holding a platform
+- [ ] **H4 — arranging home.** `HandheldHomeLayout` in Core (pages of slots holding a platform
       folder, a user folder, a game pin, or a system tile; user folders with name, colour, ordered
       ids and sort mode) and `IHandheldHomeLayoutStore` → portable `Settings/handheld-home.json`,
       the same pattern as `FileSecondScreenDockStore`. Reconciliation: new platform appended with a
@@ -2356,27 +2353,80 @@ Played. Pad input already reaches one dispatcher from both displays
       shows the folder, with colour chips. Rename, recolour, delete (games kept, confirmation says
       so). Pin to home, remove from home, with every "Remove" naming its place. The Recent folder,
       made for you from the Recently Played source, newest first, sort chip hidden. The empty-folder
-      state. Sort chip Manual / A–Z / Last played / Most played. Tests cover the model, store and
+      state. Sort chip Manual / A–Z / Last played / Most played. Touch everywhere on the Launcher,
+      as the spec's controls table has it: tap selects, a second tap opens, swipe pages, long-press
+      lifts into move mode, drag carries (the Launcher view takes no pointer input today; only move
+      mode mentioned touch before the 2026-11-08 review). Tests cover the model, store and
       reconciliation on macOS. **Exit:** the layout survives a cold start and a reinstall-style
-      restore of `Settings/`.
+      restore of `Settings/`, and home can be browsed and arranged by touch alone.
+      *Built 2026-11-08, with a polish and optimisation pass the same day (`DECISIONS.md` "M45 H4: arranging
+      home" and "M45 H4: polish and optimisation pass"):* everything above except the parts below, checked on
+      the Thor by pad and `Settings/handheld-home.json` — folders made and named, add to folder, pin, move,
+      and the layout surviving a cold start and a restore of `Settings/`. Naming uses the mockup's drawn
+      keyboard, because Android's keyboard cannot open on Screen-2. Touch is built for home tiles (tap, second
+      tap, swipe, long-press, drag), folder games, the actions sheet, the naming keys and chips, and the page
+      edge hints. Still open (added by the 2026-11-08 review after this was built): touch for the folder
+      header's chips, the dock and the Title page's buttons, and the touch-alone exit check on the Thor.
 - [ ] **H5 — screen swap.** X re-hosts the Stage and Launcher between displays with the slide
       (precedent: `MainScreenCompanion` re-hosting in `SecondScreenController`). Selection, open
       folder and scroll position survive; `IsSwapped` is remembered. On the narrow screen the Stage
       moves its hint and achievement pills to the top-left and widens the plate, as in the mockup;
       the Launcher on the 16:9 screen gets a layout of its own (7×3 at the same tile size with the
-      page label in the spare height — decide and record), not the centred 5×4.
-- [ ] **H6 — companion, actions, system, idle and sound.** The in-game companion restyled on the
-      Launcher's dark palette with every feature kept (resting dim, one panel at a time with
-      Achievements / Photos on LB/RB, full badge grid with All / Locked / Unlocked, photo viewer,
-      dock) and the D-pad reaching all of it. The Y sheet with every Gamepad action plus the new
-      ones. The Start menu as a page of tiles (Search, Add games, Achievements, Settings, Switch
-      mode, Sounds). Settings as master-detail across the screens: sections and rows on the bottom
-      using today's row kinds from `GamepadSettingsViewModel`, the focused row's description and
-      value on the top. Search with the keyboard below and results above. Idle drift: after fifteen
-      seconds the Stage drifts through recent games on a slow crossfade, the first press only wakes
-      it. Five original sound effects (move, open, close, confirm, back) with an off switch. Dock
-      icons loaded at about 512 px with one colour picked per app. **Exit:** nothing a Gamepad-mode
-      user can do is missing in Handheld mode.
+      page label in the spare height — decide and record), not the centred 5×4. The companion
+      too: when a game takes the narrow screen the companion sits on the 16:9 one, which the mockup
+      never tried; decide its layout there (one panel at a time still holds) and record it.
+- **H6, split 2026-11-08.** The old H6 carried the companion, the Y sheet, the Start menu,
+      Settings, Search, idle drift, sounds and dock icons in one item; the owner's review found two
+      of them effectively missing (the in-game companion is still Gamepad mode's, and Settings cannot
+      be reached at all: today's Start menu holds only Switch mode and Quit). It is now four
+      sub-milestones, each with its own Thor check and `M45 H6<x>: …` commit, in this order.
+- [ ] **H6a — Settings tile, Start menu, Settings.** *Stop-gap first, its own small commit:* a
+      Settings row in today's Start menu that opens Gamepad mode's settings overlay on the Stage, so
+      Settings is reachable at all. Then the real entrance, as the 3DS and Cocoon do it: Settings is
+      an app on the grid. `HandheldSlotKind.SystemTile` with one kind for now, Settings (decision 18,
+      `DECISIONS.md` 2026-11-08): in the default layout right after the platform folders, movable and
+      foldable like any tile, never removable so there is always a way in; a glyph face on the indigo
+      accent so it reads as neither a platform nor a user folder; the Stage shows a plate for it like
+      a dock app's; A opens Settings. Settings as master-detail across the screens: sections and rows
+      on the Launcher using today's row kinds from `GamepadSettingsViewModel`, the focused row's
+      description and value on the Stage; every section (Library, Emulators, Achievements, Artwork &
+      metadata, Saves, About) including the per-platform emulator and folder choosers, with text rows
+      on the on-screen keyboard. The Start menu stays a list rather than a page of tiles, since the
+      tiles live on the grid: Settings, Search, Add games, Achievements, Sounds, Switch mode, Quit.
+      Tests: the default layout places the tile, reconciliation never drops it, remove is refused.
+      **Exit:** every setting Gamepad mode has can be changed from Handheld mode without leaving it,
+      from the tile and from the menu, and the tile survives a cold start in the slot you moved it to.
+- [ ] **H6b — the in-game companion.** Today `SecondScreenController.UpdateHandheldSurface` shows
+      Gamepad mode's companion unchanged while a game runs. Restyle it on the Launcher's dark palette
+      as the spec's Companion section describes, every feature kept: resting dim with the swallowed
+      wake press, the Now playing row, one panel at a time with Achievements / Photos on LB/RB, the
+      full badge grid with All / Locked / Unlocked, the photo viewer and the muted video, the dock;
+      the D-pad reaches all of it (dock, drawer and the overlay buttons are touch-only today). The
+      handoff both ways: Launcher → companion as the launch lands on the Stage, companion → Launcher
+      on return, landing on the launched game's own tile with the Recent folder already updated so two
+      presses resume. The companion on the 16:9 screen (H5) is checked here with a game running.
+      Dual-screen emulators (DS/3DS) stay deferred. **Exit:** on the Thor a whole session — launch,
+      play, check an achievement and a photo, open the dock, return — never shows the Gamepad-mode
+      companion.
+- [ ] **H6c — the Y sheet, Search, Add games, and the surfaces behind them.** The Y sheet with
+      every Gamepad action (Launch, Select disc, Achievements, Edit title, Set cover, Scrape with
+      ScreenScraper, Remove from library with its confirmation) plus Move, Add to folder…, Pin to home
+      / Remove from home, the folder actions (Rename, Colour, Delete folder) and the dock-slot actions
+      (Open, Change app…, Clear slot). Search with the keyboard on the Launcher and results on the
+      Stage. Add games through the existing folder picker. The screens those open that have no
+      Handheld face yet: the scraper, batch scraper and cover search (choices on the Launcher, preview
+      on the Stage), full-screen achievements while browsing, and errors and toasts beyond the status
+      pill (launch failed, sync failed, scrape finished, update available). **Exit:** every
+      Gamepad-mode action is reachable from Handheld mode and its outcome is visible without switching
+      modes.
+- [ ] **H6d — idle drift, sound, dock icons, first run.** Idle drift: after fifteen seconds the
+      Stage drifts through recent games on a slow crossfade, the first press only wakes it. Five
+      original sound effects (move, open, close, confirm, back) with an off switch. Dock icons loaded
+      at about 512 px with one colour picked per app. First run in Handheld mode, which M45 never
+      covered: the setup wizard's steps laid across the two screens (decision 10), and the
+      empty-library state (what home shows with no games, and the way to add some). **Exit:** a fresh
+      install on the Thor reaches a playable home without switching to Gamepad mode, and nothing a
+      Gamepad-mode user can do is missing in Handheld mode.
 - [ ] **H7 — console backdrops on the Thor (native Stage shaders).** Replace the era motif behind the
       Stage, on Android only, with the 53 animated backdrops the owner approved in the motion lab
       (`docs/prototypes/handheld-mode/backdrops-motion-study/`; the set is `picks.json`, the look and
@@ -2439,6 +2489,74 @@ Played. Pad input already reaches one dispatcher from both displays
         over 2 s and the Stage posts no frames; measured on the Thor, the whole system is then back at the
         floor of the app being in the background. Still open: battery saver, reduced motion, and checking
         that a lost GL context rebuilds the running backdrop.
+- [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
+      each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
+      full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
+      measurements for the heaviest backdrop of each draw path; H7c's battery saver, reduced motion
+      and the lost-GL-context rebuild; H2's Launcher-side look, which awaits the owner's hands-on check.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
+
+## M46 — Play log: sessions, accurate handheld timing, an Activity screen (planned)
+
+Builds on M43, whose two totals per game (`Games.PlaytimeSeconds`, `Games.PlayCount`) can't say when
+a game was played or for how long each time. The goal is what the 3DS Activity Log and Cocoon's Log
+show: every sitting with its date and length, and per game the total, times played, average per
+session, first and last played, plus a ranking. The reasoning, and why it reverses M43's "totals, not
+a session table", is in `DECISIONS.md` (2026-11-08, "M46"). One slice per session, each with its own
+commit; the model, store and view models live in Core / Infrastructure / `EmuShelf.UI` so the macOS
+suite covers them. Play data stays in the portable `Data/library.db`; nothing here reads or writes the
+user's game files.
+
+Problems with today's recording that this fixes (found in the 2026-11-08 review):
+
+- **No history.** Only running totals exist, so no day view, average or first-played date is possible.
+  Play from before the log can't be split back into sessions.
+- **Android over-counts.** A session is the wall-clock gap from launch to EmuShelf's return, capped at
+  12 h. Sleeping the Thor mid-game, or time spent in other apps, is credited as play.
+- **Desktop under-counts hand-off launchers** (a wrapper that starts the real process and exits), and a
+  session whose EmuShelf was killed adds no time at all.
+- **Per-device totals can't be merged** later by a sync, and a wrong session can't be corrected.
+
+- [ ] **P1 — the sessions table.** Schema v21: `PlaySessions` (id, game id, started at UTC, duration
+      in seconds or null while open, device id, how the duration was measured: tracked process / usage
+      access / wall-clock estimate / edited). A row is inserted at launch where `RecordLaunchStarted`
+      runs today, and closed where `AddPlaytime` runs (desktop exit, Android
+      `CompleteDeferredPlaySessionAsync`); a row never closed is a play of unknown length, which keeps
+      M43's "count at start, time at exit" rule. `Games.PlaytimeSeconds`, `PlayCount` and
+      `LastPlayedUnixMilliseconds` stay as a cache updated in the same transaction, so every existing
+      surface (list columns, Gamepad caption, Recently Played, the Handheld Title page) keeps reading a
+      plain column. Play recorded before v21 stays in the totals and is shown as "earlier play", never
+      invented as sessions; first played is the earliest session, or unknown when the game only has
+      earlier play. A stable per-install device id in `Settings/`. Removing a game from the library
+      keeps its sessions, as Cocoon does, so the log and the totals of a re-added game survive.
+      Tests: migration from v20 with existing totals, open and closed rows, cache consistency, an
+      unclosed row after a simulated kill, removal keeps history. **Exit:** on macOS and the Thor every
+      launch writes one row, and the totals match the sum of the rows plus earlier play.
+- [ ] **P2 — accurate timing on Android through Usage access.** An opt-in "Accurate play time" row in
+      Settings (Library) that explains the permission and opens Android's Usage access page, as Cocoon
+      does. Granted: the session's length is the time the emulator's package was actually in the
+      foreground between launch and return, from `UsageStatsManager` activity resumed / paused events,
+      so sleep and other apps drop out. Not granted, or the events have already aged out (a return days
+      later after process death): today's capped wall-clock figure, stored as an estimate and labelled
+      "about" wherever it shows. Behind an interface in Core so the computation from a list of events is
+      unit-tested on macOS. **Exit:** on the Thor, a session with the screen asleep in the middle records
+      only the awake minutes, checked against `adb shell dumpsys usagestats`.
+- [ ] **P3 — the Activity screen (Desktop and Gamepad).** A day-by-day timeline (each day's games and
+      minutes, newest first, with a week total); a page per game with total, times played, average per
+      session, first and last played and its recent sessions; a ranking by total time, times played or
+      average. Edit a session's length or delete it from the timeline or the game page (Y / long press
+      on Gamepad, context menu on Desktop); an edited row says so. Opened from the Gamepad Start menu,
+      the Desktop toolbar, and a game's actions. Reads are paged and off the UI thread; a large log
+      must not hitch the grid. **Exit:** a week of real play on the Thor reads correctly in the timeline,
+      and an edit or delete updates the totals everywhere.
+- [ ] **P4 — Handheld mode.** An Activity system tile on home beside Settings (amends M45 decision 18,
+      which allowed only Settings; record the amendment when built), opening the timeline as
+      master-detail across the screens: days and games on the Launcher, the focused day's or game's
+      stats on the Stage. The Title page adds first played and average per session. The in-game
+      companion's Now playing row shows the running session's time (M45 H6b). **Exit:** from the
+      Handheld home you can see what you played yesterday and for how long, without leaving the mode.
+- **Later, not part of M46:** syncing sessions between devices (the device id makes rows mergeable;
+      belongs beside M33); timing hand-off launchers on desktop by following the child process; export
+      to CSV; play-time goals or reminders.

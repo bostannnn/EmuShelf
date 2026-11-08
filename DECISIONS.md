@@ -13230,6 +13230,64 @@ rate for all of it, about 576 frames a move, though only one glow's opacity was 
 - The design is unchanged (timing, depth and colour of the breath); only its frame rate is, and only when
   nothing else moves.
 
+## 2026-11-08 — M45: Settings is a tile on the home grid (decision 18), and H6 is split in four
+
+The owner read M45 against what is built and found two things missing in practice rather than on
+paper. The in-game companion is still Gamepad mode's: `SecondScreenController.UpdateHandheldSurface`
+swaps the Launcher out for the stock companion whenever a game runs, and nothing in M45 owned its
+restyle beyond one clause of H6. Settings cannot be reached from Handheld mode at all: the Start menu
+in `HandheldShellViewModel` holds only Switch to Gamepad mode and Quit, and H1's exit never asked for
+more.
+
+- **Settings becomes a system tile on the grid**, the way the 3DS shows System Settings and Cocoon
+  shows its settings as one more app icon (owner's call). The spec already reserved a "system tile"
+  slot kind and "A opens system tile" in its controls table without ever saying which tiles exist,
+  so this fills a gap rather than re-opening decisions 1–17. Decision 8 (no fake apps in the dock)
+  is about the dock, not the grid, and stands. Only Settings gets a tile for now: it is the one
+  feature a user must be able to reach from a fresh install, and one tile among the platform folders
+  reads as a place to go, where four would read as clutter. The Start menu keeps a Settings row and
+  stays a plain list; the "page of tiles" Start menu from the old H6 is dropped, because the tiles
+  now live on home. The tile is movable and foldable but never removable, so Settings can't be lost.
+- **H6 is split into H6a–H6d** (Settings and menu; companion; Y sheet, Search and the surfaces behind
+  them; idle, sound, dock icons and first run), each with its own Thor check and commit. The old H6
+  was eight features behind one exit line, which is how two of them went missing.
+- **Also added to M45 in the same review:** touch on the whole Launcher (the spec's controls table
+  had tap, swipe and long-press; only H4's move mode mentioned touch, and the Launcher view takes no
+  pointer input today); the companion on the swapped 16:9 screen (H5 designed only the Launcher
+  there); the return from a game landing on the launched game's tile; the scraper, cover search,
+  full-screen achievements, toasts and errors, which had no Handheld owner; first run and the empty
+  library (decision 10 keeps the setup wizard, and M45 never said what a fresh install sees); and a
+  collector item for the exits still open inside ticked items (H3's feel check, H7b's measurements,
+  H7c's battery saver and reduced motion).
+- **A stop-gap comes first:** a Settings row in today's Start menu opening Gamepad mode's settings
+  overlay on the Stage, as H6a's first small commit, so Settings is reachable before the tile exists.
+
+## 2026-11-08 — M46: play sessions get a table, and Android times play through Usage access
+
+The owner wants a play log like the 3DS Activity Log and Cocoon's Log: which games were played, when,
+and for how long each time. M43 (2026-08-16) stored two running totals on `Games` and said a
+per-session table would be worth its weight "once something needs dated history". This is that need,
+so M46 adds `PlaySessions`.
+
+- **Sessions are the record, the totals become a cache.** One row per sitting, inserted at launch and
+  closed at exit. The `Games` totals and last-played stay, updated in the same transaction, so every
+  existing reader keeps a plain column read and M43's "count at start, time at exit" asymmetry
+  survives as a row with a null duration. Play recorded before the table exists is not split into
+  invented sessions; it stays in the totals and is shown as "earlier play".
+- **Each row names how it was measured** (tracked process, usage access, wall-clock estimate, edited),
+  so an estimate can be labelled as one and an edit is visible. Rows carry a device id so a later sync
+  can merge two devices' logs, which two running totals can never do honestly.
+- **Android: Usage access, opt-in.** Today's Android duration is the wall-clock gap from launch to
+  EmuShelf's return, capped at 12 h, which credits device sleep and other apps as play: on a handheld
+  that is the common case, not an edge. Cocoon asks for Android's Usage access for the same reason.
+  With it granted, the length is the emulator package's foreground time from `UsageStatsManager`
+  events; without it, or once the events have aged out, the old estimate is kept and marked. Rejected:
+  counting screen-off broadcasts in EmuShelf, because EmuShelf is often killed while the emulator runs
+  and would miss them.
+- **Removing a game keeps its sessions** (Cocoon does the same), so a re-added game keeps its history.
+  This only touches EmuShelf's own database, never the game's files.
+- **Handheld mode gets a second system tile, Activity,** when M46 P4 is built. That amends M45
+  decision 18 ("only Settings for now"); the amendment is recorded then, not now.
 
 ## 2026-11-08 — M45 H4: arranging home (layout model, store, reconciliation, move mode, your folders)
 

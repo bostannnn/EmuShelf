@@ -132,6 +132,14 @@ Added after H2 (owner, 2026-11-07):
     not the blurred fan art (too busy behind a medium). Platforms without an authored medium keep the
     flat cover. The Title page keeps the fan-art hero from decision 15.
 
+Added after the roadmap review (owner, 2026-11-08):
+
+18. **Settings is an app on the grid.** The way into Settings is a system tile on home, as the 3DS
+    and Cocoon do it, not only a row in the Start menu. The Start menu keeps a Settings shortcut and
+    stays a plain list. Only Settings gets a tile for now; Search, Add games and Achievements stay in
+    the menu until a tile for them earns its place. Decision 8 is unchanged: the dock still holds
+    only real Android apps.
+
 ## Screen anatomy
 
 ### Bottom screen — the Launcher (default)
@@ -149,6 +157,10 @@ Added after H2 (owner, 2026-11-07):
     with that game in it and lands in the first free space on home. You give it a name and a
     colour, and it holds whichever games you put in. Deleting it never touches the games.
   - **Game.** A game pinned directly to home, as the 3DS allows. Shows a cropped cover.
+  - **System tile.** An EmuShelf feature that looks like another app on the grid, as the 3DS's
+    System Settings icon and Cocoon do it. One kind for now: Settings (decision 18). It can be moved
+    and put in a folder but never removed, so there is always a way in. Its face is a glyph on the
+    indigo accent, so it is neither a platform monogram nor a user-folder glyph.
 - **Bottom bar:**
   - Left: `X ⇅` swap screens.
   - Centre: the dock, with All apps followed by the five pinned app slots. Down from the bottom
