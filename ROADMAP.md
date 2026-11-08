@@ -2523,7 +2523,10 @@ Played. Pad input already reaches one dispatcher from both displays
       each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
       full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
       measurements for the heaviest backdrop of each draw path; H7c's battery saver, reduced motion
-      and the lost-GL-context rebuild; H2's Launcher-side look, which awaits the owner's hands-on check.
+      and the lost-GL-context rebuild; H2's Launcher-side look, which awaits the owner's hands-on check;
+      H6d's real fresh install on the Thor (cleared data or a second device: the pre-boot steps, then Handheld mode, the
+      wizard and a playable home, end to end; the device check faked "fresh" in the owner's settings), its empty library on
+      the device (checked headlessly only), and the owner's ear on the five sounds (character and level).
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
