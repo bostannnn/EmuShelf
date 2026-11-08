@@ -113,6 +113,13 @@ if (args.Contains("--backdrops"))
     return;
 }
 
+// The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
+if (args.Contains("--stage-resume"))
+{
+    Environment.ExitCode = StageResumeCheck.Run(gl);
+    return;
+}
+
 // A surfaceless context has no default framebuffer, so the renderer is given one of ours to
 // resolve into — the same contract Avalonia's OpenGlControlBase uses when it hands over its FBO.
 var target = CreateTargetFramebuffer(gl, (uint)width, (uint)height);

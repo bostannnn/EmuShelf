@@ -29,6 +29,7 @@ public sealed class HandheldMediumMotion
     // game arrived, its clock eases to a stop, the shell's sway timer stops, and the Stage stops drawing.
     private double _untouchedMilliseconds;
     private float _swaySpeed = 1f;
+    private bool _holdsStill;
 
     public float Yaw => _rotation.Yaw + _yawOffset;
     public float Pitch => _rotation.Pitch + _pitchOffset;
@@ -42,10 +43,36 @@ public sealed class HandheldMediumMotion
     /// <summary>The sway has eased to a stop (StageRest); a new game, R3 or the stick starts it again.</summary>
     public bool IsSwayResting => _swaySpeed <= 0f;
 
+    /// <summary>
+    /// Battery saver or the system's reduced-motion setting (M45 H7c, <c>DeviceStatus.HoldsStill</c>): one more reason to
+    /// rest. The sway eases to a stop as it does after a minute alone and nothing wakes it meanwhile; the spring still
+    /// carries a change of pose. Lifted, the ordinary rule applies again: within the minute since the medium was last
+    /// touched the sway comes back on its own, after it the next new game, R3 or the stick brings it.
+    /// </summary>
+    public bool HoldsStill
+    {
+        get => _holdsStill;
+        set
+        {
+            _holdsStill = value;
+            if (value)
+            {
+                // Told before the sway ever ran: still from the start, rather than a two-second slow-down.
+                if (!IsSettling && _rotation.IsAtRest && _untouchedMilliseconds == 0d)
+                    _swaySpeed = 0f;
+            }
+            else if (_swaySpeed <= 0f && _untouchedMilliseconds < StageRest.AfterMilliseconds)
+            {
+                // Back within the minute: the sway eases in again (the shell sees IsSwaying and ticks it).
+                _swaySpeed = float.Epsilon;
+            }
+        }
+    }
+
     private void WakeSway()
     {
         _untouchedMilliseconds = 0d;
-        _swaySpeed = 1f;
+        _swaySpeed = _holdsStill ? 0f : 1f;
     }
 
     /// <summary>
@@ -104,7 +131,7 @@ public sealed class HandheldMediumMotion
         if (!IsSettling && _swaySpeed > 0f)
         {
             _untouchedMilliseconds += deltaMilliseconds;
-            _swaySpeed = StageRest.Next(_swaySpeed, (float)deltaMilliseconds, _untouchedMilliseconds >= StageRest.AfterMilliseconds);
+            _swaySpeed = StageRest.Next(_swaySpeed, (float)deltaMilliseconds, _holdsStill || _untouchedMilliseconds >= StageRest.AfterMilliseconds);
             changed |= _rotation.AdvanceSway(deltaMilliseconds * StageRest.Eased(_swaySpeed));
         }
         return changed;

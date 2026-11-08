@@ -75,6 +75,9 @@ public sealed class LauncherCompositor : INativeScene
     /// </summary>
     public float? NextFrameMilliseconds => _breathing ? LauncherMotion.BreathStepMilliseconds : null;
 
+    /// <summary>The Launcher's retained commands rebuild it whole; nothing else carries over.</summary>
+    public StageCommand? CaptureResume() => null;
+
     private bool _breathing;
 
     private sealed class SpriteState(LauncherSprite sprite, uint texture, uint shadow)

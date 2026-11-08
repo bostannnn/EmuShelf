@@ -138,4 +138,62 @@ public class HandheldMediumMotionTests
         Run(motion, 4_000, 50);
         Assert.True(motion.IsSwaying);
     }
+
+    [Fact]
+    public void HoldingStill_EasesTheSwayToAStop_AndNothingWakesIt_LiftedWithinTheMinuteItComesBack()
+    {
+        // Battery saver or reduced motion (M45 H7c), switched on mid-sway.
+        var motion = new HandheldMediumMotion();
+        Run(motion, 3_000, 50);
+        Assert.True(motion.IsSwaying);
+
+        motion.HoldsStill = true;
+        var before = motion.Yaw;
+        Run(motion, 3_000, 50);
+        Assert.True(motion.IsSwayResting);
+        Assert.False(motion.IsSwaying);
+        Assert.True(MathF.Abs(motion.Yaw - before) < 0.2f); // eased, no jump
+
+        // A new game still settles its pose, but the sway stays held.
+        motion.Recentre();
+        Run(motion, 2_000, 16);
+        Assert.False(motion.IsSettling);
+        Assert.True(motion.IsSwayResting);
+        Assert.False(motion.Tick(1_000));
+
+        // Lifted within the minute since the medium was last touched: the ordinary rule again, the sway eases back.
+        motion.HoldsStill = false;
+        Assert.False(motion.IsSwayResting);
+        Assert.True(motion.IsSwaying);
+        Run(motion, 4_000, 50);
+        Assert.NotEqual(MediaRotationModel.RestYaw, motion.Yaw, 4);
+    }
+
+    [Fact]
+    public void HoldingStill_LiftedAfterTheMinute_StaysAtRest_UntilANewGame()
+    {
+        var motion = new HandheldMediumMotion();
+        Run(motion, 63_000, 50);
+        Assert.True(motion.IsSwayResting); // rested on its own
+
+        motion.HoldsStill = true;
+        motion.HoldsStill = false;
+        Assert.True(motion.IsSwayResting);
+        Assert.False(motion.Tick(1_000));
+
+        motion.Recentre(); // a new game
+        Assert.False(motion.IsSwayResting);
+        Run(motion, 4_000, 50);
+        Assert.True(motion.IsSwaying);
+    }
+
+    [Fact]
+    public void HoldingStill_FromTheStart_NeverSways()
+    {
+        var motion = new HandheldMediumMotion { HoldsStill = true };
+        Assert.True(motion.IsSwayResting);
+        Assert.False(motion.IsSwaying);
+        Run(motion, 5_000, 50);
+        Assert.Equal(MediaRotationModel.RestYaw, motion.Yaw, 4);
+    }
 }

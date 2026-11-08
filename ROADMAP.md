@@ -2509,7 +2509,14 @@ Played. Pad input already reaches one dispatcher from both displays
         the Thor with no "unavailable" lines in logcat.* Still open for the exit: the owner's judgement of
         the rotation, and the measurements (only a rough `top` reading so far: the busiest app thread at
         4–12% of a core while GameCube rotated).
-  - [ ] **H7c — rest and fallbacks.** The backdrop holds a still frame when the Stage is idle for
+  - [x] **H7c — rest and fallbacks.** ✅ (2026-11-08; checked on the Thor over adb, Release AOT: reduced motion
+        (`animator_duration_scale 0`) and battery saver (`low_power 1` with the battery faked unplugged, since Android
+        refuses the saver while charging) each hold the Stage still within two seconds, through navigations and past
+        where the idle drift would have started, at the app's background floor (0.0–0.5% of a core, no Stage frames, GPU
+        0–1%); a recreated activity (font scale changed) logged both Stages carrying on into their new contexts (the Screen-2
+        one its era motif, clock and rest state; the main one its running `nes-raster`); the resume of a running animated backdrop and the hold are checked under GL on macOS
+        by `tools/EmuShelf.Rendering.Preview --stage-resume`. Choices in `DECISIONS.md` 2026-11-08 "M45 H7c".) The
+        backdrop holds a still frame when the Stage is idle for
         a while (as the glow rests), when Android battery saver is on, and under the system's
         reduced-motion setting; a lost GL context rebuilds the running backdrop. The desktop Stage
         stays on the era motif (recorded, not built). **Exit:** an hour idle on the Stage shows no
@@ -2517,13 +2524,24 @@ Played. Pad input already reaches one dispatcher from both displays
         *Rest after idle built 2026-11-07 (pulled forward by the owner's "I don't want my fan to ramp up"):*
         a minute after the last navigation the backdrop's clock and the medium's idle sway ease to a stop
         over 2 s and the Stage posts no frames; measured on the Thor, the whole system is then back at the
-        floor of the app being in the background. Still open: battery saver, reduced motion, and checking
-        that a lost GL context rebuilds the running backdrop.
+        floor of the app being in the background. *Battery saver, reduced motion and the rebuild built 2026-11-08:*
+        the device's say (`DeviceStatus.HoldsStill`, watched, not polled) rests the backdrop, the medium's sway and the
+        idle drift together, and lifting it puts the ordinary minute rule back; the surface captures the old
+        compositor's running backdrop and rest state and applies them after the retained replay. Idle measured over
+        five minutes, not an hour: two and five minutes after the last press the app was at 0.0–1.5% of a core with no
+        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run. The rebuilt Stage is only
+        seen in logcat for now: the recreation crash below kills the app right after.
 - [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
       each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
       full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
-      measurements for the heaviest backdrop of each draw path; H7c's battery saver, reduced motion
-      and the lost-GL-context rebuild; H2's Launcher-side look, which awaits the owner's hands-on check.
+      measurements for the heaviest backdrop of each draw path; H7c's hour-long idle run; H2's
+      Launcher-side look, which awaits the owner's hands-on check.
+- [ ] **Recreating the activity crashes Handheld mode** (found 2026-11-08 while checking H7c's rebuild; not H7's
+      to fix): a configuration change the activity does not handle itself (font scale, locale) recreates
+      `MainActivity`, and the app dies in Avalonia's layout ("Attempt to call InvalidateArrange on wrong LayoutManager")
+      while the Screen-2 presentation's views are re-hosted. The native surfaces rebuild fine (StageSecond logged its
+      resume first). Reproduce: `adb shell settings put system font_scale 1.15` with the app up. Either handle
+      `FontScale`/`Locale` in `ConfigurationChanges` or make `HandheldScreenHost` survive a new main TopLevel.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).

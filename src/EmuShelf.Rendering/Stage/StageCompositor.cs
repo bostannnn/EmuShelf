@@ -31,6 +31,12 @@ public sealed class StageCompositor : INativeScene
     /// <summary>The canvas width the pictures are placed on.</summary>
     public float CanvasWidth => _canvasWidth;
 
+    /// <summary>
+    /// The framebuffer a frame is composed into: the surface's default one (0) on the device; the preview tool, whose
+    /// surfaceless context has none, gives one of its own.
+    /// </summary>
+    public uint TargetFramebuffer { get; set; }
+
     private const int SwizzleR = 0x8E42;
     private const int SwizzleB = 0x8E44;
     private const int GlRed = 0x1903;
@@ -57,6 +63,9 @@ public sealed class StageCompositor : INativeScene
     private float _backdropClockReal = float.NaN;
     private float _backdropSpeed = 1f;
     private float _lastNavigation;
+
+    // Battery saver or reduced motion (StageMotionCommand): the backdrop rests whatever the navigation, and starts at rest.
+    private bool _holdStill;
 
     private Layer? _art;
     private List<Layer> _hero = [];
@@ -119,18 +128,62 @@ public sealed class StageCompositor : INativeScene
         // A long gap (resting, a paused activity) moves the clock no more than a frame or so.
         var delta = float.IsNaN(_backdropClockReal) ? 0f : Math.Clamp(now - _backdropClockReal, 0f, 100f);
         _backdropClockReal = now;
-        _backdropSpeed = StageRest.Next(_backdropSpeed, delta, now - _lastNavigation >= StageRest.AfterMilliseconds);
+        _backdropSpeed = StageRest.Next(_backdropSpeed, delta, _holdStill || now - _lastNavigation >= StageRest.AfterMilliseconds);
         _backdropClock += delta * StageRest.Eased(_backdropSpeed);
+    }
+
+    /// <summary>
+    /// The running backdrop and the rest state, for a rebuilt context (<see cref="StageBackdropResumeCommand"/>); null
+    /// before any backdrop was set. Reads managed state only: the context this was drawn with may already be gone.
+    /// </summary>
+    public StageCommand? CaptureResume()
+    {
+        if (_backdrop is not { } state)
+            return null;
+        var showing = state.Animated;
+        return new StageBackdropResumeCommand(showing?.Id, showing?.StartMilliseconds ?? 0f, showing?.ClockOffsetSeconds ?? 0f,
+            _backdropClock, _backdropSpeed, _lastNavigation);
+    }
+
+    private void Resume(StageBackdropResumeCommand resume)
+    {
+        _backdropClock = resume.Clock;
+        _backdropClockReal = float.NaN;
+        _backdropSpeed = resume.Speed;
+        _lastNavigation = resume.LastNavigation;
+        if (resume.Id is not { } id || _backdrop is not { } state || _animatedIds is not { } ids || !ids.Contains(id, StringComparer.Ordinal)
+            || _animator is null)
+            return;
+        // The replayed backdrop command opened on a pick of its own; the one that was showing takes its place, at the
+        // same point of its motion and of its turn. (Its targets were lost with the context: a trail starts afresh.)
+        if (state.Animated is { } showing && showing.Id == id && showing.StartMilliseconds == resume.StartMilliseconds)
+            return;
+        if (_animator.Start(id, resume.StartMilliseconds, resume.ClockOffsetSeconds) is not { } resumed)
+            return;
+        _animator.Stop(state.Animated);
+        _animator.Stop(state.Previous);
+        state.Previous = null;
+        state.Animated = resumed;
     }
 
     public void Apply(StageCommand command, float now)
     {
-        // Navigation wakes a resting backdrop; the medium's idle sway, the corner pills and the idle drift do not.
+        // Navigation wakes a resting backdrop; the medium's idle sway, the corner pills, the idle drift, the device's say on
+        // motion and a rebuilt context carrying on do not.
         if (command is not (StageMediumPoseCommand or StageChromeCommand or StageCentreCommand { Drift: true } or
-            StageBackdropCommand { Drift: true }))
+            StageBackdropCommand { Drift: true } or StageMotionCommand or StageBackdropResumeCommand))
             _lastNavigation = now;
         switch (command)
         {
+            case StageMotionCommand motion:
+                _holdStill = motion.HoldStill;
+                // Told before the first frame (a replay, or the mode opening under battery saver): still from the start.
+                if (_holdStill && float.IsNaN(_backdropClockReal))
+                    _backdropSpeed = 0f;
+                break;
+            case StageBackdropResumeCommand resume:
+                Resume(resume);
+                break;
             case StageCanvasCommand canvas:
                 _canvasWidth = canvas.Width;
                 _mediumDirty = true;
@@ -236,7 +289,7 @@ public sealed class StageCompositor : INativeScene
         if (_leavingBackdrop is { } leaving)
             UpdateAnimated(leaving, clock);
 
-        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, TargetFramebuffer);
         _gl.Viewport(0, 0, (uint)surfaceWidth, (uint)surfaceHeight);
         _gl.Disable(EnableCap.DepthTest);
         _gl.Disable(EnableCap.ScissorTest);
@@ -451,7 +504,7 @@ public sealed class StageCompositor : INativeScene
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _mediumFramebuffer);
         _gl.FramebufferTexture2D(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0,
             TextureTarget.Texture2D, _mediumTexture, 0);
-        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, TargetFramebuffer);
         _mediumWidth = width;
         _mediumHeight = height;
     }

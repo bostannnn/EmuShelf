@@ -75,8 +75,11 @@ public sealed partial class HandheldShellViewModel
     /// <summary>The idle timer ran out: the drift starts, or moves on to its next game. Tests call it instead of waiting.</summary>
     internal Task OnIdleAsync() => _drift is { } drift ? AdvanceDriftAsync(drift) : StartDriftAsync();
 
-    /// <summary>Nothing open over the Launcher, no game running, home loaded: the Stage may drift.</summary>
-    private bool CanDrift => _idleEnabled && !_disposed && IsLoaded && !CompanionOwnsPad &&
+    /// <summary>
+    /// Nothing open over the Launcher, no game running, home loaded, and the device not asking for stillness (battery saver,
+    /// reduced motion: M45 H7c): the Stage may drift.
+    /// </summary>
+    private bool CanDrift => _idleEnabled && !_disposed && !HoldsStill && IsLoaded && !CompanionOwnsPad &&
         (_companion is null || _companion.Overlay == SecondScreenOverlayKind.None) &&
         Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null && _move is null && TitlePage is null;
 

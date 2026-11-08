@@ -189,9 +189,17 @@ internal sealed class HandheldNativeStageFeed
         _host.SetActive(active);
         if (active)
         {
+            SendMotion();
             SendBackdrop();
             Resend();
         }
+    }
+
+    // Battery saver or reduced motion (M45 H7c): the native Stage holds its backdrop still. Retained, so a rebuilt context knows.
+    private void SendMotion()
+    {
+        if (_active && _shell is { } shell)
+            _host.Post(new StageMotionCommand(shell.HoldsStill));
     }
 
     /// <summary>Everything again from scratch: on activation, and after a swap moved the Stage to the other canvas.</summary>
@@ -219,6 +227,9 @@ internal sealed class HandheldNativeStageFeed
             case nameof(HandheldShellViewModel.TitlePage) when _shell?.TitlePage is null:
                 // The page closed: a landed launch cover goes with it.
                 _host.Post(new StageLaunchCommand(null));
+                break;
+            case nameof(HandheldShellViewModel.HoldsStill):
+                SendMotion();
                 break;
             case nameof(HandheldShellViewModel.TimeText):
             case nameof(HandheldShellViewModel.BatteryText):

@@ -289,6 +289,17 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
 
     public void OnSurfaceCreated(IGL10? gl, EglConfig? config)
     {
+        // A lost context (a GPU reset, a recreated activity, a view in a new window) rebuilds the scene from the retained
+        // commands, and the Stage's backdrop carries on where it was (M45 H7c) instead of opening on a fresh pick.
+        StageCommand? resume = null;
+        try
+        {
+            resume = _compositor?.CaptureResume();
+        }
+        catch (Exception)
+        {
+            // Nothing to carry on with; the rebuilt scene opens on a pick of its own.
+        }
         try
         {
             _compositor?.Dispose();
@@ -315,6 +326,12 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         {
             foreach (var key in _retainedOrder)
                 _compositor.Apply(_retained[key].ForReplay(), now);
+        }
+        if (resume is not null)
+        {
+            _compositor.Apply(resume, now);
+            var carried = resume is StageBackdropResumeCommand { Id: { } id } ? $"backdrop '{id}'" : "the era motif";
+            global::Android.Util.Log.Info("EmuShelfStage", $"{_name}: context rebuilt, carrying on with {carried}");
         }
     }
 

@@ -155,7 +155,35 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     public double WifiOpacity => IsWifiConnected == true ? 1 : 0.3;
 
     /// <summary>The battery/Wi-Fi source for the status pill; replaceable once the host knows the device.</summary>
-    public IDeviceStatusService DeviceStatus { get; set; }
+    public IDeviceStatusService DeviceStatus
+    {
+        get => _deviceStatus;
+        set
+        {
+            if (ReferenceEquals(_deviceStatus, value))
+                return;
+            if (_deviceStatus is not null)
+                _deviceStatus.Changed -= OnDeviceStatusChanged;
+            _deviceStatus = value;
+            value.Changed += OnDeviceStatusChanged;
+        }
+    }
+
+    private IDeviceStatusService _deviceStatus = UnknownDeviceStatusService.Instance;
+
+    // Battery saver or reduced motion switched: read it now, on the UI thread, not at the pill's next refresh.
+    private void OnDeviceStatusChanged() => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_disposed)
+            RefreshStatus();
+    });
+
+    /// <summary>
+    /// The device asks for stillness (M45 H7c): battery saver is on, or the system's reduced-motion setting. The Stage's
+    /// idle motion (the animated backdrop, the medium's sway) holds a still frame while this is set.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HoldsStill { get; private set; }
 
     /// <summary>The app's current status message (a launch in progress, a failure), shown on the Stage.</summary>
     [ObservableProperty]
@@ -306,6 +334,24 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         BatteryText = status.BatteryPercent is { } percent ? $"{percent}%" : null;
         IsCharging = status.IsCharging;
         IsWifiConnected = status.IsWifiConnected;
+        if (status.HoldsStill != HoldsStill)
+        {
+            HoldsStill = status.HoldsStill;
+            _medium.HoldsStill = status.HoldsStill;
+            // The sway's timer stops once the sway has eased to a stop (or at once, if it was already at rest).
+            UpdateMediumTimer();
+            // The idle drift holds too: a drift on the Stage gives way to what is selected, and none starts until the
+            // device's say is lifted, when the fifteen seconds start again.
+            if (status.HoldsStill)
+            {
+                _idleTimer?.Stop();
+                StopDrift(refreshStage: true);
+            }
+            else
+            {
+                ArmIdle();
+            }
+        }
     }
 
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
@@ -1625,6 +1671,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (Panel is { } panel)
             ClosePanel(panel);
         StopStatusUpdates();
+        _deviceStatus.Changed -= OnDeviceStatusChanged;
         WatchDockSlots(null);
         _idleTimer?.Stop();
         StopMediumTimer();

@@ -13851,3 +13851,55 @@ corrected or deleted from the timeline or the game page.
   "Run setup again". **Not on the Thor:** the empty library (headless snapshots only), and how the sounds sound: the
   readback cannot hear them, so their character and level are the owner's call. A dock slot whose app is no longer a
   launcher entry still shows empty, with no large icon (the dock data's business, noted in H6c's follow-up).
+
+## 2026-11-08 — M45 H7c: battery saver, reduced motion, and a rebuilt context carries on
+
+- **The device's say is one more reason to rest.** `DeviceStatus` (Core) gains `HoldsStill`: battery saver is on, or the
+  system's reduced-motion setting (Android's animator duration scale at 0, which "Remove animations" and the developer
+  option both set). It is not a new motion state: the compositor's rest rule becomes `holdStill || a minute since the
+  last navigation`, so the backdrop eases to a stop over the same two seconds, no navigation wakes it while it holds,
+  and a system change still crossfades to the next backdrop's still frame. Told before its first frame (a replay, or
+  Handheld mode opening under battery saver) it starts still. The medium's sway (`HandheldMediumMotion.HoldsStill`)
+  and the idle drift (`CanDrift`) hold on the same flag, since all three are the Stage's idle motion. Lifting the
+  hold puts the ordinary rule back: within the minute since the last navigation (or touch of the medium) the motion
+  comes back on its own, after it the next navigation brings it; the drift re-arms its fifteen seconds. The
+  alternative, "lifting never wakes, only navigation does", was rejected as a second rule to explain for a case
+  (turning the saver off while looking at the Stage) that is rarer than the rule it would complicate.
+- **Watched, not polled.** `IDeviceStatusService.Changed` is raised by the Android head from a `BroadcastReceiver`
+  (`ACTION_POWER_SAVE_MODE_CHANGED`) and a `ContentObserver` on the animator scale; the shell posts a `RefreshStatus`
+  to the UI thread, so the hold takes effect at once rather than at the pill's 15-second refresh. The flag reaches the
+  native Stage as `StageMotionCommand`, retained under its own key, so a rebuilt context knows it before its first frame.
+- **A lost context resumes the backdrop that was showing.** `INativeScene.CaptureResume()` is read from the old
+  compositor (managed state only; its context is already gone) before it is disposed, and applied after the retained
+  replay as `StageBackdropResumeCommand`: the running backdrop's id, start and clock offset, the backdrop clock, the
+  rest speed and the last navigation. The replayed backdrop command still opens on a random pick, which the resume
+  stops and replaces (one wasted program set per rebuild; rebuilds are rare). A resume naming a backdrop the replayed
+  system no longer has is ignored, and a resting Stage stays at rest. GPU targets are lost with the context, so a
+  trail or ghost starts afresh; the first frame after a resume moves the clock by nothing, so there is no jump.
+- **The desktop Stage stays on the era motif** (recorded, as the roadmap asked; nothing built).
+- **Measured on the Thor** (Release AOT, `top -p` per process as % of one core, frames counted from SurfaceFlinger's
+  history over 3 s on the Stage's layer, GPU from `kgsl`). Animating within fifteen seconds of a press: app 13–25%,
+  SurfaceFlinger 11%, composer 7%, 85 frames (28 fps). Reduced motion on, 7 s later: app 0.0–0.2%, 0 frames, GPU 0%;
+  after a navigation: still 0 frames; 20 s further on, past where the idle drift would have started: 0.2–0.5%, 0
+  frames. Battery saver cannot be switched on while the device charges (Android refuses it), and faking the battery
+  unplugged with `dumpsys battery unplug` resets the Thor's input devices (`DeviceResetEvent` for the controller),
+  which coincided with a burst of swaps and a companion overlay nothing in the script sent; the readings taken while
+  that settled are not usable, but 20 s into the hold the app was at 0.2–0.5% with no Stage frames, after what counted
+  as navigations. Idle at rest after a press on home (the idle drift runs its round first): two minutes on, app 0.0–1.2%, 0 Stage
+  frames; five minutes on, 0.2–1.5%, 0 frames, GPU 0%; the `cpuss-0` and `gpu` thermal zones fell from 45.1/43.2 °C
+  while animating to 44.0/42.4 °C. The planned eight-minute sample was lost to another session installing its build;
+  the hour-long run the exit asks for is still to do.
+- **The rebuild on the device.** A font-scale change recreates the activity; both Stages logged their rebuild:
+  `StageSecond: context rebuilt, carrying on with the era motif` (its clock, speed 0.95 mid-ease, and last navigation
+  carried) and, on a second recreation while an animated backdrop was up, `StageMain: context rebuilt, carrying on
+  with backdrop 'nes-raster'`. Each time the app then died in Avalonia's layout ("Attempt to call InvalidateArrange on
+  wrong LayoutManager") as the presentation's views were re-hosted into the new main window, so the resumed Stage
+  was never seen for long. That is a pre-existing Handheld-mode hazard of activity recreation (the activity handles
+  orientation, size, UI mode, density, keyboard and navigation changes itself, not font scale or locale), outside H7;
+  it is recorded in `ROADMAP.md` as its own item and a fix session was started from this one. `tools/EmuShelf.Rendering.Preview --stage-resume` checks the resume of a running
+  animated backdrop, and the hold, under a real GL context on macOS, which `dotnet test` cannot (no GL).
+- **Not held:** the Launcher's selector glow (a response to a press, not idle motion), the Stage's pops and crossfades,
+  and the medium's spring (a change of pose). Under reduced motion those are the owner's call, not H7c's.
+- **How to test the hold over adb:** `settings put global animator_duration_scale 0` (and `settings delete` it after)
+  is clean; battery saver needs `dumpsys battery unplug` first and `dumpsys battery reset` after, and resets the
+  controller. The first press after fifteen seconds idle only wakes the drift (decision 14): send two to navigate.

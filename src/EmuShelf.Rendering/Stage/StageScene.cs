@@ -67,6 +67,13 @@ public interface INativeScene : IDisposable
 
     /// <summary>When nothing animates: how soon the scene wants another frame (a stepped drift), or null.</summary>
     float? NextFrameMilliseconds { get; }
+
+    /// <summary>
+    /// What a rebuilt scene needs to carry on where this one was once its GL context is lost (M45 H7c): applied
+    /// after the host has replayed its retained commands into the new scene. Touches no GL. Null when there is nothing
+    /// to carry.
+    /// </summary>
+    StageCommand? CaptureResume();
 }
 
 /// <summary>
@@ -139,6 +146,31 @@ public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCo
 {
     public override string? RetainKey => "chrome:" + Key;
 }
+
+/// <summary>
+/// Whether the Stage's idle motion holds still (M45 H7c): battery saver is on, or the system's reduced-motion setting.
+/// The animated backdrop eases to a stop as it does when resting (<see cref="StageRest"/>) and no navigation wakes it
+/// until this is lifted; a system change still crossfades to the next backdrop's still frame.
+/// </summary>
+public sealed record StageMotionCommand(bool HoldStill) : StageCommand
+{
+    public override string? RetainKey => "motion";
+}
+
+/// <summary>
+/// Where the Stage's backdrop was when its GL context was lost (M45 H7c), captured from the old scene
+/// (<see cref="INativeScene.CaptureResume"/>) and applied to the rebuilt one after the retained commands: the running
+/// animated backdrop (<paramref name="Id"/>, null when the era motif was showing) with its start and clock offset, so
+/// its motion and its turn in the rotation continue; the backdrop's clock and its rest state, so a resting Stage stays
+/// at rest. A moment, not state: it is never retained or replayed itself.
+/// </summary>
+public sealed record StageBackdropResumeCommand(
+    string? Id,
+    float StartMilliseconds,
+    float ClockOffsetSeconds,
+    float Clock,
+    float Speed,
+    float LastNavigation) : StageCommand;
 
 /// <summary>
 /// How the Stage rests (M45 H7, the fan): a minute after the last navigation its idle motion (the animated

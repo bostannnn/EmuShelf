@@ -1,5 +1,6 @@
 using Avalonia.Media;
 using EmuShelf.App.ViewModels;
+using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Systems;
 using EmuShelf.Integrations.Systems;
 using EmuShelf.Rendering.Gl;
@@ -117,6 +118,19 @@ public class StageBackdropCatalogTests
         Assert.Equal(1f, StageRest.Eased(1f));
         Assert.True(StageRest.Eased(0.1f) < 0.1f); // eases in: no lurch
         Assert.Equal(1f, StageRest.Next(0f, StageRest.WakeMilliseconds, resting: false));
+    }
+
+    [Fact]
+    public void HoldingStill_IsStateTheStageKeeps_AndAResumeIsAMoment()
+    {
+        // M45 H7c: battery saver / reduced motion is retained (a rebuilt context starts still); where the backdrop was
+        // is captured from the old scene and applied once, never retained or replayed.
+        Assert.Equal("motion", new StageMotionCommand(true).RetainKey);
+        Assert.False(new StageMotionCommand(false).Removes);
+        var resume = new StageBackdropResumeCommand("runway", 1_000f, 4.5f, 2_500f, 0f, 100f);
+        Assert.Null(resume.RetainKey);
+        Assert.Same(resume, resume.ForReplay());
+        Assert.False(DeviceStatus.Unknown.HoldsStill);
     }
 
     [Fact]
