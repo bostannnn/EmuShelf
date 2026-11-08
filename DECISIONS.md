@@ -13859,3 +13859,53 @@ corrected or deleted from the timeline or the game page.
   loads, a slot whose component is no longer listed takes its package's entry instead, if the package has exactly one
   and it is not pinned elsewhere, and the dock is saved (`SecondScreenDock.FollowMovedApps`). An uninstalled app, or one
   with several launcher entries, is left as it is: it still draws empty and counts as free for Pin to dock.
+
+## 2026-11-08 — M45 H7c: a recreated activity no longer kills Handheld mode
+
+- **The crash.** Found while checking H7c's lost-GL-context rebuild: a font-scale change (`settings put system
+  font_scale 1.15`) makes Android recreate `MainActivity` (its `ConfigurationChanges` cover orientation, screen size, UI
+  mode, density, keyboard and navigation, not font scale or locale), and in Handheld mode the process then died on the
+  next render tick in Avalonia's layout — `System.ArgumentException: Attempt to call InvalidateArrange on wrong
+  LayoutManager`, thrown from `LayoutManager.ExecuteArrangePass` itself. The native GL surfaces had already rebuilt
+  ("context rebuilt, carrying on with …" for both Stages); Gamepad mode survived the same recreation.
+- **The cause: the Screen-2 Presentation's Avalonia top level outlived its window.** `ThorSecondScreenPresentation`
+  hosts an `AvaloniaView`, whose `EmbeddableControlRoot` is the second top level with its own `LayoutManager`.
+  Tearing the Presentation down emptied the view (`Content = null`) and dismissed the window, but never disposed that
+  top level — `AvaloniaView.Dispose()` is `internal new`, so from our assembly `Dispose()` is `Java.Lang.Object`'s and
+  leaves the root alone. The layout manager therefore stayed live, holding the invalidations Handheld mode's
+  Screen-2 views queued as they were hidden and moved out, and kept getting its render callback. The new activity's
+  resume built a new Presentation and attached the same views to its top level; the old layout manager's next pass
+  then found them attached to a *different* root. Avalonia 12.1's arrange pass re-invalidates every control whose
+  ancestor measure is still invalid (`_toArrangeAfterMeasure` → `InvalidateArrange`), and `InvalidateArrange` throws
+  when the control's layout root is not its owner. Same root cause as H0's "never detach and attach in the same pass"
+  (a live layout manager with the control still queued), reached across an activity recreation instead of a swap.
+  The main display was never the problem: Avalonia's `AvaloniaActivity.OnDestroy` disposes the activity's view and
+  with it that top level, so its layout manager is dead before the new `MainView` takes the pair.
+- **The fix: the top level dies with the window.** `ReleaseResources` takes the top level (through its content, with
+  `TopLevel.GetTopLevel`; the view exposes no other way to it) before emptying the view, and the Presentation's
+  `Dispose(bool)` disposes it — after `Dismiss()`, because `SecondScreenController` dismisses and then disposes, and
+  disposing the top level disposes the managed peer of its surface view, whose surface-destroyed callback Android still
+  delivers while the window closes. A disposed layout manager drops its queue (`ExecuteLayoutPass` and
+  `InvalidateArrange` both return on `_disposed`), so the views can join the new Presentation at once. This also stops
+  the leak of one top level per Presentation (every activity recreation, every Screen-2 unplug).
+- **Also:** `HandheldScreenHost.RegisterMainSlot` promised the main pair would join a new slot only on a later pass, but
+  `Update` (which the new activity's resume calls through the controller) placed it at once; `Place` now waits for the
+  posted pass (`_mainSlotPending`). Harmless today, since the old main top level is already disposed, but it makes the
+  code keep the H0 rule in the one ordering (a new instance resuming before the old is destroyed) where it would not be.
+- **Rejected: handling `FontScale` and `Locale` in `ConfigurationChanges`.** It would have hidden this reproduction
+  (Avalonia ignores Android's font scale, so there is nothing to re-measure), but it only removes one trigger:
+  layout direction, colour mode, smallest-screen-size, font-weight adjustment, grammatical gender and the developer
+  option "Don't keep activities" recreate the activity too, and H7c's own GL-context check wants recreation to work.
+  Recreation has to be survivable; it now is.
+- **Checked on the Thor** (Release AOT build of this commit, app up in Handheld mode, `settings put system font_scale
+  1.15` then `1.0`, five recreations over three runs): the process keeps its pid through every one, logcat shows no
+  exception, and afterwards both windows are up (`dumpsys window`: the activity on display 0, one Presentation on
+  display 4), SurfaceFlinger lists the same layers as a fresh launch on both displays (three surfaces each, the native
+  ones with full 1080×1920 / 1080×1240 buffers, the one behind parked past the hinge), the native screens never fall
+  back to Avalonia (no "cannot draw" line), and X swaps the screens both ways (~100 ms warm). Screens are `FLAG_SECURE`,
+  so this is as far as a readback goes. Seen on the way, not fixed: the first swap after a recreation is slow (slide out
+  870 ms, or a 905 ms catch-up — the main thread is still rebuilding the Avalonia trees, "Skipped 104 frames"); a fresh
+  launch leaves the pre-boot `SetupPresentation` showing under the real one until the next pause (`MainActivity` only
+  dismisses it in `OnPause`), which a recreation happens to clean up; and a swap injected over `adb shell input` is
+  sometimes dropped, before and after a recreation alike. No unit test: the hazard needs two Android windows, and the
+  headless platform's windows dispose their layout managers on close, which is exactly the fixed behaviour.

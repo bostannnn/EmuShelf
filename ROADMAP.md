@@ -2519,6 +2519,10 @@ Played. Pad input already reaches one dispatcher from both displays
         over 2 s and the Stage posts no frames; measured on the Thor, the whole system is then back at the
         floor of the app being in the background. Still open: battery saver, reduced motion, and checking
         that a lost GL context rebuilds the running backdrop.
+    - [x] **Recreating the activity crashes Handheld mode.** ✅ (2026-11-08; found by the font-scale change used
+          to check the GL-context rebuild, which recreates `MainActivity`. The process died in Avalonia's layout
+          because the Screen-2 Presentation's Avalonia top level was never disposed with its window; it is now.
+          `DECISIONS.md` 2026-11-08 "M45 H7c: a recreated activity no longer kills Handheld mode".)
 - [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
       each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
       full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
