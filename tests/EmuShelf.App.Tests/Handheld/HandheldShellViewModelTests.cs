@@ -102,10 +102,15 @@ public partial class HandheldShellViewModelTests
 
         public void RememberLaunchScreen(string systemId, GameLaunchScreen screen) => Remembered.Add((systemId, screen));
 
+        /// <summary>A launch records the play on the game (its last played becomes now), as the launch core does.</summary>
+        public bool RecordsPlays { get; set; }
+
         public Task<bool> LaunchAsync(HandheldGameEntry game, GameLaunchScreen screen)
         {
             Launched.Add(game.Id);
             LaunchScreens.Add(screen);
+            if (RecordsPlays && Games.TryGetValue(game.SystemId, out var games) && games.FindIndex(entry => entry.Id == game.Id) is >= 0 and var at)
+                games[at] = games[at] with { LastPlayedAt = DateTimeOffset.UtcNow, PlayCount = games[at].PlayCount + 1 };
             return PendingLaunch?.Task ?? Task.FromResult(LaunchSucceeds);
         }
 

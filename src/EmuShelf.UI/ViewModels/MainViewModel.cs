@@ -1309,9 +1309,13 @@ public partial class MainViewModel : ViewModelBase
     // Null everywhere else, so the overlay never shows on desktop or when the game is on the built-in panel.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsCompanionOnMainScreen))]
+    [NotifyPropertyChangedFor(nameof(ShowsGamepadMainScreenCompanion))]
     public partial SecondScreenViewModel? MainScreenCompanion { get; set; }
 
     public bool IsCompanionOnMainScreen => MainScreenCompanion is not null;
+
+    /// <summary>Gamepad mode's companion view on the built-in panel; Handheld mode draws its own there (M45 H6b).</summary>
+    public bool ShowsGamepadMainScreenCompanion => IsCompanionOnMainScreen && !IsHandheldMode;
 
     // Every cover is framed to its PLATFORM's canonical aspect ratio (all arcade covers 4:3, all disc
     // systems the case shape, …), so a platform's covers are standardized to one size and pack into a
@@ -3146,9 +3150,14 @@ public partial class MainViewModel : ViewModelBase
 
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing.
+        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing. While a game runs the
+        // companion has the pad (M45 H6b): it only arrives here once the user touched the companion's display.
         if (IsHandheldMode)
+        {
+            if (Handheld is { CompanionOwnsPad: true } playing)
+                return playing.DispatchGamepadAction(action);
             return IsGamepadInputSuspended || (Handheld?.DispatchGamepadAction(action) ?? false);
+        }
 
         if (!IsGamepadMode)
             return false;

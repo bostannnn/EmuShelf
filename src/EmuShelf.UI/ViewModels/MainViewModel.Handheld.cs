@@ -27,6 +27,7 @@ public partial class MainViewModel
     private IDeviceStatusService? _handheldDeviceStatus;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsGamepadMainScreenCompanion))]
     public partial bool IsHandheldMode { get; set; }
 
     /// <summary>The Handheld shell, alive while Handheld mode is on; null in Desktop and Gamepad mode.</summary>

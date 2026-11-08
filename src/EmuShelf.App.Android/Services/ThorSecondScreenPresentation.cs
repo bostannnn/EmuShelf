@@ -19,10 +19,11 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     private bool _released;
 
     /// <summary>
-    /// True while Screen-2 shows Handheld mode's Launcher rather than the companion. The pad then belongs to
-    /// the shared shell (the one view model both screens drive), so keys and motion are forwarded to it.
+    /// True while Screen-2 shows Handheld mode (its Launcher, or its own companion while a game runs, M45 H6b) rather
+    /// than Gamepad mode's companion. The pad then belongs to the shared shell (the one view model both screens drive,
+    /// which hands it to the companion while a game runs), so keys and motion are forwarded to it.
     /// </summary>
-    public bool IsShowingLauncher { get; private set; }
+    public bool IsShowingHandheld { get; private set; }
 
     public SecondScreenViewModel Model { get; } = new();
 
@@ -61,9 +62,9 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // otherwise wander the ring onto the Refresh/Close chrome and the invisible, still-focusable closed
     // overlays. Mirrors MainActivity.DispatchKeyEvent, which is the same pattern for the couch on Screen 1.
     /// <summary>
-    /// Shows Handheld mode's pair for this display (a Stage and a Launcher, one of them in front, M45 H5) with their
-    /// native surfaces, or the companion when <paramref name="handheld"/> is null. The pair stays here; a swap only
-    /// changes which of the two is in front (<see cref="HandheldScreenHost"/>).
+    /// Shows Handheld mode's screens for this display (a Stage and a Launcher, one of them in front, M45 H5, and the
+    /// Handheld companion over them while a game runs, H6b) with their native surfaces, or Gamepad mode's companion when
+    /// <paramref name="handheld"/> is null. They stay here; which one is in front is <see cref="HandheldScreenHost"/>'s.
     /// </summary>
     internal void ShowHandheld(global::Avalonia.Controls.Control? handheld, IReadOnlyList<NativeSceneSurface> surfaces)
     {
@@ -71,7 +72,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
             return;
         if (handheld is null)
         {
-            IsShowingLauncher = false;
+            IsShowingHandheld = false;
             if (!ReferenceEquals(_avaloniaView.Content, _companionView))
                 _avaloniaView.Content = _companionView;
             return;
@@ -83,7 +84,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
             surface.AttachTo(this, Context, native => AddContentView(native,
                 new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)));
         }
-        IsShowingLauncher = true;
+        IsShowingHandheld = true;
         if (!ReferenceEquals(_avaloniaView.Content, handheld))
             _avaloniaView.Content = handheld;
     }
@@ -93,7 +94,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         // While the main screen has Settings or the setup wizard open, the pad belongs to it even though
         // this window is the focused one (the user touched Screen-2, or a settings page opened here).
         // Forward instead of handling: buttons on key-down, Back on key-up as the shell's Back edge.
-        if (e is not null && (IsShowingLauncher || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true))
+        if (e is not null && (IsShowingHandheld || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true))
         {
             if (e.KeyCode == Keycode.Back)
             {
@@ -130,7 +131,7 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // direction. Otherwise motion belongs to nobody here: the companion is driven by key events.
     public override bool DispatchGenericMotionEvent(MotionEvent? e)
     {
-        if ((IsShowingLauncher || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true) && AndroidGamepadInput.TryFeedMotion(e))
+        if ((IsShowingHandheld || AndroidGamepadInput.MainScreenClaimsPad?.Invoke() == true) && AndroidGamepadInput.TryFeedMotion(e))
             return true;
 
         // The binding types the base parameter non-null, but Android may pass null; forward as-is.
@@ -143,8 +144,8 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // drawer appears" bug). Mirrors NeoStation, whose Screen-2 Presentation never finishes on Back.
     public override void OnBackPressed()
     {
-        // The Launcher is the shell's: Back closes what it has open (never the Presentation itself).
-        if (IsShowingLauncher)
+        // Handheld mode is the shell's: Back closes what it has open (never the Presentation itself).
+        if (IsShowingHandheld)
         {
             AndroidGamepadInput.DispatchBack?.Invoke();
             return;

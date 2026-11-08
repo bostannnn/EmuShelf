@@ -231,7 +231,8 @@ internal sealed class SecondScreenController
                 // (unless an overlay is/becomes open — IsStandby gates on that). Both surfaces bind this one
                 // model, so setting it here covers the Screen-2 presentation and the built-in companion alike.
                 presentation.Model.IsGameRunning = true;
-                ReopenOrCloseOverlayForContextChange(presentation, keepAchievements);
+                // Handheld mode's companion shows the running game's set on its panel from the start (M45 H6b).
+                ReopenOrCloseOverlayForContextChange(presentation, keepAchievements || _viewModel?.Handheld is not null);
                 ScheduleSpotlightUpdate();
             }
             StartKeepAliveIfNeeded();
@@ -268,7 +269,9 @@ internal sealed class SecondScreenController
     {
         RunOnMain(() =>
         {
-            var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements;
+            // Handheld mode goes back to the Launcher, its grid where the game was launched from (M45 H6b); the companion's
+            // set was the panel's, not a grid left open.
+            var keepAchievements = _navigation.Overlay == SecondScreenOverlay.Achievements && _viewModel?.Handheld is null;
             _runningGame = null;
             _runningGameId = null;
             _runningSteamAppId = null;
@@ -497,6 +500,7 @@ internal sealed class SecondScreenController
         model.MediaFetchRequested = () => _ = FetchFocusedMediaAsync(model);
         model.DrawerToggled = ToggleDrawer;
         model.AchievementsToggled = ToggleAchievements;
+        model.AchievementsRequested = () => OpenAchievementsCore(forceRefresh: false);
         model.OverlayClosed = CloseOverlay;
         model.SlotCleared = OnClearSlot;
         model.AchievementsRefreshed = RefreshAchievements;
@@ -1271,9 +1275,9 @@ internal sealed class SecondScreenController
     }
 
     /// <summary>
-    /// In Handheld mode (M45) Screen-2 is the Launcher while browsing. It is today's companion while a game
-    /// runs, and while the companion's own drawer is open over it (All apps, reached from the Handheld dock).
-    /// In Gamepad mode it is always the companion.
+    /// In Handheld mode (M45) Screen-2 is the Launcher while browsing. It is the companion, in Handheld mode's own face
+    /// (H6b), while a game runs, and while one of the companion's layers is open over it (All apps from the Handheld
+    /// dock, the badge grid from the Title page). In Gamepad mode it is always the companion.
     /// </summary>
     private void UpdateHandheldSurface()
     {
@@ -1283,7 +1287,8 @@ internal sealed class SecondScreenController
             presentation.Model.Overlay == SecondScreenOverlayKind.None;
         // The main display's Handheld screen gives way while the companion sits over it (a game on Screen-2). Where
         // the two Handheld screens go (and the swap, M45 H5) is HandheldScreenHost's.
-        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen);
+        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen,
+            inGame: _runningGameId is not null);
     }
 
     private void DetachDisplayManager()

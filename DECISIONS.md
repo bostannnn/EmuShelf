@@ -13663,3 +13663,53 @@ corrected or deleted from the timeline or the game page.
 - **Fixed on the way:** an open folder of yours emptied from inside (its last game removed, or Settings moved out)
   now shows its empty state with Back focused; the item list changed without telling the view.
 
+
+## 2026-11-08 — M45 H6b: the in-game companion in Handheld mode
+
+- **Its own view over today's model.** `HandheldCompanionView` and `HandheldCompanionViewModel` are Handheld mode's
+  face for the companion; `SecondScreenViewModel` and `SecondScreenController` keep loading the set, the media and the
+  dock and keep launching, pinning and refreshing, so every feature stays by construction. Gamepad mode keeps
+  `SecondScreenView` unchanged (its Main-screen overlay in `MainView` now shows only outside Handheld mode).
+- **Layout, from the mockup:** a slim Now playing row (cover, title, platform and the play time before this session),
+  the Achievements / Photos tabs, one big panel, the dock (All apps, then the five slots). The panel's Achievements
+  side is the progress ring with count and points and the three most recent unlocks; Photos is the gallery's items in
+  place, one large at a time (the video shows the first screenshot dimmed with a play mark, as the viewer's poster
+  does). The palette is the mockup's darker comfy one (`#2B3050 → #13151F`, selector `#7C86FF` with the Launcher's white
+  keylines, gold for the ring). It is Avalonia-drawn, not native: nothing in it moves continuously.
+- **One layout, two canvases.** 1240×1080 on the bottom screen, 1920×1080 on the 16:9 one (a game on the bottom screen
+  puts the companion on top, H5). The badge grid is seven columns narrow, eleven wide, at one 170 px pitch so the ring
+  and its glow fit between badges; All apps is five or eight wide. The wide panel centres its ring and list.
+- **Resting after 12 s without input** (the mockup's number), to a near-black wash with the cover and title at 20 %
+  and the wake line at 30 % (the mockup has the line at 80 %; Screen-2 is burn-in-prone). Any press or touch wakes it
+  and the first one is swallowed. A layer (every badge, the viewer, All apps) holds the light while it is open, as
+  today's overlays hold the dim off.
+- **The D-pad reaches all of it.** Up/Down between panel and dock; Left/Right page photos in place (Right from
+  Achievements goes to Photos); LB/RB switch tabs; A opens every badge or the viewer at that photo, or opens a dock
+  button; Y on a slot changes or clears it (the long press's picker), Y on an empty Photos panel fetches missing art.
+  Every badge: LB/RB All / Locked / Unlocked, A reveals a hidden one, Y refreshes, B back to the panel (the filter
+  resets). Viewer: Left/Right, A plays or stops the muted video, Y fetches art. All apps: a grid walk, A opens (or pins,
+  opened for a slot), Y clears the slot. Touch follows the controls table (a dock button: tap selects, tap again
+  opens). B never leaves the companion while a game runs; Start and X are swallowed.
+- **The filter lives on the shared model** (`SecondScreenViewModel.AchievementFilter`, All by default, so Gamepad mode's
+  companion is unchanged) with Gamepad mode's predicate; the grid's rows and the D-pad walk the shown badges. Down from
+  a column the shorter last row does not reach now lands on its last badge (both modes).
+- **The set stays loaded for the panel.** In Handheld mode the controller opens the running game's achievements as the
+  game starts (the trophy's cache-first load: a stale or missing set refreshes when signed in), and the model's
+  "achievements open" then means "loaded" while a game runs: the grid is up only once A opened it. Closing the viewer
+  or All apps re-reads the set from the cache (`AchievementsRequested`, after the close finished). The return from a
+  game no longer reopens a grid in Handheld mode; Gamepad mode's sticky panel is unchanged.
+- **Pad routing.** Screen-2's presentation forwards the pad to the shell whenever it shows Handheld mode
+  (`IsShowingHandheld`, renamed from `IsShowingLauncher`), and the shell hands it to the companion while it owns it (a
+  game runs, or one of its layers is up over the Launcher) — ahead of the game's input suspension, which is only there
+  for keys arriving while the emulator has focus. All apps opened from the Launcher's dock and the Title page's badge
+  grid are the same view's layers (All apps in the Launcher's light look there), so they are D-pad reachable too.
+- **The hand-off is a slide on each display** (`HandheldScreenHost`). Each display keeps its companion over its pair,
+  both attached, so the pair's feeds keep the native screens current through the game. As a game starts the screen in
+  front slides away toward the hinge (230 ms, ease in) and the companion rises in under it (460 ms, the spring); as it
+  ends the screen waits for its first frame and slides back over the companion on the pop curve (420 ms), the same
+  numbers as the swap. Layers over the Launcher come and go at once. A newer hand-off cancels a slide still running.
+- **Back on the tile.** The return lands on the launched game's tile with Recent already re-read (it was before H6b;
+  a test now holds it for a launch from inside Recent, where the game moves to the front and the selection follows it).
+- **Not checked on the Thor:** the companion on the 16:9 screen with a game running on the bottom one. The Thor's
+  EmuShelf accessibility watcher is off, so the launch refuses the bottom screen; that layout is checked in headless
+  snapshots only. Dual-screen emulators (DS/3DS) stay deferred, as the roadmap says.

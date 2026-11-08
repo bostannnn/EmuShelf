@@ -192,6 +192,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             if (ReferenceEquals(_companion, value))
                 return;
             _companion = value;
+            CompanionScreen?.Dispose();
+            CompanionScreen = value is null
+                ? null
+                : new HandheldCompanionViewModel(value, (entry, token) =>
+                    _library.LoadCoverAsync(entry, HandheldCompanionViewModel.CoverDecodeWidth, fullSize: false, token));
             RebuildDock();
             // The Title page's Achievements button depends on a companion to open in.
             if (TitlePage is { } title)
@@ -202,6 +207,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             OnPropertyChanged();
         }
     }
+
+    /// <summary>
+    /// Handheld mode's face for the companion (M45 H6b): the bottom screen while a game runs, and its layers (All apps,
+    /// the Title page's badge grid) over the Launcher. Made with <see cref="Companion"/>; null without one.
+    /// </summary>
+    [ObservableProperty]
+    public partial HandheldCompanionViewModel? CompanionScreen { get; private set; }
+
+    /// <summary>The companion has the pad: a game runs, or one of its layers is up over the Launcher.</summary>
+    public bool CompanionOwnsPad => CompanionScreen?.OwnsPad == true;
 
     /// <summary>
     /// Builds home from the saved layout (the default on a first start: Recent, then one platform folder per
@@ -276,9 +291,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // The companion's drawer (All apps) is open over Screen-2: it owns the pad until it closes.
-        if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
-            return companion.DispatchGamepadAction(action) || action is GamepadAction.Cancel;
+        // A game runs (the companion is the bottom screen), or the companion's All apps or badge grid is open over the
+        // Launcher: it owns the pad until that ends.
+        if (CompanionScreen is { OwnsPad: true } companion)
+            return companion.Dispatch(action);
 
         // Settings is open over everything else on the Launcher: it owns the pad until it closes.
         if (Settings is { } settings)
@@ -352,8 +368,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// </summary>
     public bool DispatchBack()
     {
-        if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
-            return companion.DispatchGamepadAction(GamepadAction.Cancel);
+        if (CompanionScreen is { OwnsPad: true } companion)
+            return companion.Back();
         if (Settings is { } settings)
             return DispatchSettingsAction(settings, GamepadAction.Cancel);
         if (!IsMenuOpen && (Naming is not null || Sheet is not null || _move is not null))
@@ -1520,5 +1536,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         CancelStageArt();
         ReleasePeekCovers();
         PrunePins(all: true);
+        CompanionScreen?.Dispose();
+        CompanionScreen = null;
     }
 }

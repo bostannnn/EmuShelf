@@ -1,0 +1,837 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:controls="using:EmuShelf.App.Controls"
+             xmlns:ai="using:Avalonia.Input"
+             x:Class="EmuShelf.App.Views.HandheldCompanionView"
+             x:DataType="vm:HandheldCompanionViewModel">
+
+  <!--
+    Handheld mode's companion (M45 H6b): the bottom screen while a game runs, in a darker version of the Launcher's
+    look so it doesn't pull the eye from the game. From the top: a slim Now playing row, the Achievements / Photos tabs,
+    one big panel showing the chosen tab, and the dock. Over it: every badge (A on the panel), the photo viewer, All
+    apps. Resting, it dims to a faint cover and title. Drawn on a fixed canvas, 1240×1080 on the bottom screen or
+    1920×1080 on the 16:9 one (the companion takes whichever screen the game does not use), fitted, never cropped.
+    The same view, without its body, shows All apps and the badge grid when they open over the Launcher.
+
+    Rhythm as on the Launcher: a 48 px edge, a 4 px grid, radii that nest. The one accent is the selector, a lighter
+    indigo on the dark ground with the Launcher's white keylines; the gold is the achievements'.
+  -->
+
+  <UserControl.Styles>
+    <!-- ===== The selector: white keyline, indigo frame, white keyline, a soft glow (the mockup's ring) ===== -->
+    <Style Selector="Border.ring">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BoxShadow" Value="0 0 44 0 #8C7C86FF" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.12" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.ring > Border">
+      <Setter Property="BorderBrush" Value="#7C86FF" />
+      <Setter Property="BorderThickness" Value="9" />
+    </Style>
+    <Style Selector="Border.ring > Border > Border">
+      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderThickness" Value="5" />
+    </Style>
+    <Style Selector="Panel.focused > Border.ring">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <!-- The focused element lifts a little on the pop curve, as the Launcher's do. -->
+    <Style Selector="Panel.lift">
+      <Setter Property="RenderTransform" Value="scale(1)" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.22">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.34" Y1="1.42" X2="0.64" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.lift.focused">
+      <Setter Property="RenderTransform" Value="scale(1.13)" />
+    </Style>
+    <Style Selector="Panel#PanelBox.lift.focused">
+      <Setter Property="RenderTransform" Value="scale(1.015)" />
+    </Style>
+
+    <!-- ===== Type ===== -->
+    <Style Selector="TextBlock">
+      <Setter Property="Foreground" Value="#EEF0FA" />
+    </Style>
+    <Style Selector="TextBlock.muted">
+      <Setter Property="Foreground" Value="#A9AFCB" />
+    </Style>
+    <Style Selector="TextBlock.quiet">
+      <Setter Property="Foreground" Value="#8A90AE" />
+    </Style>
+
+    <!-- ===== Tabs and chips ===== -->
+    <Style Selector="Border.tab">
+      <Setter Property="Height" Value="80" />
+      <Setter Property="CornerRadius" Value="40" />
+      <Setter Property="Padding" Value="32,0" />
+      <Setter Property="Background" Value="#14FFFFFF" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.2" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.tab TextBlock">
+      <Setter Property="FontSize" Value="32" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#C9CDE2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tab PathIcon">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Foreground" Value="#C9CDE2" />
+    </Style>
+    <Style Selector="Border.tab.on">
+      <Setter Property="Background" Value="#EEF0FA" />
+    </Style>
+    <Style Selector="Border.tab.on TextBlock">
+      <Setter Property="Foreground" Value="#1B1E30" />
+    </Style>
+    <Style Selector="Border.tab.on PathIcon">
+      <Setter Property="Foreground" Value="#1B1E30" />
+    </Style>
+    <Style Selector="Border.tab.small">
+      <Setter Property="Height" Value="64" />
+      <Setter Property="CornerRadius" Value="32" />
+      <Setter Property="Padding" Value="24,0" />
+    </Style>
+    <Style Selector="Border.tab.small TextBlock">
+      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <!-- A round touch target in a layer's header (Refresh, Close, Clear slot). -->
+    <Style Selector="Border.chip">
+      <Setter Property="Height" Value="72" />
+      <Setter Property="MinWidth" Value="72" />
+      <Setter Property="CornerRadius" Value="36" />
+      <Setter Property="Background" Value="#1AFFFFFF" />
+      <Setter Property="Padding" Value="20,0" />
+    </Style>
+    <Style Selector="Border.chip PathIcon">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Foreground" Value="#EEF0FA" />
+    </Style>
+    <Style Selector="Border.chip TextBlock">
+      <Setter Property="FontSize" Value="26" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- ===== Button hints: a round glyph and what it does ===== -->
+    <Style Selector="Border.glyph">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="Background" Value="#33FFFFFF" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.glyph TextBlock">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#C9CDE2" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Refresh turns while a refresh is in flight (bound to the model's flag, only while the grid is up). -->
+    <Style Selector="PathIcon.spin">
+      <Setter Property="RenderTransformOrigin" Value="50%,50%" />
+      <Style.Animations>
+        <Animation Duration="0:0:0.9" IterationCount="Infinite">
+          <KeyFrame Cue="0%">
+            <Setter Property="RotateTransform.Angle" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="RotateTransform.Angle" Value="360" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- ===== Badges ===== -->
+    <Style Selector="Panel.badge.locked Image">
+      <Setter Property="Opacity" Value="0.4" />
+    </Style>
+    <Style Selector="Border.badge-face">
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="#24FFFFFF" />
+    </Style>
+    <Style Selector="Border.badge-face.hardcore">
+      <Setter Property="BorderBrush" Value="#F0B03A" />
+      <Setter Property="BorderThickness" Value="4" />
+    </Style>
+
+    <!-- ===== Entrances (the mockup's: up and in on the spring; layers a little less far) ===== -->
+    <Style Selector="Grid#Body[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.46" FillMode="Backward">
+          <Animation.Easing>
+            <SplineEasing X1="0.3" Y1="1.3" X2="0.5" Y2="1" />
+          </Animation.Easing>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="TranslateTransform.Y" Value="64" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="TranslateTransform.Y" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Grid.layer[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.34" FillMode="Backward">
+          <Animation.Easing>
+            <SplineEasing X1="0.3" Y1="1.3" X2="0.5" Y2="1" />
+          </Animation.Easing>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="TranslateTransform.Y" Value="54" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="TranslateTransform.Y" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Panel#ViewerLayer[IsVisible=True]">
+      <Style.Animations>
+        <Animation Duration="0:0:0.28" FillMode="Backward">
+          <Animation.Easing>
+            <CubicEaseOut />
+          </Animation.Easing>
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- ===== Rest: a near-black wash with the game's cover and title faintly over it ===== -->
+    <Style Selector="Panel#RestLayer">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.6" Easing="CubicEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel#RestLayer.on">
+      <Setter Property="Opacity" Value="1" />
+      <Setter Property="IsHitTestVisible" Value="True" />
+    </Style>
+
+    <!-- ===== All apps: dark in a game, the Launcher's light look over the Launcher ===== -->
+    <Style Selector="Grid#DrawerLayer">
+      <Setter Property="Background" Value="#181B2A" />
+    </Style>
+    <Style Selector="Border.app-face">
+      <Setter Property="Background" Value="#24FFFFFF" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.app-face">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light">
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+          <GradientStop Offset="0" Color="#FAFBFD" />
+          <GradientStop Offset="1" Color="#E4E8EF" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light TextBlock">
+      <Setter Property="Foreground" Value="#1E2235" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light TextBlock.hint">
+      <Setter Property="Foreground" Value="#5B6176" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.glyph">
+      <Setter Property="Background" Value="#4B5274" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.glyph TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.chip">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.chip PathIcon">
+      <Setter Property="Foreground" Value="#4B5274" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.ring > Border">
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Grid#DrawerLayer.light Border.ring">
+      <Setter Property="BoxShadow" Value="0 0 32 0 #665B58D9" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel x:Name="Root">
+    <!-- The companion's ground fills the window, letterbox included. -->
+    <Border>
+      <Border.Background>
+        <RadialGradientBrush Center="50%,0%" GradientOrigin="50%,0%" RadiusX="130%" RadiusY="95%">
+          <GradientStop Offset="0" Color="#2B3050" />
+          <GradientStop Offset="0.58" Color="#1B1E30" />
+          <GradientStop Offset="1" Color="#13151F" />
+        </RadialGradientBrush>
+      </Border.Background>
+    </Border>
+
+    <Viewbox Stretch="Uniform" ClipToBounds="False">
+      <Grid x:Name="Canvas" Width="1240" Height="1080" ClipToBounds="False">
+
+        <!-- ===================== The companion while a game runs ===================== -->
+        <Grid x:Name="Body" RowDefinitions="*,144" IsVisible="{Binding IsGameRunning}" ClipToBounds="False">
+          <Grid.RenderTransform>
+            <TranslateTransform />
+          </Grid.RenderTransform>
+
+          <!-- Now playing: a small cover, the title, the platform and the play time. -->
+          <Grid x:Name="NowPlaying" Margin="48,32,48,0" Height="136" VerticalAlignment="Top" ColumnDefinitions="Auto,*"
+                ColumnSpacing="28">
+            <Border Width="96" Height="136" CornerRadius="16" ClipToBounds="True" Background="#24FFFFFF"
+                    BoxShadow="0 12 28 0 #73000000">
+              <Image Source="{Binding NowPlayingCover}" Stretch="UniformToFill" IsVisible="{Binding HasNowPlayingCover}" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="6">
+              <Border HorizontalAlignment="Left" CornerRadius="16" Padding="14,4" Background="#1F6FD691">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Ellipse Width="14" Height="14" Fill="#6FD691" VerticalAlignment="Center" />
+                  <TextBlock Text="Now playing" FontSize="24" FontWeight="SemiBold" Foreground="#9FE3B4" />
+                </StackPanel>
+              </Border>
+              <TextBlock x:Name="NowPlayingTitle" Text="{Binding NowPlayingTitle}" FontSize="40" FontWeight="Bold"
+                         TextTrimming="CharacterEllipsis" MaxLines="1" />
+              <TextBlock Classes="muted" Text="{Binding NowPlayingLine}" FontSize="26" FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis" MaxLines="1" />
+            </StackPanel>
+          </Grid>
+
+          <!-- The two tabs; LB / RB or a tap switches between them. -->
+          <StackPanel x:Name="Tabs" Orientation="Horizontal" Spacing="12" Margin="48,200,48,0" VerticalAlignment="Top">
+            <Border x:Name="AchievementsTab" Classes="tab" Classes.on="{Binding IsAchievementsTab}" Tapped="OnAchievementsTabTapped">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" />
+                <TextBlock Text="Achievements" />
+              </StackPanel>
+            </Border>
+            <Border x:Name="PhotosTab" Classes="tab" Classes.on="{Binding IsPhotosTab}" Tapped="OnPhotosTabTapped">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Photo}" />
+                <TextBlock Text="Photos" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+          <TextBlock Classes="quiet" Text="LB / RB" FontSize="24" FontWeight="SemiBold" Margin="0,226,48,0"
+                     HorizontalAlignment="Right" VerticalAlignment="Top" />
+
+          <!-- The big panel: the chosen tab. The selector frames it while it has focus. -->
+          <Panel x:Name="PanelBox" Classes="lift" Classes.focused="{Binding IsPanelFocused}" Margin="48,312,48,40"
+                 Background="Transparent" Tapped="OnPanelTapped"
+                 PointerPressed="OnPanelPointerPressed" PointerReleased="OnPanelPointerReleased">
+            <Border Classes="ring" CornerRadius="54" Margin="-18">
+              <Border CornerRadius="50"><Border CornerRadius="41" /></Border>
+            </Border>
+            <Border CornerRadius="36" ClipToBounds="True" Background="#12FFFFFF" BorderBrush="#12FFFFFF" BorderThickness="3">
+              <Panel>
+                <!-- Achievements: a big progress ring with count and points, and the three most recent unlocks. -->
+                <Grid x:Name="AchievementsPanel" IsVisible="{Binding IsAchievementsTab}" Margin="36,28"
+                      ColumnDefinitions="Auto,Auto" ColumnSpacing="48" HorizontalAlignment="Center">
+                  <StackPanel VerticalAlignment="Center" Spacing="8" IsVisible="{Binding HasAchievementSet}">
+                    <Panel Width="260" Height="260">
+                      <Ellipse Stroke="#1FFFFFFF" StrokeThickness="26" Margin="13" />
+                      <Arc StartAngle="-90" SweepAngle="{Binding ProgressSweep}" Stroke="#F0B03A" StrokeThickness="26"
+                           StrokeLineCap="Round" Margin="13" />
+                      <TextBlock Text="{Binding ProgressPercent}" FontSize="56" FontWeight="Bold" FontFeatures="+tnum"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Panel>
+                    <TextBlock Text="{Binding ProgressCount}" FontSize="36" FontWeight="Bold" FontFeatures="+tnum"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Classes="muted" Text="{Binding ProgressPoints}" FontSize="24" FontWeight="SemiBold"
+                               FontFeatures="+tnum" HorizontalAlignment="Center" />
+                  </StackPanel>
+                  <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="16" IsVisible="{Binding HasAchievementSet}"
+                              Width="640">
+                    <TextBlock Classes="muted" Text="Recently unlocked" FontSize="28" FontWeight="SemiBold" />
+                    <TextBlock Classes="muted" Text="Nothing unlocked yet." FontSize="28"
+                               IsVisible="{Binding !HasRecentUnlocks}" />
+                    <ItemsControl ItemsSource="{Binding RecentUnlocks}">
+                      <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                          <StackPanel Spacing="16" />
+                        </ItemsPanelTemplate>
+                      </ItemsControl.ItemsPanel>
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="20">
+                            <Border Classes="badge-face" Classes.hardcore="{Binding IsHardcore}" Width="88" Height="88"
+                                    CornerRadius="20">
+                              <Panel>
+                                <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="36" Height="36"
+                                          Foreground="#8A90AE" IsVisible="{Binding !HasBadge}" />
+                                <Image Source="{Binding Badge}" Stretch="UniformToFill" IsVisible="{Binding HasBadge}" />
+                              </Panel>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                              <TextBlock Text="{Binding Title}" FontSize="32" FontWeight="Bold"
+                                         TextTrimming="CharacterEllipsis" MaxLines="1" />
+                              <TextBlock Classes="muted" Text="{Binding EarnedText}" FontSize="24" FontWeight="SemiBold"
+                                         TextTrimming="CharacterEllipsis" MaxLines="1" />
+                            </StackPanel>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                  <!-- No set: loading, not linked, not connected. -->
+                  <TextBlock Grid.ColumnSpan="2" Text="{Binding AchievementsMessage}" IsVisible="{Binding !HasAchievementSet}"
+                             FontSize="32" FontWeight="SemiBold" Foreground="#C9CDE2" TextWrapping="Wrap" LineHeight="44"
+                             MaxWidth="900" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" />
+                </Grid>
+
+                <!-- Photos: one large screenshot; left / right pages through them here. -->
+                <Panel x:Name="PhotosPanel" IsVisible="{Binding IsPhotosTab}">
+                  <Image Source="{Binding PanelPhoto}" Stretch="UniformToFill" IsVisible="{Binding HasPanelPhoto}" />
+                  <Border IsVisible="{Binding IsPhotoVideo}" Background="#66000000" />
+                  <Border Width="132" Height="132" CornerRadius="66" Background="#8C000000" BorderBrush="#99FFFFFF"
+                          BorderThickness="4" IsVisible="{Binding IsPhotoVideo}"
+                          HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Play}" Width="56" Height="56" Foreground="White"
+                              Margin="8,0,0,0" />
+                  </Border>
+                  <!-- The caption and the dots, on a soft shade at the foot of the photo. -->
+                  <Border VerticalAlignment="Bottom" Padding="32,56,32,24" IsVisible="{Binding HasPhotos}">
+                    <Border.Background>
+                      <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+                        <GradientStop Offset="0" Color="#00000000" />
+                        <GradientStop Offset="1" Color="#99000000" />
+                      </LinearGradientBrush>
+                    </Border.Background>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="24">
+                      <TextBlock Text="{Binding PhotoCaption}" FontSize="26" FontWeight="SemiBold"
+                                 TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center" />
+                      <ItemsControl Grid.Column="1" ItemsSource="{Binding PhotoDots}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                          <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" />
+                          </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="vm:HandheldPageDotViewModel">
+                            <Border Height="14" CornerRadius="7"
+                                    Width="{Binding IsCurrent, Converter={x:Static vm:HandheldCompanionConverters.DotWidth}}"
+                                    Background="{Binding IsCurrent, Converter={x:Static vm:HandheldCompanionConverters.DotBrush}}" />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </Grid>
+                  </Border>
+                  <!-- No photos yet. -->
+                  <StackPanel IsVisible="{Binding !HasPhotos}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                              Spacing="12" Margin="48">
+                    <TextBlock Text="No photos yet" FontSize="36" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <TextBlock Classes="muted" Text="Screenshots and videos appear here once EmuShelf has fetched them."
+                               FontSize="26" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="800" />
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center" Margin="0,8,0,0"
+                                IsVisible="{Binding Model.CanFetchMedia}">
+                      <Border Classes="glyph"><TextBlock Text="Y" /></Border>
+                      <TextBlock Classes="hint" Text="Fetch missing artwork" />
+                    </StackPanel>
+                  </StackPanel>
+                </Panel>
+              </Panel>
+            </Border>
+            <!-- What A does here, in the panel's corner. -->
+            <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,24,24,0" Padding="10,8,20,8"
+                    CornerRadius="28" Background="#59000000" IsVisible="{Binding HasPanelHint}">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <Border Classes="glyph"><TextBlock Text="A" /></Border>
+                <TextBlock Classes="hint" Text="{Binding PanelHint}" Foreground="#E3E6F5" />
+              </StackPanel>
+            </Border>
+          </Panel>
+
+          <!-- The dock: All apps, then the five pinned apps (today's dock, the same slots). -->
+          <Border x:Name="Dock" Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#14FFFFFF"
+                  BorderBrush="#0FFFFFFF" BorderThickness="3" ClipToBounds="False" VerticalAlignment="Bottom">
+            <ItemsControl x:Name="DockItems" ItemsSource="{Binding DockItems}" ClipToBounds="False"
+                          HorizontalAlignment="Center" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="32" ClipToBounds="False" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldCompanionDockItemViewModel">
+                  <StackPanel Orientation="Horizontal" Spacing="32">
+                    <Panel Classes="lift" Classes.focused="{Binding IsFocused}" Width="80" Height="80" Background="Transparent"
+                           ai:InputElement.IsHoldingEnabled="True" Tapped="OnDockItemTapped" Holding="OnDockItemHolding">
+                      <Border CornerRadius="24" Background="#24FFFFFF" IsVisible="{Binding IsAllApps}">
+                        <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="36" Height="36" Foreground="#DDE1F2" />
+                      </Border>
+                      <Panel IsVisible="{Binding IsApp}">
+                        <Border CornerRadius="24" BorderBrush="#4DAAB0D2" BorderThickness="3" IsVisible="{Binding Slot.IsEmpty}">
+                          <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="32" Height="32" Foreground="#8A90AE" />
+                        </Border>
+                        <Border CornerRadius="24" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon}">
+                          <Image Source="{Binding Slot.Icon}" Stretch="Uniform" />
+                        </Border>
+                      </Panel>
+                      <Border Classes="ring" CornerRadius="42" Margin="-18">
+                        <Border CornerRadius="38"><Border CornerRadius="29" /></Border>
+                      </Border>
+                    </Panel>
+                    <!-- All apps stands apart from the pinned apps. -->
+                    <Border Width="3" Height="56" CornerRadius="2" Background="#1FFFFFFF" VerticalAlignment="Center"
+                            IsVisible="{Binding IsAllApps}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </Grid>
+
+        <!-- ===================== Every badge (A on the panel; the Title page's Achievements) ===================== -->
+        <Grid x:Name="GridLayer" Classes="layer" Background="#1B1E30" RowDefinitions="Auto,Auto,*,Auto"
+              IsVisible="{Binding IsAchievementsLayer}">
+          <Grid.RenderTransform>
+            <TranslateTransform />
+          </Grid.RenderTransform>
+          <!-- The game, the progress line, Refresh and Close. -->
+          <Grid Margin="48,32,48,0" ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="20" Height="80">
+            <TextBlock Text="Achievements" FontSize="44" FontWeight="Bold" VerticalAlignment="Center" />
+            <TextBlock Grid.Column="1" Classes="muted" Text="{Binding Model.AchievementsSummary}" FontSize="28"
+                       FontWeight="SemiBold" FontFeatures="+tnum" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            <Border Grid.Column="2" Classes="chip" IsVisible="{Binding Model.CanRefresh}" Tapped="OnRefreshTapped">
+              <PathIcon x:Name="RefreshIcon" Data="{DynamicResource EmuRefreshGeometry}"
+                        Classes.spin="{Binding Model.IsAchievementsRefreshing}">
+                <PathIcon.RenderTransform>
+                  <RotateTransform />
+                </PathIcon.RenderTransform>
+              </PathIcon>
+            </Border>
+            <Border Grid.Column="3" Classes="chip" Tapped="OnCloseTapped">
+              <PathIcon Data="{DynamicResource EmuCloseGeometry}" Width="22" Height="22" />
+            </Border>
+          </Grid>
+          <!-- All / Locked / Unlocked, on LB / RB. -->
+          <Grid Grid.Row="1" Margin="48,20,48,0" ColumnDefinitions="Auto,*">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+              <Border Classes="tab small" Classes.on="{Binding IsAllFilter}" Tapped="OnAllFilterTapped">
+                <TextBlock Text="{Binding AllFilterText}" />
+              </Border>
+              <Border Classes="tab small" Classes.on="{Binding IsLockedFilter}" Tapped="OnLockedFilterTapped">
+                <TextBlock Text="{Binding LockedFilterText}" />
+              </Border>
+              <Border Classes="tab small" Classes.on="{Binding IsUnlockedFilter}" Tapped="OnUnlockedFilterTapped">
+                <TextBlock Text="{Binding UnlockedFilterText}" />
+              </Border>
+            </StackPanel>
+            <TextBlock Grid.Column="1" Classes="quiet" Text="LB / RB" FontSize="24" FontWeight="SemiBold"
+                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+          </Grid>
+          <!--
+            The badges: rows of a fixed count (seven here, eleven on the 16:9 screen), each badge 120 px at a 170 px pitch so
+            the selector ring and its glow fit between them. Row-virtualized, so a 400-badge set realizes only what shows.
+          -->
+          <!-- The outer badges' 25 px margins sit inside the 48 px edge, so the grid lines up with the header. -->
+          <Panel Grid.Row="2" Margin="23,16,23,0">
+            <ListBox x:Name="BadgeList" ItemsSource="{Binding Model.AchievementRows}" IsVisible="{Binding IsAchievementsLayer}"
+                     Background="Transparent" BorderThickness="0" Padding="0,24" ClipToBounds="True"
+                     AutoScrollToSelectedItem="False" HorizontalAlignment="Center"
+                     ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden">
+              <ListBox.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <VirtualizingStackPanel Orientation="Vertical" />
+                </ItemsPanelTemplate>
+              </ListBox.ItemsPanel>
+              <ListBox.Styles>
+                <Style Selector="ListBoxItem">
+                  <Setter Property="Padding" Value="0" />
+                  <Setter Property="Margin" Value="0" />
+                  <Setter Property="MinHeight" Value="0" />
+                  <Setter Property="Background" Value="Transparent" />
+                  <Setter Property="FocusAdorner" Value="{x:Null}" />
+                  <Setter Property="ClipToBounds" Value="False" />
+                </Style>
+                <Style Selector="ListBoxItem:selected /template/ ContentPresenter, ListBoxItem:pointerover /template/ ContentPresenter">
+                  <Setter Property="Background" Value="Transparent" />
+                </Style>
+              </ListBox.Styles>
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <ItemsControl ItemsSource="{Binding}" ClipToBounds="False">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" ClipToBounds="False" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                        <Panel Classes="badge" Classes.locked="{Binding IsLocked}" Classes.focused="{Binding IsFocused}"
+                               Width="120" Height="120" Margin="25" Background="Transparent"
+                               Tapped="OnBadgeTapped" AttachedToVisualTree="OnBadgeAttached"
+                               DataContextChanged="OnBadgeDataContextChanged">
+                          <Border Classes="badge-face" Classes.hardcore="{Binding IsHardcore}">
+                            <Panel>
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="44" Height="44" Foreground="#8A90AE"
+                                        IsVisible="{Binding !HasBadge}" />
+                              <Image Source="{Binding Badge}" Stretch="UniformToFill" IsVisible="{Binding HasBadge}" />
+                            </Panel>
+                          </Border>
+                          <Border Classes="ring" CornerRadius="46" Margin="-18">
+                            <Border CornerRadius="42"><Border CornerRadius="33" /></Border>
+                          </Border>
+                        </Panel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <!-- No set, or nothing under this filter. -->
+            <TextBlock Text="{Binding Model.AchievementsStatus}" IsVisible="{Binding !Model.HasAchievements}"
+                       FontSize="32" FontWeight="SemiBold" Foreground="#C9CDE2" TextWrapping="Wrap" LineHeight="44"
+                       MaxWidth="900" HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center" />
+            <StackPanel IsVisible="{Binding IsFilterEmpty}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+              <TextBlock Text="Nothing here yet" FontSize="36" FontWeight="Bold" HorizontalAlignment="Center" />
+              <TextBlock Classes="muted" Text="{Binding FilterEmptyText}" FontSize="26" HorizontalAlignment="Center" />
+            </StackPanel>
+            <!-- A status over a loaded grid (offline, an error), floating at its foot so no badge moves. -->
+            <Border IsVisible="{Binding Model.HasInlineStatus}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                    Margin="0,0,0,16" Padding="28,12" CornerRadius="28" Background="#F2262A40" BorderBrush="#26FFFFFF"
+                    BorderThickness="2">
+              <TextBlock Text="{Binding Model.AchievementsStatus}" FontSize="24" FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" MaxWidth="900" />
+            </Border>
+          </Panel>
+          <!-- The selected badge: its picture, title, description, and points with when it was earned. -->
+          <Grid Grid.Row="3" Margin="48,0,48,32" Height="184" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="28">
+            <Border Grid.ColumnSpan="3" Height="3" Background="#14FFFFFF" VerticalAlignment="Top" />
+            <Panel Classes="badge" Classes.locked="{Binding Model.SelectedAchievement.IsLocked, FallbackValue=False}"
+                   Width="128" Height="128" VerticalAlignment="Center" IsVisible="{Binding Model.HasSelectedAchievement}">
+              <Border Classes="badge-face">
+                <Image Source="{Binding Model.SelectedAchievement.Badge}" Stretch="UniformToFill" />
+              </Border>
+            </Panel>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4" IsVisible="{Binding Model.HasSelectedAchievement}">
+              <TextBlock Text="{Binding Model.SelectedAchievement.Title}" FontSize="34" FontWeight="Bold"
+                         TextTrimming="CharacterEllipsis" MaxLines="1" />
+              <TextBlock Classes="muted" Text="{Binding Model.SelectedAchievement.Description}" FontSize="26"
+                         TextWrapping="Wrap" MaxLines="2" LineHeight="34" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="quiet" Text="{Binding Model.SelectedAchievementMeta}" FontSize="24" FontWeight="SemiBold" />
+            </StackPanel>
+            <ItemsControl Grid.Column="2" ItemsSource="{Binding GridHints}" VerticalAlignment="Center">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="24" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldHint">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <Border Classes="glyph"><TextBlock Text="{Binding Button}" /></Border>
+                    <TextBlock Classes="hint" Text="{Binding Label}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </Grid>
+
+        <!-- ===================== All apps (the dock's first button, or Y on a slot to change it) ===================== -->
+        <Grid x:Name="DrawerLayer" Classes="layer" Classes.light="{Binding IsDrawerLight}" RowDefinitions="Auto,*,Auto"
+              IsVisible="{Binding IsDrawerLayer}">
+          <Grid.RenderTransform>
+            <TranslateTransform />
+          </Grid.RenderTransform>
+          <Grid Margin="48,32,48,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Height="88">
+            <TextBlock Text="{Binding Model.DrawerTitle}" FontSize="44" FontWeight="Bold" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+            <Border Grid.Column="1" Classes="chip" IsVisible="{Binding Model.CanClearSlot}" Tapped="OnClearSlotTapped">
+              <TextBlock Text="Clear slot" />
+            </Border>
+            <Border Grid.Column="2" Classes="chip" Tapped="OnCloseTapped">
+              <PathIcon Data="{DynamicResource EmuCloseGeometry}" Width="22" Height="22" />
+            </Border>
+          </Grid>
+          <!-- Padded so the selector ring (and the lift) on the first and last rows is never cut by the scroller. -->
+          <ScrollViewer x:Name="DrawerScroll" Grid.Row="1" Margin="0,8,0,0" Padding="48,40,48,24"
+                        HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Hidden">
+            <ItemsControl x:Name="DrawerApps" ItemsSource="{Binding DrawerApps}" ClipToBounds="False">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="{ReflectionBinding $parent[ItemsControl].DataContext.DrawerColumns}" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldDrawerAppViewModel">
+                  <StackPanel Spacing="40" Margin="0,0,0,40" Background="Transparent" Tapped="OnDrawerAppTapped">
+                    <Panel Classes="lift" Classes.focused="{Binding IsFocused}" Width="112" Height="112"
+                           HorizontalAlignment="Center">
+                      <Border Classes="app-face" CornerRadius="30" ClipToBounds="True">
+                        <Image Source="{Binding App.Icon}" Stretch="Uniform" IsVisible="{Binding App.HasIcon}" />
+                      </Border>
+                      <Border Classes="ring" CornerRadius="48" Margin="-18">
+                        <Border CornerRadius="44"><Border CornerRadius="35" /></Border>
+                      </Border>
+                    </Panel>
+                    <TextBlock Text="{Binding App.Label}" FontSize="26" FontWeight="SemiBold" HorizontalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxLines="1" MaxWidth="200" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <ItemsControl Grid.Row="2" ItemsSource="{Binding DrawerHints}" HorizontalAlignment="Right" Margin="48,0,48,40">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="24" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldHint">
+                <StackPanel Orientation="Horizontal" Spacing="10">
+                  <Border Classes="glyph"><TextBlock Text="{Binding Button}" /></Border>
+                  <TextBlock Classes="hint" Text="{Binding Label}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Grid>
+    </Viewbox>
+
+    <!--
+      ===================== The photo viewer =====================
+      Full window and unscaled: the muted video is a native Android view, which sits above Avalonia at the control's own
+      bounds, so it is not put under the canvas's scaling. Screenshots, then the video, which only downloads on play.
+    -->
+    <Panel x:Name="ViewerLayer" Background="#000000" IsVisible="{Binding IsPhotosLayer}" ClipToBounds="True"
+           PointerPressed="OnViewerPointerPressed" PointerReleased="OnViewerPointerReleased">
+      <Image Source="{Binding Model.MediaImage}" Stretch="Uniform" />
+      <ProgressBar IsIndeterminate="True" IsVisible="{Binding Model.IsMediaLoading}" Height="2" Width="72"
+                   Foreground="#B9C0CA" Background="#26303D" VerticalAlignment="Bottom" Margin="0,0,0,48" />
+      <TextBlock Text="{Binding Model.MediaStatus}" Foreground="#B9C0CA" FontSize="13" Margin="40" TextWrapping="Wrap"
+                 TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+      <Border Classes="viewer-button" Width="64" Height="64" CornerRadius="32" Background="#8C000000" BorderBrush="#99FFFFFF"
+              BorderThickness="2" IsVisible="{Binding Model.ShowMediaPlay}" HorizontalAlignment="Center" VerticalAlignment="Center"
+              Tapped="OnPlayTapped">
+        <PathIcon Data="{x:Static vm:HandheldIcons.Play}" Width="26" Height="26" Foreground="White" Margin="4,0,0,0" />
+      </Border>
+      <ContentControl IsVisible="{Binding Model.IsVideoPlaying}" Content="{Binding Model.PlayingVideoPath}" Margin="0,48,0,40"
+                      HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+        <ContentControl.ContentTemplate>
+          <DataTemplate>
+            <controls:CompanionVideoHost Source="{Binding}" AttachedToVisualTree="OnVideoAttached" />
+          </DataTemplate>
+        </ContentControl.ContentTemplate>
+      </ContentControl>
+      <!-- Title and close on top, the caption and hints at the foot, each on a shade. -->
+      <Border Height="72" VerticalAlignment="Top" IsHitTestVisible="False" IsVisible="{Binding Model.IsMediaChromeVisible}">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+            <GradientStop Offset="0" Color="#C0000000" />
+            <GradientStop Offset="1" Color="#00000000" />
+          </LinearGradientBrush>
+        </Border.Background>
+      </Border>
+      <Grid Margin="16,12" Height="32" VerticalAlignment="Top" ColumnDefinitions="*,Auto" IsVisible="{Binding Model.IsMediaChromeVisible}">
+        <TextBlock Text="{Binding Model.MediaTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+        <Border Grid.Column="1" Classes="viewer-button" Width="32" Height="32" CornerRadius="16" Background="#33FFFFFF"
+                Tapped="OnCloseTapped">
+          <PathIcon Data="{DynamicResource EmuCloseGeometry}" Width="11" Height="11" Foreground="White" />
+        </Border>
+      </Grid>
+      <Border Height="64" VerticalAlignment="Bottom" IsHitTestVisible="False" IsVisible="{Binding Model.IsMediaChromeVisible}">
+        <Border.Background>
+          <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+            <GradientStop Offset="0" Color="#00000000" />
+            <GradientStop Offset="1" Color="#D9000000" />
+          </LinearGradientBrush>
+        </Border.Background>
+      </Border>
+      <Grid Margin="16,8" Height="24" VerticalAlignment="Bottom" ColumnDefinitions="*,Auto" ColumnSpacing="12"
+            IsVisible="{Binding Model.IsMediaChromeVisible}">
+        <TextBlock Text="{Binding Model.MediaCaption}" FontSize="11" Foreground="#B9C0CA" VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis" />
+        <ItemsControl Grid.Column="1" ItemsSource="{Binding ViewerHints}" VerticalAlignment="Center">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="12" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldHint">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <Border Width="18" Height="18" CornerRadius="9" Background="#33FFFFFF" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Button}" FontSize="10" FontWeight="SemiBold" HorizontalAlignment="Center"
+                             VerticalAlignment="Center" />
+                </Border>
+                <TextBlock Text="{Binding Label}" FontSize="11" Foreground="#C9CDE2" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Grid>
+    </Panel>
+
+    <!--
+      ===================== Resting =====================
+      After a few seconds alone the companion dims to a faint cover and title, easy on a panel prone to burn-in. It takes
+      the waking touch (only while it is up), so the first touch never lands on whatever is under the finger.
+    -->
+    <Panel x:Name="RestLayer" Classes.on="{Binding IsResting}" Background="#06070B" Tapped="OnRestTapped">
+      <Viewbox Stretch="Uniform">
+        <Panel x:Name="RestCanvas" Width="1240" Height="1080">
+          <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="24">
+            <StackPanel Opacity="0.2" Spacing="24">
+              <Border Width="260" Height="368" CornerRadius="18" ClipToBounds="True" HorizontalAlignment="Center"
+                      IsVisible="{Binding HasNowPlayingCover}">
+                <Image Source="{Binding NowPlayingCover}" Stretch="UniformToFill" />
+              </Border>
+              <TextBlock Text="{Binding NowPlayingTitle}" FontSize="40" FontWeight="Bold" HorizontalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" MaxWidth="1000" />
+            </StackPanel>
+            <TextBlock Text="Touch or press any button to wake" FontSize="28" FontWeight="SemiBold" Opacity="0.3"
+                       HorizontalAlignment="Center" />
+          </StackPanel>
+        </Panel>
+      </Viewbox>
+    </Panel>
+  </Panel>
+</UserControl>

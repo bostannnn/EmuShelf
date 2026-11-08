@@ -50,6 +50,11 @@ public static class HandheldIcons
 
     public static readonly Geometry Check = Geometry.Parse("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z");
 
+    /// <summary>The companion's Photos tab: a picture with a sun over two hills.</summary>
+    public static readonly Geometry Photo = Geometry.Parse(
+        "F0 M3 4h18a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zm1 2v12h16V6zm2 10l4-5 3 3.5 2-2.5 4 4z" +
+        "M16.5 7.5a1.5 1.5 0 1 1 0 3a1.5 1.5 0 1 1 0-3z");
+
     /// <summary>Two stacked screens with the top one filled: the Thor's top (main) display.</summary>
     public static readonly Geometry ScreenTop = Geometry.Parse("F0 M4 2h16v9H4zM4 13h16v9H4zM6 15h12v5H6z");
 
@@ -104,4 +109,17 @@ public static class HandheldViewConverters
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowText =
         new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Ink);
+}
+
+/// <summary>The companion's own mappings (M45 H6b): white dots on its dark ground.</summary>
+public static class HandheldCompanionConverters
+{
+    private static readonly IBrush CurrentDot = Brushes.White;
+    private static readonly IBrush Dot = new SolidColorBrush(Color.Parse("#4DFFFFFF"));
+
+    public static readonly Avalonia.Data.Converters.IValueConverter DotWidth =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? 40 : 14);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter DotBrush =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? CurrentDot : Dot);
 }

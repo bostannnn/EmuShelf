@@ -20,6 +20,12 @@ public sealed partial class SecondScreenViewModel
     public bool IsSpotlight => Overlay == SecondScreenOverlayKind.None;
     public bool IsMediaOpen => Overlay == SecondScreenOverlayKind.Media;
     public bool HasMedia => _media?.Items.Count > 0;
+
+    /// <summary>The gallery's items in order (screenshots first), for the Handheld companion's Photos panel.</summary>
+    public IReadOnlyList<CompanionMediaItem> MediaItems => _media?.Items ?? [];
+
+    /// <summary>The item the viewer is on (or opens on).</summary>
+    public int MediaIndex => _mediaIndex;
     public bool CanBrowseMedia => _media?.Items.Count > 1;
     public string MediaTitle => _media?.Title ?? "Media";
     public string MediaCaption => HasMedia ? $"{_mediaIndex + 1} / {_media!.Items.Count} · {_media.Items[_mediaIndex].Title}" : "No media yet";
@@ -77,6 +83,15 @@ public sealed partial class SecondScreenViewModel
         _ = LoadMediaAsync(play: false);
     }
 
+    /// <summary>Opens the viewer on a given item (the Handheld companion's panel shows one and A opens it full screen).</summary>
+    public void OpenMediaAt(int index)
+    {
+        if (HasMedia)
+            _mediaIndex = Math.Clamp(index, 0, _media!.Items.Count - 1);
+        NotifyMediaChanged();
+        OpenMedia();
+    }
+
     [RelayCommand] private void FetchMedia() => MediaFetchRequested?.Invoke();
     [RelayCommand] private void NextMedia() => MoveMedia(1);
     [RelayCommand] private void PreviousMedia() => MoveMedia(-1);
@@ -111,6 +126,8 @@ public sealed partial class SecondScreenViewModel
 
     private void NotifyMediaChanged()
     {
+        OnPropertyChanged(nameof(MediaItems));
+        OnPropertyChanged(nameof(MediaIndex));
         OnPropertyChanged(nameof(HasMedia));
         OnPropertyChanged(nameof(CanBrowseMedia));
         OnPropertyChanged(nameof(MediaTitle));

@@ -2404,7 +2404,14 @@ Played. Pad input already reaches one dispatcher from both displays
       Tests: the default layout places the tile, reconciliation never drops it, remove is refused.
       **Exit:** every setting Gamepad mode has can be changed from Handheld mode without leaving it,
       from the tile and from the menu, and the tile survives a cold start in the slot you moved it to.
-- [ ] **H6b — the in-game companion.** Today `SecondScreenController.UpdateHandheldSurface` shows
+- [x] **H6b — the in-game companion.** ✅ (2026-11-08; checked on the Thor over adb with Screen-2 read back (the
+      companion is Avalonia, rendered to a bitmap; the native screens by `glReadPixels`; not kept), on the owner's
+      library, swapped and not: Castlevania launched from Recent on the top screen, the companion coming up as the Launcher
+      (or Stage) slid away, resting after 12 s and the first touch only waking it, every badge with All / Locked /
+      Unlocked, the photos paged and the viewer, All apps from the dock and back, the return sliding the screen back
+      onto the game's tile in Recent; the Title page's badge grid and the dock's All apps over the Launcher. The
+      companion on the 16:9 screen is checked headlessly only: the Thor's accessibility watcher is off, so a game cannot
+      go to the bottom screen. Choices in `DECISIONS.md` 2026-11-08 "M45 H6b".) Today `SecondScreenController.UpdateHandheldSurface` shows
       Gamepad mode's companion unchanged while a game runs. Restyle it on the Launcher's dark palette
       as the spec's Companion section describes, every feature kept: resting dim with the swallowed
       wake press, the Now playing row, one panel at a time with Achievements / Photos on LB/RB, the

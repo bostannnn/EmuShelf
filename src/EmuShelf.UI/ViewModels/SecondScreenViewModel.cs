@@ -286,7 +286,7 @@ public sealed partial class SecondScreenViewModel : ObservableObject
             oldValue.IsFocused = false;
         if (newValue is not null)
             newValue.IsFocused = true;
-        AchievementRowViewModel.LoadBadgeWindow(_achievements, newValue);
+        AchievementRowViewModel.LoadBadgeWindow(_visibleAchievements, newValue);
         OnPropertyChanged(nameof(HasSelectedAchievement));
         OnPropertyChanged(nameof(SelectedAchievementMeta));
     }
@@ -338,16 +338,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         switch (action)
         {
             case GamepadAction.NavigateLeft:
-                MoveSelectionHorizontal(-1);
-                return true;
             case GamepadAction.NavigateRight:
-                MoveSelectionHorizontal(1);
-                return true;
             case GamepadAction.NavigateUp:
-                MoveSelectionVertical(-1);
-                return true;
             case GamepadAction.NavigateDown:
-                MoveSelectionVertical(1);
+                MoveAchievementSelection(action);
                 return true;
             // With a grid up the second screen owns the pad completely: every remaining action is swallowed
             // so nothing leaks to the couch behind (which would open an overlay on the main screen the user
@@ -360,36 +354,102 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         }
     }
 
-    private int SelectedIndex =>
-        SelectedAchievement is { } selected ? _achievements.IndexOf(selected) : -1;
+    /// <summary>
+    /// Walks the badge selection one step across the grid the view renders (the shown badges, under
+    /// <see cref="AchievementFilter"/>). Returns false when the move runs into an edge.
+    /// </summary>
+    public bool MoveAchievementSelection(GamepadAction direction) => direction switch
+    {
+        GamepadAction.NavigateLeft => MoveSelectionHorizontal(-1),
+        GamepadAction.NavigateRight => MoveSelectionHorizontal(1),
+        GamepadAction.NavigateUp => MoveSelectionVertical(-1),
+        GamepadAction.NavigateDown => MoveSelectionVertical(1),
+        _ => false,
+    };
 
-    private void MoveSelectionHorizontal(int direction)
+    private int SelectedIndex =>
+        SelectedAchievement is { } selected ? _visibleAchievements.IndexOf(selected) : -1;
+
+    private bool MoveSelectionHorizontal(int direction)
     {
         var index = Math.Max(0, SelectedIndex);
         var columns = Math.Max(1, _achievementColumnCount);
         var column = index % columns;
         var target = index + Math.Sign(direction);
         // Guard the row edges so Right on the last column (or Left on the first) doesn't jump rows.
-        if (target >= 0 && target < _achievements.Count &&
-            (direction < 0 ? column > 0 : column < columns - 1))
-        {
-            MoveSelectionTo(target);
-        }
+        if (target < 0 || target >= _visibleAchievements.Count || (direction < 0 ? column == 0 : column == columns - 1))
+            return false;
+        MoveSelectionTo(target);
+        return true;
     }
 
-    private void MoveSelectionVertical(int direction)
+    private bool MoveSelectionVertical(int direction)
     {
         var index = Math.Max(0, SelectedIndex);
         var columns = Math.Max(1, _achievementColumnCount);
         var target = index + (Math.Sign(direction) * columns);
-        if (target >= 0 && target < _achievements.Count)
-            MoveSelectionTo(target);
+        // Down from a column the shorter last row does not reach lands on that row's last badge, so every badge
+        // can be reached.
+        if (direction > 0 && target >= _visibleAchievements.Count && index / columns < (_visibleAchievements.Count - 1) / columns)
+            target = _visibleAchievements.Count - 1;
+        if (target < 0 || target >= _visibleAchievements.Count)
+            return false;
+        MoveSelectionTo(target);
+        return true;
     }
 
     private void MoveSelectionTo(int index)
     {
-        SelectAchievement(_achievements[index]);
+        SelectAchievement(_visibleAchievements[index]);
         SelectionScrolledTo?.Invoke(index);
+    }
+
+    // ---- All / Locked / Unlocked (M45 H6b; taken from Gamepad mode's achievements screen) ----
+
+    /// <summary>Which badges the grid shows. All by default, which is what the Gamepad-mode companion keeps.</summary>
+    [ObservableProperty]
+    public partial AchievementDisplayFilter AchievementFilter { get; set; }
+
+    // The badges the grid shows, in set order: the whole set, or its locked or unlocked ones.
+    private readonly List<AchievementRowViewModel> _visibleAchievements = [];
+
+    /// <summary>The whole set, in display order, whatever the filter.</summary>
+    public IReadOnlyList<AchievementRowViewModel> Achievements => _achievements;
+
+    /// <summary>The badges the grid shows under <see cref="AchievementFilter"/>.</summary>
+    public IReadOnlyList<AchievementRowViewModel> VisibleAchievements => _visibleAchievements;
+
+    public bool HasVisibleAchievements => _visibleAchievements.Count > 0;
+
+    public int LockedAchievementCount => _achievements.Count(row => row.IsLocked);
+
+    public int UnlockedAchievementCount => _achievements.Count(row => row.IsUnlocked);
+
+    partial void OnAchievementFilterChanged(AchievementDisplayFilter value)
+    {
+        var kept = SelectedAchievement;
+        RebuildVisibleAchievements();
+        RebuildAchievementRows();
+        // The selection stays on its badge when the new filter still shows it, else goes to the first one shown.
+        if (kept is not null && _visibleAchievements.Contains(kept))
+        {
+            SelectionScrolledTo?.Invoke(_visibleAchievements.IndexOf(kept));
+            return;
+        }
+        SelectAchievement(_visibleAchievements.Count > 0 ? _visibleAchievements[0] : null);
+        SelectionScrolledTo?.Invoke(0);
+    }
+
+    private void RebuildVisibleAchievements()
+    {
+        _visibleAchievements.Clear();
+        _visibleAchievements.AddRange(AchievementFilter switch
+        {
+            AchievementDisplayFilter.Locked => _achievements.Where(row => row.IsLocked),
+            AchievementDisplayFilter.Unlocked => _achievements.Where(row => row.IsUnlocked),
+            _ => _achievements,
+        });
+        OnPropertyChanged(nameof(HasVisibleAchievements));
     }
 
     public ObservableCollection<SecondScreenSlotViewModel> Dock { get; } =
@@ -497,15 +557,16 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         _ = AchievementRowViewModel.LoadBadgesTogetherAsync(
             _achievements.Take(EagerBadgeCount).ToList(), FirstBadgeBatchWindow, _badgeLoad.Token);
 
+        RebuildVisibleAchievements();
         RaiseAchievementCountDependents();
         RebuildAchievementRows();
         // Land on a badge so the title/subtitle strip is populated the moment the panel opens (and after every
         // game-change follow), rather than sitting blank until the user taps.
         var kept = previousSelection is null
             ? null
-            : _achievements.FirstOrDefault(row => row.AchievementId == previousSelection);
-        SelectAchievement(kept ?? (_achievements.Count > 0 ? _achievements[0] : null));
-        if (kept is null && _achievements.Count > 0)
+            : _visibleAchievements.FirstOrDefault(row => row.AchievementId == previousSelection);
+        SelectAchievement(kept ?? (_visibleAchievements.Count > 0 ? _visibleAchievements[0] : null));
+        if (kept is null && _visibleAchievements.Count > 0)
             SelectionScrolledTo?.Invoke(0);
     }
 
@@ -524,6 +585,9 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     private void RaiseAchievementCountDependents()
     {
+        OnPropertyChanged(nameof(Achievements));
+        OnPropertyChanged(nameof(LockedAchievementCount));
+        OnPropertyChanged(nameof(UnlockedAchievementCount));
         OnPropertyChanged(nameof(AchievementCount));
         OnPropertyChanged(nameof(HasAchievements));
         OnPropertyChanged(nameof(IsAchievementsGridRealized));
@@ -541,11 +605,13 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         foreach (var achievement in _achievements)
             achievement.Dispose();
         _achievements.Clear();
+        _visibleAchievements.Clear();
+        OnPropertyChanged(nameof(HasVisibleAchievements));
     }
 
     private void RebuildAchievementRows()
     {
-        if (_achievements.Count == 0)
+        if (_visibleAchievements.Count == 0)
         {
             if (AchievementRows.Count > 0)
                 AchievementRows.Clear();
@@ -553,13 +619,13 @@ public sealed partial class SecondScreenViewModel : ObservableObject
         }
 
         var columns = Math.Max(1, _achievementColumnCount);
-        var rows = new List<IReadOnlyList<AchievementRowViewModel>>((_achievements.Count + columns - 1) / columns);
-        for (var start = 0; start < _achievements.Count; start += columns)
+        var rows = new List<IReadOnlyList<AchievementRowViewModel>>((_visibleAchievements.Count + columns - 1) / columns);
+        for (var start = 0; start < _visibleAchievements.Count; start += columns)
         {
-            var take = Math.Min(columns, _achievements.Count - start);
+            var take = Math.Min(columns, _visibleAchievements.Count - start);
             var row = new AchievementRowViewModel[take];
             for (var offset = 0; offset < take; offset++)
-                row[offset] = _achievements[start + offset];
+                row[offset] = _visibleAchievements[start + offset];
             rows.Add(row);
         }
 
@@ -601,6 +667,12 @@ public sealed partial class SecondScreenViewModel : ObservableObject
     // AXAML never needs an Android type.
     public Action? DrawerToggled { get; set; }
     public Action? AchievementsToggled { get; set; }
+
+    /// <summary>
+    /// Shows the focused (or running) game's set without toggling: the Handheld companion's panel keeps it current
+    /// while a game runs (M45 H6b). Wired by the controller to the same cache-first load the trophy uses.
+    /// </summary>
+    public Action? AchievementsRequested { get; set; }
     public Action? OverlayClosed { get; set; }
     public Action? SlotCleared { get; set; }
     public Action? AchievementsRefreshed { get; set; }
@@ -613,6 +685,9 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleAchievements() => AchievementsToggled?.Invoke();
+
+    /// <summary>Loads (or re-reads from the cache) the set the companion shows; see <see cref="AchievementsRequested"/>.</summary>
+    public void RequestAchievements() => AchievementsRequested?.Invoke();
 
     [RelayCommand]
     private void CloseOverlay()

@@ -20,6 +20,13 @@ namespace EmuShelf.App.Android.Services;
 /// the front screens slide out toward the hinge while the ones behind catch up on what changed, then those slide in
 /// from the hinge. Nothing moves between windows and nothing is rebuilt, so the swap starts at once and no display is
 /// ever left empty for longer than the slide.
+/// <para>
+/// Each display also keeps a Handheld companion (M45 H6b) over its pair, shown while it is the companion's: the screen
+/// the game does not use while one runs, Screen-2 while the companion's All apps or badge grid is open over the
+/// Launcher. As a game starts, the screen in front slides away toward the hinge and the companion rises in under it; as
+/// the game ends, the screen slides back over the companion. The pair stays attached throughout, so its feeds keep the
+/// native screens current (the Recent folder updated by the launch is already there when the Launcher comes back).
+/// </para>
 /// </summary>
 internal sealed class HandheldScreenHost
 {
@@ -45,6 +52,12 @@ internal sealed class HandheldScreenHost
     private readonly HandheldLauncherView _launcherSecond = new(NativeSceneSurface.LauncherSecond, pinnedWide: false) { IsVisible = false };
     private readonly Panel _mainPair;
     private readonly Panel _secondPair;
+    // Each display's pair with its companion over it: what the display's window shows in Handheld mode.
+    private readonly Panel _mainRoot;
+    private readonly Panel _secondRoot;
+    private readonly DisplayState _mainDisplay;
+    private readonly DisplayState _secondDisplay;
+    private bool _inGame;
 
     private ContentControl? _mainSlot;
     private HandheldShellViewModel? _shell;
@@ -61,6 +74,31 @@ internal sealed class HandheldScreenHost
     {
         _mainPair = new Panel { Children = { _stageMain, _launcherMain } };
         _secondPair = new Panel { Children = { _stageSecond, _launcherSecond } };
+        var companionMain = new HandheldCompanionView(wide: true) { IsVisible = false };
+        var companionSecond = new HandheldCompanionView(wide: false) { IsVisible = false };
+        _mainRoot = new Panel { Children = { _mainPair, companionMain } };
+        _secondRoot = new Panel { Children = { _secondPair, companionSecond } };
+        _mainDisplay = new DisplayState(companionMain, NativeSceneSurface.StageMain, NativeSceneSurface.LauncherMain);
+        _secondDisplay = new DisplayState(companionSecond, NativeSceneSurface.StageSecond, NativeSceneSurface.LauncherSecond);
+    }
+
+    /// <summary>One display's companion and surfaces, and where its hand-off between them stands.</summary>
+    private sealed class DisplayState(HandheldCompanionView companion, NativeSceneSurface stage, NativeSceneSurface launcher)
+    {
+        public HandheldCompanionView Companion { get; } = companion;
+        public NativeSceneSurface[] Surfaces { get; } = [stage, launcher];
+
+        /// <summary>The companion is this display's now.</summary>
+        public bool ShowsCompanion { get; set; }
+
+        /// <summary>It came up for a game, so the screen slides back over it when the game ends.</summary>
+        public bool ForGame { get; set; }
+
+        /// <summary>Bumped by every hand-off, so one that finishes late leaves a newer one alone.</summary>
+        public int Generation { get; set; }
+
+        /// <summary>The surface sliding away or back right now (nothing else may move or hide it meanwhile).</summary>
+        public NativeSceneSurface? Sliding { get; set; }
     }
 
     /// <summary>The main display's place for Handheld mode (MainView's slot), registered as MainView loads.</summary>
@@ -83,11 +121,12 @@ internal sealed class HandheldScreenHost
 
     /// <summary>
     /// The state the second-screen controller knows: the shell (null outside Handheld mode), Screen-2's presentation,
-    /// whether Screen-2 shows Handheld mode (not the companion, which takes it while a game runs or its drawer is open),
-    /// and whether the main display does (not while the companion sits there over a game on Screen-2).
+    /// whether Screen-2 shows Handheld mode's screens (not the companion, which takes it while a game runs or its drawer
+    /// is open), whether the main display does (not while the companion sits there over a game on Screen-2), and whether
+    /// a game is running (the companion then arrives and leaves with a slide).
     /// </summary>
     public void Update(HandheldShellViewModel? shell, ThorSecondScreenPresentation? presentation, bool presentationShowsHandheld,
-        bool mainShowsHandheld)
+        bool mainShowsHandheld, bool inGame)
     {
         if (!ReferenceEquals(shell, _shell))
         {
@@ -103,6 +142,7 @@ internal sealed class HandheldScreenHost
         _presentation = presentation;
         _presentationShowsHandheld = presentationShowsHandheld && presentation is not null;
         _mainShowsHandheld = mainShowsHandheld;
+        _inGame = inGame;
         Place();
     }
 
@@ -127,21 +167,33 @@ internal sealed class HandheldScreenHost
     {
         if (_shell is not { } shell)
         {
-            if (_mainSlot is { } emptySlot && ReferenceEquals(emptySlot.Content, _mainPair))
+            if (_mainSlot is { } emptySlot && ReferenceEquals(emptySlot.Content, _mainRoot))
                 emptySlot.Content = null;
             _presentation?.ShowHandheld(null, []);
             foreach (var surface in NativeSceneSurface.All)
                 surface.SetAllowed(false);
+            foreach (var display in new[] { _mainDisplay, _secondDisplay })
+            {
+                ++display.Generation;
+                display.ShowsCompanion = display.ForGame = false;
+                display.Sliding = null;
+                display.Companion.IsVisible = false;
+                display.Companion.DataContext = null;
+            }
             return;
         }
-        if (_mainSlot is { } slot && !ReferenceEquals(slot.Content, _mainPair))
-            slot.Content = _mainPair;
-        _presentation?.ShowHandheld(_presentationShowsHandheld ? _secondPair : null,
-            [NativeSceneSurface.StageSecond, NativeSceneSurface.LauncherSecond]);
-        NativeSceneSurface.StageMain.SetAllowed(_mainShowsHandheld);
-        NativeSceneSurface.LauncherMain.SetAllowed(_mainShowsHandheld);
-        NativeSceneSurface.StageSecond.SetAllowed(_presentationShowsHandheld);
-        NativeSceneSurface.LauncherSecond.SetAllowed(_presentationShowsHandheld);
+        if (_mainSlot is { } slot && !ReferenceEquals(slot.Content, _mainRoot))
+            slot.Content = _mainRoot;
+        _presentation?.ShowHandheld(_secondRoot, [NativeSceneSurface.StageSecond, NativeSceneSurface.LauncherSecond]);
+        var companion = shell.CompanionScreen;
+        _mainDisplay.Companion.DataContext = companion;
+        _secondDisplay.Companion.DataContext = companion;
+        // The companion is on the 16:9 screen while a game has the bottom one.
+        if (companion is not null)
+            companion.IsOnWideScreen = !_mainShowsHandheld;
+        var (frontMain, frontSecond) = Front(shell.IsSwapped);
+        HandOff(_mainDisplay, companion: !_mainShowsHandheld, SurfaceOf(frontMain));
+        HandOff(_secondDisplay, companion: _presentation is not null && !_presentationShowsHandheld, SurfaceOf(frontSecond));
         if (!_sliding)
             ShowFront(shell.IsSwapped);
         ScheduleWarmUp();
@@ -153,10 +205,96 @@ internal sealed class HandheldScreenHost
         var (backMain, backSecond) = Back(swapped);
         frontMain.IsVisible = frontSecond.IsVisible = true;
         backMain.IsVisible = backSecond.IsVisible = false;
-        SurfaceOf(frontMain).Park(false);
-        SurfaceOf(frontSecond).Park(false);
-        SurfaceOf(backMain).Park(true);
-        SurfaceOf(backSecond).Park(true);
+        ParkUnlessSliding(SurfaceOf(frontMain), false);
+        ParkUnlessSliding(SurfaceOf(frontSecond), false);
+        ParkUnlessSliding(SurfaceOf(backMain), true);
+        ParkUnlessSliding(SurfaceOf(backSecond), true);
+    }
+
+    // A surface mid hand-off is the slide's; it is placed when the slide ends.
+    private void ParkUnlessSliding(NativeSceneSurface surface, bool parked)
+    {
+        if (!ReferenceEquals(_mainDisplay.Sliding, surface) && !ReferenceEquals(_secondDisplay.Sliding, surface))
+            surface.Park(parked);
+    }
+
+    // ---- The companion's hand-off (M45 H6b) ----
+
+    /// <summary>
+    /// Gives a display to the companion or takes it back. For a game the screen in front slides away toward the hinge as
+    /// the companion rises in under it, and slides back over it when the game ends; for a layer over the Launcher (All
+    /// apps, the Title page's badges) the change is immediate.
+    /// </summary>
+    private void HandOff(DisplayState display, bool companion, NativeSceneSurface front)
+    {
+        if (companion == display.ShowsCompanion)
+        {
+            // Steady: no change, unless a slide is still finishing it.
+            if (display.Sliding is null)
+            {
+                display.Companion.IsVisible = companion;
+                foreach (var surface in display.Surfaces)
+                    surface.SetAllowed(!companion);
+            }
+            return;
+        }
+        display.ShowsCompanion = companion;
+        var generation = ++display.Generation;
+        display.Sliding = null;
+        if (companion)
+        {
+            display.ForGame = _inGame;
+            display.Companion.IsVisible = true;
+            if (_inGame && front.SurfaceView is { Visibility: ViewStates.Visible, Height: > 0 })
+                _ = SlideAwayAsync(display, front, generation);
+            else
+                foreach (var surface in display.Surfaces)
+                    surface.SetAllowed(false);
+            global::Android.Util.Log.Info(LogTag, $"Companion up ({(display == _mainDisplay ? "main" : "second")}, game={_inGame})");
+            return;
+        }
+        var slide = display.ForGame;
+        display.ForGame = false;
+        foreach (var surface in display.Surfaces)
+            surface.SetAllowed(true);
+        if (slide)
+            _ = SlideBackAsync(display, front, generation);
+        else
+            display.Companion.IsVisible = false;
+        global::Android.Util.Log.Info(LogTag, $"Companion down ({(display == _mainDisplay ? "main" : "second")}, slide={slide})");
+    }
+
+    private async Task SlideAwayAsync(DisplayState display, NativeSceneSurface front, int generation)
+    {
+        display.Sliding = front;
+        await Slide(front, 0f, front.ParkOffset, SlideOutMilliseconds, new PathInterpolator(0.4f, 0f, 1f, 1f));
+        if (generation != display.Generation)
+            return;
+        display.Sliding = null;
+        foreach (var surface in display.Surfaces)
+            surface.SetAllowed(false);
+        // Back in its place for when it is shown again (hidden, it is not seen there).
+        if (_shell is { } shell && !_sliding)
+            ShowFront(shell.IsSwapped);
+    }
+
+    private async Task SlideBackAsync(DisplayState display, NativeSceneSurface front, int generation)
+    {
+        display.Sliding = front;
+        // Out of sight first; its surface was gone while the companion was up, so let it draw a frame before it moves in.
+        if (front.SurfaceView is { Height: > 0 } view)
+            view.TranslationY = front.ParkOffset * view.Height;
+        await Task.WhenAny(front.NextFrameAsync(), Task.Delay(FrameTimeoutMilliseconds));
+        if (generation != display.Generation)
+            return;
+        front.Park(false, keepWhereItIs: true);
+        await Slide(front, front.ParkOffset, 0f, SlideInMilliseconds, new PathInterpolator(0.22f, 1.1f, 0.36f, 1f));
+        if (generation != display.Generation)
+            return;
+        display.Sliding = null;
+        display.Companion.IsVisible = false;
+        if (_shell is { } shell && !_sliding)
+            ShowFront(shell.IsSwapped);
     }
 
     // ---- Building the pair behind once, out of sight ----
@@ -291,10 +429,15 @@ internal sealed class HandheldScreenHost
         }
     }
 
+    // The slide each surface is in, so a newer one (a game that ends as it starts) takes over instead of fighting it.
+    private readonly Dictionary<NativeSceneSurface, ObjectAnimator> _slides = [];
+
     // Slides a surface vertically by a share of its height (its own view only: the Avalonia view under it is invisible
     // while the native screens draw).
-    private static Task Slide(NativeSceneSurface surface, float from, float to, long milliseconds, ITimeInterpolator interpolator)
+    private Task Slide(NativeSceneSurface surface, float from, float to, long milliseconds, ITimeInterpolator interpolator)
     {
+        if (_slides.Remove(surface, out var running))
+            running.Cancel();
         if (surface.SurfaceView is not { } view || view.Height <= 0 || view.Visibility != ViewStates.Visible)
             return Task.CompletedTask;
         var done = new TaskCompletionSource();
@@ -308,8 +451,14 @@ internal sealed class HandheldScreenHost
         }
         animator.SetDuration(milliseconds);
         animator.SetInterpolator(interpolator);
-        animator.AnimationEnd += (_, _) => done.TrySetResult();
+        animator.AnimationEnd += (_, _) =>
+        {
+            if (_slides.TryGetValue(surface, out var current) && ReferenceEquals(current, animator))
+                _slides.Remove(surface);
+            done.TrySetResult();
+        };
         animator.AnimationCancel += (_, _) => done.TrySetResult();
+        _slides[surface] = animator;
         animator.Start();
         return done.Task;
     }

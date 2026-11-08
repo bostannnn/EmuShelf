@@ -238,6 +238,9 @@ public sealed partial class HandheldShellViewModel
             // The cover lifts off the Launcher and lands on the Stage before the emulator takes the screen.
             if (LaunchLead > TimeSpan.Zero)
                 await Task.Delay(LaunchLead, _clock);
+            // The companion comes up as the emulator starts (M45 H6b): it has the game's row, and its cover, by then.
+            if (ReferenceEquals(TitlePage, page))
+                CompanionScreen?.SetNowPlaying(page.Entry, page.PlatformName);
             started = ReferenceEquals(TitlePage, page) && await _library.LaunchAsync(page.Entry, screen);
         }
         catch (Exception)

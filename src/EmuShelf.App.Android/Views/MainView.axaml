@@ -38,7 +38,7 @@
           shows during normal browsing or when the game is on the built-in screen.
         -->
         <ContentControl Content="{Binding MainScreenCompanion}"
-                        IsVisible="{Binding IsCompanionOnMainScreen}">
+                        IsVisible="{Binding ShowsGamepadMainScreenCompanion}">
             <ContentControl.ContentTemplate>
                 <DataTemplate x:DataType="vm:SecondScreenViewModel">
                     <views:SecondScreenView />
