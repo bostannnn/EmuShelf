@@ -2529,8 +2529,9 @@ Played. Pad input already reaches one dispatcher from both displays
         idle drift together, and lifting it puts the ordinary minute rule back; the surface captures the old
         compositor's running backdrop and rest state and applies them after the retained replay. Idle measured over
         five minutes, not an hour: two and five minutes after the last press the app was at 0.0–1.5% of a core with no
-        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run, and a look at the rebuilt
-        Stage now that the recreation crash (below, fixed the same day) no longer kills the app right after.
+        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run. With the recreation crash
+        (below) fixed, two font-scale recreations of the merged build left the app up with both Stages logging their
+        resume each time (the Thor runs that build, installed 2026-11-08 22:16).
     - [x] **Recreating the activity crashes Handheld mode.** ✅ (2026-11-08; found by the font-scale change used
           to check the GL-context rebuild, which recreates `MainActivity`. The process died in Avalonia's layout
           because the Screen-2 Presentation's Avalonia top level was never disposed with its window; it is now.
