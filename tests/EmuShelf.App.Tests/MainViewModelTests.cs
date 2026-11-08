@@ -1854,7 +1854,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Activity", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1920,7 +1920,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Add games", "Settings", "Quit EmuShelf"],
+            ["Search", "Add games", "Activity", "Settings", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Switch to Desktop mode");
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
@@ -3243,6 +3243,41 @@ public class MainViewModelTests : IDisposable
         var session = Assert.Single(_library.GetPlaySessions(game.Id));
         Assert.Equal(TimeSpan.FromHours(13), session.Duration);
         Assert.Equal(PlaySessionMeasurement.UsageAccess, session.Measurement);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadMenuActivity_OpensThePlayLog_AndBClosesIt()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Contains("Activity", vm.GamepadOverlayOptions.Select(option => option.Label));
+        await vm.OpenActivityCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.Activity, vm.GamepadOverlay);
+        Assert.NotNull(vm.GamepadActivity);
+        Assert.True(vm.GamepadActivity!.IsTimeline);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadActivity);
+    }
+
+    [AvaloniaFact]
+    public async Task PlayHistory_OnDesktop_OpensTheWindowOnThatGamesPage()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await game.OpenPlayHistoryCommand.ExecuteAsync(game);
+
+        var shown = Assert.Single(_dialogs.ShownActivities);
+        Assert.True(shown.IsGamePage);
+        Assert.Equal(game.Model.Title, shown.GameTitle);
     }
 
     [AvaloniaFact]

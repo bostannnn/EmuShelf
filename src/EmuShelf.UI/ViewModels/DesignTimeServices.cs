@@ -23,6 +23,9 @@ internal sealed class EmptyGameLibrary : IGameLibrary
     public bool CompletePlaySession(long sessionId, TimeSpan duration, PlaySessionMeasurement measurement) => false;
     public long? FindOpenPlaySession(long gameId) => null;
     public IReadOnlyList<PlaySession> GetPlaySessions(long gameId) => [];
+    public IReadOnlyList<PlaySession> GetPlaySessionsBetween(DateTimeOffset from, DateTimeOffset to) => [];
+    public bool EditPlaySession(long sessionId, TimeSpan duration) => false;
+    public bool DeletePlaySession(long sessionId) => false;
     public int AddGames(IEnumerable<Game> games) => 0;
     public GameImportResult ReconcileImport(
         string systemId, IEnumerable<Game> entries, IReadOnlyList<string> suppressedPaths) =>

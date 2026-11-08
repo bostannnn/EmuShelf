@@ -43,6 +43,26 @@ public interface IGameLibrary
     IReadOnlyList<PlaySession> GetPlaySessions(long gameId);
 
     /// <summary>
+    /// Every session that started in [<paramref name="from"/>, <paramref name="to"/>), newest first,
+    /// including those of games since removed from the library (M46 P3's timeline).
+    /// </summary>
+    IReadOnlyList<PlaySession> GetPlaySessionsBetween(DateTimeOffset from, DateTimeOffset to);
+
+    /// <summary>
+    /// Sets a session's length by hand and marks it <see cref="PlaySessionMeasurement.Edited"/>; the game's
+    /// play time moves by the difference. An open session (unknown length) gains one. Returns false when
+    /// the session does not exist.
+    /// </summary>
+    bool EditPlaySession(long sessionId, TimeSpan duration);
+
+    /// <summary>
+    /// Deletes a session and takes it out of the game's totals: one play fewer, its length off the play
+    /// time, and last-played moved back to the newest remaining session when it was this one. Returns false
+    /// when the session does not exist. Only EmuShelf's own records change.
+    /// </summary>
+    bool DeletePlaySession(long sessionId);
+
+    /// <summary>
     /// Inserts games that aren't already present (matched by path). Returns the
     /// number actually added. Existing entries are left untouched.
     /// </summary>

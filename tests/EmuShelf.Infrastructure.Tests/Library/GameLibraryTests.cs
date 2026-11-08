@@ -448,6 +448,84 @@ public class GameLibraryTests : TempAppDirectoryTestBase
         Assert.Equal(1L, CountSessions());
     }
 
+    [Fact]
+    public void GetPlaySessionsBetween_ReturnsTheWindowNewestFirst_IncludingRemovedGames()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A"), NewGame("playstation", "/g/b.cue", "B")]);
+        var a = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var b = _library.GetGames("playstation").Single(g => g.Title == "B");
+        var day = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(a.Id, TimeSpan.FromMinutes(5), day.AddDays(-2));
+        Play(a.Id, TimeSpan.FromMinutes(10), day);
+        Play(b.Id, TimeSpan.FromMinutes(20), day.AddHours(3));
+        _library.RemoveGame(b.Id);
+
+        var window = _library.GetPlaySessionsBetween(day.AddDays(-1), day.AddDays(1));
+
+        Assert.Equal(["B", "A"], window.Select(session => session.GameTitle));
+        Assert.True(window[0].IsGameRemoved);
+        Assert.False(window[1].IsGameRemoved);
+    }
+
+    [Fact]
+    public void EditPlaySession_SetsTheLength_MarksItEdited_AndMovesThePlayTimeByTheDifference()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var played = Play(game.Id, TimeSpan.FromMinutes(90));
+        var open = _library.RecordLaunchStarted(game.Id, DateTimeOffset.UtcNow)!.Value;
+
+        Assert.True(_library.EditPlaySession(played, TimeSpan.FromMinutes(30)));
+        Assert.True(_library.EditPlaySession(open, TimeSpan.FromMinutes(15)));
+        Assert.False(_library.EditPlaySession(999999, TimeSpan.FromMinutes(1)));
+
+        Assert.Equal(TimeSpan.FromMinutes(45), _library.GetGames("playstation").Single().Playtime);
+        Assert.All(_library.GetPlaySessions(game.Id), session =>
+            Assert.Equal(PlaySessionMeasurement.Edited, session.Measurement));
+        Assert.Null(_library.FindOpenPlaySession(game.Id));
+    }
+
+    [Fact]
+    public void DeletePlaySession_TakesItOutOfTheTotals_AndMovesLastPlayedBack()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A")]);
+        var game = _library.GetGames("playstation").Single();
+        var earlier = DateTimeOffset.FromUnixTimeMilliseconds(1786000000000);
+        Play(game.Id, TimeSpan.FromMinutes(20), earlier);
+        var latest = Play(game.Id, TimeSpan.FromMinutes(40), earlier.AddDays(1));
+
+        Assert.True(_library.DeletePlaySession(latest));
+        Assert.False(_library.DeletePlaySession(latest));
+
+        var reloaded = _library.GetGames("playstation").Single();
+        Assert.Equal(TimeSpan.FromMinutes(20), reloaded.Playtime);
+        Assert.Equal(1, reloaded.PlayCount);
+        Assert.Equal(earlier, reloaded.LastPlayedAt);
+        Assert.Single(_library.GetPlaySessions(game.Id));
+    }
+
+    [Fact]
+    public void DeletingTheLastSession_ClearsLastPlayed_UnlessEarlierPlayRemains()
+    {
+        _library.AddGames([NewGame("playstation", "/g/a.cue", "A"), NewGame("playstation", "/g/b.cue", "B")]);
+        var onlyLogged = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var withEarlier = _library.GetGames("playstation").Single(g => g.Title == "B");
+        SeedEarlierPlay(withEarlier.Id, TimeSpan.FromHours(1), plays: 2);
+        var first = Play(onlyLogged.Id, TimeSpan.FromMinutes(5));
+        var second = Play(withEarlier.Id, TimeSpan.FromMinutes(5));
+
+        _library.DeletePlaySession(first);
+        _library.DeletePlaySession(second);
+
+        var a = _library.GetGames("playstation").Single(g => g.Title == "A");
+        var b = _library.GetGames("playstation").Single(g => g.Title == "B");
+        Assert.Null(a.LastPlayedAt);
+        Assert.Equal(0, a.PlayCount);
+        Assert.NotNull(b.LastPlayedAt);
+        Assert.Equal(2, b.PlayCount);
+        Assert.Equal(TimeSpan.FromHours(1), b.Playtime);
+    }
+
     private void SeedEarlierPlay(long gameId, TimeSpan playtime, int plays)
     {
         // Play recorded before schema v21: it lives only in the totals.

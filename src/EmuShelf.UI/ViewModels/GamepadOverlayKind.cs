@@ -23,6 +23,7 @@ public enum GamepadOverlayKind
     SystemMenu,
     Settings,
     Hotkeys,
+    Activity,
     DesktopModeConfirmation,
     QuitConfirmation,
 }

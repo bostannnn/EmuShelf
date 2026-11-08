@@ -131,7 +131,8 @@ public partial class MainViewModel
             ScrapeGameCommand,
             ShowGameInFolderCommand,
             OpenTextureFolderCommand,
-            TexturePackProviderRegistry.Find(game.SystemId) is not null);
+            TexturePackProviderRegistry.Find(game.SystemId) is not null,
+            OpenPlayHistoryCommand);
     }
 
     /// <summary>The library as Handheld mode browses it: platforms, a platform's games, covers, launching.</summary>

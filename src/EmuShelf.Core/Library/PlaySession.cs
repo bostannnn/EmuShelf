@@ -29,6 +29,7 @@ public enum PlaySessionMeasurement
 /// <param name="Duration">How long it lasted, or null while open or when the length is unknown.</param>
 /// <param name="Measurement">How <see cref="Duration"/> was measured; null while the session is open.</param>
 /// <param name="DeviceId">The install that recorded it (<see cref="IDeviceIdentity"/>).</param>
+/// <param name="IsGameRemoved">The game has since been removed from the library; the session is kept.</param>
 public sealed record PlaySession(
     long Id,
     long GameId,
@@ -37,7 +38,8 @@ public sealed record PlaySession(
     DateTimeOffset StartedAt,
     TimeSpan? Duration,
     PlaySessionMeasurement? Measurement,
-    string DeviceId);
+    string DeviceId,
+    bool IsGameRemoved = false);
 
 /// <summary>
 /// What a game's sessions say beyond its running totals. Play recorded before the session log existed

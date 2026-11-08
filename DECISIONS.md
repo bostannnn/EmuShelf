@@ -13365,3 +13365,38 @@ resumed with the screen on, between the launch and EmuShelf's return. The rest:
   20). Deploy Debug builds with `-t:Install`, as `docs/android-port-plan.md` says, or embed the assemblies
   in the APK.
 
+## 2026-11-08 — M46 P3: the Activity screen
+
+The play log as a screen: a week's timeline, a "Most played" ranking, and one game's page, with sessions
+corrected or deleted from the timeline or the game page.
+
+- **One view model and one view for both modes.** `ActivityViewModel` and `ActivityView` serve the
+  Desktop `ActivityWindow` and the Gamepad overlay (`GamepadOverlayKind.Activity`). Rows are buttons whose
+  focus ring follows the view model, so a click and the D-pad do the same thing. Desktop opens it from a
+  toolbar button and a game's context menu ("Play history…"); Gamepad from the Start menu ("Activity")
+  and the Y sheet ("Play history"). Handheld mode gets its own tile in P4.
+- **The timeline lists sessions, not per-game sums.** The roadmap said "each day's games and minutes";
+  a day shows each sitting with its time and length under the day's total instead, because a session is
+  what can be edited or deleted, and a sum per game would hide the one to fix.
+- **Paged by week.** One week loads at a time (the culture's first day of the week, local midnight to
+  midnight); ← → or the arrows move a week. The current week has no "later" step.
+- **The average is play time over plays**, from the same totals the library shows, so a game page, the
+  ranking and the list columns agree. It counts earlier play and plays of unknown length; averaging only
+  logged sessions with a known length would give a game page a different number from the ranking.
+- **Editing.** Lengths are set in whole minutes (0 to 24 h) and marked `Edited`; the game's play time
+  moves by the difference. Editing an open session gives it a length. Deleting one takes a play and its
+  time off the totals; last-played falls back to the newest remaining session when it was that one, is
+  cleared when no plays remain, and is kept when only plays from before the log remain (their time is
+  unknown). Deleting asks first, in the editor, which names what changes and that no game file is touched.
+- **Estimates read "about 25m"** rather than carrying a separate "estimate" note; an edited session and
+  a session of unknown length ("?") get a note. This is the P2 promise to label estimates.
+- **B goes back where you came from.** A game page reached from the timeline or the ranking backs out to
+  it; one opened straight from a game ("Play history") closes the screen, like the other Y-sheet overlays.
+- **Each session row carries its own edit command.** The Desktop row's context menu lives in a popup, outside
+  the view's name scope, so it can't reliably reach the screen's view model by name.
+- **Removed games stay on the timeline** marked "(removed)", but cannot be opened or ranked: the ranking
+  and game pages read the library, which no longer has them.
+- **Verified by rendering.** No desktop control was available to click through the app, so every page
+  (Desktop timeline, ranking, game page, editor; Gamepad timeline and editor) is rendered headlessly by
+  `ActivitySnapshotTests`; with `EMUSHELF_SNAPSHOT_DIR` set they are written as PNGs.
+

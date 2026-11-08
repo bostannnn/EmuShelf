@@ -2545,7 +2545,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       "about" wherever it shows. Behind an interface in Core so the computation from a list of events is
       unit-tested on macOS. **Exit:** on the Thor, a session with the screen asleep in the middle records
       only the awake minutes, checked against `adb shell dumpsys usagestats`.
-- [ ] **P3 — the Activity screen (Desktop and Gamepad).** A day-by-day timeline (each day's games and
+- [x] **P3 — the Activity screen (Desktop and Gamepad).** ✅ (2026-11-08; built and tested on macOS;
+      every page rendered headlessly at Desktop and Gamepad sizes by `ActivitySnapshotTests`. Not yet
+      used on a real week of Thor play; that check waits for the device testing together with P2. Choices
+      in `DECISIONS.md` 2026-11-08 "M46 P3".) A day-by-day timeline (each day's games and
       minutes, newest first, with a week total); a page per game with total, times played, average per
       session, first and last played and its recent sessions; a ranking by total time, times played or
       average. Edit a session's length or delete it from the timeline or the game page (Y / long press

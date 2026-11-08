@@ -24,6 +24,13 @@
         </Style>
         <!-- The Hotkeys overlay is a dense per-emulator × per-action matrix, so like Settings it fills
              the host and lets its matrix column scroll rather than centring a fixed-size card. -->
+        <Style Selector="Border.gamepad-overlay.activity">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Width" Value="{Binding #GamepadOverlayHost.Bounds.Width}" />
+            <Setter Property="Height" Value="{Binding #GamepadOverlayHost.Bounds.Height}" />
+        </Style>
         <Style Selector="Border.gamepad-overlay.hotkeys">
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="VerticalAlignment" Value="Stretch" />
@@ -910,6 +917,7 @@
                     Classes.batch-scraper="{Binding IsGamepadBatchScraperOpen}"
                     Classes.settings="{Binding IsGamepadSettingsOpen}"
                     Classes.hotkeys="{Binding IsGamepadHotkeysOpen}"
+                    Classes.activity="{Binding IsGamepadActivityOpen}"
                     Classes.confirmation="{Binding IsGamepadConfirmationOverlay}"
                     Classes.launch-screen="{Binding IsGamepadLaunchScreenOpen}"
                     VerticalAlignment="Center"
@@ -2423,6 +2431,10 @@
                              GamepadHotkeysViewModel for D-pad focus. Top: the two global actions. Below:
                              the emulators × actions matrix (left) beside the controller-setup card
                              (right). Gamepad-native — no Desktop window is ever opened. -->
+                        <!-- The play log (M46 P3): the same view the Desktop Activity window hosts. -->
+                        <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadActivityOpen}">
+                            <views:ActivityView DataContext="{Binding GamepadActivity}" />
+                        </Grid>
                         <Grid Grid.RowSpan="2" IsVisible="{Binding IsGamepadHotkeysOpen}">
                         <Grid DataContext="{Binding GamepadHotkeys}" x:DataType="vm:GamepadHotkeysViewModel"
                               RowDefinitions="Auto,*" RowSpacing="14">
@@ -2646,6 +2658,32 @@
                             <TextBlock Text="Move" />
                             <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
                             <TextBlock Text="Select" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Back" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadActivityEditing}">
+                            <Border Classes="gamepad-key"><TextBlock Text="← →" /></Border>
+                            <TextBlock Text="Minute" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="LB RB" /></Border>
+                            <TextBlock Text="Ten minutes" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Choose" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Select" />
+                            <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
+                            <TextBlock Text="Cancel" />
+                        </StackPanel>
+                        <StackPanel Classes="gamepad-hint" Orientation="Horizontal"
+                                    IsVisible="{Binding IsGamepadActivityBrowsing}">
+                            <Border Classes="gamepad-key"><TextBlock Text="D-pad" /></Border>
+                            <TextBlock Text="Move · ← → week" />
+                            <Border Classes="gamepad-key" Margin="8,0,0,0"><TextBlock Text="LB RB" /></Border>
+                            <TextBlock Text="Timeline / Most played" />
+                            <Border Classes="gamepad-key action-a" Margin="8,0,0,0"><TextBlock Text="A" /></Border>
+                            <TextBlock Text="Open game" />
+                            <Border Classes="gamepad-key action-y" Margin="8,0,0,0"><TextBlock Text="Y" /></Border>
+                            <TextBlock Text="Edit session" />
                             <Border Classes="gamepad-key action-b" Margin="8,0,0,0"><TextBlock Text="B" /></Border>
                             <TextBlock Text="Back" />
                         </StackPanel>

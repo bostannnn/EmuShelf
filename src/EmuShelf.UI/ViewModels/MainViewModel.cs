@@ -1124,6 +1124,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadHotkeysViewModel? GamepadHotkeys { get; set; }
 
+    /// <summary>The play log overlay (M46 P3); the same view model the Desktop Activity window shows.</summary>
+    [ObservableProperty]
+    public partial ActivityViewModel? GamepadActivity { get; set; }
+
     /// <summary>Bumped each time a Search/Rename overlay opens so the view can raise the system keyboard once
     /// per open. A screen tap on the field raises the IME natively; a gamepad-directional focus does not, so
     /// the view forces it up on this signal (the same pattern the couch Settings text entry uses).</summary>
@@ -1149,6 +1153,32 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
     public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
     public bool IsGamepadHotkeysOpen => GamepadOverlay == GamepadOverlayKind.Hotkeys;
+    public bool IsGamepadActivityOpen => GamepadOverlay == GamepadOverlayKind.Activity;
+
+    // The footer legend follows the play log's editor: browsing keys, or the editor's own.
+    public bool IsGamepadActivityBrowsing => IsGamepadActivityOpen && GamepadActivity?.IsEditing != true;
+    public bool IsGamepadActivityEditing => IsGamepadActivityOpen && GamepadActivity?.IsEditing == true;
+
+    partial void OnGamepadActivityChanged(ActivityViewModel? oldValue, ActivityViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.PropertyChanged -= OnGamepadActivityPropertyChanged;
+        if (newValue is not null)
+            newValue.PropertyChanged += OnGamepadActivityPropertyChanged;
+        NotifyGamepadActivityLegend();
+    }
+
+    private void OnGamepadActivityPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ActivityViewModel.IsEditing))
+            NotifyGamepadActivityLegend();
+    }
+
+    private void NotifyGamepadActivityLegend()
+    {
+        OnPropertyChanged(nameof(IsGamepadActivityBrowsing));
+        OnPropertyChanged(nameof(IsGamepadActivityEditing));
+    }
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
     public bool IsGamepadSettingsChoicePickerOpen =>
@@ -1217,20 +1247,20 @@ public partial class MainViewModel : ViewModelBase
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
          GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
-         GamepadOverlayKind.LaunchScreen or
+         GamepadOverlayKind.Activity or GamepadOverlayKind.LaunchScreen or
          GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
          GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
          GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.LaunchScreen or
-         GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.Activity or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     // Confirmations render their own centred title inside the dialog card, so the chrome header title
     // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
     public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
-         GamepadOverlayKind.BatchScraper or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.BatchScraper or GamepadOverlayKind.Activity or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     /// <summary>The quiet platform line under the actions sheet's title — the header names the game,
     /// this names where it lives. Null for every other overlay (no eyebrow row).</summary>
@@ -1263,6 +1293,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.SystemMenu => "Menu",
         GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.Hotkeys => "Hotkeys",
+        GamepadOverlayKind.Activity => "Activity",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
@@ -2759,6 +2790,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
+        CloseGamepadActivity();
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
@@ -3141,6 +3173,14 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadHotkeysOpen)
             return DispatchHotkeysOverlayAction(action);
 
+        // The play log owns every button while open; B with nothing left to back out of closes it.
+        if (IsGamepadActivityOpen && GamepadActivity is { } activity)
+        {
+            if (!activity.Dispatch(action))
+                CloseGamepadOverlay();
+            return true;
+        }
+
         return HasGamepadOverlay
             ? DispatchOverlayAction(action)
             : DispatchLibraryAction(action);
@@ -3475,6 +3515,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
+        CloseGamepadActivity();
         FocusedGamepadAchievement = null;
         // A pending import folder is only meaningful while the ImportSystem chooser is up. Transitioning
         // to any other overlay (e.g. Menu from the chooser) abandons the import, so drop it here — the
@@ -3537,6 +3578,7 @@ public partial class MainViewModel : ViewModelBase
                     AddOption("Add games", AddFolderFromGamepadCommand, icon: GamepadOptionIcons.Add);
                 if (CanScrapeAllInView)
                     AddOption("Scrape all in view", ScrapeAllInViewCommand, icon: GamepadOptionIcons.Scrape);
+                AddOption("Activity", OpenActivityCommand, icon: GamepadOptionIcons.Activity);
                 AddOption("Settings", RequestSettingsFromGamepadCommand, icon: GamepadOptionIcons.Settings);
                 if (SupportsDesktopMode)
                     AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand, icon: GamepadOptionIcons.Desktop);
@@ -3573,6 +3615,7 @@ public partial class MainViewModel : ViewModelBase
             AddOption("Select disc", OpenFocusedDiscSelectionCommand, icon: GamepadOptionIcons.Cover);
         if (FocusedGame?.CanOpenAchievementDetails == true)
             AddOption("Achievements", OpenFocusedAchievementsCommand, icon: GamepadOptionIcons.Achievements);
+        AddOption("Play history", OpenFocusedPlayHistoryCommand, icon: GamepadOptionIcons.Activity);
         AddOption("Edit title", EditFocusedTitleCommand, icon: GamepadOptionIcons.Edit);
         AddOption("Set cover", SetFocusedCoverCommand, icon: GamepadOptionIcons.Cover);
         AddOption("Scrape with ScreenScraper", ScrapeFocusedGameCommand, icon: GamepadOptionIcons.Scrape);
@@ -3851,6 +3894,57 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    /// <summary>Opens the play log: the Gamepad overlay in Gamepad mode, else the Desktop window.</summary>
+    [RelayCommand]
+    private Task OpenActivityAsync() => ShowActivityAsync(gameId: null);
+
+    /// <summary>Opens one game's page of the play log (a game's context menu, the Y sheet).</summary>
+    [RelayCommand]
+    private Task OpenPlayHistoryAsync(GameViewModel? game) =>
+        game is null ? Task.CompletedTask : ShowActivityAsync(game.Model.Id);
+
+    [RelayCommand]
+    private Task OpenFocusedPlayHistoryAsync() => OpenPlayHistoryAsync(FocusedGame);
+
+    private async Task ShowActivityAsync(long? gameId)
+    {
+        var activity = new ActivityViewModel(_library, logger: _logger);
+        if (IsGamepadMode)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.Activity);
+            GamepadActivity = activity;
+            await activity.LoadAsync(gameId);
+            return;
+        }
+
+        await activity.LoadAsync(gameId);
+        await _dialogs.ShowActivityAsync(activity);
+        await RefreshAfterActivityAsync(activity);
+    }
+
+    // Edits and deletions change the play totals every library surface shows.
+    private void CloseGamepadActivity()
+    {
+        if (GamepadActivity is not { } activity)
+            return;
+        GamepadActivity = null;
+        _ = RefreshAfterActivityAsync(activity);
+    }
+
+    private async Task RefreshAfterActivityAsync(ActivityViewModel activity)
+    {
+        if (!activity.HasChanges)
+            return;
+        try
+        {
+            await RefreshAfterPlayRecordedAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not refresh the library after editing the play log.", ex);
+        }
+    }
+
     private void DisposeGamepadHotkeysDetails()
     {
         if (GamepadHotkeys is not { } details)
@@ -3877,6 +3971,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsOpen));
         OnPropertyChanged(nameof(IsGamepadHotkeysOpen));
+        OnPropertyChanged(nameof(IsGamepadActivityOpen));
+        NotifyGamepadActivityLegend();
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));

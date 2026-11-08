@@ -637,18 +637,117 @@ public sealed class GameLibrary : IGameLibrary
         return command.ExecuteScalar() is long id ? id : null;
     }
 
-    public IReadOnlyList<PlaySession> GetPlaySessions(long gameId)
+    public IReadOnlyList<PlaySession> GetPlaySessions(long gameId) =>
+        ReadPlaySessions("WHERE GameId = $id AND GamePath IS NULL", command => command.Parameters.AddWithValue("$id", gameId));
+
+    public IReadOnlyList<PlaySession> GetPlaySessionsBetween(DateTimeOffset from, DateTimeOffset to) =>
+        ReadPlaySessions(
+            "WHERE StartedUnixMilliseconds >= $from AND StartedUnixMilliseconds < $to",
+            command =>
+            {
+                command.Parameters.AddWithValue("$from", from.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue("$to", to.ToUnixTimeMilliseconds());
+            });
+
+    public bool EditPlaySession(long sessionId, TimeSpan duration)
+    {
+        var seconds = Math.Max(0, (long)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero));
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        if (ReadSessionTotalsRow(connection, transaction, sessionId) is not { } row)
+            return false;
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // The game's play time moves by the difference; a removed game's session changes only itself (its
+        // time joins the totals when the game is re-added, RelinkRemovedGameSessions).
+        command.CommandText =
+            """
+            UPDATE PlaySessions SET DurationSeconds = $seconds, Measurement = $edited WHERE Id = $id;
+            UPDATE Games SET PlaytimeSeconds = max(0, PlaytimeSeconds + $delta) WHERE Id = $gameId AND $linked = 1;
+            """;
+        command.Parameters.AddWithValue("$seconds", seconds);
+        command.Parameters.AddWithValue("$edited", (int)PlaySessionMeasurement.Edited);
+        command.Parameters.AddWithValue("$id", sessionId);
+        command.Parameters.AddWithValue("$delta", seconds - row.Seconds);
+        command.Parameters.AddWithValue("$gameId", row.GameId);
+        command.Parameters.AddWithValue("$linked", row.IsLinked ? 1 : 0);
+        command.ExecuteNonQuery();
+        transaction.Commit();
+        return true;
+    }
+
+    public bool DeletePlaySession(long sessionId)
+    {
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        if (ReadSessionTotalsRow(connection, transaction, sessionId) is not { } row)
+            return false;
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // Last-played follows the newest remaining session only when it was this one; with none left it
+        // is cleared if no plays remain, else kept (the remaining plays predate the log and their time is
+        // unknown).
+        command.CommandText =
+            """
+            DELETE FROM PlaySessions WHERE Id = $id;
+            UPDATE Games SET
+                PlaytimeSeconds = max(0, PlaytimeSeconds - $seconds),
+                PlayCount = max(0, PlayCount - 1),
+                LastPlayedUnixMilliseconds = CASE
+                    WHEN LastPlayedUnixMilliseconds IS NOT $started THEN LastPlayedUnixMilliseconds
+                    ELSE COALESCE(
+                        (SELECT MAX(StartedUnixMilliseconds) FROM PlaySessions
+                         WHERE GameId = $gameId AND GamePath IS NULL),
+                        CASE WHEN PlayCount - 1 > 0 THEN LastPlayedUnixMilliseconds END)
+                END
+            WHERE Id = $gameId AND $linked = 1;
+            """;
+        command.Parameters.AddWithValue("$id", sessionId);
+        command.Parameters.AddWithValue("$seconds", row.Seconds);
+        command.Parameters.AddWithValue("$started", row.StartedUnixMilliseconds);
+        command.Parameters.AddWithValue("$gameId", row.GameId);
+        command.Parameters.AddWithValue("$linked", row.IsLinked ? 1 : 0);
+        command.ExecuteNonQuery();
+        transaction.Commit();
+        return true;
+    }
+
+    private sealed record SessionTotalsRow(long GameId, long Seconds, long StartedUnixMilliseconds, bool IsLinked);
+
+    private static SessionTotalsRow? ReadSessionTotalsRow(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long sessionId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT GameId, COALESCE(DurationSeconds, 0), StartedUnixMilliseconds, GamePath IS NULL
+            FROM PlaySessions WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", sessionId);
+        using var reader = command.ExecuteReader();
+        return reader.Read()
+            ? new SessionTotalsRow(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3) != 0)
+            : null;
+    }
+
+    private IReadOnlyList<PlaySession> ReadPlaySessions(string where, Action<SqliteCommand> bind)
     {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText =
-            """
-            SELECT Id, GameId, GameTitle, SystemId, StartedUnixMilliseconds, DurationSeconds, Measurement, DeviceId
+            $"""
+            SELECT Id, GameId, GameTitle, SystemId, StartedUnixMilliseconds, DurationSeconds, Measurement, DeviceId,
+                   GamePath IS NOT NULL
             FROM PlaySessions
-            WHERE GameId = $id AND GamePath IS NULL
+            {where}
             ORDER BY StartedUnixMilliseconds DESC, Id DESC;
             """;
-        command.Parameters.AddWithValue("$id", gameId);
+        bind(command);
         using var reader = command.ExecuteReader();
         var sessions = new List<PlaySession>();
         while (reader.Read())
@@ -661,7 +760,8 @@ public sealed class GameLibrary : IGameLibrary
                 DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)),
                 reader.IsDBNull(5) ? null : TimeSpan.FromSeconds(reader.GetInt64(5)),
                 reader.IsDBNull(6) ? null : (PlaySessionMeasurement)reader.GetInt32(6),
-                reader.GetString(7)));
+                reader.GetString(7),
+                reader.GetInt64(8) != 0));
         }
         return sessions;
     }
