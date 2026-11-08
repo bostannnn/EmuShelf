@@ -2602,6 +2602,7 @@ public partial class MainViewModel : ViewModelBase
                 setup: setup,
                 // The wizard is an Android first-run flow; desktop never shows the row.
                 runSetup: OperatingSystem.IsAndroid() ? OpenSetupWizardAsync : null,
+                usageAccess: EmuShelf.App.App.UsageAccess,
                 refreshGameCounts: async () =>
                 {
                     try
@@ -6746,7 +6747,10 @@ public partial class MainViewModel : ViewModelBase
     /// session interrupted by process death. Must be called on the UI thread (it touches launch status and
     /// grid state). The caller clears the pending-session record after this returns.
     /// </summary>
-    public async Task CompleteDeferredPlaySessionAsync(long gameId, TimeSpan playDuration)
+    public async Task CompleteDeferredPlaySessionAsync(
+        long gameId,
+        TimeSpan playDuration,
+        PlaySessionMeasurement measurement = PlaySessionMeasurement.WallClockEstimate)
     {
         // Off the UI thread: this runs the instant the couch returns to the foreground, and the library
         // read (a full-table query) would otherwise hitch that first frame on a large library.
@@ -6764,7 +6768,12 @@ public partial class MainViewModel : ViewModelBase
         // sitting the number is meaningless, so drop it rather than record a fake multi-day playtime. The
         // launch itself was already stamped (last-played + play count) at start, so a dropped duration only
         // loses the (approximate) minutes, not the "played" signal.
-        if (playDuration > TimeSpan.Zero && playDuration <= MaxDeferredPlaySession)
+        // Measured on-screen time (Usage access, M46 P2) is real however long it is; only the wall-clock
+        // estimate needs the plausibility cap.
+        // A measured zero is a known length (the game never stayed on screen); a zero estimate is not.
+        var measured = measurement != PlaySessionMeasurement.WallClockEstimate;
+        var plausible = measured || playDuration <= MaxDeferredPlaySession;
+        if ((playDuration > TimeSpan.Zero || measured) && plausible)
         {
             try
             {
@@ -6777,7 +6786,7 @@ public partial class MainViewModel : ViewModelBase
                     var sessionId = _library.FindOpenPlaySession(gameId)
                         ?? _library.RecordLaunchStarted(gameId, DateTimeOffset.UtcNow - playDuration);
                     if (sessionId is { } id)
-                        _library.CompletePlaySession(id, playDuration, PlaySessionMeasurement.WallClockEstimate);
+                        _library.CompletePlaySession(id, playDuration, measurement);
                 });
             }
             catch (Exception ex)
@@ -6785,7 +6794,7 @@ public partial class MainViewModel : ViewModelBase
                 _logger.Error("Could not record playtime after a deferred launch.", ex);
             }
         }
-        else if (playDuration > MaxDeferredPlaySession)
+        else if (!plausible)
         {
             _logger.Information(
                 $"Skipped implausible deferred playtime of {playDuration:g} for {game.Title} " +

@@ -13330,3 +13330,38 @@ The P1 slice of the play log. The choices the roadmap left open:
   start that way: `AvaloniaUI.DiagnosticsSupport` is `PrivateAssets="All"` in `EmuShelf.UI`, so it's never
   copied beside the desktop head, yet Debug attaches the dev tools. It's not fixed here (outside P1).
 
+## 2026-11-08 — M46 P2: timing Android play by the emulator's on-screen time
+
+With Usage access granted, an Android session's length is the time the emulator's activities were
+resumed with the screen on, between the launch and EmuShelf's return. The rest:
+
+- **The grant is the opt-in; there is no setting.** The Library row "Accurate play time" shows whether
+  Usage access is granted, and A opens Android's Usage access screen (package-scoped where the firmware
+  resolves it), which is also where it is turned off. A separate toggle would only add a state where access
+  is granted and ignored. The grant is cached and re-read on return, like the Shizuku probe.
+- **The calculation is in Core** (`ForegroundTime.Measure`, `DeferredPlayTiming.Resolve`) so it is tested
+  on macOS, including a real Thor session from `dumpsys usagestats`. The Thor reports a sleep as
+  SCREEN_NON_INTERACTIVE a second before the activity's PAUSED and STOPPED, and a wake as INTERACTIVE and
+  RESUMED in the same second; RetroArch was seen leaving with STOPPED and no PAUSED. So the reader passes
+  PAUSED and STOPPED as pauses, and a screen-off ends any sitting on its own, in case an emulator keeps an
+  activity resumed. Several resumed activities of one app count once. A game still resumed at the return
+  (its own display on a dual-screen device) counts up to the return.
+- **No events of the emulator in the window means unknown, not zero.** Android keeps usage events for a
+  few days, so a return long after process death may find none; the session then keeps the wall-clock
+  estimate, marked as one. If the oldest events have aged out mid-session the first event seen can be a
+  pause, which is credited from the launch: the best reading left, and rare.
+- **The 12-hour cap now applies only to estimates.** It existed because a wall-clock gap after process
+  death can be days; measured on-screen time is real however long.
+- **"About" labelling waits for P3.** P2 stores how each session was measured, but no screen lists
+  sessions yet, and a game's total mixes measured time, estimates and earlier play, so totals stay plain.
+- **Android 10 (API 29) and later only.** The activity event types it relies on start there; below it the
+  row is not offered and play keeps the estimate. The Thor runs 13.
+- **Installed on the Thor only after M45 H4 finished.** That agent had installed its own build minutes
+  before and was testing on the device, so this one waited. The in-app grant and a session timed by the
+  app are the remaining device check; the row is reached from Gamepad mode until M45 H6a.
+- **A Debug APK installed with plain `adb install -r` runs the previous build's code.** .NET Android Debug
+  builds use fast deployment: the APK leaves out the app's assemblies, which `-t:Install` pushes to the
+  device separately, so a bare `adb install` kept the M45 build's assemblies (the library stayed at schema
+  20). Deploy Debug builds with `-t:Install`, as `docs/android-port-plan.md` says, or embed the assemblies
+  in the APK.
+

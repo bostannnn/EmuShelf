@@ -2529,7 +2529,14 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       Tests: migration from v20 with existing totals, open and closed rows, cache consistency, an
       unclosed row after a simulated kill, removal keeps history. **Exit:** on macOS and the Thor every
       launch writes one row, and the totals match the sum of the rows plus earlier play.
-- [ ] **P2 — accurate timing on Android through Usage access.** An opt-in "Accurate play time" row in
+- [x] **P2 — accurate timing on Android through Usage access.** ✅ (2026-11-08; built and tested on
+      macOS, the Android head compiles with no new warnings, and the timing is checked against a real
+      Thor session read with `dumpsys usagestats`: three sleeps in 98.6 wall-clock minutes, 28:58 on
+      screen. Installed on the Thor at 13:05 once M45 H4 was done: the owner's library (1001 games)
+      upgraded to schema 21 and the app starts cleanly. Still open on the device: granting access in the
+      new row and a session timed by the app itself. The row is in Gamepad mode's Settings (Library);
+      Handheld mode can't reach Settings until M45 H6a.
+      Choices in `DECISIONS.md` 2026-11-08 "M46 P2".) An opt-in "Accurate play time" row in
       Settings (Library) that explains the permission and opens Android's Usage access page, as Cocoon
       does. Granted: the session's length is the time the emulator's package was actually in the
       foreground between launch and return, from `UsageStatsManager` activity resumed / paused events,

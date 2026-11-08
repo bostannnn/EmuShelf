@@ -3226,6 +3226,43 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_MeasuredOnScreenTime_IsKeptBeyondTwelveHours()
+    {
+        // The cap guards the wall-clock estimate; usage access measures real on-screen time (M46 P2).
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromHours(13), PlaySessionMeasurement.UsageAccess);
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromHours(13), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.UsageAccess, session.Measurement);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_AMeasuredZero_ClosesTheSessionAtZero()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.Zero, PlaySessionMeasurement.UsageAccess);
+
+        Assert.Equal(TimeSpan.Zero, Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+    }
+
+    [AvaloniaFact]
     public async Task CompleteDeferredPlaySession_BeyondTwelveHours_LeavesThePlayOfUnknownLength()
     {
         var folder = MakeRomsFolder();
