@@ -97,6 +97,118 @@
       <Setter Property="Transitions" Value="{x:Null}" />
     </Style>
 
+    <!-- Arranging home (H4): the carried tile rides high, empty slots light up, the New ribbon. -->
+    <Style Selector="Panel.home-slot.carried">
+      <Setter Property="RenderTransform" Value="translateY(-14px) scale(1.16)" />
+      <Setter Property="Opacity" Value="0.92" />
+    </Style>
+    <Style Selector="Border.empty-slot.landing">
+      <Setter Property="BorderBrush" Value="#805B58D9" />
+      <Setter Property="Background" Value="#265B58D9" />
+    </Style>
+    <Style Selector="Border.ribbon">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Padding" Value="14,4" />
+      <Setter Property="Margin" Value="0,-10,-14,0" />
+      <Setter Property="BoxShadow" Value="0 3 8 0 #405B58D9" />
+    </Style>
+    <Style Selector="Border.ribbon TextBlock">
+      <Setter Property="FontSize" Value="20" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <!-- The actions sheet's and the naming panel's rows. -->
+    <Style Selector="Border.sheet-row">
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="MinHeight" Value="88" />
+      <Setter Property="Padding" Value="28,12" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.sheet-row.focused">
+      <Setter Property="Background" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.sheet-row TextBlock.label">
+      <Setter Property="FontSize" Value="30" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+    </Style>
+    <Style Selector="Border.sheet-row TextBlock.note">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="Foreground" Value="#5B6176" />
+    </Style>
+    <Style Selector="Border.sheet-row.focused TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.colour-chip">
+      <Setter Property="Width" Value="88" />
+      <Setter Property="Height" Value="88" />
+      <Setter Property="CornerRadius" Value="44" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="BorderBrush" Value="White" />
+    </Style>
+    <Style Selector="Border.colour-chip.focused">
+      <Setter Property="BorderThickness" Value="6" />
+      <Setter Property="BoxShadow" Value="0 0 0 6 #5B58D9" />
+    </Style>
+    <Style Selector="Border.name-field">
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="Background" Value="#F2F4F8" />
+      <Setter Property="BorderBrush" Value="#29465088" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Padding" Value="24,8" />
+    </Style>
+    <Style Selector="Border.name-field.focused">
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BorderThickness" Value="4" />
+    </Style>
+    <!-- The name field is the panel's own pill: the TextBox inside draws no box of its own in any state. -->
+    <Style Selector="TextBox.name-input /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="TextBox.name-input:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="TextBox.name-input:pointerover /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.key">
+      <Setter Property="Width" Value="100" />
+      <Setter Property="Height" Value="100" />
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BoxShadow" Value="0 2 6 0 #12000000" />
+    </Style>
+    <Style Selector="Border.key TextBlock">
+      <Setter Property="FontSize" Value="36" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.key.wide">
+      <Setter Property="Width" Value="300" />
+    </Style>
+    <Style Selector="Border.key.wide TextBlock">
+      <Setter Property="FontSize" Value="30" />
+    </Style>
+    <Style Selector="Border.key.done">
+      <Setter Property="Background" Value="#E9E8FB" />
+    </Style>
+    <Style Selector="Border.key.focused">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="RenderTransform" Value="scale(1.08)" />
+    </Style>
+    <Style Selector="Border.key.focused TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+
     <!-- Header chips: a raised white surface with a hairline. -->
     <Style Selector="Border.chip">
       <Setter Property="Background" Value="#FFFFFF" />
@@ -222,13 +334,43 @@
                       <DataTemplate x:DataType="vm:HandheldHomeSlotViewModel">
                         <!-- Room for the folder's shadow when the native Launcher pictures it; layout unchanged. -->
                         <Border Classes="shot" Padding="48" Margin="-48">
-                        <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}"
-                               Width="176" Height="176" Margin="24,10">
-                          <!-- A platform folder: its flap tilts while focused so the first covers peek out. -->
+                        <Panel Classes="focusable home-slot" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}"
+                               Classes.carried="{Binding IsCarried}" Width="176" Height="176" Margin="24,10" Background="Transparent">
+                          <!-- A folder (a platform's, yours, Recent): its flap tilts while focused so the first covers peek out. -->
                           <vh:HandheldFolderArt IsVisible="{Binding IsFolder}" Classes.peek="{Binding IsFocused}" Margin="-8" />
-                          <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out. -->
-                          <Border IsVisible="{Binding IsEmpty}" CornerRadius="44" BorderBrush="#29465088" BorderThickness="2"
-                                  Background="#40FFFFFF" />
+                          <!-- A game pinned to home: its cover, cropped to the tile; dimmed when its file is missing. -->
+                          <Panel IsVisible="{Binding IsGame}">
+                            <vh:HandheldShadow Radius="44" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border CornerRadius="44" ClipToBounds="True" Background="#D5D9E4"
+                                    Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
+                              <Panel>
+                                <TextBlock Text="{Binding Name}" IsVisible="{Binding !HasCover}" FontSize="20" FontWeight="SemiBold"
+                                           Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center" Margin="16"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" MaxLines="4"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Border IsVisible="{Binding HasCover}">
+                                  <Border.Background>
+                                    <ImageBrush Source="{Binding Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                                  </Border.Background>
+                                </Border>
+                              </Panel>
+                            </Border>
+                          </Panel>
+                          <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out; in move mode it lights up. -->
+                          <Border IsVisible="{Binding IsEmpty}" Classes="empty-slot" Classes.landing="{Binding IsLandingPlace}"
+                                  CornerRadius="44" BorderBrush="#29465088" BorderThickness="2" Background="#40FFFFFF" />
+                          <!-- A platform folder that arrived since you last looked. -->
+                          <Border IsVisible="{Binding IsNew}" Classes="ribbon" HorizontalAlignment="Right" VerticalAlignment="Top">
+                            <TextBlock Text="New" />
+                          </Border>
+                          <!-- Move mode: the game or folder the carried game would merge with. -->
+                          <Border IsVisible="{Binding IsDropTarget}" CornerRadius="56" Margin="-12" BorderBrush="#5B58D9"
+                                  BorderThickness="6" Background="#1F5B58D9">
+                            <Border Width="56" Height="56" CornerRadius="28" Background="#5B58D9" HorizontalAlignment="Right"
+                                    VerticalAlignment="Top" Margin="0,-20,-20,0">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="32" Height="32" Foreground="White" />
+                            </Border>
+                          </Border>
                           <Border Classes="ring" CornerRadius="68" Margin="-24" />
                         </Panel>
                         </Border>
@@ -294,7 +436,7 @@
             <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="24" Foreground="#5B6176"
                        VerticalAlignment="Center" FontFeatures="+tnum" />
           </StackPanel>
-          <Border x:Name="SortShot" Grid.Column="2" Classes="shot" Padding="24" Margin="-24">
+          <Border x:Name="SortShot" Grid.Column="2" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
           <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsSortFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
             <Border Classes="chip">
               <TextBlock Classes="chip-text" Text="{Binding OpenFolder.SortLabel}" />
@@ -321,7 +463,7 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldGameTileViewModel">
               <Border Classes="shot" Padding="48" Margin="-48" HorizontalAlignment="Left" VerticalAlignment="Center">
-              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
+              <Panel Classes="focusable folder-tile" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
                      HorizontalAlignment="Left" VerticalAlignment="Center">
                 <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" Filled="True" />
                 <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" Filled="True" />
@@ -354,7 +496,7 @@
                     VerticalAlignment="Center" Spacing="8" Margin="0,0,48,0">
           <TextBlock Text="This folder is empty" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
                      HorizontalAlignment="Center" />
-          <TextBlock Text="Games you add to this platform appear here" FontSize="24" Foreground="#5B6176"
+          <TextBlock Text="{Binding OpenFolder.EmptyHint}" FontSize="24" Foreground="#5B6176"
                      HorizontalAlignment="Center" />
         </StackPanel>
       </Grid>
@@ -705,5 +847,142 @@
         </Border>
         </Viewbox>
       </Border>
+
+  <!--
+    ===== The actions sheet (Y) and its confirmations (H4) =====
+    Slides up over the Launcher's lower half on a scrim; the focused row is filled with the accent. Every
+    "Remove" row names its place. A tap runs a row; a tap on the scrim closes the sheet.
+  -->
+  <Border x:Name="SheetLayer" IsVisible="{Binding IsSheetOpen}" Background="#521C2033">
+    <Viewbox Stretch="Uniform">
+      <Border Width="1240" Height="1080" Background="Transparent">
+        <Border x:Name="SheetCard" VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="880" Margin="0,0,0,48"
+                CornerRadius="48" Background="#FFFFFF" Padding="24,32,24,24" BoxShadow="0 24 56 0 #40000000">
+          <StackPanel Spacing="16">
+            <StackPanel Margin="28,0,28,8" Spacing="4">
+              <TextBlock Text="{Binding Sheet.Title}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock Text="{Binding Sheet.Subtitle}" IsVisible="{Binding Sheet.HasSubtitle}" FontSize="24" Foreground="#5B6176"
+                         TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
+            </StackPanel>
+            <ItemsControl ItemsSource="{Binding Sheet.Items}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="4" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldSheetItemViewModel">
+                  <Border Classes="sheet-row" Classes.focused="{Binding IsFocused}">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Classes="label" Text="{Binding Label}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="note" Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}"
+                                 VerticalAlignment="Center" Margin="24,0,0,0" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </Border>
+    </Viewbox>
+  </Border>
+
+  <!--
+    ===== Naming a folder (H4) =====
+    The mockup's keyboard, on the bottom screen: the name as typed, the colour chips, then the keys. The pad
+    moves over the keys (A types, B deletes, Y is a space, X or Start finishes) and up from the top row reaches
+    the colours; taps work too. The Stage shows the folder with the name and colour as they change.
+  -->
+  <Border x:Name="NamingLayer" IsVisible="{Binding IsNaming}">
+    <Border.Background>
+      <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+        <GradientStop Offset="0" Color="#FAFBFD" />
+        <GradientStop Offset="1" Color="#E4E8EF" />
+      </LinearGradientBrush>
+    </Border.Background>
+    <Viewbox Stretch="Uniform">
+      <Border Width="1240" Height="1080" Background="Transparent">
+        <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="64,48,64,40">
+          <!-- The field: what the folder is called so far. -->
+          <Border Classes="name-field" Classes.focused="True">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="{Binding Naming.Heading}" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center"
+                         Margin="0,0,24,0" />
+              <TextBox x:Name="NameField" Grid.Column="1" Classes="name-input" Text="{Binding Naming.Text, Mode=TwoWay}"
+                       PlaceholderText="{Binding Naming.Placeholder}" MaxLength="24" FontSize="40" FontWeight="SemiBold"
+                       Foreground="#1C2033" Background="Transparent" BorderThickness="0" MinHeight="80"
+                       VerticalContentAlignment="Center" Focusable="True" />
+            </Grid>
+          </Border>
+          <!-- Colour chips: up from the top row of keys. -->
+          <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="32" Margin="0,32,0,0">
+            <TextBlock Text="Colour" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center" Width="120" />
+            <ItemsControl x:Name="ColourChips" ItemsSource="{Binding Naming.Colors}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" Spacing="32" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldColorChipViewModel">
+                  <Border Classes="colour-chip" Classes.focused="{Binding IsFocused}" Background="{Binding Brush}">
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="40" Height="40" Foreground="White"
+                              IsVisible="{Binding IsChosen}" />
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+          <!-- The keys. -->
+          <ItemsControl Grid.Row="2" ItemsSource="{Binding Naming.KeyRows}" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="14" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldKeyRowViewModel">
+                <ItemsControl ItemsSource="{Binding Keys}" HorizontalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="12" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HandheldKeyViewModel">
+                      <Border Classes="key" Classes.wide="{Binding IsWide}" Classes.done="{Binding IsDone}" Classes.focused="{Binding IsFocused}">
+                        <TextBlock Text="{Binding Label}" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <!-- What the buttons do here. -->
+          <ItemsControl Grid.Row="3" ItemsSource="{Binding Hints}" HorizontalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="40" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldHint">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Border Classes="hint-glyph">
+                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="Bold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <TextBlock Text="{Binding Label}" FontSize="24" Foreground="#5B6176" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Border>
+    </Viewbox>
+  </Border>
   </Panel>
 </UserControl>

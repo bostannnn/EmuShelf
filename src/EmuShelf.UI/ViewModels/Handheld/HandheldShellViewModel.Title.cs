@@ -47,6 +47,12 @@ public sealed partial class HandheldShellViewModel
             page.Cover = null;
             cover.Dispose();
         }
+        // A pin removed from home while its Title page was open: its entry goes now.
+        if (_releaseWithTitle.Count > 0)
+        {
+            _library.ReleaseGames(_releaseWithTitle.ToList());
+            _releaseWithTitle.Clear();
+        }
         // The page's achievements live on the companion; leaving the page leaves them too.
         UpdateFocus();
     }
@@ -243,11 +249,18 @@ public sealed partial class HandheldShellViewModel
             // Back to the grid, as the 3DS returns to HOME: that is what is on screen when the game closes.
             // The play was recorded at start, so re-read the folder for its last-played facts.
             CloseTitle();
-            _ = RefreshOpenFolderAsync();
+            _ = RefreshAfterPlayAsync();
             return;
         }
         page.State = HandheldTitleState.Buttons;
         UpdateHints();
+    }
+
+    // Recent first: an open Recent folder re-reads from the updated list, so the game just played leads it.
+    private async Task RefreshAfterPlayAsync()
+    {
+        await RefreshRecentAsync();
+        await RefreshOpenFolderAsync();
     }
 
     // ---- Screen chooser: two cards (top, bottom) and "Always use this screen" beneath them ----
@@ -382,6 +395,16 @@ public sealed partial class HandheldShellViewModel
             {
                 ReturnToTitleButtons(page);
                 OpenTitleAchievements();
+            }));
+        }
+        // Where the game is (decision 12): these open the Launcher's sheet, or change home and say so.
+        foreach (var place in PlaceItems(page.Entry, OpenFolder?.Source))
+        {
+            var row = place;
+            page.Options.Add(new HandheldTitleOptionViewModel(row.Label, row.Note, () =>
+            {
+                ReturnToTitleButtons(page);
+                row.Run();
             }));
         }
         page.Options.Add(new HandheldTitleOptionViewModel($"Back to {page.Crumb}", null, CloseTitle));

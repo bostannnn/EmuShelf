@@ -29,6 +29,13 @@ public static class HandheldIcons
     public static readonly Geometry Disc = Geometry.Parse(
         "F0 M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6z");
 
+    /// <summary>Your folders' flap glyph (decision 7: a glyph, not a monogram, so they read as yours).</summary>
+    public static readonly Geometry Star = Geometry.Parse("M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z");
+
+    /// <summary>The Recent folder's flap glyph.</summary>
+    public static readonly Geometry Clock = Geometry.Parse(
+        "F0 M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm1 3v4.59l3.2 3.2-1.41 1.42L11 12.41V7z");
+
     public static readonly Geometry Check = Geometry.Parse("M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z");
 
     /// <summary>Two stacked screens with the top one filled: the Thor's top (main) display.</summary>
@@ -53,6 +60,8 @@ public static class HandheldViewConverters
             HandheldGlyph.AllApps => HandheldIcons.AllApps,
             HandheldGlyph.Menu => HandheldIcons.Menu,
             HandheldGlyph.Plus => HandheldIcons.Plus,
+            HandheldGlyph.Star => HandheldIcons.Star,
+            HandheldGlyph.Clock => HandheldIcons.Clock,
             HandheldGlyph.Back => HandheldIcons.Back,
             HandheldGlyph.Sort => HandheldIcons.Sort,
             _ => null,

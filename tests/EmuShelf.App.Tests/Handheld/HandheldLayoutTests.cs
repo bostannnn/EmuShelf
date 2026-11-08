@@ -8,37 +8,42 @@ namespace EmuShelf.App.Tests.Handheld;
 public class HandheldLayoutTests
 {
     [Fact]
-    public void DefaultLayout_FillsPlatformFoldersInOrderThenEmptySlots()
+    public void DefaultLayout_IsRecentThenPlatformFoldersInOrderThenEmptySlots()
     {
         var layout = HandheldHomeLayout.CreateDefault(["ps2", "gc", "wii"]);
 
-        var page = Assert.Single(layout.Pages);
+        // Home is a place with slots: 40 of them, two pages, the rest drawn as empty slots.
+        Assert.Equal(HandheldHomeLayout.MinimumPages, layout.Pages.Count);
+        var page = layout.Pages[0];
         Assert.Equal(HandheldHomeLayout.SlotsPerPage, page.Slots.Count);
-        Assert.Equal(["ps2", "gc", "wii"], page.Slots.Take(3).Select(slot => slot.SystemId));
-        Assert.All(page.Slots.Take(3), slot => Assert.Equal(HandheldSlotKind.PlatformFolder, slot.Kind));
-        // Home is a place with slots: the rest of the page is drawn as empty slots, not left out.
-        Assert.All(page.Slots.Skip(3), slot => Assert.True(slot.IsEmpty));
+        Assert.Equal(HandheldSlot.Recent, page.Slots[0]);
+        Assert.Equal(["ps2", "gc", "wii"], page.Slots.Skip(1).Take(3).Select(slot => slot.SystemId));
+        Assert.All(page.Slots.Skip(1).Take(3), slot => Assert.Equal(HandheldSlotKind.PlatformFolder, slot.Kind));
+        Assert.All(page.Slots.Skip(4).Concat(layout.Pages[1].Slots), slot => Assert.True(slot.IsEmpty));
     }
 
     [Fact]
-    public void DefaultLayout_EmptyLibraryStillHasOnePageOfEmptySlots()
+    public void DefaultLayout_EmptyLibraryIsTwoPagesOfEmptySlots()
     {
-        var page = Assert.Single(HandheldHomeLayout.CreateDefault([]).Pages);
-        Assert.All(page.Slots, slot => Assert.True(slot.IsEmpty));
+        var layout = HandheldHomeLayout.CreateDefault([]);
+
+        Assert.Equal(2, layout.Pages.Count);
+        Assert.All(layout.AllSlots(), slot => Assert.True(slot.IsEmpty));
     }
 
     [Fact]
     public void DefaultLayout_OverflowsOntoMorePagesAndDropsDuplicates()
     {
-        var ids = Enumerable.Range(0, 23).Select(i => $"sys{i}").Append("sys0").ToArray();
+        var ids = Enumerable.Range(0, 43).Select(i => $"sys{i}").Append("sys0").ToArray();
 
         var layout = HandheldHomeLayout.CreateDefault(ids);
 
-        Assert.Equal(2, layout.Pages.Count);
-        Assert.Equal("sys19", layout.SlotAt(0, 19).SystemId);
-        Assert.Equal("sys20", layout.SlotAt(1, 0).SystemId);
-        Assert.Equal("sys22", layout.SlotAt(1, 2).SystemId);
-        Assert.True(layout.SlotAt(1, 3).IsEmpty);
+        // Recent and 43 platforms: 44 tiles need a third page.
+        Assert.Equal(3, layout.Pages.Count);
+        Assert.Equal("sys18", layout.SlotAt(0, 19).SystemId);
+        Assert.Equal("sys19", layout.SlotAt(1, 0).SystemId);
+        Assert.Equal("sys42", layout.SlotAt(2, 3).SystemId);
+        Assert.True(layout.SlotAt(2, 4).IsEmpty);
     }
 
     [Fact]

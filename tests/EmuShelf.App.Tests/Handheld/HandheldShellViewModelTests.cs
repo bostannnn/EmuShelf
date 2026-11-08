@@ -57,6 +57,26 @@ public partial class HandheldShellViewModelTests
             return Task.FromResult<IReadOnlyList<HandheldGameEntry>>(Games[systemId].Take(count).ToList());
         }
 
+        public List<IReadOnlyList<long>> ByIdReads { get; } = [];
+
+        public Task<IReadOnlyList<HandheldGameEntry>> GetGamesByIdAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken = default)
+        {
+            ByIdReads.Add(ids);
+            var all = Games.Values.SelectMany(games => games).ToDictionary(game => game.Id);
+            return Task.FromResult<IReadOnlyList<HandheldGameEntry>>(ids.Where(all.ContainsKey).Select(id => all[id]).ToList());
+        }
+
+        public Task<IReadOnlySet<long>> GetGameIdsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<long>>(Games.Values.SelectMany(games => games).Select(game => game.Id).ToHashSet());
+
+        public Task<IReadOnlyList<long>> GetRecentGameIdsAsync(int count, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<long>>(Games.Values.SelectMany(games => games)
+                .Where(game => game.LastPlayedAt is not null)
+                .OrderByDescending(game => game.LastPlayedAt)
+                .Take(count)
+                .Select(game => game.Id)
+                .ToList());
+
         public void ReleaseGames(IReadOnlyList<HandheldGameEntry> games) => Released += games.Count;
 
         public Task<Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, CancellationToken cancellationToken)
@@ -100,9 +120,17 @@ public partial class HandheldShellViewModelTests
         }
     }
 
-    private static async Task<HandheldShellViewModel> CreateAsync(FakeLibrary library)
+    /// <summary>
+    /// A shell whose saved home is the platform folders alone, in order from slot 0 (reconciliation then puts
+    /// Recent after them), so these tests can count slots from the first platform. The default layout, with
+    /// Recent first, has tests of its own.
+    /// </summary>
+    private static async Task<HandheldShellViewModel> CreateAsync(FakeLibrary library, InMemoryHandheldHomeLayoutStore? store = null)
     {
-        var shell = new HandheldShellViewModel(library);
+        store ??= new InMemoryHandheldHomeLayoutStore();
+        if (store.Saved is null)
+            store.Save(HandheldHomeLayout.FromSlots(library.Platforms.Select(platform => HandheldSlot.PlatformFolder(platform.SystemId))));
+        var shell = new HandheldShellViewModel(library, layoutStore: store);
         await shell.InitializeAsync();
         return shell;
     }
@@ -124,27 +152,34 @@ public partial class HandheldShellViewModelTests
 
         var page = Assert.IsType<HandheldHomePageViewModel>(shell.CurrentPage);
         Assert.Equal(20, page.Slots.Count);
-        Assert.Equal(["PS2 System", "GC System"], page.Slots.Where(slot => slot.IsFolder).Select(slot => slot.Name));
-        Assert.Equal(18, page.Slots.Count(slot => slot.IsEmpty));
+        // The saved home has the two platforms; reconciliation puts the missing Recent folder after them.
+        Assert.Equal(["PS2 System", "GC System", "Recent"], page.Slots.Where(slot => slot.IsFolder).Select(slot => slot.Name));
+        Assert.Equal(17, page.Slots.Count(slot => slot.IsEmpty));
         Assert.True(page.Slots[0].IsFocused);
         Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);
         Assert.Equal("PS2 System", shell.Stage.Title);
         Assert.Equal("Folder · 3 games", shell.Stage.Subtitle);
-        Assert.False(shell.HasMultiplePages);
+        // Home is 40 slots: two pages, the second one empty.
+        Assert.True(shell.HasMultiplePages);
     }
 
     [Fact]
-    public async Task SelectorLandsOnEmptySlots_AndAThereDoesNothingYet()
+    public async Task SelectorLandsOnEmptySlots_AndAThereStartsANewFolder()
     {
         var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3));
 
-        Press(shell, GamepadAction.NavigateRight);
+        // ps2, then Recent, then the first empty slot.
+        Press(shell, GamepadAction.NavigateRight, 2);
+        Assert.True(shell.CurrentPage!.Slots[2].IsFocused);
+        Assert.Equal(HandheldStageKind.EmptySlot, shell.Stage.Kind);
+
         Press(shell, GamepadAction.Confirm);
 
-        Assert.Equal(1, shell.HomePosition.Slot);
-        Assert.True(shell.CurrentPage!.Slots[1].IsFocused);
-        Assert.Equal(HandheldStageKind.EmptySlot, shell.Stage.Kind);
+        Assert.Equal(2, shell.HomePosition.Slot);
         Assert.False(shell.IsFolderOpen);
+        Assert.True(shell.IsNaming);
+        Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);
+        Assert.Equal("New folder", shell.Stage.Title);
     }
 
     [Fact]
@@ -566,7 +601,8 @@ public partial class HandheldShellViewModelTests
         Press(shell, GamepadAction.Actions);
 
         Assert.True(page.IsActions);
-        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Back to GC System"], page.Options.Select(option => option.Label));
+        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Add to folder…", "Pin to home", "Back to GC System"],
+            page.Options.Select(option => option.Label));
 
         // "Play on another screen…" asks even though the platform is pinned to the bottom screen.
         Press(shell, GamepadAction.NavigateDown);
@@ -576,7 +612,7 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Cancel);
         Press(shell, GamepadAction.Actions);
-        Press(shell, GamepadAction.NavigateDown, 3);
+        Press(shell, GamepadAction.NavigateDown, 5);
         Press(shell, GamepadAction.Confirm);
         Assert.False(shell.IsTitleOpen);
     }
@@ -627,7 +663,8 @@ public class HandheldShellStatusTests
         library.Reads[0].SetResult([]);
         await first;
 
-        Assert.Equal(2, shell.CurrentPage!.Slots.Count(slot => slot.IsFolder));
+        // Recent and the two platforms of the newer read.
+        Assert.Equal(3, shell.CurrentPage!.Slots.Count(slot => slot.IsFolder));
     }
 
     private class NoLibrary : IHandheldLibrary
@@ -638,6 +675,12 @@ public class HandheldShellStatusTests
             System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>>([]);
         public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, System.Threading.CancellationToken cancellationToken = default) =>
             System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>>([]);
+        public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>> GetGamesByIdAsync(System.Collections.Generic.IReadOnlyList<long> ids, System.Threading.CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<HandheldGameEntry>>([]);
+        public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlySet<long>> GetGameIdsAsync(System.Threading.CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlySet<long>>(new System.Collections.Generic.HashSet<long>());
+        public System.Threading.Tasks.Task<System.Collections.Generic.IReadOnlyList<long>> GetRecentGameIdsAsync(int count, System.Threading.CancellationToken cancellationToken = default) =>
+            System.Threading.Tasks.Task.FromResult<System.Collections.Generic.IReadOnlyList<long>>([]);
         public void ReleaseGames(System.Collections.Generic.IReadOnlyList<HandheldGameEntry> games) { }
         public System.Threading.Tasks.Task<Avalonia.Media.Imaging.Bitmap?> LoadCoverAsync(HandheldGameEntry game, int decodeWidth, bool fullSize, System.Threading.CancellationToken cancellationToken) =>
             System.Threading.Tasks.Task.FromResult<Avalonia.Media.Imaging.Bitmap?>(null);

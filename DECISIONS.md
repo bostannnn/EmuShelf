@@ -13230,3 +13230,75 @@ rate for all of it, about 576 frames a move, though only one glow's opacity was 
 - The design is unchanged (timing, depth and colour of the breath); only its frame rate is, and only when
   nothing else moves.
 
+
+## 2026-11-08 — M45 H4: arranging home (layout model, store, reconciliation, move mode, your folders)
+
+ROADMAP's H4 proper (the earlier "M45 H4" entries were motion and performance revisions named after the
+session that asked for them). Built on macOS and tested there; checked on the Thor as recorded below.
+
+- **Model.** `HandheldHomeLayout` (Core) is immutable: pages of 5×4 `HandheldSlot`s (empty, platform folder by
+  system id, your folder by id, a game pin by game id, a system tile by kind) plus `HandheldUserFolder`s
+  (name, `#RRGGBB` colour, ordered game ids, sort). Every edit returns a new layout and the shell saves it
+  (`ApplyLayout`). A game's id on home is its title set's display game (the first disc), which is stable when
+  the selected disc changes.
+- **Home is always at least 40 slots (two pages)**, as decision 11 and the mockup have it; it grows a page only
+  when tiles need one, and trailing empty pages past two are trimmed. This replaces H1's "as many pages as the
+  folders need", so a library with a few platforms now shows page dots and an empty second page.
+- **Recent is a system tile** (`HandheldSystemTile.Recent`), first in the default layout as in the mockup,
+  showing the last twelve played (title sets by their latest disc's `LastPlayedAt`, newest first, read through
+  `IHandheldLibrary.GetRecentGameIdsAsync`), a clock glyph on the flap, the sort chip hidden. It cannot be
+  deleted; reconciliation puts it back if a file lacks it. It is re-read after every launch.
+- **Store.** `FileHandheldHomeLayoutStore` (Infrastructure) writes portable `Settings/handheld-home.json`
+  atomically, the `FileSecondScreenDockStore` pattern: a flat slot list (page × 20 + slot, trailing empties
+  dropped, so a page-size change would not break files), camelCase enums, a version number. A missing or
+  damaged file reads as "no layout yet" (home starts from the default and the first start saves it); unknown
+  or incomplete entries become empty slots and a bad colour falls back to the first chip.
+- **Reconciliation** (`HandheldHomeReconciler`, run on every library read): a platform that gained games is
+  appended after the last tile on home (never into a gap you left), with the "New" ribbon, which comes off
+  when its folder is opened; a platform with no games left loses its folder and the slot stays empty (nothing
+  shifts); games no longer in the library leave every folder and pin; duplicate tiles and folders without a
+  tile are dropped. Missing files are not removed, only dimmed (pins use the same unavailable opacity as
+  folder tiles). An emptied folder of yours stays.
+- **Move mode** follows the mockup: the lifted tile leaves its slot empty; held over a slot it either takes it
+  while the tiles in the way slide toward the nearest empty slot after it (else before it), or, for a game
+  over another game, merges (new folder) or, over one of your folders, joins it. The preview is live (the
+  pages are rebuilt only where a slot changed). B puts the tile back with home unchanged. Down from the bottom
+  row bumps instead of reaching the dock; LB/RB and the page edges cross pages. Moving games inside a folder
+  (reordering Manual) is not built: Manual is the order games were added, and reordering inside a folder is
+  left for later.
+- **A merge names the folder before anything changes.** Dropping a game on a game opens naming; home is
+  changed only on Done (both pins become the folder in the target's slot), and B leaves both pins where they
+  were. The same rule holds for A on an empty slot and Y → Add to folder… → New folder: B makes nothing.
+- **Naming uses the mockup's own keyboard, drawn on the bottom screen**, not the system keyboard the ROADMAP
+  line names. Checked on the Thor: Android's keyboard never opens for the Presentation on Screen-2
+  (`dumpsys input_method`: `imeDisplayId=0`, `mInputShown=false`, after a pad request and after a tap on the
+  field), so typing there with the pad was impossible. The panel is the mockup's: the name as typed, the six
+  colour chips, then q–p / a–' / z–& rows and Space, Delete, Done. A types (a capital first and after a space),
+  B deletes, Y is a space, X or Start finishes, up from the top row reaches the colours; keys and chips take
+  taps. B with nothing left to delete leaves without saving. The field stays a real text box, so a hardware
+  keyboard types into it. New folders take the next chip in turn. The Stage shows the folder with the name and
+  colour as they change, without replaying the pop.
+- **Y sheet (H4's part).** Home tiles and folder games get the actions sheet: Title page, Move (home only),
+  Add to folder…, Pin to home / Remove from home, Remove from <folder> (inside one of yours), and for your
+  folders Rename or recolour… and Delete folder with a confirmation saying the games stay. Every "Remove" names
+  its place. The Title page's own sheet gains Add to folder… and Pin / Remove from home. The rest of Gamepad
+  mode's actions join in H6. What an edit did is said as a three-second notice in the Stage's status pill,
+  after which the app's own status comes back.
+- **On the Thor the Avalonia Launcher draws the sheet, naming and move mode**, as it already did the menu: the
+  native feed hands the screen back while `IsLauncherOverlayOpen` is true. Home tiles are pictured from a
+  `PictureKey` that covers every new look (pin, ribbon, colour, glyph, dimming).
+- **Touch.** Tap selects and a second tap opens, a swipe turns the page, a long press (480 ms) lifts a home
+  tile and a drag carries it, release drops; sheet rows and colour chips take taps. The native surface passes
+  touches through to the invisible Avalonia view, which handles them in its code-behind.
+- **Pins own their entries.** The shell reads pinned games by id (`GetGamesByIdAsync`) with their tile covers
+  and releases them when they leave home; a pin removed from its own Title page closes the page with it.
+- **Checked on the Thor** (Release JIT build, `adb install -r`, data kept; both screens are `FLAG_SECURE`, so
+  by pad key events, `Settings/handheld-home.json` and logcat): the first start wrote the default (Recent,
+  then the 15 platforms); A on an empty slot named a folder with the pad on the drawn keyboard and saved it
+  with its colour; inside the NES folder, Y → Add to folder… put a game in it and Y → Pin to home pinned the
+  same game (one game, two places); Y → Move carried the pin one slot and dropped it, then onto the folder
+  (pin gone, no duplicate); a force-stop and relaunch left the file byte-identical; deleting the file gave the
+  default back, and copying the saved file back into `Settings/` restored the arranged home exactly. No
+  crashes in logcat. The test folders were removed afterwards (the file deleted, so home is the default again).
+  Not checked on the device: the look of the bottom screen (`FLAG_SECURE`; checked headlessly on macOS
+  through `HandheldArrangeSnapshotTests`), touch drag, and the feel of move mode.

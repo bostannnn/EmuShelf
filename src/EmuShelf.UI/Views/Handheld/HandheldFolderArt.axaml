@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vh="using:EmuShelf.App.Views.Handheld"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
              x:Class="EmuShelf.App.Views.Handheld.HandheldFolderArt"
              x:CompileBindings="False">
 
@@ -10,7 +11,7 @@
     big folder 416). Its states are classes set by whoever shows it: `peek` tilts the flap so the covers peek
     out (focus), `open` swings it open (A), `instant` skips the transitions. Transform-only transitions on the
     flap and the covers.
-    DataContext: anything with AccentBrush, Monogram, PeekA, PeekB, PeekC (a home slot, the Stage).
+    DataContext: anything with AccentBrush, Monogram, FolderGlyph, HasFolderGlyph, PeekA, PeekB, PeekC (a home slot, the Stage).
   -->
 
   <UserControl.Styles>
@@ -108,6 +109,9 @@
           <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="48,24">
             <TextBlock Text="{Binding Monogram}" FontSize="112" FontWeight="SemiBold" Foreground="White" />
           </Viewbox>
+          <!-- Your folders and Recent: a glyph instead of a monogram, so they read as yours at a glance (decision 7). -->
+          <PathIcon Data="{Binding FolderGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                    IsVisible="{Binding HasFolderGlyph}" Width="128" Height="128" Foreground="White" />
         </Grid>
       </Border>
     </Panel>

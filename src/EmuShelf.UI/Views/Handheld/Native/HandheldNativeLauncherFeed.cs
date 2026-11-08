@@ -22,7 +22,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// invisible and is only pictured. Every tile, chip and dock button is drawn once when what it shows changes
 /// (padded wrappers keep their shadows in the picture) and handed over with where it rests; the native side
 /// does the lift, the tracks, the selector, the bump and the folder's zoom. The Title page and the menu
-/// still draw on the Avalonia Launcher: the feed hands the screen back while either is open.
+/// still draw on the Avalonia Launcher, as do the actions sheet, naming and move mode: the feed hands the screen back while one is open.
 /// </summary>
 internal sealed class HandheldNativeLauncherFeed
 {
@@ -143,7 +143,8 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void UpdateActive()
     {
-        var active = !_failed && _shell is { IsMenuOpen: false };
+        // The menu, a sheet, naming and move mode draw on the Avalonia Launcher, which takes the screen back meanwhile.
+        var active = !_failed && _shell is { IsLauncherOverlayOpen: false };
         if (active == _active)
             return;
         _active = active;
@@ -168,7 +169,7 @@ internal sealed class HandheldNativeLauncherFeed
     {
         switch (e.PropertyName)
         {
-            case nameof(HandheldShellViewModel.IsMenuOpen):
+            case nameof(HandheldShellViewModel.IsLauncherOverlayOpen):
                 UpdateActive();
                 break;
             case nameof(HandheldShellViewModel.TitlePage):
@@ -461,7 +462,7 @@ internal sealed class HandheldNativeLauncherFeed
                     continue;
                 var id = $"h:{page.Index}:{slot.Index}";
                 var art = slot.IsFolder ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
-                var key = $"{slot.Platform?.SystemId}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
+                var key = $"{slot.PictureKey}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
                 Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art);
                 if (art is null)
                     continue;

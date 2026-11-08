@@ -2341,7 +2341,10 @@ Played. Pad input already reaches one dispatcher from both displays
       *Revised after the folder lab (2026-11-07, `DECISIONS.md` "M45 H4: Zoom through and the era
       motif"):* folder open/close is now the owner's pick, Zoom through (the spill is gone), and the
       Stage's backdrop is the era motif. Built and tested on macOS; the Thor feel check is still to come.
-- [ ] **H4 — arranging home.** `HandheldHomeLayout` in Core (pages of slots holding a platform
+- [x] **H4 — arranging home.** ✅ (2026-11-08; built and tested on macOS, then checked on the Thor by pad
+      and `Settings/handheld-home.json`: folders made and named, add to folder, pin, move, cold start and a
+      restore of `Settings/` all hold. Naming uses the mockup's drawn keyboard, because Android's keyboard
+      cannot open on Screen-2. Choices in `DECISIONS.md` 2026-11-08 "M45 H4: arranging home".) `HandheldHomeLayout` in Core (pages of slots holding a platform
       folder, a user folder, a game pin, or a system tile; user folders with name, colour, ordered
       ids and sort mode) and `IHandheldHomeLayoutStore` → portable `Settings/handheld-home.json`,
       the same pattern as `FileSecondScreenDockStore`. Reconciliation: new platform appended with a

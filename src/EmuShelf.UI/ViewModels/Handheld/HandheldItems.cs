@@ -87,6 +87,18 @@ public interface IHandheldLibrary
     /// </summary>
     Task<IReadOnlyList<HandheldGameEntry>> GetFirstGamesAsync(string systemId, int count, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The given games (by id) in the given order, each with its view model; ids no longer in the library are
+    /// skipped. Your folders, the Recent folder and the games pinned to home read their games this way.
+    /// </summary>
+    Task<IReadOnlyList<HandheldGameEntry>> GetGamesByIdAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken = default);
+
+    /// <summary>Every game id in the library (one per title set), for reconciling the home layout.</summary>
+    Task<IReadOnlySet<long>> GetGameIdsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>The ids of the last <paramref name="count"/> games played, newest first (the Recently Played source).</summary>
+    Task<IReadOnlyList<long>> GetRecentGameIdsAsync(int count, CancellationToken cancellationToken = default);
+
     /// <summary>Releases the view models a folder held, once the folder closes.</summary>
     void ReleaseGames(IReadOnlyList<HandheldGameEntry> games);
 
@@ -129,29 +141,131 @@ public enum HandheldZone
     Dock,
 }
 
-/// <summary>One slot on a home page.</summary>
+/// <summary>What kind of folder is open (or focused): a platform's, one of yours, or Recent.</summary>
+public enum HandheldFolderKind
+{
+    Platform,
+    User,
+    Recent,
+}
+
+/// <summary>
+/// A folder as the shell opens it: where its games come from and how its tile looks. <see cref="Key"/> names it
+/// for the peek-cover cache (<c>p:ps2</c>, <c>u:…</c>, <c>r:recent</c>).
+/// </summary>
+public sealed record HandheldFolderSource(
+    HandheldFolderKind Kind,
+    string Key,
+    string Name,
+    string AccentColor,
+    string Monogram,
+    int GameCount,
+    HandheldPlatform? Platform = null,
+    string? FolderId = null,
+    IReadOnlyList<long>? GameIds = null,
+    HandheldFolderSort Sort = HandheldFolderSort.Manual)
+{
+    public bool IsUser => Kind == HandheldFolderKind.User;
+    public bool IsRecent => Kind == HandheldFolderKind.Recent;
+
+    /// <summary>The Stage's line under the folder's name.</summary>
+    public string Description => Kind switch
+    {
+        HandheldFolderKind.User => $"Your folder · {HandheldText.GameCount(GameCount)}",
+        HandheldFolderKind.Recent => $"Made for you · {HandheldText.GameCount(GameCount)}",
+        _ => $"Folder · {HandheldText.GameCount(GameCount)}",
+    };
+
+    public static HandheldFolderSource ForPlatform(HandheldPlatform platform) =>
+        new(HandheldFolderKind.Platform, "p:" + platform.SystemId, platform.Name, platform.AccentColor, platform.ShortName,
+            platform.GameCount, Platform: platform);
+
+    public static HandheldFolderSource ForUser(HandheldUserFolder folder) =>
+        new(HandheldFolderKind.User, "u:" + folder.Id, folder.Name, folder.Color, string.Empty, folder.GameIds.Count,
+            FolderId: folder.Id, GameIds: folder.GameIds, Sort: folder.Sort);
+
+    public static HandheldFolderSource ForRecent(IReadOnlyList<long> gameIds) =>
+        new(HandheldFolderKind.Recent, "r:recent", "Recent", HandheldHomeLayout.RecentColor, string.Empty, gameIds.Count,
+            GameIds: gameIds);
+}
+
+/// <summary>How a home slot looks in move mode.</summary>
+public enum HandheldMoveLook
+{
+    None,
+
+    /// <summary>The tile being carried, at the slot it would land on.</summary>
+    Carried,
+
+    /// <summary>A game or one of your folders the carried game would merge with.</summary>
+    DropTarget,
+}
+
+/// <summary>One slot on a home page: a folder (platform, yours, Recent), a pinned game, or an empty place.</summary>
 public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 {
-    public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldPlatform? platform)
+    public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldFolderSource? folder, HandheldGameEntry? game = null,
+        Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None)
     {
         Index = index;
         Slot = slot;
-        Platform = platform;
-        AccentBrush = platform is not null && Color.TryParse(platform.AccentColor, out var color)
-            ? new SolidColorBrush(color)
-            : Brushes.Gray;
+        Folder = folder;
+        Game = game;
+        Cover = cover;
+        IsMoving = isMoving;
+        MoveLook = moveLook;
+        var colour = folder?.AccentColor;
+        AccentBrush = colour is not null && Color.TryParse(colour, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
     }
 
     public int Index { get; }
     public HandheldSlot Slot { get; }
-    public HandheldPlatform? Platform { get; }
 
-    public bool IsEmpty => Platform is null;
-    public bool IsFolder => Platform is not null;
-    public string Name => Platform?.Name ?? string.Empty;
-    public string Monogram => Platform?.ShortName ?? string.Empty;
+    /// <summary>The folder this slot opens; null for a pinned game or an empty slot.</summary>
+    public HandheldFolderSource? Folder { get; }
+
+    /// <summary>The pinned game (owned by the shell's pin cache); null until it is read, or for other kinds.</summary>
+    public HandheldGameEntry? Game { get; }
+
+    /// <summary>The pinned game's tile cover (owned by the shell's pin cache).</summary>
+    public Bitmap? Cover { get; }
+
+    public HandheldPlatform? Platform => Folder?.Platform;
+
+    public bool IsEmpty => Slot.IsEmpty;
+    public bool IsFolder => Folder is not null;
+    public bool IsGame => Slot.Kind == HandheldSlotKind.Game;
+    public bool HasCover => Cover is not null;
+    public bool IsUnavailable => Game is { IsAvailable: false };
+    public bool IsNew => Slot.IsNew;
+    public string Name => Folder?.Name ?? Game?.Title ?? string.Empty;
+    public string Monogram => Folder?.Monogram ?? string.Empty;
+
+    /// <summary>Your folders and Recent show a glyph on the flap instead of a platform's short name (decision 7).</summary>
+    public HandheldGlyph FolderGlyph => Folder?.Kind switch
+    {
+        HandheldFolderKind.User => HandheldGlyph.Star,
+        HandheldFolderKind.Recent => HandheldGlyph.Clock,
+        _ => HandheldGlyph.None,
+    };
+
+    public bool HasFolderGlyph => FolderGlyph != HandheldGlyph.None;
     public IBrush AccentBrush { get; }
-    public string CountText => Platform is null ? string.Empty : HandheldText.GameCount(Platform.GameCount);
+    public string CountText => Folder is null ? string.Empty : HandheldText.GameCount(Folder.GameCount);
+
+    /// <summary>Move mode is on: empty slots light up as places to land.</summary>
+    public bool IsMoving { get; }
+
+    public HandheldMoveLook MoveLook { get; }
+    public bool IsCarried => MoveLook == HandheldMoveLook.Carried;
+    public bool IsDropTarget => MoveLook == HandheldMoveLook.DropTarget;
+    public bool IsLandingPlace => IsMoving && IsEmpty;
+
+    /// <summary>What the slot looks like, for deciding whether a rebuilt page changed and must be pictured again.</summary>
+    public string PictureKey =>
+        $"{Slot}|{Folder?.Name}|{Folder?.AccentColor}|{Folder?.GameCount}|{Game?.Title}|{Game?.IsAvailable}|{RuntimeRef(Cover)}|{IsMoving}|{MoveLook}";
+
+    private static int RuntimeRef(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
@@ -207,28 +321,51 @@ public enum HandheldHeaderItem
 {
     Back,
     Sort,
+
+    /// <summary>Your folders' flap.</summary>
+    Star,
+
+    /// <summary>The Recent folder's flap.</summary>
+    Clock,
 }
 
 /// <summary>An open folder: its games, the sort, and the window of columns realized on screen.</summary>
 public sealed partial class HandheldFolderViewModel : ObservableObject
 {
-    public HandheldFolderViewModel(HandheldPlatform platform, int homeSlot)
+    public HandheldFolderViewModel(HandheldFolderSource source, int homeSlot)
     {
-        Platform = platform;
+        Source = source;
         HomeSlot = homeSlot;
-        AccentBrush = Color.TryParse(platform.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
     }
 
-    public HandheldPlatform Platform { get; }
+    /// <summary>Where the folder's games come from (a platform, one of your folders, Recent).</summary>
+    public HandheldFolderSource Source { get; internal set; }
+
+    public HandheldPlatform? Platform => Source.Platform;
+
+    /// <summary>The home slot (across pages) whose "New" ribbon comes off when this folder closes; -1 for none.</summary>
+    internal int RibbonIndex { get; init; } = -1;
+
+    /// <summary>Recent is sorted for you, newest first: its sort chip is away (decision 14).</summary>
+    public bool CanSort => !Source.IsRecent;
+
+    /// <summary>What the empty-folder state says to do.</summary>
+    public string EmptyHint => Source.Kind switch
+    {
+        HandheldFolderKind.User => "Press Y on a game and choose Add to folder…",
+        HandheldFolderKind.Recent => "Games you play appear here",
+        _ => "Games you add to this platform appear here",
+    };
 
     /// <summary>The home slot the folder was opened from, so B lands back on it.</summary>
     public int HomeSlot { get; }
 
-    public string Name => Platform.Name;
+    public string Name => Source.Name;
     public IBrush AccentBrush { get; }
 
-    /// <summary>Every game in library order, as loaded; <see cref="Items"/> is this in the current sort.</summary>
-    public IReadOnlyList<HandheldGameEntry> Source { get; internal set; } = [];
+    /// <summary>Every game in the folder's own order, as loaded; <see cref="Items"/> is this in the current sort.</summary>
+    public IReadOnlyList<HandheldGameEntry> Games { get; internal set; } = [];
 
     /// <summary>All the folder's tiles in the current sort. Only <see cref="VisibleTiles"/> are on screen.</summary>
     public IReadOnlyList<HandheldGameTileViewModel> Items { get; internal set; } = [];
@@ -345,6 +482,13 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string Monogram { get; set; } = string.Empty;
+
+    /// <summary>The flap's glyph for your folders (a star) and Recent (a clock); null for a platform's monogram.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFolderGlyph))]
+    public partial HandheldGlyph FolderGlyph { get; set; }
+
+    public bool HasFolderGlyph => FolderGlyph != HandheldGlyph.None;
 
     // A focused folder's first three covers, peeking out once its flap tilts. Owned by the shell's peek cache.
     [ObservableProperty]
@@ -482,6 +626,12 @@ public enum HandheldGlyph
     Plus,
     Back,
     Sort,
+
+    /// <summary>Your folders' flap.</summary>
+    Star,
+
+    /// <summary>The Recent folder's flap.</summary>
+    Clock,
 }
 
 /// <summary>One button hint in the Stage's hint pill, e.g. (A, "Open"); a button with no letter draws <see cref="Icon"/>.</summary>

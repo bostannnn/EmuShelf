@@ -72,6 +72,8 @@ public partial class MainViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     // EmuShelf's data root, surfaced in Settings so the user can reveal it. Null in design/tests.
     private readonly string? _dataDirectory;
+    // Where portable settings files live (Handheld mode's home layout, among others); null without app paths.
+    private readonly string? _settingsDirectory;
     private readonly IEmulatorLaunchService _launchService;
     private readonly IFileRevealService _fileReveal;
     private readonly IEmulatorConfigurationStore _emulatorConfigurations;
@@ -1681,6 +1683,7 @@ public partial class MainViewModel : ViewModelBase
         SteamAchievementsService? steamAchievements = null)
     {
         _dataDirectory = appPaths?.BaseDirectory;
+        _settingsDirectory = appPaths?.SettingsDirectory;
         // The resting hero breathes on every platform. It was nearly gated off the reduced-effects
         // head over a fan-cost worry, but on-device profiling on the Thor (Release) showed the sway is
         // cheap: with its redraw capped (see MediaRotationModel.IdleRedrawIntervalSeconds) it adds only

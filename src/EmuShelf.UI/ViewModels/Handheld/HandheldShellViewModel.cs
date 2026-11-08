@@ -51,9 +51,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private bool _disposed;
     private int _initializeGeneration;
 
-    public HandheldShellViewModel(IHandheldLibrary library, IDeviceStatusService? deviceStatus = null, TimeProvider? clock = null)
+    public HandheldShellViewModel(IHandheldLibrary library, IDeviceStatusService? deviceStatus = null, TimeProvider? clock = null,
+        IHandheldHomeLayoutStore? layoutStore = null)
     {
         _library = library;
+        _store = layoutStore ?? new InMemoryHandheldHomeLayoutStore();
         DeviceStatus = deviceStatus ?? UnknownDeviceStatusService.Instance;
         _clock = clock ?? TimeProvider.System;
         _heldDirection = new HandheldHeldDirection(_clock);
@@ -145,9 +147,6 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     public bool HasStatusMessage => !string.IsNullOrWhiteSpace(StatusMessage);
 
-    /// <summary>Mirrors the app's status line; it clears itself when the app's message is dismissed.</summary>
-    public void ShowStatus(string? message) => StatusMessage = message;
-
     /// <summary>Raised when a move runs into a wall, for the view's edge bump.</summary>
     public event Action<HandheldDirection>? Bumped;
 
@@ -198,27 +197,44 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
     }
 
-    /// <summary>Builds home from the library: one platform folder per platform with games, in navigation order.</summary>
+    /// <summary>
+    /// Builds home from the saved layout (the default on a first start: Recent, then one platform folder per
+    /// platform with games, in navigation order), reconciled with the library.
+    /// </summary>
     public async Task InitializeAsync(CancellationToken cancellationToken = default)
     {
         // Library refreshes can overlap (an import landing during the startup availability pass); only the
         // newest read may rebuild home, so a slower older one never overwrites it.
         var generation = ++_initializeGeneration;
         var platforms = await _library.GetPlatformsAsync(cancellationToken);
+        var gameIds = await _library.GetGameIdsAsync(cancellationToken);
+        var recent = await _library.GetRecentGameIdsAsync(RecentCount, cancellationToken);
         if (_disposed || generation != _initializeGeneration)
             return;
         _platforms.Clear();
         foreach (var platform in platforms)
             _platforms[platform.SystemId] = platform;
-        _layout = HandheldHomeLayout.CreateDefault(platforms.Select(platform => platform.SystemId));
+        _recentIds = recent;
+        // A carried tile and an open sheet were arranged against the layout being replaced: they go. A name being
+        // typed stays (Done finds a free slot if its own was taken meanwhile).
+        if (_move is not null)
+        {
+            _move = null;
+            IsMoving = false;
+        }
+        Sheet = null;
+        _layout = LoadLayout(platforms, gameIds);
         // A library change may have changed which games come first; the peek covers are read again.
         ReleasePeekCovers();
+        // Pins are read again too, so their availability (the dimming) and play data are current.
+        PrunePins(all: true);
         BuildPages();
+        _ = EnsurePinsAsync();
 
         // Keep the selection where it was if it still exists (a library refresh), else start at the top.
         if (_home.Page >= _layout.Pages.Count)
             _home = new HandheldHomePosition(0, 0);
-        if (OpenFolder is { } folder && !_platforms.ContainsKey(folder.Platform.SystemId))
+        if (OpenFolder is { } folder && !FolderStillExists(folder.Source))
             CloseFolder();
         ShowPage(_home.Page);
         IsLoaded = true;
@@ -261,6 +277,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (IsMenuOpen)
             return DispatchMenuAction(action);
 
+        if (Naming is { } naming)
+            return DispatchNamingAction(naming, action);
+
+        if (Sheet is { } sheet)
+            return DispatchSheetAction(sheet, action);
+
+        if (_move is { } move)
+            return DispatchMoveAction(move, action);
+
         if (TitlePage is { } title)
             return DispatchTitleAction(title, action);
 
@@ -289,6 +314,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             case GamepadAction.Menu:
                 OpenMenu();
                 return true;
+            case GamepadAction.Actions:
+                OpenActions();
+                return true;
             case GamepadAction.ResetRotation:
                 RecentreMedium();
                 return true;
@@ -312,6 +340,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
             return companion.DispatchGamepadAction(GamepadAction.Cancel);
+        if (!IsMenuOpen && (Naming is not null || Sheet is not null || _move is not null))
+            return DispatchGamepadAction(GamepadAction.Cancel);
         if (!IsMenuOpen && TitlePage is { } title)
         {
             BackOnTitle(title);
@@ -327,6 +357,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         return false;
     }
+
+    private bool FolderStillExists(HandheldFolderSource source) => source.Kind switch
+    {
+        HandheldFolderKind.Platform => source.Platform is { } platform && _platforms.ContainsKey(platform.SystemId),
+        HandheldFolderKind.User => _layout.FindFolder(source.FolderId) is not null,
+        _ => true,
+    };
 
     private void Move(HandheldDirection direction)
     {
@@ -414,7 +451,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 folder.FocusedHeaderItem = HandheldHeaderItem.Back;
                 UpdateFocus();
                 break;
-            case HandheldDirection.Right when folder.FocusedHeaderItem == HandheldHeaderItem.Back:
+            case HandheldDirection.Right when folder.FocusedHeaderItem == HandheldHeaderItem.Back && folder.CanSort:
                 folder.FocusedHeaderItem = HandheldHeaderItem.Sort;
                 UpdateFocus();
                 break;
@@ -510,12 +547,19 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
 
         var slot = _layout.SlotAt(_home.Page, _home.Slot);
-        if (slot.Kind == HandheldSlotKind.PlatformFolder && slot.SystemId is { } systemId &&
-            _platforms.TryGetValue(systemId, out var platform))
+        switch (slot.Kind)
         {
-            _ = OpenFolderAsync(platform, _home.Slot);
+            case HandheldSlotKind.Empty:
+                // A on an empty slot makes a folder there, the 3DS gesture (decision 11).
+                StartNaming(isNew: true, HomeIndex, [], null, -1);
+                return;
+            case HandheldSlotKind.Game:
+                if (_pins.TryGetValue(slot.GameId, out var pinned))
+                    OpenTitle(pinned);
+                return;
         }
-        // A on an empty slot makes a folder there — that is H4. Until then it does nothing.
+        if (FolderSourceFor(slot) is { } source)
+            _ = OpenFolderAsync(source, _home.Slot);
     }
 
     private void Back()
@@ -538,10 +582,20 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>Opens a platform folder: loads its games, then selects the first.</summary>
-    public async Task OpenFolderAsync(HandheldPlatform platform, int homeSlot)
+    public Task OpenFolderAsync(HandheldPlatform platform, int homeSlot) =>
+        OpenFolderAsync(HandheldFolderSource.ForPlatform(platform), homeSlot);
+
+    /// <summary>Opens a folder (a platform's, yours, Recent): loads its games, then selects the first.</summary>
+    public async Task OpenFolderAsync(HandheldFolderSource source, int homeSlot)
     {
         CloseFolder();
-        var folder = new HandheldFolderViewModel(platform, homeSlot);
+        // Opening a folder takes its "New" ribbon off; the tile is redrawn when the folder closes, so the page
+        // the folder zooms out of stays the one on screen.
+        var index = (_home.Page * HandheldHomeLayout.SlotsPerPage) + homeSlot;
+        var folder = new HandheldFolderViewModel(source, homeSlot)
+        {
+            RibbonIndex = index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
+        };
         OpenFolder = folder;
         Zone = HandheldZone.Grid;
         // The top screen stays on the open folder while the page zooms in, then moves on to the first one.
@@ -553,7 +607,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         IReadOnlyList<HandheldGameEntry> games;
         try
         {
-            games = await _library.GetGamesAsync(platform.SystemId, cancellation.Token);
+            games = await LoadFolderGamesAsync(source, cancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -565,8 +619,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         }
 
-        folder.Source = games;
-        ApplySort(folder, HandheldFolderSort.Manual, selectFirst: true);
+        folder.Games = games;
+        ApplySort(folder, source.IsRecent ? HandheldFolderSort.Manual : source.Sort, selectFirst: true);
         folder.IsLoaded = true;
         if (!folder.HasGames && Zone == HandheldZone.Grid)
         {
@@ -588,7 +642,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         IReadOnlyList<HandheldGameEntry> games;
         try
         {
-            games = await _library.GetGamesAsync(folder.Platform.SystemId);
+            games = await LoadFolderGamesAsync(folder.Source, default);
         }
         catch (Exception)
         {
@@ -599,14 +653,23 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _library.ReleaseGames(games);
             return;
         }
-        var previous = folder.Source;
-        folder.Source = games;
+        var previous = folder.Games;
+        folder.Games = games;
         _stageGameId = -1; // the Stage re-reads the selected game's facts
         var firstColumn = folder.FirstVisibleColumn;
         ApplySort(folder, folder.Sort, keepColumn: firstColumn);
         OnPropertyChanged(nameof(OpenFolder));
         _library.ReleaseGames(previous);
     }
+
+    /// <summary>A folder's games, in its own order: a platform's library order, yours as added, Recent newest first.</summary>
+    private Task<IReadOnlyList<HandheldGameEntry>> LoadFolderGamesAsync(HandheldFolderSource source, CancellationToken token) =>
+        source.Kind switch
+        {
+            HandheldFolderKind.Platform when source.Platform is { } platform => _library.GetGamesAsync(platform.SystemId, token),
+            HandheldFolderKind.Recent => _library.GetGamesByIdAsync(_recentIds, token),
+            _ => _library.GetGamesByIdAsync(source.GameIds ?? [], token),
+        };
 
     public void CloseFolder()
     {
@@ -622,11 +685,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         foreach (var tile in folder.Items)
             ReleaseCover(tile);
         folder.VisibleTiles.Clear();
-        _library.ReleaseGames(folder.Source);
+        _library.ReleaseGames(folder.Games);
         OpenFolder = null;
         if (Zone == HandheldZone.Header)
             Zone = HandheldZone.Grid;
         _home = _home with { Slot = folder.HomeSlot };
+        if (folder.RibbonIndex >= 0 && folder.RibbonIndex < _layout.SlotCount && _layout.SlotAt(folder.RibbonIndex).IsNew)
+        {
+            ApplyLayout(_layout.WithRibbonCleared(folder.RibbonIndex));
+            return;
+        }
         UpdateFocus();
     }
 
@@ -638,12 +706,19 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         folder.VisibleTiles.Clear();
 
         var sorted = HandheldFolderSorting.Apply(
-            folder.Source,
+            folder.Games,
             sort,
             game => game.Title,
             game => game.LastPlayedAt,
             game => game.PlayCount);
         folder.Items = sorted.Select((entry, index) => new HandheldGameTileViewModel(index, entry)).ToList();
+        // Your folders remember the sort chip they were left on.
+        if (folder.Source is { IsUser: true, FolderId: { } folderId } && folder.Sort != sort &&
+            _layout.FindFolder(folderId) is { } saved && saved.Sort != sort)
+        {
+            _layout = _layout.WithFolder(saved with { Sort = sort });
+            _store.Save(_layout);
+        }
         folder.Sort = sort;
         folder.IsResorting = true;
         // A re-read keeps the scroll window where it was (clamped by the selection); a re-sort starts at the left.
@@ -835,24 +910,6 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             MenuItems[i].IsFocused = i == MenuIndex;
     }
 
-    private void BuildPages()
-    {
-        Pages.Clear();
-        PageDots.Clear();
-        for (var page = 0; page < _layout.Pages.Count; page++)
-        {
-            var slots = _layout.Pages[page].Slots
-                .Select((slot, index) => new HandheldHomeSlotViewModel(
-                    index,
-                    slot,
-                    slot.SystemId is { } id && _platforms.TryGetValue(id, out var platform) ? platform : null))
-                .ToList();
-            Pages.Add(new HandheldHomePageViewModel(page, slots));
-            PageDots.Add(new HandheldPageDotViewModel(page));
-        }
-        PageCount = Pages.Count;
-    }
-
     private void ShowPage(int page)
     {
         CurrentPage = Pages.Count > page ? Pages[page] : null;
@@ -961,6 +1018,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void UpdateStageCore()
     {
+        if (Naming is { } naming)
+        {
+            ShowNamingStage(naming);
+            return;
+        }
+        if (_move is { } move)
+        {
+            ShowMoveStage(move);
+            return;
+        }
         if (TitlePage is { } title)
         {
             ShowHeroStage(title.Entry);
@@ -1002,7 +1069,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 ShowGameStage(tile.Entry, tile.Cover);
                 return;
             }
-            ShowFolderStage(folder.Platform, folder.IsLoaded ? folder.CountText : "Loading…");
+            ShowFolderStage(folder.Source, folder.IsLoaded ? folder.CountText : "Loading…");
             return;
         }
 
@@ -1013,11 +1080,19 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
 
         var slot = _layout.SlotAt(_home.Page, _home.Slot);
-        if (slot.SystemId is { } systemId && _platforms.TryGetValue(systemId, out var platform))
-            ShowFolderStage(platform, $"Folder · {HandheldText.GameCount(platform.GameCount)}");
+        if (slot.Kind == HandheldSlotKind.Game)
+        {
+            if (_pins.TryGetValue(slot.GameId, out var pinned))
+                ShowGameStage(pinned, _pinCovers.GetValueOrDefault(pinned.Id));
+            else
+                ShowStage(HandheldStageKind.None, string.Empty, string.Empty);
+            return;
+        }
+        if (FolderSourceFor(slot) is { } source)
+            ShowFolderStage(source, slot.IsNew ? $"New · {source.Description}" : source.Description);
         else
             ShowStage(HandheldStageKind.EmptySlot, "Empty space",
-                _platforms.Count == 0 ? "Add games from the menu in Gamepad mode" : "Folders you make will go here");
+                _platforms.Count == 0 ? "Add games from the menu in Gamepad mode" : "Press A to make a folder here");
     }
 
     private void ShowStage(HandheldStageKind kind, string title, string subtitle, bool keepArt = false,
@@ -1056,6 +1131,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.Title = title;
         Stage.Subtitle = subtitle;
         Stage.Monogram = string.Empty;
+        Stage.FolderGlyph = HandheldGlyph.None;
         Stage.AchievementText = null;
         Stage.AppIcon = null;
         // Set once per change, never cleared first: the view crossfades only when colour or era really change.
@@ -1072,12 +1148,19 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         };
     }
 
-    private void ShowFolderStage(HandheldPlatform platform, string subtitle)
+    private void ShowFolderStage(HandheldFolderSource source, string subtitle)
     {
-        ShowStage(HandheldStageKind.Folder, platform.Name, subtitle, backdrop: BackdropFor(platform));
-        Stage.Monogram = platform.ShortName;
-        Stage.AccentBrush = Color.TryParse(platform.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
-        ApplyPeek(platform.SystemId, Stage);
+        // Your folders and Recent sit on the plain light gradient; a platform's on its era motif.
+        ShowStage(HandheldStageKind.Folder, source.Name, subtitle, backdrop: BackdropFor(source.Platform));
+        Stage.Monogram = source.Monogram;
+        Stage.FolderGlyph = source.Kind switch
+        {
+            HandheldFolderKind.User => HandheldGlyph.Star,
+            HandheldFolderKind.Recent => HandheldGlyph.Clock,
+            _ => HandheldGlyph.None,
+        };
+        Stage.AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        ApplyPeek(source, Stage);
     }
 
     private long _stageGameId = -1;
@@ -1266,6 +1349,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             Hints.Add(new HandheldHint("B", "Close"));
             return;
         }
+        if (Naming is not null || Sheet is not null || _move is not null)
+        {
+            AddArrangeHints();
+            return;
+        }
         if (TitlePage is { } title)
         {
             AddTitleHints(title);
@@ -1285,12 +1373,16 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (OpenFolder is { } folder)
         {
             if (folder.SelectedTile is not null)
+            {
                 Hints.Add(new HandheldHint("A", "Play"));
+                Hints.Add(new HandheldHint("Y", "More"));
+            }
             Hints.Add(new HandheldHint("B", "Back"));
             return;
         }
-        if (!_layout.SlotAt(_home.Page, _home.Slot).IsEmpty)
-            Hints.Add(new HandheldHint("A", "Open"));
+        var focused = _layout.SlotAt(_home.Page, _home.Slot);
+        Hints.Add(new HandheldHint("A", focused.IsEmpty ? "New folder" : "Open"));
+        Hints.Add(new HandheldHint("Y", "More"));
         Hints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));
     }
 
@@ -1304,9 +1396,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _mediumTimer?.Dispose();
         _mediumTimer = null;
         _stageTimer?.Stop();
+        _noticeTimer?.Stop();
         CloseTitle();
         CloseFolder();
         CancelStageArt();
         ReleasePeekCovers();
+        PrunePins(all: true);
     }
 }

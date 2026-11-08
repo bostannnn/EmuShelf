@@ -14,6 +14,7 @@ using EmuShelf.Core.Library;
 using EmuShelf.Core.Settings;
 using EmuShelf.Core.Systems;
 using EmuShelf.App.Services;
+using EmuShelf.Infrastructure.Settings;
 using EmuShelf.Integrations.Emulators.Android;
 
 namespace EmuShelf.App.ViewModels;
@@ -73,7 +74,10 @@ public partial class MainViewModel
         {
             if (Handheld is not null)
                 return;
-            var handheld = new HandheldShellViewModel(new HandheldLibrary(this), _handheldDeviceStatus)
+            var handheld = new HandheldShellViewModel(new HandheldLibrary(this), _handheldDeviceStatus,
+                layoutStore: _settingsDirectory is { } settings
+                    ? new FileHandheldHomeLayoutStore(Path.Combine(settings, "handheld-home.json"), _logger)
+                    : null)
             {
                 Companion = _handheldCompanion,
                 LaunchLead = HandheldMotion.LaunchLead,
@@ -168,30 +172,70 @@ public partial class MainViewModel
         // Title sets are cheap; a view model per title is not, so only the first `count` get one.
         private async Task<IReadOnlyList<HandheldGameEntry>> ReadGamesAsync(string systemId, int count, CancellationToken cancellationToken)
         {
-            if (!owner._systemsById.TryGetValue(systemId, out var system))
+            if (!owner._systemsById.ContainsKey(systemId))
                 return [];
-            var artwork = PlatformArtwork.ForSystem(systemId);
             return await Task.Run<IReadOnlyList<HandheldGameEntry>>(() =>
             {
                 var library = owner._library;
                 var titleSets = GameDiscSetBuilder.Build(library.GetGames(systemId), library.GetDiscSelections()).Take(count).ToList();
-                var viewModels = titleSets.Select(set => owner.CreateGameViewModel(set, system, artwork)).ToList();
-                owner.ApplyAchievementDisplays(viewModels);
-                owner.ApplyScrapedTitles(viewModels);
-                return titleSets.Zip(viewModels, (set, viewModel) => new HandheldGameEntry(
-                    viewModel.Id,
-                    viewModel.DisplayTitle,
-                    systemId,
-                    system.Name,
-                    set.Discs.Max(disc => disc.Game.LastPlayedAt),
-                    set.Discs.Sum(disc => disc.Game.PlayCount),
-                    set.Discs.Aggregate(TimeSpan.Zero, (total, disc) => total + disc.Game.Playtime),
-                    viewModel.Model.IsAvailable,
-                    viewModel.ShowAchievementMark ? viewModel.GamepadAchievementCountText : null,
-                    viewModel,
-                    viewModel.ShowAchievementMark ? viewModel.GamepadAchievementProgressRatio : 0)).ToList();
+                return ToEntries(titleSets);
             }, cancellationToken);
         }
+
+        // Entries (with their shared view models) for title sets of any systems, in the order given.
+        private List<HandheldGameEntry> ToEntries(IReadOnlyList<GameDiscSet> titleSets)
+        {
+            var known = titleSets.Where(set => owner._systemsById.ContainsKey(set.DisplayGame.SystemId)).ToList();
+            var viewModels = known.Select(set =>
+            {
+                var system = owner._systemsById[set.DisplayGame.SystemId];
+                return owner.CreateGameViewModel(set, system, PlatformArtwork.ForSystem(system.Id));
+            }).ToList();
+            owner.ApplyAchievementDisplays(viewModels);
+            owner.ApplyScrapedTitles(viewModels);
+            return known.Zip(viewModels, (set, viewModel) => new HandheldGameEntry(
+                viewModel.Id,
+                viewModel.DisplayTitle,
+                set.DisplayGame.SystemId,
+                owner._systemsById[set.DisplayGame.SystemId].Name,
+                LastPlayed(set),
+                set.Discs.Sum(disc => disc.Game.PlayCount),
+                set.Discs.Aggregate(TimeSpan.Zero, (total, disc) => total + disc.Game.Playtime),
+                viewModel.Model.IsAvailable,
+                viewModel.ShowAchievementMark ? viewModel.GamepadAchievementCountText : null,
+                viewModel,
+                viewModel.ShowAchievementMark ? viewModel.GamepadAchievementProgressRatio : 0)).ToList();
+        }
+
+        private static DateTimeOffset? LastPlayed(GameDiscSet set) => set.Discs.Max(disc => disc.Game.LastPlayedAt);
+
+        // Every title set in the library; a game's id on home is its title set's display game (its first disc).
+        private IReadOnlyList<GameDiscSet> AllTitleSets() =>
+            GameDiscSetBuilder.Build(owner._library.GetGames(), owner._library.GetDiscSelections());
+
+        public async Task<IReadOnlyList<HandheldGameEntry>> GetGamesByIdAsync(IReadOnlyList<long> ids, CancellationToken cancellationToken = default)
+        {
+            if (ids.Count == 0)
+                return [];
+            return await Task.Run<IReadOnlyList<HandheldGameEntry>>(() =>
+            {
+                var byId = AllTitleSets().ToDictionary(set => set.DisplayGame.Id);
+                var sets = ids.Distinct().Where(byId.ContainsKey).Select(id => byId[id]).ToList();
+                cancellationToken.ThrowIfCancellationRequested();
+                return ToEntries(sets);
+            }, cancellationToken);
+        }
+
+        public Task<IReadOnlySet<long>> GetGameIdsAsync(CancellationToken cancellationToken = default) =>
+            Task.Run<IReadOnlySet<long>>(() => AllTitleSets().Select(set => set.DisplayGame.Id).ToHashSet(), cancellationToken);
+
+        public Task<IReadOnlyList<long>> GetRecentGameIdsAsync(int count, CancellationToken cancellationToken = default) =>
+            Task.Run<IReadOnlyList<long>>(() => AllTitleSets()
+                .Where(set => LastPlayed(set) is not null)
+                .OrderByDescending(LastPlayed)
+                .Take(count)
+                .Select(set => set.DisplayGame.Id)
+                .ToList(), cancellationToken);
 
         public void ReleaseGames(IReadOnlyList<HandheldGameEntry> games)
         {

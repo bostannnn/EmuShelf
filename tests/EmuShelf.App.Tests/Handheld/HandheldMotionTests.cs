@@ -1,3 +1,4 @@
+using EmuShelf.Core.Handheld;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -137,7 +138,9 @@ public partial class HandheldShellViewModelTests
     private static async Task<(HandheldShellViewModel Shell, ManualClock Clock)> CreateWithClockAsync(FakeLibrary library)
     {
         var clock = new ManualClock();
-        var shell = new HandheldShellViewModel(library, clock: clock);
+        var store = new InMemoryHandheldHomeLayoutStore();
+        store.Save(HandheldHomeLayout.FromSlots(library.Platforms.Select(platform => HandheldSlot.PlatformFolder(platform.SystemId))));
+        var shell = new HandheldShellViewModel(library, clock: clock, layoutStore: store);
         await shell.InitializeAsync();
         return (shell, clock);
     }
