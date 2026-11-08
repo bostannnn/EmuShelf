@@ -597,6 +597,7 @@ internal sealed class SecondScreenController
                         _apps[app.Key] = app.Value;
                     _appsLoaded = true;
                     _appsLoadInFlight = false;
+                    FollowMovedDockApps();
                     RenderDock();
                     if (_navigation.Overlay is SecondScreenOverlay.AppDrawer or SecondScreenOverlay.DockPicker)
                         RenderDrawer(_navigation.DockSlot);
@@ -608,6 +609,21 @@ internal sealed class SecondScreenController
                 RunOnMain(() => _appsLoadInFlight = false);
             }
         });
+    }
+
+    // An app whose launcher entry an update renamed keeps its dock slot instead of leaving it drawn empty.
+    private void FollowMovedDockApps()
+    {
+        var followed = _dock.FollowMovedApps(_apps.Keys);
+        if (ReferenceEquals(followed, _dock))
+            return;
+        for (var slot = 0; slot < SecondScreenDock.SlotCount; slot++)
+        {
+            if (!string.Equals(_dock[slot], followed[slot], StringComparison.Ordinal))
+                _logger.Information($"Dock slot {slot + 1} follows {_dock[slot]} to its new launcher entry {followed[slot]}.");
+        }
+        _dock = followed;
+        _dockStore.Save(_dock);
     }
 
     private void ShowDrawer(int? pickSlot)

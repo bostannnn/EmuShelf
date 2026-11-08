@@ -13851,3 +13851,11 @@ corrected or deleted from the timeline or the game page.
   "Run setup again". **Not on the Thor:** the empty library (headless snapshots only), and how the sounds sound: the
   readback cannot hear them, so their character and level are the owner's call. A dock slot whose app is no longer a
   launcher entry still shows empty, with no large icon (the dock data's business, noted in H6c's follow-up).
+
+## 2026-11-08 — Dock slots follow an app whose launcher entry was renamed
+
+- **A pinned app keeps its slot when an update renames its launcher activity** (the owner's Thor: Apple Music moved from
+  `…onboarding.activities.SplashActivity` to `…common.MainActivity`, and its slot drew empty). When the launcher list
+  loads, a slot whose component is no longer listed takes its package's entry instead, if the package has exactly one
+  and it is not pinned elsewhere, and the dock is saved (`SecondScreenDock.FollowMovedApps`). An uninstalled app, or one
+  with several launcher entries, is left as it is: it still draws empty and counts as free for Pin to dock.
