@@ -13261,3 +13261,30 @@ more.
   H7c's battery saver and reduced motion).
 - **A stop-gap comes first:** a Settings row in today's Start menu opening Gamepad mode's settings
   overlay on the Stage, as H6a's first small commit, so Settings is reachable before the tile exists.
+
+## 2026-11-08 — M46: play sessions get a table, and Android times play through Usage access
+
+The owner wants a play log like the 3DS Activity Log and Cocoon's Log: which games were played, when,
+and for how long each time. M43 (2026-08-16) stored two running totals on `Games` and said a
+per-session table would be worth its weight "once something needs dated history". This is that need,
+so M46 adds `PlaySessions`.
+
+- **Sessions are the record, the totals become a cache.** One row per sitting, inserted at launch and
+  closed at exit. The `Games` totals and last-played stay, updated in the same transaction, so every
+  existing reader keeps a plain column read and M43's "count at start, time at exit" asymmetry
+  survives as a row with a null duration. Play recorded before the table exists is not split into
+  invented sessions; it stays in the totals and is shown as "earlier play".
+- **Each row names how it was measured** (tracked process, usage access, wall-clock estimate, edited),
+  so an estimate can be labelled as one and an edit is visible. Rows carry a device id so a later sync
+  can merge two devices' logs, which two running totals can never do honestly.
+- **Android: Usage access, opt-in.** Today's Android duration is the wall-clock gap from launch to
+  EmuShelf's return, capped at 12 h, which credits device sleep and other apps as play: on a handheld
+  that is the common case, not an edge. Cocoon asks for Android's Usage access for the same reason.
+  With it granted, the length is the emulator package's foreground time from `UsageStatsManager`
+  events; without it, or once the events have aged out, the old estimate is kept and marked. Rejected:
+  counting screen-off broadcasts in EmuShelf, because EmuShelf is often killed while the emulator runs
+  and would miss them.
+- **Removing a game keeps its sessions** (Cocoon does the same), so a re-added game keeps its history.
+  This only touches EmuShelf's own database, never the game's files.
+- **Handheld mode gets a second system tile, Activity,** when M46 P4 is built. That amends M45
+  decision 18 ("only Settings for now"); the amendment is recorded then, not now.

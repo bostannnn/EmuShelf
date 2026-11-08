@@ -2489,3 +2489,66 @@ Played. Pad input already reaches one dispatcher from both displays
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
+
+## M46 — Play log: sessions, accurate handheld timing, an Activity screen (planned)
+
+Builds on M43, whose two totals per game (`Games.PlaytimeSeconds`, `Games.PlayCount`) can't say when
+a game was played or for how long each time. The goal is what the 3DS Activity Log and Cocoon's Log
+show: every sitting with its date and length, and per game the total, times played, average per
+session, first and last played, plus a ranking. The reasoning, and why it reverses M43's "totals, not
+a session table", is in `DECISIONS.md` (2026-11-08, "M46"). One slice per session, each with its own
+commit; the model, store and view models live in Core / Infrastructure / `EmuShelf.UI` so the macOS
+suite covers them. Play data stays in the portable `Data/library.db`; nothing here reads or writes the
+user's game files.
+
+Problems with today's recording that this fixes (found in the 2026-11-08 review):
+
+- **No history.** Only running totals exist, so no day view, average or first-played date is possible.
+  Play from before the log can't be split back into sessions.
+- **Android over-counts.** A session is the wall-clock gap from launch to EmuShelf's return, capped at
+  12 h. Sleeping the Thor mid-game, or time spent in other apps, is credited as play.
+- **Desktop under-counts hand-off launchers** (a wrapper that starts the real process and exits), and a
+  session whose EmuShelf was killed adds no time at all.
+- **Per-device totals can't be merged** later by a sync, and a wrong session can't be corrected.
+
+- [ ] **P1 — the sessions table.** Schema v21: `PlaySessions` (id, game id, started at UTC, duration
+      in seconds or null while open, device id, how the duration was measured: tracked process / usage
+      access / wall-clock estimate / edited). A row is inserted at launch where `RecordLaunchStarted`
+      runs today, and closed where `AddPlaytime` runs (desktop exit, Android
+      `CompleteDeferredPlaySessionAsync`); a row never closed is a play of unknown length, which keeps
+      M43's "count at start, time at exit" rule. `Games.PlaytimeSeconds`, `PlayCount` and
+      `LastPlayedUnixMilliseconds` stay as a cache updated in the same transaction, so every existing
+      surface (list columns, Gamepad caption, Recently Played, the Handheld Title page) keeps reading a
+      plain column. Play recorded before v21 stays in the totals and is shown as "earlier play", never
+      invented as sessions; first played is the earliest session, or unknown when the game only has
+      earlier play. A stable per-install device id in `Settings/`. Removing a game from the library
+      keeps its sessions, as Cocoon does, so the log and the totals of a re-added game survive.
+      Tests: migration from v20 with existing totals, open and closed rows, cache consistency, an
+      unclosed row after a simulated kill, removal keeps history. **Exit:** on macOS and the Thor every
+      launch writes one row, and the totals match the sum of the rows plus earlier play.
+- [ ] **P2 — accurate timing on Android through Usage access.** An opt-in "Accurate play time" row in
+      Settings (Library) that explains the permission and opens Android's Usage access page, as Cocoon
+      does. Granted: the session's length is the time the emulator's package was actually in the
+      foreground between launch and return, from `UsageStatsManager` activity resumed / paused events,
+      so sleep and other apps drop out. Not granted, or the events have already aged out (a return days
+      later after process death): today's capped wall-clock figure, stored as an estimate and labelled
+      "about" wherever it shows. Behind an interface in Core so the computation from a list of events is
+      unit-tested on macOS. **Exit:** on the Thor, a session with the screen asleep in the middle records
+      only the awake minutes, checked against `adb shell dumpsys usagestats`.
+- [ ] **P3 — the Activity screen (Desktop and Gamepad).** A day-by-day timeline (each day's games and
+      minutes, newest first, with a week total); a page per game with total, times played, average per
+      session, first and last played and its recent sessions; a ranking by total time, times played or
+      average. Edit a session's length or delete it from the timeline or the game page (Y / long press
+      on Gamepad, context menu on Desktop); an edited row says so. Opened from the Gamepad Start menu,
+      the Desktop toolbar, and a game's actions. Reads are paged and off the UI thread; a large log
+      must not hitch the grid. **Exit:** a week of real play on the Thor reads correctly in the timeline,
+      and an edit or delete updates the totals everywhere.
+- [ ] **P4 — Handheld mode.** An Activity system tile on home beside Settings (amends M45 decision 18,
+      which allowed only Settings; record the amendment when built), opening the timeline as
+      master-detail across the screens: days and games on the Launcher, the focused day's or game's
+      stats on the Stage. The Title page adds first played and average per session. The in-game
+      companion's Now playing row shows the running session's time (M45 H6b). **Exit:** from the
+      Handheld home you can see what you played yesterday and for how long, without leaving the mode.
+- **Later, not part of M46:** syncing sessions between devices (the device id makes rows mergeable;
+      belongs beside M33); timing hand-off launchers on desktop by following the child process; export
+      to CSV; play-time goals or reminders.
