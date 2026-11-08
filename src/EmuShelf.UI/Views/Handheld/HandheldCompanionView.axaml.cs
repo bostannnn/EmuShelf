@@ -181,8 +181,22 @@ public partial class HandheldCompanionView : UserControl
 
     private void OnDrawerAppTapped(object? sender, TappedEventArgs e)
     {
+        // The tap some input stacks send as a long press ends must not also open the app just pinned.
+        if (DateTimeOffset.UtcNow - _lastHoldAt < TimeSpan.FromMilliseconds(500))
+            return;
         if (sender is Control { DataContext: HandheldDrawerAppViewModel app })
             Companion?.TapDrawerApp(app);
+    }
+
+    // A long press on an app in All apps pins it to the dock (as Y does), unless All apps is picking for one slot.
+    private void OnDrawerAppHolding(object? sender, HoldingRoutedEventArgs e)
+    {
+        if (e.HoldingState != HoldingState.Started || sender is not Control { DataContext: HandheldDrawerAppViewModel app } ||
+            Companion is not { } companion || companion.Model.CanClearSlot)
+            return;
+        _lastHoldAt = DateTimeOffset.UtcNow;
+        companion.PinToDock(app);
+        e.Handled = true;
     }
 
     private void OnClearSlotTapped(object? sender, TappedEventArgs e)

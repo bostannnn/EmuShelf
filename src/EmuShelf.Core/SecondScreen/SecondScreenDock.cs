@@ -52,6 +52,28 @@ public sealed record SecondScreenDock
         return new SecondScreenDock(next);
     }
 
+    /// <summary>
+    /// Pins a component to the first empty slot (Handheld mode's All apps → Pin to dock). <paramref name="slot"/> is where it
+    /// is now: its existing slot when it was already pinned (the dock is returned unchanged), or -1 when every slot is full.
+    /// </summary>
+    public SecondScreenDock PinToFirstEmpty(string component, out int slot)
+    {
+        var normalized = Normalize(component)
+            ?? throw new ArgumentException("A dock component cannot be empty.", nameof(component));
+        for (slot = 0; slot < SlotCount; slot++)
+        {
+            if (string.Equals(Components[slot], normalized, StringComparison.Ordinal))
+                return this;
+        }
+        for (slot = 0; slot < SlotCount; slot++)
+        {
+            if (Components[slot] is null)
+                return Pin(slot, normalized);
+        }
+        slot = -1;
+        return this;
+    }
+
     public SecondScreenDock Clear(int slot)
     {
         ValidateSlot(slot);

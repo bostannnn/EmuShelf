@@ -679,8 +679,12 @@
             <TranslateTransform />
           </Grid.RenderTransform>
           <Grid Margin="48,32,48,0" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="16" Height="88">
-            <TextBlock Text="{Binding Model.DrawerTitle}" FontSize="44" FontWeight="Bold" VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
+            <StackPanel VerticalAlignment="Center" Spacing="2">
+              <TextBlock Text="{Binding Model.DrawerTitle}" FontSize="44" FontWeight="Bold" TextTrimming="CharacterEllipsis" />
+              <!-- What Pin to dock did (Y, or a long press on an app). -->
+              <TextBlock Classes="hint" Text="{Binding DrawerNotice}" IsVisible="{Binding HasDrawerNotice}" FontSize="24"
+                         TextTrimming="CharacterEllipsis" />
+            </StackPanel>
             <Border Grid.Column="1" Classes="chip" IsVisible="{Binding Model.CanClearSlot}" Tapped="OnClearSlotTapped">
               <TextBlock Text="Clear slot" />
             </Border>
@@ -699,7 +703,8 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:HandheldDrawerAppViewModel">
-                  <StackPanel Spacing="40" Margin="0,0,0,40" Background="Transparent" Tapped="OnDrawerAppTapped">
+                  <StackPanel Spacing="40" Margin="0,0,0,40" Background="Transparent" Tapped="OnDrawerAppTapped"
+                              ai:InputElement.IsHoldingEnabled="True" Holding="OnDrawerAppHolding">
                     <Panel Classes="lift" Classes.focused="{Binding IsFocused}" Width="112" Height="112"
                            HorizontalAlignment="Center">
                       <Border Classes="app-face" CornerRadius="30" ClipToBounds="True">

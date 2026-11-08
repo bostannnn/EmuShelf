@@ -23,6 +23,24 @@ public sealed class FileSecondScreenDockStoreTests : IDisposable
     }
 
     [Fact]
+    public void PinToFirstEmpty_TakesTheFirstFreeSlot_KeepsAnAppWhereItIs_AndSaysWhenFull()
+    {
+        var dock = SecondScreenDock.Empty.Pin(0, "app.one/.Main").Pin(2, "app.three/.Main");
+
+        var pinned = dock.PinToFirstEmpty("app.two/.Main", out var slot);
+        Assert.Equal(1, slot);
+        Assert.Equal("app.two/.Main", pinned[1]);
+
+        var again = pinned.PinToFirstEmpty("app.three/.Main", out slot);
+        Assert.Same(pinned, again);
+        Assert.Equal(2, slot);
+
+        var full = new SecondScreenDock(["a/.M", "b/.M", "c/.M", "d/.M", "e/.M"]);
+        Assert.Same(full, full.PinToFirstEmpty("f/.M", out slot));
+        Assert.Equal(-1, slot);
+    }
+
+    [Fact]
     public void Dock_DoesNotExposeMutableBackingStorage()
     {
         var dock = SecondScreenDock.Empty.Pin(0, "app.one/.Main");

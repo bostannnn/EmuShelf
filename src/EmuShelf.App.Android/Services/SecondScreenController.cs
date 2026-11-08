@@ -363,6 +363,26 @@ internal sealed class SecondScreenController
         CloseOverlay();
     }
 
+    // Handheld mode's All apps pins an app to the first free slot without picking one (M45 H6c).
+    private DockPinResult PinToFirstEmptySlot(string component)
+    {
+        // A slot whose app is no longer a launcher entry (uninstalled, or its activity renamed by an update) draws as empty
+        // and counts as free here, so the dock never says "full" while showing a gap. Only once the apps have loaded.
+        var shown = _appsLoaded
+            ? new SecondScreenDock(_dock.Components.Select(pinned => pinned is not null && _apps.ContainsKey(pinned) ? pinned : null).ToList())
+            : _dock;
+        shown.PinToFirstEmpty(component, out var slot);
+        if (slot < 0)
+            return new DockPinResult(DockPinOutcome.Full, -1);
+        if (string.Equals(_dock[slot], component, StringComparison.Ordinal))
+            return new DockPinResult(DockPinOutcome.AlreadyPinned, slot);
+        var next = _dock.Pin(slot, component);
+        _dock = next;
+        _dockStore.Save(_dock);
+        RenderDock();
+        return new DockPinResult(DockPinOutcome.Pinned, slot);
+    }
+
     // Handheld mode's dock sheet clears a slot without the picker open (M45 H6c).
     private void ClearDockSlot(int slot)
     {
@@ -512,6 +532,7 @@ internal sealed class SecondScreenController
         model.OverlayClosed = CloseOverlay;
         model.SlotCleared = OnClearSlot;
         model.SlotClearRequested = ClearDockSlot;
+        model.PinToDockRequested = PinToFirstEmptySlot;
         model.AchievementsRefreshed = RefreshAchievements;
         model.SlotActivated = ActivateDockSlot;
         model.SlotEditRequested = EditDockSlot;

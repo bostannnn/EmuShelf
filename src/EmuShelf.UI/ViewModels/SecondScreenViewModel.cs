@@ -28,6 +28,20 @@ public sealed class SecondScreenAppViewModel(string component, string label, Bit
     public bool HasIcon => Icon is not null;
 }
 
+/// <summary>What Pin to dock did: pinned to a slot, already in one, or the dock is full.</summary>
+public readonly record struct DockPinResult(DockPinOutcome Outcome, int Slot)
+{
+    public static DockPinResult Unavailable { get; } = new(DockPinOutcome.Unavailable, -1);
+}
+
+public enum DockPinOutcome
+{
+    Pinned,
+    AlreadyPinned,
+    Full,
+    Unavailable,
+}
+
 /// <summary>One dock slot; empty when <see cref="Label"/> is null.</summary>
 public sealed partial class SecondScreenSlotViewModel(int index) : ObservableObject
 {
@@ -678,6 +692,12 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     /// <summary>Clears one dock slot without its picker open (Handheld mode's dock sheet, M45 H6c). Wired by the controller.</summary>
     public Action<int>? SlotClearRequested { get; set; }
+
+    /// <summary>
+    /// Pins an app to the first empty dock slot (Handheld mode's All apps, M45 H6c). Wired by the controller; it answers the
+    /// slot the app is in now, whether it was already there, or that the dock is full.
+    /// </summary>
+    public Func<string, DockPinResult>? PinToDockRequested { get; set; }
     public Action? AchievementsRefreshed { get; set; }
     public Action<int>? SlotActivated { get; set; }
     public Action<int>? SlotEditRequested { get; set; }
@@ -701,6 +721,10 @@ public sealed partial class SecondScreenViewModel : ObservableObject
 
     [RelayCommand]
     private void ClearSlot() => SlotCleared?.Invoke();
+
+    /// <summary>Pins <paramref name="app"/> to the first empty dock slot; <see cref="DockPinResult.Unavailable"/> without a controller.</summary>
+    public DockPinResult PinToDock(SecondScreenAppViewModel app) =>
+        PinToDockRequested?.Invoke(app.Component) ?? DockPinResult.Unavailable;
 
     /// <summary>Clears the slot at <paramref name="index"/> (the app stays on the device); false when nothing can clear it.</summary>
     public bool ClearSlotAt(int index)

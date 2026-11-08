@@ -766,8 +766,37 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
             case GamepadAction.Actions when Model.CanClearSlot:
                 Model.ClearSlotCommand.Execute(null);
                 return;
+            case GamepadAction.Actions when DrawerIndex < count:
+                PinToDock(DrawerApps[DrawerIndex]);
+                break;
         }
         UpdateDrawerFocus();
+    }
+
+    /// <summary>
+    /// The line under All apps' title that says what Pin to dock did ("Pinned to slot 3", "The dock is full…"); empty
+    /// hides it. It clears when the drawer opens again.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasDrawerNotice))]
+    public partial string? DrawerNotice { get; private set; }
+
+    public bool HasDrawerNotice => !string.IsNullOrEmpty(DrawerNotice);
+
+    /// <summary>
+    /// Pins an app from All apps to the first empty dock slot (Y, or a long press): the way an app gets into the dock without
+    /// first choosing a slot. A full dock says how to make room (Y on a dock app changes or clears it).
+    /// </summary>
+    public void PinToDock(HandheldDrawerAppViewModel app)
+    {
+        var result = Model.PinToDock(app.App);
+        DrawerNotice = result.Outcome switch
+        {
+            DockPinOutcome.Pinned => $"{app.App.Label} is in the dock, slot {result.Slot + 1}",
+            DockPinOutcome.AlreadyPinned => $"{app.App.Label} is already in the dock, slot {result.Slot + 1}",
+            DockPinOutcome.Full => "The dock is full. Y on a dock app changes or clears its slot.",
+            _ => null,
+        };
     }
 
     /// <summary>Closes the layer in front: the grid back to the panel, the viewer and All apps back to what was under them.</summary>
@@ -907,7 +936,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         // Opened for a slot (Y or a long press on it), A pins the app there and Y clears the slot; else A opens the app.
         SetHints(DrawerHints, Model.CanClearSlot
             ? [new("A", "Pin here"), new("Y", "Clear slot"), new("B", "Close")]
-            : [new("A", "Open"), new("B", "Close")]);
+            : [new("A", "Open"), new("Y", "Pin to dock"), new("B", "Close")]);
     }
 
     // Hints are rebuilt on every press; the lists only change (and the views only re-template) when the hints do.
@@ -1003,7 +1032,10 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     private void OnOverlayChanged(SecondScreenOverlayKind previous, SecondScreenOverlayKind current)
     {
         if (current == SecondScreenOverlayKind.Drawer && previous != SecondScreenOverlayKind.Drawer)
+        {
             DrawerIndex = 0;
+            DrawerNotice = null;
+        }
         if (IsGameRunning && current == SecondScreenOverlayKind.None)
         {
             // The viewer or All apps closed over the running game: the panel follows the viewer to the photo it was on,

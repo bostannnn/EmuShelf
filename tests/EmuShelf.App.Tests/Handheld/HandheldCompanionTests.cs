@@ -264,7 +264,22 @@ public partial class HandheldShellViewModelTests
         Assert.Equal(11, companion.DrawerIndex);
         Press(companion, GamepadAction.Confirm);
         Assert.Equal(["app/10"], launched);
-        Assert.Equal(["A", "B"], companion.DrawerHints.Select(hint => hint.Button));
+        Assert.Equal(["A", "Y", "B"], companion.DrawerHints.Select(hint => hint.Button));
+        Assert.Equal("Pin to dock", companion.DrawerHints[1].Label);
+
+        // Y pins the focused app to the first free slot (M45 H6c), and says where; a full dock says how to make room.
+        var pins = new List<string>();
+        model.PinToDockRequested = component =>
+        {
+            pins.Add(component);
+            return pins.Count == 1 ? new DockPinResult(DockPinOutcome.Pinned, 2) : new DockPinResult(DockPinOutcome.Full, -1);
+        };
+        Press(companion, GamepadAction.Actions);
+        Assert.Equal(["app/10"], pins);
+        Assert.Equal(SecondScreenOverlayKind.Drawer, model.Overlay);
+        Assert.StartsWith("App 10 is in the dock, slot 3", companion.DrawerNotice);
+        Press(companion, GamepadAction.Actions);
+        Assert.StartsWith("The dock is full", companion.DrawerNotice);
 
         // For a slot: Y clears it.
         model.CanClearSlot = true;
