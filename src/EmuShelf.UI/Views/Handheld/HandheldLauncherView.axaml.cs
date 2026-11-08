@@ -33,6 +33,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private HandheldShellViewModel? _shell;
     private Point? _pressAt;
     private (int Page, int Slot)? _pressedSlot;
+    private HandheldGameTileViewModel? _pressedTile;
     // Move mode started by this touch's long press: letting go drops. A tap during a pad-driven move does not.
     private bool _carrying;
 
@@ -94,6 +95,56 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             // A press on the field itself is left to the field (a hardware keyboard types there).
             return;
         }
+        // The menu and the Title page's sheets take taps on their rows; a tap on their scrim closes them.
+        if (shell.IsMenuOpen)
+        {
+            if (Find<HandheldMenuItemViewModel>(source) is { } menuItem)
+                shell.TapMenuItem(menuItem);
+            else if (!IsInside(source, "MenuCard"))
+                shell.TapOutside();
+            e.Handled = true;
+            return;
+        }
+        if (shell.TitlePage is { } title)
+        {
+            if (title.IsOptionList)
+            {
+                if (Find<HandheldTitleOptionViewModel>(source) is { } option)
+                    shell.TapTitleOption(option);
+                else if (!IsInside(source, "OptionCard"))
+                    shell.TapOutside();
+            }
+            else if (title.IsScreenChooser)
+            {
+                if (IsInside(source, "ScreenTopShot"))
+                    shell.TapScreenChoice(HandheldTitlePageViewModel.ScreenTopIndex);
+                else if (IsInside(source, "ScreenBottomShot"))
+                    shell.TapScreenChoice(HandheldTitlePageViewModel.ScreenBottomIndex);
+                else if (IsInside(source, "RememberShot"))
+                    shell.TapScreenChoice(HandheldTitlePageViewModel.ScreenRememberIndex);
+                else if (!IsInside(source, "ScreenCard"))
+                    shell.TapOutside();
+            }
+            else if (Find<HandheldTitleButtonViewModel>(source) is { } button)
+            {
+                shell.TapTitleButton(button);
+            }
+            e.Handled = true;
+            return;
+        }
+        // The folder header's chips and the dock act on the first tap.
+        if (IsInside(source, "BackShot") || IsInside(source, "SortShot"))
+        {
+            shell.TapHeader(IsInside(source, "SortShot") ? HandheldHeaderItem.Sort : HandheldHeaderItem.Back);
+            e.Handled = true;
+            return;
+        }
+        if (Find<HandheldDockItemViewModel>(source) is { } dockItem)
+        {
+            shell.TapDockItem(dockItem);
+            e.Handled = true;
+            return;
+        }
         // The edge hints turn the page.
         if (IsInside(source, "EdgeLeft") || IsInside(source, "EdgeRight"))
         {
@@ -103,7 +154,8 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         }
         _pressAt = e.GetPosition(this);
         _pressedSlot = SlotAt(source);
-        if (_pressedSlot is not null && !shell.IsMoving)
+        _pressedTile = _pressedSlot is null && shell.IsFolderOpen ? Find<HandheldGameTileViewModel>(source) : null;
+        if ((_pressedSlot is not null || _pressedTile is not null) && !shell.IsMoving)
             _longPress.Start();
     }
 
@@ -132,9 +184,15 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         var delta = e.GetPosition(this) - start;
         if (shell.IsMoving)
         {
-            // Lifted by this touch's long press and dragged: let go to drop.
+            // Lifted by this touch's long press: let go to drop where it was carried, or, if it never left its
+            // slot, to put it back and open its actions sheet instead.
             if (_carrying)
-                shell.Drop();
+            {
+                if (shell.HasCarriedAway)
+                    shell.Drop();
+                else
+                    shell.ReleaseLongPressInPlace();
+            }
             _carrying = false;
             return;
         }
@@ -155,10 +213,18 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private void OnLongPress()
     {
         _longPress.Stop();
-        if (_shell is { } shell && _pressedSlot is { } slot)
+        if (_shell is not { } shell)
+            return;
+        if (_pressedSlot is { } slot)
         {
             shell.LongPressHomeSlot(slot.Page, slot.Slot);
             _carrying = shell.IsMoving;
+        }
+        else if (_pressedTile is { } tile)
+        {
+            // The release that follows must not also count as a tap on the tile.
+            _pressAt = null;
+            shell.LongPressFolderTile(tile.Index);
         }
     }
 

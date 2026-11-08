@@ -13404,3 +13404,35 @@ plus a 3 s settle; per-thread from `/proc/<pid>/task`):**
 - **Not changed:** browsing home is dominated by the native GL threads drawing the selector, lift and
   breathing glow at the panel's rate (as designed and measured on 2026-11-07); the Avalonia Launcher's render
   thread is the largest cost while move mode is on screen.
+
+## 2026-11-08 — M45 H4: touch everywhere on the Launcher, and the touch-alone check
+
+The 2026-11-08 review widened H4's touch from move mode to the whole Launcher, with the exit "home can be
+browsed and arranged by touch alone". Finished in the same branch, before H4 was ticked.
+
+- **Every element answers a tap** (`HandheldShellViewModel.Touch.cs`; the view's code-behind only finds what
+  was touched): tiles select on the first tap and open on the second (home slots, folder games); buttons,
+  chips, rows and dock buttons act on the first tap (the folder header's Back and sort chips, the dock, the
+  Start menu's rows, the Title page's buttons, its disc and actions rows, the screen chooser's cards and the
+  remember toggle, the actions sheet's rows, the naming keys and chips, the edge hints). A tap on a scrim
+  closes the menu, a sheet or a Title page chooser, as B does. Each tap puts the selector where the finger is
+  and then does what A would do there, so touch and the pad share one path.
+- **A swipe in a folder scrolls it** a screen of columns (four) at a time; on home it turns the page.
+- **A long press without a drag opens the tile's actions sheet.** Y is the only way to the sheet with the pad,
+  so without this a touch-only user could move tiles but not pin, add to a folder, rename or delete. A long
+  press on a home tile still lifts it and a drag carries it; letting go where it was puts it back and opens its
+  sheet (Move is a row there). A long press on an empty slot opens its sheet (New folder here); on a game
+  inside a folder, where games are not moved, it opens the game's sheet. The dock's long press (Change app…,
+  Clear slot) stays with H6's dock sheet.
+- **Tests:** `HandheldTouchTests` drives the real Launcher view headlessly with pointer events only (browse,
+  page, open, scroll, sort, back, the Title page through the screen chooser, move by drag, a folder named by
+  tapping keys, the menu, the long-press sheets). A tap waits for the motion it starts, as a finger would: the
+  folder's zoom is a compositor animation, so the page is only where it lands once it has landed.
+- **Checked on the Thor by touch alone** (`adb shell input -d 4 tap` / `motionevent`; Screen-2's view is the
+  full 1240×1080 Presentation, so canvas coordinates are screen coordinates): a long-press drag moved a
+  folder; a folder was named by tapping keys and Done; a platform folder opened on its second tap; a long
+  press on its game opened the sheet and "Pin to home" pinned it; the Back chip closed the folder; a long press
+  on the new folder opened its sheet and Delete plus the confirmation removed it — each read back from
+  `Settings/handheld-home.json`. Not driven on the device: Play from the Title page (it would start an
+  emulator; covered headlessly) and the dock's buttons. The test edits were reverted afterwards (the file
+  deleted, so home is the default again).

@@ -2341,7 +2341,9 @@ Played. Pad input already reaches one dispatcher from both displays
       *Revised after the folder lab (2026-11-07, `DECISIONS.md` "M45 H4: Zoom through and the era
       motif"):* folder open/close is now the owner's pick, Zoom through (the spill is gone), and the
       Stage's backdrop is the era motif. Built and tested on macOS; the Thor feel check is still to come.
-- [ ] **H4 — arranging home.** `HandheldHomeLayout` in Core (pages of slots holding a platform
+- [x] **H4 — arranging home.** ✅ (2026-11-08; checked on the Thor by pad, by touch alone and through
+      `Settings/handheld-home.json`. Choices in `DECISIONS.md` 2026-11-08 "M45 H4: arranging home", "… polish
+      and optimisation pass" and "… touch everywhere".) `HandheldHomeLayout` in Core (pages of slots holding a platform
       folder, a user folder, a game pin, or a system tile; user folders with name, colour, ordered
       ids and sort mode) and `IHandheldHomeLayoutStore` → portable `Settings/handheld-home.json`,
       the same pattern as `FileSecondScreenDockStore`. Reconciliation: new platform appended with a
@@ -2359,14 +2361,11 @@ Played. Pad input already reaches one dispatcher from both displays
       mode mentioned touch before the 2026-11-08 review). Tests cover the model, store and
       reconciliation on macOS. **Exit:** the layout survives a cold start and a reinstall-style
       restore of `Settings/`, and home can be browsed and arranged by touch alone.
-      *Built 2026-11-08, with a polish and optimisation pass the same day (`DECISIONS.md` "M45 H4: arranging
-      home" and "M45 H4: polish and optimisation pass"):* everything above except the parts below, checked on
-      the Thor by pad and `Settings/handheld-home.json` — folders made and named, add to folder, pin, move,
-      and the layout surviving a cold start and a restore of `Settings/`. Naming uses the mockup's drawn
-      keyboard, because Android's keyboard cannot open on Screen-2. Touch is built for home tiles (tap, second
-      tap, swipe, long-press, drag), folder games, the actions sheet, the naming keys and chips, and the page
-      edge hints. Still open (added by the 2026-11-08 review after this was built): touch for the folder
-      header's chips, the dock and the Title page's buttons, and the touch-alone exit check on the Thor.
+      *Done 2026-11-08:* everything above, checked on the Thor by pad (folders made and named, add to folder,
+      pin, move, cold start, a restore of `Settings/`) and then by touch alone (a folder named on the drawn
+      keyboard, a folder opened, a game pinned from its sheet, Back, a folder deleted through its
+      confirmation). Naming uses the mockup's drawn keyboard, because Android's keyboard cannot open on
+      Screen-2. A long press without a drag opens a tile's actions sheet, so touch reaches every action.
 - [ ] **H5 — screen swap.** X re-hosts the Stage and Launcher between displays with the slide
       (precedent: `MainScreenCompanion` re-hosting in `SecondScreenController`). Selection, open
       folder and scroll position survive; `IsSwapped` is remembered. On the narrow screen the Stage

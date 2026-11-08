@@ -723,7 +723,7 @@
 
         <!-- State: the disc chooser or the actions sheet, a card over a scrim. -->
         <Border x:Name="OptionSheet" IsVisible="{Binding TitlePage.IsOptionList}" Background="#521C2033" Margin="-400">
-          <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="40"
+          <Border x:Name="OptionCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="40"
                   Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
             <StackPanel Spacing="8">
               <StackPanel Margin="24,8,24,8" Spacing="4">
@@ -758,7 +758,7 @@
 
         <!-- State: the launch-screen chooser — two screen cards and "Always use this screen". -->
         <Border x:Name="ScreenSheet" IsVisible="{Binding TitlePage.IsScreenChooser}" Background="#521C2033" Margin="-400">
-          <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="48"
+          <Border x:Name="ScreenCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="48"
                   Background="#F5F6F9" Padding="48,40" BoxShadow="0 20 48 0 #33000000" ClipToBounds="False">
             <StackPanel Spacing="32" ClipToBounds="False">
               <StackPanel Spacing="4">
@@ -863,7 +863,7 @@
       <Border IsVisible="{Binding IsMenuOpen}" Background="#521C2033">
         <Viewbox Stretch="Uniform">
         <Border Width="1240" Height="1080" Background="Transparent">
-        <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" CornerRadius="40"
+        <Border x:Name="MenuCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" CornerRadius="40"
                 Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
           <StackPanel Spacing="8">
             <TextBlock Text="Menu" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" Margin="24,8,0,8" />

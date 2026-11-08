@@ -509,7 +509,10 @@ public sealed partial class HandheldShellViewModel
         UpdateFocus();
     }
 
-    /// <summary>A long press on a home tile lifts it into move mode; a drag then carries it (<see cref="CarryTo"/>).</summary>
+    /// <summary>
+    /// A long press on a home tile lifts it into move mode; a drag then carries it (<see cref="CarryTo"/>), and letting
+    /// go without dragging opens its actions sheet (<see cref="ReleaseLongPressInPlace"/>).
+    /// </summary>
     public void LongPressHomeSlot(int page, int slot)
     {
         if (!CanTouchHome())
@@ -518,16 +521,22 @@ public sealed partial class HandheldShellViewModel
         _home = new HandheldHomePosition(page, slot);
         ShowPage(page);
         UpdateFocus();
-        StartMove();
+        // An empty slot has nothing to lift: its sheet (New folder here) opens instead.
+        if (_layout.SlotAt(HomeIndex).IsEmpty)
+            OpenActions();
+        else
+            StartMove();
     }
 
-    /// <summary>A swipe across home turns the page.</summary>
+    /// <summary>A swipe turns home's page, or scrolls an open folder by a screen of columns.</summary>
     public void SwipePage(int delta)
     {
         if (_move is not null)
             DispatchMoveAction(_move, delta > 0 ? GamepadAction.NextPlatform : GamepadAction.PreviousPlatform);
         else if (CanTouchHome())
             TurnPage(delta);
+        else if (OpenFolder is { IsLoaded: true } folder && !IsTouchBlocked && !IsMenuOpen && TitlePage is null)
+            SwipeFolder(folder, delta);
     }
 
     /// <summary>A tap on a game inside the open folder: select it, or open its Title page if it is selected.</summary>
