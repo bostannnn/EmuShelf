@@ -248,6 +248,7 @@ internal sealed class SecondScreenController
         _gameOnSecondScreen = true;
         _viewModel.MainScreenCompanion = presentation.Model;
         presentation.Hide();
+        UpdateHandheldSurface();
         _logger.Information("Second-screen: game took Screen-2; companion moved to the built-in panel.");
     }
 
@@ -259,6 +260,7 @@ internal sealed class SecondScreenController
         if (_viewModel is not null)
             _viewModel.MainScreenCompanion = null;
         _presentation?.Show();
+        UpdateHandheldSurface();
         _logger.Information("Second-screen: game left Screen-2; companion restored to the second screen.");
     }
 
@@ -1222,6 +1224,8 @@ internal sealed class SecondScreenController
             return;
         _presentation = null;
         presentation.Model.PropertyChanged -= CompanionPropertyChanged;
+        // Handheld's views let go of the presentation before it is torn down.
+        UpdateHandheldSurface();
         if (_viewModel is not null && ReferenceEquals(_viewModel.HandheldCompanion, presentation.Model))
             _viewModel.HandheldCompanion = null;
         ++_spotlightGeneration;
@@ -1273,12 +1277,13 @@ internal sealed class SecondScreenController
     /// </summary>
     private void UpdateHandheldSurface()
     {
-        if (_presentation is not { } presentation)
-            return;
         var handheld = _viewModel?.Handheld;
-        var showLauncher = handheld is not null && _runningGameId is null &&
+        var presentation = _presentation;
+        var showHandheld = handheld is not null && presentation is not null && _runningGameId is null &&
             presentation.Model.Overlay == SecondScreenOverlayKind.None;
-        presentation.ShowLauncher(showLauncher ? handheld : null);
+        // The main display's Handheld screen gives way while the companion sits over it (a game on Screen-2). Where
+        // the two Handheld screens go (and the swap, M45 H5) is HandheldScreenHost's.
+        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen);
     }
 
     private void DetachDisplayManager()

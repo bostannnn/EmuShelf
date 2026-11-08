@@ -25,11 +25,10 @@ public sealed partial class HandheldShellViewModel
     /// <summary>The home layout as it stands (saved after every edit).</summary>
     public HandheldHomeLayout Layout => _layout;
 
-    /// <summary>The focused home slot across all pages (page × 20 + slot).</summary>
-    private int HomeIndex => (_home.Page * HandheldHomeLayout.SlotsPerPage) + _home.Slot;
+    /// <summary>The focused home slot across all pages (page × slots per page + slot, in the shape on screen).</summary>
+    private int HomeIndex => HomeGrid.IndexOf(_home);
 
-    private static HandheldHomePosition PositionOf(int index) =>
-        new(index / HandheldHomeLayout.SlotsPerPage, index % HandheldHomeLayout.SlotsPerPage);
+    private HandheldHomePosition PositionOf(int index) => HomeGrid.PositionOf(index);
 
     /// <summary>
     /// Reads the saved layout (or makes the default), reconciles it with the library and saves it back if that
@@ -52,8 +51,8 @@ public sealed partial class HandheldShellViewModel
         _layout = layout;
         _store.Save(layout);
         BuildPages();
-        if (_home.Page >= _layout.Pages.Count)
-            _home = new HandheldHomePosition(_layout.Pages.Count - 1, _home.Slot);
+        if (_home.Page >= ViewPageCount)
+            _home = new HandheldHomePosition(ViewPageCount - 1, _home.Slot);
         ShowPage(_home.Page);
         PrunePins();
         _ = EnsurePinsAsync();
@@ -72,28 +71,37 @@ public sealed partial class HandheldShellViewModel
 
     // ---- Pages ----
 
+    /// <summary>Builds home in both shapes (the other one is the Launcher a swap brings in, M45 H5).</summary>
     private void BuildPages()
     {
         var slots = _move?.Preview ?? _layout.AllSlots();
-        var pageCount = slots.Count / HandheldHomeLayout.SlotsPerPage;
+        foreach (var screen in Screens)
+            BuildPages(screen, PadToPages(slots, screen.Grid));
+    }
+
+    private void BuildPages(HandheldHomeScreenViewModel screen, IReadOnlyList<HandheldSlot> slots)
+    {
+        var perPage = screen.Grid.SlotsPerPage;
+        var pageCount = slots.Count / perPage;
         var moving = _move is not null;
+        var pages = screen.Pages;
         for (var page = 0; page < pageCount; page++)
         {
-            if (page >= Pages.Count)
+            if (page >= pages.Count)
             {
-                Pages.Add(new HandheldHomePageViewModel(page, Enumerable.Range(0, HandheldHomeLayout.SlotsPerPage)
-                    .Select(slot => BuildSlot(page, slot, slots[(page * HandheldHomeLayout.SlotsPerPage) + slot]))));
+                pages.Add(new HandheldHomePageViewModel(page, screen.Grid, screen.CanvasWidth, Enumerable.Range(0, perPage)
+                    .Select(slot => BuildSlot(screen.Grid, page, slot, slots[(page * perPage) + slot]))));
                 continue;
             }
             // Only a slot whose look changed gets a new view model (and a new tile, and a new picture on the Thor).
-            var existing = Pages[page].Slots;
-            for (var slot = 0; slot < HandheldHomeLayout.SlotsPerPage; slot++)
+            var existing = pages[page].Slots;
+            for (var slot = 0; slot < perPage; slot++)
             {
-                var built = BuildSlot(page, slot, slots[(page * HandheldHomeLayout.SlotsPerPage) + slot]);
+                var built = BuildSlot(screen.Grid, page, slot, slots[(page * perPage) + slot]);
                 if (existing[slot].PictureKey != built.PictureKey)
                 {
-                    if (ReferenceEquals(_peekSlot, existing[slot]))
-                        _peekSlot = null;
+                    if (ReferenceEquals(screen.PeekSlot, existing[slot]))
+                        screen.PeekSlot = null;
                     existing[slot] = built;
                 }
                 else
@@ -102,20 +110,20 @@ public sealed partial class HandheldShellViewModel
                 }
             }
         }
-        while (Pages.Count > pageCount)
-            Pages.RemoveAt(Pages.Count - 1);
-        if (PageDots.Count != pageCount)
+        while (pages.Count > pageCount)
+            pages.RemoveAt(pages.Count - 1);
+        if (screen.PageDots.Count != pageCount)
         {
-            PageDots.Clear();
+            screen.PageDots.Clear();
             for (var page = 0; page < pageCount; page++)
-                PageDots.Add(new HandheldPageDotViewModel(page));
+                screen.PageDots.Add(new HandheldPageDotViewModel(page));
         }
-        PageCount = Pages.Count;
+        screen.PageCount = pages.Count;
     }
 
-    private HandheldHomeSlotViewModel BuildSlot(int page, int slot, HandheldSlot content)
+    private HandheldHomeSlotViewModel BuildSlot(HandheldHomeGrid grid, int page, int slot, HandheldSlot content)
     {
-        var index = (page * HandheldHomeLayout.SlotsPerPage) + slot;
+        var index = (page * grid.SlotsPerPage) + slot;
         var look = HandheldMoveLook.None;
         if (_move is { } move && index == move.Target)
             look = move.Drop == HandheldDropKind.Place ? HandheldMoveLook.Carried : HandheldMoveLook.DropTarget;

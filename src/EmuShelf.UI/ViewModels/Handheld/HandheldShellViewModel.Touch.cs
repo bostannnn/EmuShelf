@@ -130,7 +130,7 @@ public sealed partial class HandheldShellViewModel
         if (!folder.HasGames)
             return;
         var lastColumn = HandheldFolderNavigation.ColumnCount(folder.Items.Count) - 1;
-        var column = Math.Clamp(folder.FirstVisibleColumn + (delta * HandheldFolderNavigation.VisibleColumns), 0, lastColumn);
+        var column = Math.Clamp(folder.FirstVisibleColumn + (delta * FolderVisibleColumns), 0, lastColumn);
         if (column == folder.SelectedIndex / HandheldFolderNavigation.Rows)
         {
             Bumped?.Invoke(delta > 0 ? HandheldDirection.Right : HandheldDirection.Left);

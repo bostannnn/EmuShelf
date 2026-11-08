@@ -24,11 +24,29 @@ public enum HandheldMoveOutcome
     ExitDown,
 }
 
-/// <summary>A place on home: a page and a slot on it (0–19, row by row).</summary>
-public readonly record struct HandheldHomePosition(int Page, int Slot)
+/// <summary>A place on home: a page and a slot on it (row by row, in the grid the Launcher shows).</summary>
+public readonly record struct HandheldHomePosition(int Page, int Slot);
+
+/// <summary>
+/// The shape the Launcher draws home in. The saved layout is one flat run of slots (stored as 5×4 pages);
+/// the Launcher cuts it into pages of its own shape: 5×4 on the Thor's 1240×1080 screen, 7×3 at the same
+/// tile size on the 16:9 screen once the screens are swapped (M45 H5). Reading order is kept, so a swap
+/// reflows home the way a phone's launcher reflows on rotation.
+/// </summary>
+public readonly record struct HandheldHomeGrid(int Columns, int Rows)
 {
-    public int Column => Slot % HandheldHomeLayout.Columns;
-    public int Row => Slot / HandheldHomeLayout.Columns;
+    public static HandheldHomeGrid Standard { get; } = new(HandheldHomeLayout.Columns, HandheldHomeLayout.Rows);
+
+    public static HandheldHomeGrid Wide { get; } = new(7, 3);
+
+    public int SlotsPerPage => Columns * Rows;
+
+    /// <summary>Pages needed to show <paramref name="slotCount"/> slots (at least one).</summary>
+    public int PageCount(int slotCount) => Math.Max(1, (slotCount + SlotsPerPage - 1) / SlotsPerPage);
+
+    public HandheldHomePosition PositionOf(int index) => new(index / SlotsPerPage, index % SlotsPerPage);
+
+    public int IndexOf(HandheldHomePosition position) => (position.Page * SlotsPerPage) + position.Slot;
 }
 
 /// <summary>
@@ -39,11 +57,14 @@ public readonly record struct HandheldHomePosition(int Page, int Slot)
 public static class HandheldHomeNavigation
 {
     public static (HandheldHomePosition Position, HandheldMoveOutcome Outcome) Move(
-        HandheldHomePosition position, HandheldDirection direction, int pageCount)
+        HandheldHomePosition position, HandheldDirection direction, int pageCount) =>
+        Move(position, direction, pageCount, HandheldHomeGrid.Standard);
+
+    public static (HandheldHomePosition Position, HandheldMoveOutcome Outcome) Move(
+        HandheldHomePosition position, HandheldDirection direction, int pageCount, HandheldHomeGrid grid)
     {
-        const int columns = HandheldHomeLayout.Columns;
-        const int rows = HandheldHomeLayout.Rows;
-        var (column, row) = (position.Column, position.Row);
+        var (columns, rows) = (grid.Columns, grid.Rows);
+        var (column, row) = (position.Slot % columns, position.Slot / columns);
         switch (direction)
         {
             case HandheldDirection.Left when column > 0:
@@ -69,12 +90,15 @@ public static class HandheldHomeNavigation
 /// <summary>
 /// D-pad movement inside a folder: a grid three rows tall that scrolls sideways a column at a time.
 /// Games fill it column by column, so index <c>i</c> sits in column <c>i / 3</c>, row <c>i % 3</c>.
-/// Four columns are shown at once, with the next one peeking in.
+/// Four columns are shown at once on the 1240×1080 screen (seven on the 16:9 one), with the next one peeking in.
 /// </summary>
 public static class HandheldFolderNavigation
 {
     public const int Rows = 3;
     public const int VisibleColumns = 4;
+
+    /// <summary>Columns shown at once on the 16:9 screen: seven at the same 264 px pitch fit 1920 px (48 + 7 × 264 = 1896).</summary>
+    public const int WideVisibleColumns = 7;
 
     public static int ColumnCount(int itemCount) => (itemCount + Rows - 1) / Rows;
 
@@ -114,14 +138,15 @@ public static class HandheldFolderNavigation
     /// The first column to show so the selected column stays inside the four visible ones, scrolling by
     /// as little as possible, and never past the point where the last column sits at the right edge.
     /// </summary>
-    public static int FirstVisibleColumn(int selectedColumn, int currentFirstColumn, int itemCount)
+    public static int FirstVisibleColumn(int selectedColumn, int currentFirstColumn, int itemCount,
+        int visibleColumns = VisibleColumns)
     {
-        var maxFirst = Math.Max(0, ColumnCount(itemCount) - VisibleColumns);
+        var maxFirst = Math.Max(0, ColumnCount(itemCount) - visibleColumns);
         var first = currentFirstColumn;
         if (selectedColumn < first)
             first = selectedColumn;
-        else if (selectedColumn > first + VisibleColumns - 1)
-            first = selectedColumn - (VisibleColumns - 1);
+        else if (selectedColumn > first + visibleColumns - 1)
+            first = selectedColumn - (visibleColumns - 1);
         return Math.Clamp(first, 0, maxFirst);
     }
 }

@@ -21,8 +21,15 @@ namespace EmuShelf.Rendering.Stage;
 /// </remarks>
 public sealed class StageCompositor : INativeScene
 {
-    public const float CanvasWidth = 1920f;
+    /// <summary>The Stage's canvas on the 16:9 screen; the backdrops are drawn at this size.</summary>
+    public const float WideCanvasWidth = 1920f;
     public const float CanvasHeight = 1080f;
+
+    // 1920 on the 16:9 screen, 1240 once the screens are swapped (M45 H5, StageCanvasCommand).
+    private float _canvasWidth = WideCanvasWidth;
+
+    /// <summary>The canvas width the pictures are placed on.</summary>
+    public float CanvasWidth => _canvasWidth;
 
     private const int SwizzleR = 0x8E42;
     private const int SwizzleB = 0x8E44;
@@ -55,6 +62,7 @@ public sealed class StageCompositor : INativeScene
     private List<Layer> _hero = [];
     private float _fadeStart = float.NegativeInfinity;
     private Layer? _fly;
+    private bool _flyFromAbove;
     private float _flyStart;
     private FolderArtState2D? _folder;
     private FolderArtState _folderState;
@@ -122,6 +130,10 @@ public sealed class StageCompositor : INativeScene
             _lastNavigation = now;
         switch (command)
         {
+            case StageCanvasCommand canvas:
+                _canvasWidth = canvas.Width;
+                _mediumDirty = true;
+                break;
             case StageBackdropCommand backdrop:
             {
                 var ids = backdrop.Animated is { Count: > 0 } list ? list : null;
@@ -168,6 +180,7 @@ public sealed class StageCompositor : INativeScene
             case StageLaunchCommand launch:
                 Replace(ref _fly, launch.Cover, repeat: false);
                 _flyStart = now;
+                _flyFromAbove = launch.FromAbove;
                 break;
             case StageFolderStateCommand folderState:
                 _folderState = folderState.State;
@@ -267,20 +280,20 @@ public sealed class StageCompositor : INativeScene
         {
             // The FBO's first row is the bottom of the picture.
             DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, content,
-                centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 1, 1, 0));
+                centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY, new Vector4(0, 1, 1, 0));
         }
         else if (_folder is { } folder)
         {
             folder.Draw(now, (texture, image, affine) => DrawQuad(texture, image.X, image.Y, image.Width, image.Height, content,
-                centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY, new Vector4(0, 0, 1, 1), affine));
+                centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY, new Vector4(0, 0, 1, 1), affine));
             animating |= folder.IsAnimating(now);
         }
         else if (_art is { } art)
         {
-            DrawLayer(art, content, centreScale, StageCurves.CentrePivotX, StageCurves.CentrePivotY);
+            DrawLayer(art, content, centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY);
         }
         if (_plate is { } plate)
-            DrawLayer(plate, content, plateScale, StageCurves.PlatePivotX, StageCurves.PlatePivotY);
+            DrawLayer(plate, content, plateScale, _canvasWidth / 2f, StageCurves.PlatePivotY);
         if (_fly is { } fly)
             animating |= DrawLaunch(fly, now);
         foreach (var chrome in _chrome.Values)
@@ -320,7 +333,7 @@ public sealed class StageCompositor : INativeScene
             var p = (t - delay) / land;
             var e = StageCurves.CubicBezier(0.22f, 1.1f, 0.36f, 1f, p);
             scale = 0.45f + (0.55f * e);
-            y = 760f * (1f - e);
+            y = (_flyFromAbove ? -760f : 760f) * (1f - e);
             opacity = Math.Clamp(p / 0.25f, 0f, 1f);
         }
         else if (t < delay + land + zoom)
@@ -515,12 +528,12 @@ public sealed class StageCompositor : INativeScene
             if (state.Previous is { } previous)
             {
                 // Within a system the next backdrop fades in over the last one (BackdropRotation.FadeMilliseconds).
-                _animator!.Present(previous, opacity);
-                _animator.Present(animated, opacity * StageCurves.EaseInOut((clock - state.RotationStart) / BackdropRotation.FadeMilliseconds));
+                _animator!.Present(previous, opacity, BackdropCrop);
+                _animator.Present(animated, opacity * StageCurves.EaseInOut((clock - state.RotationStart) / BackdropRotation.FadeMilliseconds), BackdropCrop);
             }
             else
             {
-                _animator!.Present(animated, opacity);
+                _animator!.Present(animated, opacity, BackdropCrop);
             }
             // Back to the sprite program for the layers above.
             _program.Use();
@@ -528,7 +541,9 @@ public sealed class StageCompositor : INativeScene
             _gl.ActiveTexture(TextureUnit.Texture0);
             return;
         }
-        DrawLayer(state.Under, opacity, 1f, 0, 0);
+        // The pictured layers are 1920 wide: a narrower canvas shows their middle.
+        var shift = BackdropShift;
+        DrawLayer(state.Under, opacity, 1f, 0, 0, shift);
         var offset = DriftOffset(state.Backdrop, clock);
         if (state.Tile != 0 && state.Backdrop.Tile is { } tile)
         {
@@ -541,12 +556,18 @@ public sealed class StageCompositor : INativeScene
         if (state.Quad is { } quad)
         {
             var image = quad.Image;
-            DrawQuad(quad.Texture, image.X + offset.X, image.Y + offset.Y, image.Width, image.Height, opacity, 1f, 0, 0,
+            DrawQuad(quad.Texture, image.X + offset.X + shift, image.Y + offset.Y, image.Width, image.Height, opacity, 1f, 0, 0,
                 new Vector4(0, 0, 1, 1));
         }
         if (state.Over is { } over)
-            DrawLayer(over, opacity, 1f, 0, 0);
+            DrawLayer(over, opacity, 1f, 0, 0, shift);
     }
+
+    // On the narrow screen the 16:9 backdrops are centre-cropped: the pictured ones shifted left, the animated
+    // ones cut in the output shader.
+    private float BackdropShift => (_canvasWidth - WideCanvasWidth) / 2f;
+
+    private float BackdropCrop => Math.Max(0f, 1f - (_canvasWidth / WideCanvasWidth));
 
     private void Replace(ref Layer? layer, StageImage? image, bool repeat)
     {
@@ -557,10 +578,10 @@ public sealed class StageCompositor : INativeScene
         layer = image is null ? null : new Layer(image, Upload(image.Pixels, repeat));
     }
 
-    private void DrawLayer(Layer layer, float opacity, float scale, float pivotX, float pivotY)
+    private void DrawLayer(Layer layer, float opacity, float scale, float pivotX, float pivotY, float shiftX = 0f)
     {
         var image = layer.Image;
-        DrawQuad(layer.Texture, image.X, image.Y, image.Width, image.Height, opacity, scale, pivotX, pivotY, new Vector4(0, 0, 1, 1));
+        DrawQuad(layer.Texture, image.X + shiftX, image.Y, image.Width, image.Height, opacity, scale, pivotX, pivotY, new Vector4(0, 0, 1, 1));
     }
 
     private void DrawQuad(uint texture, float x, float y, float width, float height, float opacity, float scale,

@@ -37,24 +37,83 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     // Move mode started by this touch's long press: letting go drops. A tap during a pad-driven move does not.
     private bool _carrying;
 
+    /// <summary>
+    /// Raised once the native Launcher has everything this view shows: after it was shown again, or moved to the
+    /// other screen's shape (M45 H5), so the platform can bring that screen into view.
+    /// </summary>
+    public event System.Action? NativeCaughtUp;
+
     public HandheldLauncherView()
+        : this(HandheldNativeStage.Launcher, pinnedWide: null)
     {
+    }
+
+    /// <summary>
+    /// A Launcher drawn by <paramref name="native"/> (if any). <paramref name="pinnedWide"/> keeps it on one screen's
+    /// shape (the 16:9 screen's when true): the Android head keeps one Launcher per display, so a swap only changes
+    /// which one is in front (M45 H5). Null follows the swap (one Launcher that moves).
+    /// </summary>
+    public HandheldLauncherView(IHandheldNativeStage? native, bool? pinnedWide)
+    {
+        PinnedWide = pinnedWide;
         InitializeComponent();
+        _homeLayer = this.FindControl<Control>("HomeLayer")!;
+        _canvas = this.FindControl<Control>("Canvas")!;
+        _selectorLayer = this.FindControl<Control>("SelectorLayer")!;
         // View wiring only: the motion follows whichever shell the view shows.
         _motion = new HandheldLauncherMotion(this);
         // On a platform with a native Launcher this view stays laid out but invisible, and lends it pictures.
-        _feed = HandheldNativeStage.Launcher is { } host ? new HandheldNativeLauncherFeed(this, _motion, host) : null;
+        _feed = native is { } host ? new HandheldNativeLauncherFeed(this, _motion, host) : null;
+        if (_feed is not null)
+            _feed.CaughtUp += () => NativeCaughtUp?.Invoke();
         _longPress = new DispatcherTimer { Interval = LongPress };
         _longPress.Tick += (_, _) => OnLongPress();
         DataContextChanged += (_, _) =>
         {
+            if (_shell is { } old)
+                old.PropertyChanged -= OnShellChanged;
             _shell = DataContext as HandheldShellViewModel;
+            if (_shell is { } shell)
+                shell.PropertyChanged += OnShellChanged;
             _motion.Attach(_shell);
             _feed?.Attach(_shell);
+            ApplyScreen();
         };
         AddHandler(PointerPressedEvent, OnPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, OnPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel);
         AddHandler(PointerReleasedEvent, OnPointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>The screen shape this Launcher is kept on, or null when it follows the swap.</summary>
+    public bool? PinnedWide { get; }
+
+    /// <summary>Home as this Launcher draws it: its pinned screen's shape, or the shape in use.</summary>
+    public HandheldHomeScreenViewModel? Screen => _shell is not { } shell ? null : PinnedWide is { } wide ? shell.HomeFor(wide) : shell.Home;
+
+    private readonly Control _homeLayer;
+    private readonly Control _canvas;
+    private readonly Control _selectorLayer;
+    private HandheldHomeScreenViewModel? _screen;
+
+    private void OnShellChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(HandheldShellViewModel.IsSwapped) && PinnedWide is null)
+            ApplyScreen();
+    }
+
+    // View wiring: the home layer, the canvas and the selector layer take this Launcher's screen.
+    private void ApplyScreen()
+    {
+        var screen = Screen;
+        if (ReferenceEquals(screen, _screen))
+            return;
+        _screen = screen;
+        _homeLayer.DataContext = screen;
+        var width = screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
+        _canvas.Width = width;
+        _selectorLayer.Width = width;
+        _motion.SetScreen(screen);
+        _feed?.SetScreen(screen);
     }
 
     void IHandheldSelectorHost.OnAnchorChanged(Control anchor, bool isFocused)
@@ -167,7 +226,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         if (shell.IsMoving && _carrying)
         {
             if (SlotAt(this.GetInputElementsAt(e.GetPosition(this)).OfType<Visual>().FirstOrDefault()) is { } over)
-                shell.CarryTo((over.Page * HandheldHomeLayout.SlotsPerPage) + over.Slot);
+                shell.CarryTo((Screen ?? shell.Home).Grid.IndexOf(new HandheldHomePosition(over.Page, over.Slot)));
             return;
         }
         // Moving off the tile before the long press fires is a swipe, not a press.

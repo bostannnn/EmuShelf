@@ -22,11 +22,12 @@
         <views:GamepadShellView />
 
         <!--
-          Handheld mode (M45): this screen is the Stage, the Launcher is on Screen-2. GamepadShellView hides
-          itself outside Gamepad mode, so only one of the two is ever shown.
+          Handheld mode (M45): this screen is the Stage and the Launcher is on Screen-2, or the other way round once
+          X has swapped them (H5). HandheldScreenHost owns both views and puts the right one in this slot.
+          GamepadShellView hides itself outside Gamepad mode, so only one of the two is ever shown.
         -->
         <Panel IsVisible="{Binding IsHandheldMode}">
-            <views:HandheldStageView DataContext="{Binding Handheld}" />
+            <ContentControl x:Name="HandheldMain" />
         </Panel>
 
         <!--

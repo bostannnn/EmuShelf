@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Android.App;
 using Android.Content;
 using Android.Views;
@@ -15,7 +16,6 @@ internal sealed class ThorSecondScreenPresentation : Presentation
 {
     private readonly global::Avalonia.Android.AvaloniaView _avaloniaView;
     private readonly global::EmuShelf.App.Views.SecondScreenView _companionView;
-    private global::EmuShelf.App.Views.HandheldLauncherView? _launcherView;
     private bool _released;
 
     /// <summary>
@@ -61,31 +61,31 @@ internal sealed class ThorSecondScreenPresentation : Presentation
     // otherwise wander the ring onto the Refresh/Close chrome and the invisible, still-focusable closed
     // overlays. Mirrors MainActivity.DispatchKeyEvent, which is the same pattern for the couch on Screen 1.
     /// <summary>
-    /// Shows Handheld mode's Launcher bound to <paramref name="handheld"/>, or the companion when null. Both
-    /// views live in this one top level, so swapping the content here is safe; moving a view to the other
-    /// display's top level is not (DECISIONS 2026-11-07).
+    /// Shows Handheld mode's pair for this display (a Stage and a Launcher, one of them in front, M45 H5) with their
+    /// native surfaces, or the companion when <paramref name="handheld"/> is null. The pair stays here; a swap only
+    /// changes which of the two is in front (<see cref="HandheldScreenHost"/>).
     /// </summary>
-    internal void ShowLauncher(global::EmuShelf.App.ViewModels.HandheldShellViewModel? handheld)
+    internal void ShowHandheld(global::Avalonia.Controls.Control? handheld, IReadOnlyList<NativeSceneSurface> surfaces)
     {
         if (_released)
             return;
         if (handheld is null)
         {
             IsShowingLauncher = false;
-            NativeSceneSurface.Launcher.SetAllowed(false);
             if (!ReferenceEquals(_avaloniaView.Content, _companionView))
                 _avaloniaView.Content = _companionView;
             return;
         }
-        // The Launcher draws natively over the Avalonia view (M45 H4, option 5); the view lends it pictures.
-        NativeSceneSurface.Launcher.AttachTo(this, Context, view => AddContentView(view,
-            new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)));
-        NativeSceneSurface.Launcher.SetAllowed(true);
-        _launcherView ??= new global::EmuShelf.App.Views.HandheldLauncherView();
-        _launcherView.DataContext = handheld;
+        // The views draw natively over the Avalonia view (M45 H4, option 5); they lend their surfaces pictures. Whether
+        // a surface shows is the host's say (SetAllowed, Park).
+        foreach (var surface in surfaces)
+        {
+            surface.AttachTo(this, Context, native => AddContentView(native,
+                new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.MatchParent)));
+        }
         IsShowingLauncher = true;
-        if (!ReferenceEquals(_avaloniaView.Content, _launcherView))
-            _avaloniaView.Content = _launcherView;
+        if (!ReferenceEquals(_avaloniaView.Content, handheld))
+            _avaloniaView.Content = handheld;
     }
 
     public override bool DispatchKeyEvent(KeyEvent? e)
@@ -159,7 +159,6 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         if (_released)
             return;
         _released = true;
-        NativeSceneSurface.Launcher.SetAllowed(false);
         // Dispose the fan-art/logo bitmaps and the achievement badge bitmaps the model owns (all loaded
         // per focus, not shared), so tearing the presentation down — e.g. the second screen being
         // unplugged — does not leak them.
@@ -169,7 +168,5 @@ internal sealed class ThorSecondScreenPresentation : Presentation
         // Detach the embedded Avalonia top level before the Presentation window is torn down, so its
         // render loop and input handlers do not outlive the display.
         _avaloniaView.Content = null;
-        if (_launcherView is not null)
-            _launcherView.DataContext = null;
     }
 }

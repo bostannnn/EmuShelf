@@ -13436,3 +13436,81 @@ browsed and arranged by touch alone". Finished in the same branch, before H4 was
   `Settings/handheld-home.json`. Not driven on the device: Play from the Title page (it would start an
   emulator; covered headlessly) and the dock's buttons. The test edits were reverted afterwards (the file
   deleted, so home is the default again).
+
+## 2026-11-08 — M45 H5: screen swap
+
+- **X swaps, the shell decides, each display keeps a pair.** `HandheldShellViewModel.IsSwapped` is the one fact. The
+  shell keeps home current in both shapes at all times (`NarrowHome` 5×4 and `WideHome` 7×3, each with its own pages,
+  current page and dots; an open folder's scroll for both screens), and `Home` is the one the pad moves through. On
+  Android, `HandheldScreenHost` keeps a Stage and a Launcher on each display, each pinned to its screen's canvas with
+  its own native GL surface (`NativeSceneSurface.StageMain`, `LauncherMain`, `StageSecond`, `LauncherSecond`): the
+  one in front draws, the other is hidden with its feed paused and its surface parked just past the hinge edge, still
+  holding its pictures. A swap only changes which one is in front. X swaps from home, a folder and the Title page's
+  buttons (menu, sheets, naming, move mode and a launch keep X for themselves). On macOS and in tests one Stage and one
+  Launcher follow the swap instead (`PinnedNarrow` / `PinnedWide` null).
+- **The slide** is the mockup's: the screens in front slide out toward the hinge (230 ms, ease-in), the ones behind
+  slide in from it (420 ms, the pop curve), each a property animation on its GL surface's view. The ones coming in
+  wake as the slide out starts, and the slide in waits until their native screens have caught up and drawn a frame
+  (`NativeCaughtUp`, `NativeSceneSurface.NextFrameAsync`, capped at 400 + 150 ms), so no display shows an empty or
+  half-drawn screen. Measured on the Thor: the slide out ends 260–320 ms after the press, the screens coming in are
+  ready 2–17 ms later, and the swap is over in ~0.7 s. The feel is the owner's call.
+- **Fixed after the owner's third look (a broken selector ring, the backdrop stopping after a swap).** A parked
+  screen draws the frames it is asked for and then stops, so the catch-up's selector glide froze after one frame (the
+  ring sat mid-spring, wrong size and place) and the Stage's next backdrop step was never scheduled. Unparking now asks
+  for a frame, which picks the animations and the backdrop up again, and the catch-up places the selector and the lift
+  at once (`LauncherFocusCommand.Instant`), so the ring is already on the focus while the screen slides in. Checked on
+  the Thor by reading back what each native screen drew (a temporary `glReadPixels` hook, since both displays are
+  `FLAG_SECURE`; not kept): the ring whole mid-slide on the incoming Launcher, and the backdrops still moving after
+  the swap.
+- **Known edges.** A swap in the first ~2 s of Handheld mode, before the warm-up, builds the screens behind during
+  the slide and may bring them in not quite finished (the catch-up waits at most 400 ms). The folder window realized
+  for both screens decodes ~9 more covers than the narrow screen shows.
+- **Why a pair per display, not moving the views (the owner's second look: "a black screen during the swap").** The
+  first build moved the Avalonia views and their GL surfaces between the two windows. Re-hosting cost ~120 ms and
+  building and laying out the Launcher in its new window ~400 ms more, so both screens sat empty (black, then light
+  grey) for ~0.65 s between the slide out and the slide in. Re-cutting the pages in place was slower still (attaching a
+  built Launcher to the other window cost ~350 ms on its own). With a pair per display nothing moves or is rebuilt: the
+  screens behind are built once, out of sight, two seconds after Handheld mode comes up (the warm-up, ~0.7 s, once per
+  display), and a swap only catches up on what changed while they were hidden. The cost: twice the native surfaces (a
+  parked one draws only when asked, never animates or drifts, and is culled off-screen), both home shapes in the view
+  model, and a folder window realized for the wider screen too (24 tiles rather than 15).
+- **Fixed after the owner's first look (black screen, everything squished and wide).** Two bugs the log-only device
+  check missed. (1) The feeds pictured the views while they were between windows: the swap runs on the next layout
+  pass, by which time the host had detached them, so pieces were pictured from stale or stand-alone layout and,
+  keyed by content, never pictured again. The feeds now never picture a detached view, re-picture everything once
+  the view is laid out in its new window, and post the swap's removals and new pictures in one batch. (2) The native
+  Launcher only got its layout command once a folder had been opened (the feed waited for the hidden folder page's
+  bounds), so it drew on its default 1240 canvas stretched across the 16:9 screen; the folder clip now comes from
+  the folder page's margins until it is measured, and the layout is resent whenever it changes. The test
+  `Swap_ReHostedLikeTheThor_FeedsTheNativeScreensTheNewLayout` moves a view between two windows and checks what the
+  native screens hold (it fails without either fix); `Swap_WithAPairOnEachDisplay_OnlyChangesWhichIsInFront` checks the
+  arrangement the Thor uses now.
+- **The Launcher on the 16:9 screen is 7×3 at the same 176 px tile on the same 224 × 196 pitch**, with "Page 2 of 3"
+  in the spare height above the grid and the dots below. The saved layout stays one flat run of slots (stored as
+  5×4 pages); the Launcher cuts it into pages of its current shape, keeping reading order, as a phone launcher
+  reflows on rotation. Rejected: a centred 5×4 (the roadmap rules it out) and separate per-screen layouts (two
+  arrangements to keep in step). The 40-slot minimum makes two 7×3 pages whose last two slots are padding: drawn
+  empty, selectable, and a folder made or a tile dropped there grows the saved layout (`FromSlots` trims the
+  padding back off). The selection keeps its slot of the saved layout across a swap, so it may land on another
+  page or row; an open folder stays open with its selection, and each screen keeps its own scroll (both follow the
+  selection), so swapping back finds the folder exactly where it was.
+- **Folders show seven columns on the 16:9 screen** (48 + 7 × 264 = 1896 px), not six: six left a whole empty
+  column on the right. The Title page, the menu, the actions sheet and naming keep their 1240-wide layouts,
+  centred on the 16:9 screen over the full-width background.
+- **The narrow Stage** moves the hints and achievements pills top-left under the status pill's line, drops the
+  status message below them, lets the plate grow to 1144 px, shrinks the hero logo box to 768 × 400 and the meta
+  line to 1112, and sizes the medium's box to the 1240 canvas, all as `Grid.narrow` styles (the defaults moved out
+  of the elements into styles too: a value set on an element beats any style). The native Stage takes the canvas
+  width as a retained `StageCanvasCommand`; its pops grow about the canvas's middle; the 1920-wide pictured
+  backdrops are drawn centre-cropped, and the animated shader backdrops are cut in the output shader (`uCrop`)
+  rather than squashed.
+- **The launch travels toward the other screen**: when swapped the cover leaves the Launcher downward and lands on
+  the Stage from above (native and Avalonia paths), as the mockup's `lift` sign does.
+- **The companion follows the game, not the swap.** It takes whichever screen the game does not use: a game on
+  the built-in screen leaves Screen-2 to the companion as before; a game on Screen-2 (the narrow one) puts it on
+  the 16:9 screen through the existing `MainScreenCompanion` overlay, today's companion view with one panel at a
+  time as Gamepad mode already shows it there. Its restyled 16:9 layout belongs to H6b, which checks it with a
+  game running. Fixed on the way: the main display's native Handheld surface now steps aside while the companion
+  sits there (it was drawn over it, the H4 gap "not checked under the native surface").
+- **Remembered** as `AppSettings.HandheldScreensSwapped`, saved in order on a background continuation, restored
+  when the shell is made.

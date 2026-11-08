@@ -156,8 +156,8 @@ public sealed partial class HandheldShellViewModel
 
     private HandheldSheetViewModel? SlotSheet(int index)
     {
-        var slot = _layout.SlotAt(index);
-        var page = (index / HandheldHomeLayout.SlotsPerPage) + 1;
+        var slot = HomeSlotAt(index);
+        var page = (index / SlotsPerPage) + 1;
         if (slot.IsEmpty)
         {
             return new HandheldSheetViewModel("Empty slot", $"Page {page}",
@@ -279,7 +279,7 @@ public sealed partial class HandheldShellViewModel
             return;
         }
         ApplyLayout(layout);
-        ShowNotice($"Pinned to home, page {(index / HandheldHomeLayout.SlotsPerPage) + 1}");
+        ShowNotice($"Pinned to home, page {(index / SlotsPerPage) + 1}");
     }
 
     public void RemoveFromHome(long gameId)
@@ -373,11 +373,11 @@ public sealed partial class HandheldShellViewModel
         if (OpenFolder is not null || TitlePage is not null || _move is not null)
             return;
         var origin = HomeIndex;
-        var carried = _layout.SlotAt(origin);
+        var carried = HomeSlotAt(origin);
         if (carried.IsEmpty)
             return;
         Zone = HandheldZone.Grid;
-        _move = new MoveState(carried, origin, HandheldHomeArranging.Lift(_layout.AllSlots(), origin));
+        _move = new MoveState(carried, origin, HandheldHomeArranging.Lift(HomeSlots(), origin));
         IsMoving = true;
         UpdateMovePreview();
     }
@@ -415,20 +415,20 @@ public sealed partial class HandheldShellViewModel
             case GamepadAction.NavigateRight:
                 var direction = ToDirection(action);
                 var (position, outcome) = HandheldHomeNavigation.Move(PositionOf(move.Target), direction,
-                    move.Lifted.Count / HandheldHomeLayout.SlotsPerPage);
+                    move.Lifted.Count / SlotsPerPage, HomeGrid);
                 if (outcome == HandheldMoveOutcome.Moved)
-                    CarryTo((position.Page * HandheldHomeLayout.SlotsPerPage) + position.Slot);
+                    CarryTo((position.Page * SlotsPerPage) + position.Slot);
                 else
                     Bumped?.Invoke(direction); // the dock is no place to drop a tile
                 break;
             case GamepadAction.NextPlatform:
             case GamepadAction.PreviousPlatform:
                 var delta = action == GamepadAction.NextPlatform ? 1 : -1;
-                var page = (move.Target / HandheldHomeLayout.SlotsPerPage) + delta;
-                if (page < 0 || page >= move.Lifted.Count / HandheldHomeLayout.SlotsPerPage)
+                var page = (move.Target / SlotsPerPage) + delta;
+                if (page < 0 || page >= move.Lifted.Count / SlotsPerPage)
                     Bumped?.Invoke(delta > 0 ? HandheldDirection.Right : HandheldDirection.Left);
                 else
-                    CarryTo((page * HandheldHomeLayout.SlotsPerPage) + (move.Target % HandheldHomeLayout.SlotsPerPage));
+                    CarryTo((page * SlotsPerPage) + (move.Target % SlotsPerPage));
                 break;
             case GamepadAction.Confirm:
                 Drop();
@@ -522,7 +522,7 @@ public sealed partial class HandheldShellViewModel
         ShowPage(page);
         UpdateFocus();
         // An empty slot has nothing to lift: its sheet (New folder here) opens instead.
-        if (_layout.SlotAt(HomeIndex).IsEmpty)
+        if (HomeSlotAt(HomeIndex).IsEmpty)
             OpenActions();
         else
             StartMove();
@@ -684,7 +684,7 @@ public sealed partial class HandheldShellViewModel
             if (naming.RemovePinFrom >= 0 && naming.RemovePinFrom != slotIndex &&
                 layout.SlotAt(naming.RemovePinFrom) is { Kind: HandheldSlotKind.Game } pin && naming.GameIds.Contains(pin.GameId))
                 layout = layout.WithSlot(naming.RemovePinFrom, HandheldSlot.Empty);
-            var elsewhere = OpenFolder is not null || slotIndex / HandheldHomeLayout.SlotsPerPage != _home.Page;
+            var elsewhere = OpenFolder is not null || slotIndex / SlotsPerPage != _home.Page;
             if (OpenFolder is null)
             {
                 Zone = HandheldZone.Grid;
@@ -692,7 +692,7 @@ public sealed partial class HandheldShellViewModel
             }
             ApplyLayout(layout);
             ShowNotice(elsewhere
-                ? $"Made \"{naming.Name}\" on page {(slotIndex / HandheldHomeLayout.SlotsPerPage) + 1}"
+                ? $"Made \"{naming.Name}\" on page {(slotIndex / SlotsPerPage) + 1}"
                 : $"Made \"{naming.Name}\"");
             return;
         }
@@ -777,7 +777,7 @@ public sealed partial class HandheldShellViewModel
             HandheldDropKind.MakeFolder when _pins.TryGetValue(target.GameId, out var other) => $"Drop on {other.Title} to make a folder",
             HandheldDropKind.MakeFolder => "Drop here to make a folder",
             HandheldDropKind.AddToFolder => $"Drop into {FolderSourceFor(target)?.Name ?? "the folder"}",
-            _ => $"Moving · page {(move.Target / HandheldHomeLayout.SlotsPerPage) + 1}",
+            _ => $"Moving · page {(move.Target / SlotsPerPage) + 1}",
         };
         if (move.Carried.Kind == HandheldSlotKind.Game && _pins.TryGetValue(move.Carried.GameId, out var carried))
         {

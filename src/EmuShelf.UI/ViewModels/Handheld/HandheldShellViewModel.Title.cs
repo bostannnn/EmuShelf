@@ -133,6 +133,10 @@ public sealed partial class HandheldShellViewModel
             case HandheldTitleState.Launching:
                 // Nothing interrupts a launch in progress; the panel says what it is waiting for.
                 return true;
+            case HandheldTitleState.Buttons when action == GamepadAction.Search:
+                // X swaps the screens on the Title page too, as on the mockup.
+                _ = SwapScreensAsync();
+                return true;
             case HandheldTitleState.Buttons:
                 DispatchTitleButtons(page, action);
                 return true;

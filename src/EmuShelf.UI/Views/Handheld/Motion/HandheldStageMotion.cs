@@ -17,7 +17,10 @@ namespace EmuShelf.App.Views.Handheld;
 /// </summary>
 internal sealed class HandheldStageMotion
 {
-    private const double CanvasWidth = 1920;
+    // 1920 on the 16:9 screen, 1240 on the narrow one once the screens are swapped (M45 H5).
+    private double CanvasWidth => _isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
+
+    private readonly Func<bool> _isNarrow;
     private const double CanvasHeight = 1080;
 
     private static readonly HandheldSpringEasing PopEasing =
@@ -38,8 +41,9 @@ internal sealed class HandheldStageMotion
     private int _launch;
     private string? _closingFolder;
 
-    public HandheldStageMotion(Control view)
+    public HandheldStageMotion(Control view, Func<bool> isNarrow)
     {
+        _isNarrow = isNarrow;
         _view = view;
         _content = Find<Control>("StageContent");
         _centre = Find<Control>("CentreWrap");
@@ -193,8 +197,8 @@ internal sealed class HandheldStageMotion
             return;
         _flyImage.Source = page.Cover;
         _fly.IsVisible = true;
-        // The Launcher sits below the Stage (until H5's swap), so the cover arrives from the bottom edge.
-        HandheldComposition.OffsetFrom(_fly, new Vector(0, 760), HandheldMotion.LaunchLandMilliseconds, HandheldMotion.PopCurve(),
+        // The cover arrives from the Launcher's side: the bottom edge, or the top on the narrow (bottom) screen (H5).
+        HandheldComposition.OffsetFrom(_fly, new Vector(0, _isNarrow() ? -760 : 760), HandheldMotion.LaunchLandMilliseconds, HandheldMotion.PopCurve(),
             HandheldMotion.LaunchLandDelayMilliseconds);
         HandheldComposition.Scale(_fly, 0.45, 1, HandheldMotion.LaunchLandMilliseconds, HandheldMotion.PopCurve(), HandheldMotion.LaunchLandDelayMilliseconds);
         HandheldComposition.Opacity(_fly, HandheldMotion.LaunchLandMilliseconds, new LinearEasing(), HandheldMotion.LaunchLandDelayMilliseconds,

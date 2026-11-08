@@ -26,6 +26,12 @@ public sealed record AppSettings
     public InterfaceMode InterfaceMode { get; init; } = InterfaceMode.Desktop;
 
     /// <summary>
+    /// Handheld mode (M45 H5): true when the Stage and the Launcher have been swapped with X, so the Launcher is on
+    /// the 16:9 screen and the Stage on the narrow one. Remembered across starts.
+    /// </summary>
+    public bool HandheldScreensSwapped { get; init; }
+
+    /// <summary>
     /// Android only: when true, EmuShelf force-stops the launched emulator's process the moment EmuShelf
     /// returns to the foreground, so a heavy emulator does not linger in the background draining the battery.
     /// Defaults on because that drain is the whole reason for the option; a user who wants the emulator kept

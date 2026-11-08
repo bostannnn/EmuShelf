@@ -327,7 +327,8 @@
     <Grid x:Name="Canvas" Width="1240" Height="1080" RowDefinitions="*,144">
 
       <!-- ===== Home: every page on one track that slides on the track spring ===== -->
-      <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="0,48,0,0">
+      <!-- Home on this Launcher's screen: the view gives this layer its HandheldHomeScreenViewModel (M45 H5). -->
+      <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="0,48,0,0" x:DataType="vm:HandheldHomeScreenViewModel">
         <Panel x:Name="HomeClip" ClipToBounds="True">
           <ItemsControl x:Name="PageTrack" ItemsSource="{Binding Pages}" HorizontalAlignment="Left" ClipToBounds="False">
             <ItemsControl.ItemsPanel>
@@ -337,13 +338,17 @@
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HandheldHomePageViewModel">
-                <!-- 5×4 slots: 176 px tiles on a 224 × 196 pitch, centred in the space above the dock. -->
-                <Panel Width="1240">
+                <!--
+                  5×4 slots (7×3 on the 16:9 screen, M45 H5): 176 px tiles on a 224 × 196 pitch, centred in the space
+                  above the dock. A page is the canvas wide.
+                -->
+                <Panel Width="{Binding Width}">
                   <ItemsControl ItemsSource="{Binding Slots}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                                 ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
-                        <UniformGrid Columns="5" Rows="4" ClipToBounds="False" />
+                        <UniformGrid Columns="{ReflectionBinding $parent[ItemsControl].DataContext.Columns}"
+                                     Rows="{ReflectionBinding $parent[ItemsControl].DataContext.Rows}" ClipToBounds="False" />
                       </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
@@ -416,6 +421,11 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </Panel>
+
+        <!-- The 16:9 screen's spare height above the 7×3 grid names the page (M45 H5). -->
+        <TextBlock x:Name="PageLabel" Text="{Binding PageLabel}" IsVisible="{Binding IsWide}"
+                   HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,40,0,0"
+                   FontSize="28" FontWeight="SemiBold" Foreground="#5B6176" FontFeatures="+tnum" />
 
         <!-- Edge hints: another page that way (a tap turns to it). -->
         <Border x:Name="EdgeLeft" Classes="edge" IsVisible="{Binding CanPageLeft}" HorizontalAlignment="Left" Margin="8,0,0,0">

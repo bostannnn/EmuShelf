@@ -85,6 +85,7 @@ public sealed class LauncherCompositor : INativeScene
         public uint Shadow { get; set; } = shadow;
         public FolderArtState PendingState { get; set; } = FolderArtState.Closed;
         public float LaunchStart { get; set; } = float.NegativeInfinity;
+        public bool LaunchDown { get; set; }
         public float LiftFrom { get; set; } = 1f;
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
@@ -166,7 +167,10 @@ public sealed class LauncherCompositor : INativeScene
                 break;
             case LauncherLaunchCommand launch:
                 if (_live.TryGetValue(launch.SpriteId, out var launching))
+                {
                     launching.LaunchStart = now;
+                    launching.LaunchDown = launch.Downward;
+                }
                 break;
             case LauncherBumpCommand bump:
                 _bump = new Vector2(bump.DirectionX, bump.DirectionY);
@@ -434,7 +438,7 @@ public sealed class LauncherCompositor : INativeScene
             {
                 var (launchScale, launchY, launchOpacity) = Launch(sinceLaunch / LaunchMilliseconds);
                 lift *= launchScale;
-                offset.Y += launchY;
+                offset.Y += state.LaunchDown ? -launchY : launchY;
                 spriteOpacity *= launchOpacity;
             }
             else if (sinceLaunch >= LaunchMilliseconds)

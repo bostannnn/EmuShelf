@@ -209,8 +209,9 @@ public partial class HandheldShellViewModelTests
         Press(shell, GamepadAction.Confirm);
         var folder = shell.OpenFolder!;
 
-        // Four columns shown plus the one peeking in: 15 tiles of 30.
-        Assert.Equal(15, folder.VisibleTiles.Count);
+        // What either screen shows, plus the column peeking in: four columns here, seven on the 16:9 screen
+        // (M45 H5 keeps that Launcher ready for a swap), so 24 tiles of 30.
+        Assert.Equal(24, folder.VisibleTiles.Count);
         Assert.Equal(0, folder.FirstVisibleColumn);
 
         Press(shell, GamepadAction.NavigateRight, 4);
@@ -220,7 +221,7 @@ public partial class HandheldShellViewModelTests
         // The column that scrolled out stays realized just off the left edge, so it can slide out.
         Assert.Equal(0, folder.WindowFirstColumn);
         Assert.Equal(0, folder.VisibleTiles[0].Index);
-        Assert.Equal(18, folder.VisibleTiles.Count);
+        Assert.Equal(24, folder.VisibleTiles.Count);
         Assert.True(folder.VisibleTiles.Single(tile => tile.Index == 12).IsFocused);
         // Covers were only asked for the window and its one-column margin, never the whole folder.
         Assert.DoesNotContain(library.Games["ps2"][27].Id, library.CoverRequests);

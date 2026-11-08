@@ -119,7 +119,9 @@ public sealed record LauncherProgressCommand(StageRect? Track) : StageCommand
 }
 
 /// <summary>The launch: the sprite (the Title page's cover) presses in, pops and lifts off toward the top screen.</summary>
-public sealed record LauncherLaunchCommand(string SpriteId) : StageCommand;
+/// <remarks><paramref name="Downward"/>: the Launcher is the top screen (the screens swapped, M45 H5), so the cover
+/// leaves through its bottom edge toward the Stage below.</remarks>
+public sealed record LauncherLaunchCommand(string SpriteId, bool Downward = false) : StageCommand;
 
 /// <summary>The edge bump: the selector nudges toward a wall and eases back.</summary>
 public sealed record LauncherBumpCommand(int DirectionX, int DirectionY) : StageCommand;

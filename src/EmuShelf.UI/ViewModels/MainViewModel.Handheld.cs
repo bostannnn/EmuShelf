@@ -77,7 +77,9 @@ public partial class MainViewModel
             var handheld = new HandheldShellViewModel(new HandheldLibrary(this), _handheldDeviceStatus,
                 layoutStore: _settingsDirectory is { } settings
                     ? new FileHandheldHomeLayoutStore(Path.Combine(settings, "handheld-home.json"), _logger)
-                    : null)
+                    : null,
+                screensSwapped: _settingsService?.Load().HandheldScreensSwapped ?? false,
+                saveScreensSwapped: SaveHandheldScreensSwapped)
             {
                 Companion = _handheldCompanion,
                 LaunchLead = HandheldMotion.LaunchLead,
@@ -94,6 +96,27 @@ public partial class MainViewModel
             handheld.Dispose();
         }
     }
+
+    /// <summary>X swapped the Handheld screens: remembered for the next start (M45 H5).</summary>
+    private void SaveHandheldScreensSwapped(bool swapped)
+    {
+        if (_settingsService is not { } settings)
+            return;
+        // Saves run one after another, so two quick swaps can never land in the wrong order.
+        _handheldSwapSave = _handheldSwapSave.ContinueWith(_ =>
+        {
+            try
+            {
+                settings.Update(latest => latest with { HandheldScreensSwapped = swapped });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Could not remember the Handheld screen swap.", ex);
+            }
+        }, TaskScheduler.Default);
+    }
+
+    private Task _handheldSwapSave = Task.CompletedTask;
 
     /// <summary>Rebuilds the Handheld home after the library changed (an import, a removal, a rescan).</summary>
     private void RefreshHandheldHome()

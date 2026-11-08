@@ -75,16 +75,16 @@ public class MainActivity : AvaloniaMainActivity
     {
         base.OnResume();
         Current = this;
-        global::EmuShelf.App.Android.Services.NativeSceneSurface.Stage.OnResume();
-        global::EmuShelf.App.Android.Services.NativeSceneSurface.Launcher.OnResume();
+        foreach (var surface in global::EmuShelf.App.Android.Services.NativeSceneSurface.All)
+            surface.OnResume();
         AndroidActivityLifecycle.NotifyActivityAvailable(this);
         ShowSetupPresentationIfOnboarding();
     }
 
     protected override void OnPause()
     {
-        global::EmuShelf.App.Android.Services.NativeSceneSurface.Stage.OnPause();
-        global::EmuShelf.App.Android.Services.NativeSceneSurface.Launcher.OnPause();
+        foreach (var surface in global::EmuShelf.App.Android.Services.NativeSceneSurface.All)
+            surface.OnPause();
         DismissSetupPresentation();
         base.OnPause();
     }

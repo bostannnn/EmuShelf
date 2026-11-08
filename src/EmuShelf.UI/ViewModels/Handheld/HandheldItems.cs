@@ -302,10 +302,15 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
 /// <summary>One home page. Its slots are replaced one at a time when what they show changes, so an edit or a step in
 /// move mode rebuilds the tiles that changed, not the page.</summary>
-public sealed class HandheldHomePageViewModel(int index, IEnumerable<HandheldHomeSlotViewModel> slots)
+public sealed class HandheldHomePageViewModel(int index, HandheldHomeGrid grid, double width, IEnumerable<HandheldHomeSlotViewModel> slots)
 {
     public int Index { get; } = index;
     public ObservableCollection<HandheldHomeSlotViewModel> Slots { get; } = new(slots);
+
+    /// <summary>The page's shape (5×4, or 7×3 on the 16:9 screen) and width on the Launcher's canvas.</summary>
+    public int Columns { get; } = grid.Columns;
+    public int Rows { get; } = grid.Rows;
+    public double Width { get; } = width;
 }
 
 public sealed partial class HandheldPageDotViewModel(int index) : ObservableObject
@@ -379,8 +384,11 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
         _ => "Games you add to this platform appear here",
     };
 
-    /// <summary>The home slot the folder was opened from, so B lands back on it.</summary>
-    public int HomeSlot { get; }
+    /// <summary>The home slot the folder was opened from, so B lands back on it (on the page shape in use).</summary>
+    public int HomeSlot { get; internal set; }
+
+    /// <summary>The same place across all pages of the saved layout, whichever shape a screen draws home in.</summary>
+    public int HomeIndex { get; internal set; }
 
     public string Name => Source.Name;
     public IBrush AccentBrush { get; }
@@ -413,8 +421,21 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     [ObservableProperty]
     public partial int SelectedIndex { get; set; }
 
+    /// <summary>The first column shown on the screen the Launcher is on now (one of the two below).</summary>
     [ObservableProperty]
     public partial int FirstVisibleColumn { get; set; }
+
+    /// <summary>
+    /// The first column shown by the Launcher on the 1240×1080 screen (four columns) and on the 16:9 one (seven).
+    /// Both follow the selection all the time, so either Launcher can take over at a swap already scrolled (M45 H5).
+    /// </summary>
+    [ObservableProperty]
+    public partial int NarrowFirstColumn { get; set; }
+
+    [ObservableProperty]
+    public partial int WideFirstColumn { get; set; }
+
+    public int FirstColumnFor(bool wide) => wide ? WideFirstColumn : NarrowFirstColumn;
 
     /// <summary>The tiles are being replaced by a sort or a re-read: a column change now is a jump, not a scroll.</summary>
     public bool IsResorting { get; internal set; }

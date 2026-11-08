@@ -13,6 +13,9 @@ uniform float uGrid;
 uniform float uComposite;
 uniform float uInterlace;
 uniform float uBloom;
+// The share of the frame's width cut off, half each side, so a 16:9 frame fills a narrower screen without
+// squashing (the swapped Stage on the Thor's 1240×1080 panel, M45 H5). Zero shows all of it.
+uniform float uCrop;
 
 in vec2 vNdc;
 out vec4 fragColor;
@@ -22,6 +25,7 @@ const float Bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0
 void main()
 {
     vec2 uv = vNdc * 0.5 + 0.5;
+    uv.x = (uCrop * 0.5) + (uv.x * (1.0 - uCrop));
     vec2 p = uv * uRes;
     ivec2 last = ivec2(uRes) - 1;
     ivec2 cell = clamp(ivec2(floor(p)), ivec2(0), last);

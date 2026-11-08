@@ -2366,7 +2366,10 @@ Played. Pad input already reaches one dispatcher from both displays
       keyboard, a folder opened, a game pinned from its sheet, Back, a folder deleted through its
       confirmation). Naming uses the mockup's drawn keyboard, because Android's keyboard cannot open on
       Screen-2. A long press without a drag opens a tile's actions sheet, so touch reaches every action.
-- [ ] **H5 — screen swap.** X re-hosts the Stage and Launcher between displays with the slide
+- [x] **H5 — screen swap.** ✅ (2026-11-08; a Stage and a Launcher kept on each display, so a swap only changes which
+      is in front. Checked on the Thor by the owner and over adb — swaps both ways from home and an open folder, a cold
+      start coming up swapped, Gamepad mode and back, and what each native screen drew read back with `glReadPixels`,
+      both screens being `FLAG_SECURE`. Choices in `DECISIONS.md` 2026-11-08 "M45 H5: screen swap".) X re-hosts the Stage and Launcher between displays with the slide
       (precedent: `MainScreenCompanion` re-hosting in `SecondScreenController`). Selection, open
       folder and scroll position survive; `IsSwapped` is remembered. On the narrow screen the Stage
       moves its hint and achievement pills to the top-left and widens the plate, as in the mockup;

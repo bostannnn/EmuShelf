@@ -11,7 +11,13 @@ namespace EmuShelf.App.Android.Views;
 /// </summary>
 public partial class MainView : UserControl
 {
-    public MainView() => InitializeComponent();
+    public MainView()
+    {
+        InitializeComponent();
+        // View wiring: Handheld mode's main-display view (the Stage, or the Launcher once swapped) goes here.
+        if (this.FindControl<ContentControl>("HandheldMain") is { } slot)
+            global::EmuShelf.App.Android.Services.HandheldScreenHost.Instance.RegisterMainSlot(slot);
+    }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
 }

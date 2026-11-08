@@ -9,7 +9,7 @@
   <!--
     Handheld mode's top screen: whatever the Launcher has focused, shown large, with the name plate and
     the corner pills (status top-right, achievements bottom-left, button hints bottom-right). A pure view
-    onto HandheldShellViewModel.Stage, drawn on a fixed 1920×1080 canvas and fitted, never cropped. The
+    onto HandheldShellViewModel.Stage, drawn on a fixed 1920×1080 canvas (1240×1080 once the screens are swapped, M45 H5) and fitted, never cropped. The
     cover art and the folder faces carry the colour, over the era backdrop (HandheldEraBackdrop); the plate and
     pills are quiet white surfaces. The motion (the centre pop, the folder's flap, the launch landing) is
     HandheldStageMotion.
@@ -44,6 +44,67 @@
     <!-- Room for a pill's shadow when the native Stage pictures it; the margins around it are 24 less. -->
     <Style Selector="Border.shot">
       <Setter Property="Padding" Value="24" />
+    </Style>
+    <!--
+      Where the corner pieces sit, as styles so the narrow screen can move them (a value set on the element itself
+      would win over any style). The narrow screen (M45 H5, the screens swapped): the bottom corners cannot share a
+      row with the plate, so the hints and the achievements pill go top-left under the status pill's line, the
+      message drops below them, the plate may take nearly the whole width, and the hero's logo and meta line and
+      the medium fit the narrower canvas.
+    -->
+    <Style Selector="Border#HintsShot">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="Margin" Value="0,0,24,52" />
+    </Style>
+    <Style Selector="Border#AchievementShot">
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="Margin" Value="24,0,0,52" />
+    </Style>
+    <Style Selector="Border#MessageShot">
+      <Setter Property="Margin" Value="0,24,0,0" />
+    </Style>
+    <Style Selector="Border#PlateBox">
+      <Setter Property="MaxWidth" Value="1080" />
+    </Style>
+    <Style Selector="Panel#LogoBox">
+      <Setter Property="Margin" Value="112,128,0,0" />
+      <Setter Property="Width" Value="808" />
+      <Setter Property="Height" Value="560" />
+    </Style>
+    <Style Selector="StackPanel#HeroMeta">
+      <Setter Property="Margin" Value="112,0,0,76" />
+      <Setter Property="MaxWidth" Value="1150" />
+    </Style>
+    <Style Selector="controls|Media3DControl#Medium">
+      <Setter Property="Width" Value="1400" />
+    </Style>
+    <Style Selector="Grid.narrow Border#HintsShot">
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="24,24,0,0" />
+    </Style>
+    <Style Selector="Grid.narrow Border#AchievementShot">
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="24,100,0,0" />
+    </Style>
+    <Style Selector="Grid.narrow Border#MessageShot">
+      <Setter Property="Margin" Value="0,176,0,0" />
+    </Style>
+    <Style Selector="Grid.narrow Border#PlateBox">
+      <Setter Property="MaxWidth" Value="1144" />
+    </Style>
+    <Style Selector="Grid.narrow Panel#LogoBox">
+      <Setter Property="Margin" Value="64,176,0,0" />
+      <Setter Property="Width" Value="768" />
+      <Setter Property="Height" Value="400" />
+    </Style>
+    <Style Selector="Grid.narrow StackPanel#HeroMeta">
+      <Setter Property="Margin" Value="64,0,64,76" />
+      <Setter Property="MaxWidth" Value="1112" />
+    </Style>
+    <Style Selector="Grid.narrow controls|Media3DControl#Medium">
+      <Setter Property="Width" Value="1240" />
     </Style>
     <Style Selector="Border.button-glyph">
       <Setter Property="Width" Value="40" />
@@ -91,7 +152,7 @@
       <Panel x:Name="StageContent">
       <!-- The Title page hero over the fan art: the logo (or the title set in type), then the meta line. -->
       <Panel x:Name="HeroContent" IsVisible="{Binding Stage.IsHeroArt}">
-        <Panel HorizontalAlignment="Left" VerticalAlignment="Top" Margin="112,128,0,0" Width="808" Height="560">
+        <Panel x:Name="LogoBox" HorizontalAlignment="Left" VerticalAlignment="Top">
           <Image Source="{Binding Stage.Logo}" IsVisible="{Binding Stage.HasLogo}" Stretch="Uniform"
                  HorizontalAlignment="Left" VerticalAlignment="Center">
             <Image.Effect>
@@ -102,7 +163,7 @@
                      Foreground="White" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
                      VerticalAlignment="Center" />
         </Panel>
-        <StackPanel HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="112,0,0,76" MaxWidth="1150" Spacing="8">
+        <StackPanel x:Name="HeroMeta" HorizontalAlignment="Left" VerticalAlignment="Bottom" Spacing="8">
           <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding Stage.HasLogo}" FontSize="40" FontWeight="SemiBold"
                      Foreground="White" TextTrimming="CharacterEllipsis" />
           <StackPanel Orientation="Horizontal" Spacing="24">
@@ -136,7 +197,7 @@
             stick, swaying at rest, springing in when the selection changes. Platforms without an authored
             medium, and devices whose GPU path fails, keep the flat cover below.
           -->
-          <controls:Media3DControl x:Name="Medium" IsVisible="{Binding Stage.HasMedium}" Width="1400" Height="820"
+          <controls:Media3DControl x:Name="Medium" IsVisible="{Binding Stage.HasMedium}" Height="820"
                                    Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}"
                                    Accent="{Binding Stage.MediumAccent}"
                                    Yaw="{Binding Stage.MediumYaw}" Pitch="{Binding Stage.MediumPitch}" />
@@ -175,8 +236,8 @@
       <!-- Name plate. -->
       <Panel x:Name="PlateWrap">
       <Border x:Name="PlateShot" Padding="32" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,32">
-      <Border IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-              MinWidth="560" MaxWidth="1080" Padding="48,20" CornerRadius="32"
+      <Border x:Name="PlateBox" IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
+              MinWidth="560" Padding="48,20" CornerRadius="32"
               Background="#F2FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 24 0 #14000000">
         <StackPanel Spacing="4">
           <TextBlock Text="{Binding Stage.Title}" FontSize="52" FontWeight="SemiBold" Foreground="#1C2033"
@@ -198,7 +259,7 @@
       </Border>
 
       <!-- The app's status message (launching, a failure), which Gamepad mode shows as a toast. -->
-      <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,24,0,0">
+      <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top">
       <Border Classes="pill" IsVisible="{Binding HasStatusMessage}" MaxWidth="1080">
         <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
       </Border>
@@ -222,7 +283,7 @@
       </Border>
 
       <!-- Achievements pill (games with RetroAchievements data). -->
-      <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="24,0,0,52">
+      <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left">
       <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}">
         <StackPanel Orientation="Horizontal" Spacing="12">
           <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
@@ -232,7 +293,7 @@
       </Border>
 
       <!-- Button hints. -->
-      <Border x:Name="HintsShot" Classes="shot" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="0,0,24,52">
+      <Border x:Name="HintsShot" Classes="shot">
       <Border Classes="pill">
         <ItemsControl ItemsSource="{Binding Hints}" VerticalAlignment="Center">
           <ItemsControl.ItemsPanel>

@@ -52,9 +52,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private int _initializeGeneration;
 
     public HandheldShellViewModel(IHandheldLibrary library, IDeviceStatusService? deviceStatus = null, TimeProvider? clock = null,
-        IHandheldHomeLayoutStore? layoutStore = null)
+        IHandheldHomeLayoutStore? layoutStore = null, bool screensSwapped = false, Action<bool>? saveScreensSwapped = null)
     {
         _library = library;
+        _saveScreensSwapped = saveScreensSwapped;
         _store = layoutStore ?? new InMemoryHandheldHomeLayoutStore();
         DeviceStatus = deviceStatus ?? UnknownDeviceStatusService.Instance;
         _clock = clock ?? TimeProvider.System;
@@ -64,23 +65,25 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
         MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
         RefreshStatus();
+        NarrowHome.PropertyChanged += OnScreenChanged;
+        WideHome.PropertyChanged += OnScreenChanged;
+        // The remembered side (M45 H5), once everything it touches exists.
+        SetSwapped(screensSwapped);
     }
 
-    public ObservableCollection<HandheldHomePageViewModel> Pages { get; } = [];
-    public ObservableCollection<HandheldPageDotViewModel> PageDots { get; } = [];
+    /// <summary>Home on the screen the Launcher is on now (the other shape is kept current too, M45 H5).</summary>
+    public ObservableCollection<HandheldHomePageViewModel> Pages => Home.Pages;
+    public ObservableCollection<HandheldPageDotViewModel> PageDots => Home.PageDots;
     public ObservableCollection<HandheldDockItemViewModel> DockItems { get; } = [];
     public ObservableCollection<HandheldMenuItemViewModel> MenuItems { get; } = [];
     public ObservableCollection<HandheldHint> Hints { get; } = [];
     public HandheldStageViewModel Stage { get; } = new();
 
-    [ObservableProperty]
-    public partial HandheldHomePageViewModel? CurrentPage { get; private set; }
+    public HandheldHomePageViewModel? CurrentPage => Home.CurrentPage;
 
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasMultiplePages))]
-    public partial int PageCount { get; private set; }
+    public int PageCount => Home.PageCount;
 
-    public bool HasMultiplePages => PageCount > 1;
+    public bool HasMultiplePages => Home.HasMultiplePages;
 
     [ObservableProperty]
     public partial HandheldZone Zone { get; private set; }
@@ -232,7 +235,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _ = EnsurePinsAsync();
 
         // Keep the selection where it was if it still exists (a library refresh), else start at the top.
-        if (_home.Page >= _layout.Pages.Count)
+        if (_home.Page >= ViewPageCount)
             _home = new HandheldHomePosition(0, 0);
         if (OpenFolder is { } folder && !FolderStillExists(folder.Source))
             CloseFolder();
@@ -320,6 +323,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             case GamepadAction.ResetRotation:
                 RecentreMedium();
                 return true;
+            case GamepadAction.Search:
+                // X swaps the screens (M45 H5); the selection, an open folder and its scroll go along.
+                _ = SwapScreensAsync();
+                return true;
             case GamepadAction.NextPlatform when OpenFolder is null:
                 TurnPage(1);
                 return true;
@@ -401,7 +408,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void MoveOnHome(HandheldDirection direction)
     {
-        var (position, outcome) = HandheldHomeNavigation.Move(_home, direction, _layout.Pages.Count);
+        var (position, outcome) = HandheldHomeNavigation.Move(_home, direction, ViewPageCount, HomeGrid);
         switch (outcome)
         {
             case HandheldMoveOutcome.Moved:
@@ -512,7 +519,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void TurnPage(int delta)
     {
         var page = _home.Page + delta;
-        if (page < 0 || page >= _layout.Pages.Count)
+        if (page < 0 || page >= ViewPageCount)
         {
             Bumped?.Invoke(delta > 0 ? HandheldDirection.Right : HandheldDirection.Left);
             return;
@@ -546,7 +553,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         }
 
-        var slot = _layout.SlotAt(_home.Page, _home.Slot);
+        var slot = HomeSlotAt(HomeIndex);
         switch (slot.Kind)
         {
             case HandheldSlotKind.Empty:
@@ -591,9 +598,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         CloseFolder();
         // Opening a folder takes its "New" ribbon off; the tile is redrawn when the folder closes, so the page
         // the folder zooms out of stays the one on screen.
-        var index = (_home.Page * HandheldHomeLayout.SlotsPerPage) + homeSlot;
+        var index = (_home.Page * SlotsPerPage) + homeSlot;
         var folder = new HandheldFolderViewModel(source, homeSlot)
         {
+            HomeIndex = index,
             RibbonIndex = index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
         };
         OpenFolder = folder;
@@ -689,7 +697,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         OpenFolder = null;
         if (Zone == HandheldZone.Header)
             Zone = HandheldZone.Grid;
-        _home = _home with { Slot = folder.HomeSlot };
+        _home = PositionOf(folder.HomeIndex);
         if (folder.RibbonIndex >= 0 && folder.RibbonIndex < _layout.SlotCount && _layout.SlotAt(folder.RibbonIndex).IsNew)
         {
             ApplyLayout(_layout.WithRibbonCleared(folder.RibbonIndex));
@@ -723,6 +731,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         folder.IsResorting = true;
         // A re-read keeps the scroll window where it was (clamped by the selection); a re-sort starts at the left.
         folder.FirstVisibleColumn = keepColumn;
+        folder.NarrowFirstColumn = keepColumn;
+        folder.WideFirstColumn = keepColumn;
         // Re-sorting keeps the same game selected; the first open starts at the first game.
         var index = selectFirst || selectedId is null
             ? 0
@@ -739,8 +749,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         folder.SelectedIndex = index;
         var column = index / HandheldFolderNavigation.Rows;
-        var first = HandheldFolderNavigation.FirstVisibleColumn(column, folder.FirstVisibleColumn, folder.Items.Count);
-        var windowChanged = first != folder.FirstVisibleColumn || folder.VisibleTiles.Count == 0;
+        // Both screens' scroll follow the selection; the one in use is FirstVisibleColumn.
+        var narrow = HandheldFolderNavigation.FirstVisibleColumn(column, folder.NarrowFirstColumn, folder.Items.Count,
+            NarrowHome.FolderVisibleColumns);
+        var wide = HandheldFolderNavigation.FirstVisibleColumn(column, folder.WideFirstColumn, folder.Items.Count,
+            WideHome.FolderVisibleColumns);
+        var first = IsSwapped ? wide : narrow;
+        var windowChanged = narrow != folder.NarrowFirstColumn || wide != folder.WideFirstColumn || folder.VisibleTiles.Count == 0;
+        folder.NarrowFirstColumn = narrow;
+        folder.WideFirstColumn = wide;
         folder.FirstVisibleColumn = first;
         if (windowChanged)
             RealizeWindow(folder);
@@ -757,15 +774,17 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         const int rows = HandheldFolderNavigation.Rows;
         // One column behind the window stays realized too, so a column scroll slides the leaving column
-        // out instead of dropping it.
-        folder.WindowFirstColumn = Math.Max(0, folder.FirstVisibleColumn - 1);
+        // out instead of dropping it. The window covers what both screens show (M45 H5), so the Launcher on the other
+        // screen is ready for a swap.
+        var showFrom = Math.Min(folder.NarrowFirstColumn, folder.WideFirstColumn);
+        var showTo = Math.Max(folder.NarrowFirstColumn + NarrowHome.FolderVisibleColumns, folder.WideFirstColumn + WideHome.FolderVisibleColumns);
+        folder.WindowFirstColumn = Math.Max(0, showFrom - 1);
         var firstIndex = folder.WindowFirstColumn * rows;
-        var lastIndex = Math.Min(folder.Items.Count, (folder.FirstVisibleColumn + HandheldFolderNavigation.VisibleColumns + 1) * rows);
+        var lastIndex = Math.Min(folder.Items.Count, (showTo + 1) * rows);
         SlideWindow(folder.VisibleTiles, folder.Items, firstIndex, lastIndex);
 
-        var keepFrom = Math.Max(0, folder.FirstVisibleColumn - CoverKeepMarginColumns) * rows;
-        var keepTo = Math.Min(folder.Items.Count,
-            (folder.FirstVisibleColumn + HandheldFolderNavigation.VisibleColumns + 1 + CoverKeepMarginColumns) * rows);
+        var keepFrom = Math.Max(0, showFrom - CoverKeepMarginColumns) * rows;
+        var keepTo = Math.Min(folder.Items.Count, (showTo + 1 + CoverKeepMarginColumns) * rows);
         for (var i = 0; i < folder.Items.Count; i++)
         {
             var tile = folder.Items[i];
@@ -911,27 +930,32 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>There is a page to the left / right of the one on screen (the edge hints).</summary>
-    public bool CanPageLeft => OpenFolder is null && CurrentPage is { Index: > 0 };
+    public bool CanPageLeft => Home.CanPageLeft;
 
-    public bool CanPageRight => OpenFolder is null && CurrentPage is { } page && page.Index < PageCount - 1;
+    public bool CanPageRight => Home.CanPageRight;
 
-    private void RaiseEdgeHints()
+    partial void OnOpenFolderChanged(HandheldFolderViewModel? value)
     {
-        OnPropertyChanged(nameof(CanPageLeft));
-        OnPropertyChanged(nameof(CanPageRight));
+        NarrowHome.IsFolderOpen = value is not null;
+        WideHome.IsFolderOpen = value is not null;
     }
 
-    partial void OnCurrentPageChanged(HandheldHomePageViewModel? value) => RaiseEdgeHints();
-
-    partial void OnPageCountChanged(int value) => RaiseEdgeHints();
-
-    partial void OnOpenFolderChanged(HandheldFolderViewModel? value) => RaiseEdgeHints();
-
+    /// <summary>
+    /// Shows <paramref name="page"/> on the screen in use, and on the other shape the page holding the same slot of the
+    /// saved layout, so that Launcher is on the right page when a swap brings it in.
+    /// </summary>
     private void ShowPage(int page)
     {
-        CurrentPage = Pages.Count > page ? Pages[page] : null;
-        foreach (var dot in PageDots)
-            dot.IsCurrent = dot.Index == page;
+        Home.ShowPage(page);
+        ShowOtherPage();
+    }
+
+    private void ShowOtherPage()
+    {
+        var other = OtherHome;
+        var page = other.Grid.PositionOf(HomeIndex).Page;
+        if (other.CurrentPage?.Index != page || other.CurrentPage is null)
+            other.ShowPage(page);
     }
 
     private void RebuildDock()
@@ -952,11 +976,17 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>Marks the one focused element and points the Stage at it.</summary>
     private void UpdateFocus()
     {
-        var page = CurrentPage;
-        if (page is not null)
+        // Both shapes mark the same slot of the saved layout (the other one is the Launcher a swap brings in), each on
+        // the page that holds it.
+        ShowOtherPage();
+        var homeIndex = HomeIndex;
+        foreach (var screen in Screens)
         {
+            if (screen.CurrentPage is not { } page)
+                continue;
+            var at = screen.Grid.PositionOf(homeIndex);
             foreach (var slot in page.Slots)
-                slot.IsFocused = OpenFolder is null && Zone == HandheldZone.Grid && slot.Index == _home.Slot;
+                slot.IsFocused = OpenFolder is null && Zone == HandheldZone.Grid && page.Index == at.Page && slot.Index == at.Slot;
         }
         if (OpenFolder is { } folder)
         {
@@ -1096,7 +1126,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             return;
         }
 
-        var slot = _layout.SlotAt(_home.Page, _home.Slot);
+        var slot = HomeSlotAt(HomeIndex);
         if (slot.Kind == HandheldSlotKind.Game)
         {
             if (_pins.TryGetValue(slot.GameId, out var pinned))
@@ -1416,7 +1446,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _nextHints.Add(new HandheldHint("B", "Back"));
             return;
         }
-        var focused = _layout.SlotAt(_home.Page, _home.Slot);
+        var focused = HomeSlotAt(HomeIndex);
         _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? "New folder" : "Open"));
         _nextHints.Add(new HandheldHint("Y", "More"));
         _nextHints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));

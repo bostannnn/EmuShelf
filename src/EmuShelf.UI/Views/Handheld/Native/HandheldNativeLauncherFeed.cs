@@ -26,7 +26,6 @@ namespace EmuShelf.App.Views.Handheld;
 /// </summary>
 internal sealed class HandheldNativeLauncherFeed
 {
-    private const float PageWidth = 1240;
     private const float ColumnPitch = 264;
     private const float DotPitch = 30;
     private const float DotsShift = -17;
@@ -47,6 +46,7 @@ internal sealed class HandheldNativeLauncherFeed
     private readonly Control _folderEmpty;
     private readonly ItemsControl _pageDots;
     private readonly Control _pageIndicator;
+    private readonly Control _pageLabel;
     private readonly Control _edgeLeft;
     private readonly Control _edgeRight;
     private readonly Control _dockShadow;
@@ -94,6 +94,7 @@ internal sealed class HandheldNativeLauncherFeed
         _folderEmpty = Find("FolderEmpty");
         _pageDots = (ItemsControl)Find("PageDots");
         _pageIndicator = Find("PageIndicator");
+        _pageLabel = Find("PageLabel");
         _edgeLeft = Find("EdgeLeft");
         _edgeRight = Find("EdgeRight");
         _dockShadow = Find("DockShadow");
@@ -108,6 +109,11 @@ internal sealed class HandheldNativeLauncherFeed
         _launchText = Find("LaunchText");
         _launchProgress = Find("LaunchProgress");
         view.LayoutUpdated += (_, _) => Schedule();
+        view.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Visual.IsVisibleProperty)
+                OnViewVisibility();
+        };
         host.Failed += () =>
         {
             _failed = true;
@@ -117,6 +123,50 @@ internal sealed class HandheldNativeLauncherFeed
 
     private Control Find(string name) =>
         _view.FindControl<Control>(name) ?? throw new InvalidOperationException($"The Launcher has no {name}.");
+
+    // The canvas, and so a home page: 1240 wide, or 1920 on the 16:9 screen (M45 H5).
+    private float PageWidth => (float)(_screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth);
+
+    // Home as this Launcher draws it (its screen's shape), set by the view.
+    private HandheldHomeScreenViewModel? _screen;
+
+    private bool IsWide => _screen?.IsWide == true;
+
+    /// <summary>
+    /// This Launcher's home shape. A Launcher that follows the swap gets the other shape at a swap: every sprite sits
+    /// somewhere new, so everything is pictured again.
+    /// </summary>
+    public void SetScreen(HandheldHomeScreenViewModel? screen)
+    {
+        if (ReferenceEquals(screen, _screen))
+            return;
+        if (_screen is { } old)
+        {
+            old.PropertyChanged -= OnWatchedChanged;
+            Repicture();
+        }
+        _screen = screen;
+        if (screen is not null)
+            screen.PropertyChanged += OnWatchedChanged;
+        Schedule();
+    }
+
+    // A Launcher kept for the other display (M45 H5) is hidden until a swap brings it in: it pictures nothing meanwhile,
+    // and catches up (only what changed) as soon as it is shown again.
+    private bool IsPaused => !_view.IsVisible;
+
+    private bool _catchUpPending;
+
+    private void OnViewVisibility()
+    {
+        if (IsPaused)
+            return;
+        _catchUpPending = true;
+        _focusSent = null;
+        _tracksSent = null;
+        UpdateActive();
+        Schedule();
+    }
 
     public void Attach(HandheldShellViewModel? shell)
     {
@@ -147,6 +197,9 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void UpdateActive()
     {
+        // A hidden Launcher leaves its native screen as it is (it is kept, out of sight, for the next swap).
+        if (IsPaused)
+            return;
         // The menu, a sheet, naming and move mode draw on the Avalonia Launcher, which takes the screen back meanwhile.
         var active = !_failed && _shell is { IsLauncherOverlayOpen: false };
         if (active == _active)
@@ -167,6 +220,25 @@ internal sealed class HandheldNativeLauncherFeed
             Schedule();
         }
     }
+
+    /// <summary>
+    /// The Launcher moved to the other canvas (M45 H5): every sprite sits somewhere new and home has a new shape, so
+    /// everything sent goes and the next sync pictures it all again, the layout first.
+    /// </summary>
+    private void Repicture()
+    {
+        _repicturePending = true;
+        Schedule();
+    }
+
+    // Set by a change of shape; the next sync (laid out for the new canvas) pictures everything again.
+    private bool _repicturePending;
+
+    /// <summary>
+    /// Raised after the first sync since this Launcher was shown again or changed shape: its native screen has every
+    /// piece (a swap waits for it before sliding that screen in).
+    /// </summary>
+    public event Action? CaughtUp;
 
     // ---- Changes ----
 
@@ -261,21 +333,28 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void OnFolderOpening(HandheldFolderViewModel folder)
     {
-        if (!_active || _shell?.CurrentPage is not { } page)
+        if (!_active || IsPaused || _screen is not { } screen)
             return;
-        var (id, origin) = HomeTile(page.Index, folder.HomeSlot);
+        var at = screen.Grid.PositionOf(folder.HomeIndex);
+        var (id, origin) = HomeTile(at.Page, at.Slot);
         _host.Post(new LauncherZoomCommand(true, id, (float)origin.X, (float)origin.Y));
         _host.Post(new LauncherFolderCommand(true));
+        _folderOpenSent = true;
     }
 
     private void OnFolderClosing(HandheldFolderViewModel folder)
     {
-        if (!_active || _shell?.CurrentPage is not { } page)
+        if (!_active || IsPaused || _screen is not { } screen)
             return;
-        var (id, origin) = HomeTile(page.Index, folder.HomeSlot);
+        var at = screen.Grid.PositionOf(folder.HomeIndex);
+        var (id, origin) = HomeTile(at.Page, at.Slot);
         _host.Post(new LauncherZoomCommand(false, id, (float)origin.X, (float)origin.Y));
         _host.Post(new LauncherFolderCommand(false));
+        _folderOpenSent = false;
     }
+
+    // What the native side was last told about an open folder (a hidden Launcher catches up without the zoom).
+    private bool? _folderOpenSent;
 
     /// <summary>A home tile's sprite and its centre on screen (its page scrolled into view).</summary>
     private (string Id, Point Centre) HomeTile(int page, int slot)
@@ -298,7 +377,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void Schedule()
     {
-        if (!_active || _syncPending)
+        if (!_active || _syncPending || IsPaused)
             return;
         _syncPending = true;
         Dispatcher.UIThread.Post(Sync, DispatcherPriority.Loaded);
@@ -307,13 +386,27 @@ internal sealed class HandheldNativeLauncherFeed
     private void Sync()
     {
         _syncPending = false;
-        if (!_active || _shell is not { } shell)
+        // Never picture a view that is between windows (a swap detaches it before attaching it to the other display):
+        // its pieces would be pictured from stale or stand-alone layout. Attaching lays it out, which syncs again.
+        if (!_active || _shell is not { } shell || _screen is not { } screen || IsPaused || !_view.IsAttachedToVisualTree())
             return;
+        var repictured = _repicturePending;
+        if (repictured)
+        {
+            // Everything goes and comes back in this one batch, so the native side never draws an empty frame.
+            _repicturePending = false;
+            foreach (var id in _sent.Keys)
+                _host.Post(new LauncherSpriteCommand(id, null));
+            _sent.Clear();
+            _folderStates.Clear();
+            _focusSent = null;
+            _tracksSent = null;
+        }
         var present = new HashSet<string>(StringComparer.Ordinal);
         _anchors.Clear();
 
         SendLayout();
-        Static("bg", "1", present, () => Background());
+        Static("bg", PageWidth.ToString(System.Globalization.CultureInfo.InvariantCulture), present, () => Background());
         Static("dock-shadow", "1", present, () => Sprite("dock-shadow", HandheldStageShots.Shot(_dockShadow, _canvas), LauncherGroup.Dock));
         Static("dock-pill", "1", present, () =>
         {
@@ -329,8 +422,8 @@ internal sealed class HandheldNativeLauncherFeed
             }
         });
 
-        SyncHome(shell, present);
-        SyncDots(shell, present);
+        SyncHome(shell, screen, present);
+        SyncDots(screen, present);
         SyncFolder(shell, present);
         SyncDock(present);
         SyncTitle(shell, present);
@@ -341,7 +434,13 @@ internal sealed class HandheldNativeLauncherFeed
             _host.Post(new LauncherSpriteCommand(gone, null));
         }
 
-        var tracks = (shell.CurrentPage?.Index ?? 0, shell.OpenFolder?.FirstVisibleColumn ?? 0);
+        var folderOpen = shell.OpenFolder is not null;
+        if (_folderOpenSent != folderOpen)
+        {
+            _host.Post(new LauncherFolderCommand(folderOpen));
+            _folderOpenSent = folderOpen;
+        }
+        var tracks = (screen.CurrentPage?.Index ?? 0, shell.OpenFolder?.FirstColumnFor(IsWide) ?? 0);
         if (_tracksSent != tracks)
         {
             var columnJump = _tracksSent is { } previous && Math.Abs(previous.Column - tracks.Item2) > 1;
@@ -349,27 +448,45 @@ internal sealed class HandheldNativeLauncherFeed
                 SnapColumn: _tracksSent is null || columnJump || shell.OpenFolder?.IsResorting == true));
             _tracksSent = tracks;
         }
-        SyncFocus();
+        // Catching up (shown again for a swap, or a new shape): the selector and the lift are already where the focus
+        // is when the screen comes into view, rather than gliding from where they were before it was hidden.
+        SyncFocus(instant: repictured || _catchUpPending);
         if (_launchPending && present.Contains("t-cover"))
         {
             _launchPending = false;
-            _host.Post(new LauncherLaunchCommand("t-cover"));
+            // On the 16:9 screen the Launcher is the top one: the cover leaves downward, toward the Stage.
+            _host.Post(new LauncherLaunchCommand("t-cover", Downward: IsWide));
+        }
+        if (repictured || _catchUpPending)
+        {
+            _catchUpPending = false;
+            CaughtUp?.Invoke();
         }
     }
 
-    private bool _layoutSent;
+    private LauncherLayoutCommand? _layoutSent;
 
+    // The geometry goes over whenever it changes (a swap changes all of it). The folder page is hidden, so unmeasured,
+    // until a folder first opens; meanwhile its clip is the area above the dock it will fill, from its own margin.
+    // (Waiting for it left the native Launcher on its default 1240 canvas until a folder opened: stretched across the
+    // 16:9 screen once swapped.)
     private void SendLayout()
     {
-        if (_layoutSent)
+        if (Rect(_homeClip) is not { } home)
             return;
-        var home = Rect(_homeClip);
-        var folder = Rect(_folderPage);
-        if (home is null || folder is null)
+        var margin = _folderPage.Margin;
+        var folder = Rect(_folderPage) ?? new StageRect((float)margin.Left, (float)margin.Top,
+            (float)(_canvas.Bounds.Width - margin.Left - margin.Right), (float)(_canvas.Bounds.Height - DockHeight - margin.Top - margin.Bottom));
+        var layout = new LauncherLayoutCommand((float)_canvas.Bounds.Width, (float)_canvas.Bounds.Height, home, folder, PageWidth,
+            ColumnPitch, DotPitch, DotsShift);
+        if (layout == _layoutSent)
             return;
-        _host.Post(new LauncherLayoutCommand(1240, 1080, home.Value, folder.Value, PageWidth, ColumnPitch, DotPitch, DotsShift));
-        _layoutSent = true;
+        _host.Post(layout);
+        _layoutSent = layout;
     }
+
+    // The canvas's dock row (the Grid's second row, 144 px).
+    private const double DockHeight = 144;
 
     private StageRect? Rect(Control control) =>
         control.Bounds.Width > 0 && HandheldStageShots.ToCanvas(control, default(Point), _canvas) is { } at
@@ -397,7 +514,7 @@ internal sealed class HandheldNativeLauncherFeed
     {
         var plain = new Border
         {
-            Width = 1240,
+            Width = PageWidth,
             Height = 1080,
             Background = new LinearGradientBrush
             {
@@ -406,7 +523,7 @@ internal sealed class HandheldNativeLauncherFeed
                 GradientStops = { new GradientStop(Color.Parse("#FAFBFD"), 0), new GradientStop(Color.Parse("#E4E8EF"), 1) },
             },
         };
-        return new LauncherSprite("bg", HandheldStageShots.Picture(plain, 0, 0, 1240, 1080), LauncherGroup.Background,
+        return new LauncherSprite("bg", HandheldStageShots.Picture(plain, 0, 0, PageWidth, 1080), LauncherGroup.Background,
             LauncherTrack.None, false, 0, 0);
     }
 
@@ -456,16 +573,17 @@ internal sealed class HandheldNativeLauncherFeed
             (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z)));
     }
 
-    private void SyncHome(HandheldShellViewModel shell, HashSet<string> present)
+    private void SyncHome(HandheldShellViewModel shell, HandheldHomeScreenViewModel screen, HashSet<string> present)
     {
         // Slots replaced by an edit or a move-mode step are not watched any longer.
-        var current = shell.Pages.SelectMany(page => page.Slots).ToHashSet();
+        var current = screen.Pages.SelectMany(page => page.Slots).ToHashSet();
         foreach (var gone in _watched.OfType<HandheldHomeSlotViewModel>().Where(slot => !current.Contains(slot)).ToList())
         {
             gone.PropertyChanged -= OnWatchedChanged;
             _watched.Remove(gone);
         }
-        foreach (var page in shell.Pages)
+        var folderAt = shell.OpenFolder is { } openFolder ? screen.Grid.PositionOf(openFolder.HomeIndex) : (HandheldHomePosition?)null;
+        foreach (var page in screen.Pages)
         {
             foreach (var slot in page.Slots)
             {
@@ -479,7 +597,7 @@ internal sealed class HandheldNativeLauncherFeed
                 if (art is null)
                     continue;
                 // The flap peeks while the folder is focused and swings open with its folder.
-                var open = shell.OpenFolder is { } folder && folder.HomeSlot == slot.Index && shell.CurrentPage?.Index == page.Index;
+                var open = folderAt is { } at && at.Slot == slot.Index && at.Page == page.Index;
                 var state = open ? FolderArtState.Open : slot.IsFocused ? FolderArtState.Peek : FolderArtState.Closed;
                 var known = _folderStates.TryGetValue(id, out var sentState);
                 if (!known || sentState != state)
@@ -492,13 +610,16 @@ internal sealed class HandheldNativeLauncherFeed
         }
     }
 
-    private void SyncDots(HandheldShellViewModel shell, HashSet<string> present)
+    private void SyncDots(HandheldHomeScreenViewModel shell, HashSet<string> present)
     {
         // The edge hints fade with home, like the dots.
         if (shell.CanPageLeft)
             Static("edge-l", "1", present, () => Sprite("edge-l", HandheldStageShots.Shot(_edgeLeft, _canvas), LauncherGroup.Dots));
         if (shell.CanPageRight)
             Static("edge-r", "1", present, () => Sprite("edge-r", HandheldStageShots.Shot(_edgeRight, _canvas), LauncherGroup.Dots));
+        // The 16:9 screen names the page in its spare height (M45 H5).
+        if (shell.IsWide)
+            Static("page-label", shell.PageLabel, present, () => Sprite("page-label", HandheldStageShots.Shot(_pageLabel, _canvas), LauncherGroup.Dots));
         if (!shell.HasMultiplePages)
             return;
         Static("dots", shell.PageCount.ToString(System.Globalization.CultureInfo.InvariantCulture), present,
@@ -632,7 +753,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     private LauncherSprite TitleBackground(HandheldTitlePageViewModel page)
     {
-        var background = new Panel { Width = 1240, Height = 1080 };
+        var background = new Panel { Width = PageWidth, Height = 1080 };
         background.Children.Add(new Border
         {
             Background = new LinearGradientBrush
@@ -654,20 +775,20 @@ internal sealed class HandheldNativeLauncherFeed
                 GradientStops = { new GradientStop(Color.Parse("#FF000000"), 0), new GradientStop(Color.Parse("#00000000"), 0.7) },
             },
         });
-        return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, 1240, 1080), LauncherGroup.Title,
+        return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, PageWidth, 1080), LauncherGroup.Title,
             LauncherTrack.None, false, 0, 0, Z: 0);
     }
 
-    private void SyncFocus()
+    private void SyncFocus(bool instant)
     {
         LauncherFocusCommand focus;
         if (_motion.FocusedAnchor() is { } anchor && _anchors.TryGetValue(anchor, out var known))
         {
-            focus = new LauncherFocusCommand(known.Id, Target(anchor, known.Track, known.ColumnShift));
+            focus = new LauncherFocusCommand(known.Id, Target(anchor, known.Track, known.ColumnShift), instant);
         }
         else
         {
-            focus = new LauncherFocusCommand(null, null);
+            focus = new LauncherFocusCommand(null, null, instant);
         }
         if (_focusSent is { } sent && sent.SpriteId == focus.SpriteId && sent.Selector == focus.Selector)
             return;

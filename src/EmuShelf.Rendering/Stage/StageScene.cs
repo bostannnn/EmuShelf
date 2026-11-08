@@ -29,6 +29,15 @@ public sealed record StageBackdrop(
     float LoopMilliseconds,
     float StepMilliseconds);
 
+/// <summary>
+/// The Stage's canvas width: 1920 on the 16:9 screen, 1240 on the narrow one once the screens are swapped (M45 H5).
+/// Pictures are placed on this canvas; the pops grow about its middle.
+/// </summary>
+public sealed record StageCanvasCommand(float Width) : StageCommand
+{
+    public override string? RetainKey => "canvas";
+}
+
 /// <summary>A game's physical medium drawn by <see cref="MediaShellRenderer"/> into its own texture.</summary>
 public sealed record StageMedium(MediaShell Shell, Vector3 LinearAccent, float X, float Y, float Width, float Height);
 
@@ -87,7 +96,9 @@ public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, St
 /// The launch landing: the cover (a picture placed at rest in the middle) arrives from below, then zooms
 /// into the emulator; null takes it away (the Title page closed).
 /// </summary>
-public sealed record StageLaunchCommand(StageImage? Cover) : StageCommand;
+/// <remarks><paramref name="FromAbove"/>: the Stage is the bottom screen (the screens swapped, M45 H5), so the cover
+/// arrives from its top edge.</remarks>
+public sealed record StageLaunchCommand(StageImage? Cover, bool FromAbove = false) : StageCommand;
 
 /// <summary>The big folder's flap: closed, peeking or open; it glides there unless told not to.</summary>
 public sealed record StageFolderStateCommand(FolderArtState State, bool Animate) : StageCommand
@@ -153,9 +164,8 @@ public static class StageRest
 /// </summary>
 public static class StageCurves
 {
-    public const float CentrePivotX = 960f;
+    // The pops grow about the canvas's middle across (half its width, which the swap changes, M45 H5) and these heights.
     public const float CentrePivotY = 460f;
-    public const float PlatePivotX = 960f;
     public const float PlatePivotY = 940f;
     public const float PopFromScale = 0.72f;
     public const float PlateFromScale = 0.94f;

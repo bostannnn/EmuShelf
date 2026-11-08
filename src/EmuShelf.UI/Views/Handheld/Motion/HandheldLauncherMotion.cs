@@ -24,7 +24,13 @@ namespace EmuShelf.App.Views.Handheld;
 /// </summary>
 internal sealed class HandheldLauncherMotion
 {
-    private const double PageWidth = 1240;
+    // A page is the Launcher's canvas wide: 1240, or 1920 on the 16:9 screen (M45 H5).
+    private double PageWidth => _screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
+
+    // Home as this Launcher draws it (its screen's shape), set by the view.
+    private HandheldHomeScreenViewModel? _screen;
+
+    private bool IsWide => _screen?.IsWide == true;
     private const double ColumnPitch = 264;
     private const double DotPitch = 30;   // an 18 px dot plus 12 px spacing
     private const double IndicatorWidth = 52;
@@ -209,15 +215,40 @@ internal sealed class HandheldLauncherMotion
     private void Breathe() =>
         HandheldComposition.Breathe(_glow, 0.55, HandheldMotion.BreathHalfCycleMilliseconds, HandheldMotion.BreathHalfCycles);
 
+    /// <summary>This Launcher's home shape (M45 H5): its pages, current page and width.</summary>
+    public void SetScreen(HandheldHomeScreenViewModel? screen)
+    {
+        if (ReferenceEquals(screen, _screen))
+            return;
+        if (_screen is { } old)
+            old.PropertyChanged -= OnScreenChanged;
+        _screen = screen;
+        if (screen is not null)
+            screen.PropertyChanged += OnScreenChanged;
+        // The page track lands on its page at the new width; the folder track on this screen's column.
+        _pagePlaced = false;
+        if (_folder is { } folder)
+            _lastFirstColumn = folder.FirstColumnFor(IsWide);
+        _column.Snap(0);
+        ApplyColumn();
+        RequestTick();
+    }
+
+    private void OnScreenChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(HandheldHomeScreenViewModel.CurrentPage))
+        {
+            _page.Retarget(-(_screen?.CurrentPage?.Index ?? 0) * PageWidth);
+            RequestTick();
+        }
+    }
+
     // ---- The shell ----
 
     private void OnShellChanged(object? sender, PropertyChangedEventArgs e)
     {
         switch (e.PropertyName)
         {
-            case nameof(HandheldShellViewModel.CurrentPage):
-                _page.Retarget(-(_shell?.CurrentPage?.Index ?? 0) * PageWidth);
-                break;
             case nameof(HandheldShellViewModel.OpenFolder):
                 var folder = _shell?.OpenFolder;
                 if (folder is not null && !ReferenceEquals(folder, _folder))
@@ -253,7 +284,7 @@ internal sealed class HandheldLauncherMotion
         if (folder is null)
             return;
         folder.PropertyChanged += OnFolderChanged;
-        _lastFirstColumn = folder.FirstVisibleColumn;
+        _lastFirstColumn = folder.FirstColumnFor(IsWide);
         ApplyColumn();
     }
 
@@ -263,12 +294,14 @@ internal sealed class HandheldLauncherMotion
     {
         if (_folder is not { } folder)
             return;
-        if (e.PropertyName == nameof(HandheldFolderViewModel.FirstVisibleColumn))
+        // This Launcher's own screen's scroll (both are kept current, M45 H5).
+        if (e.PropertyName == (IsWide ? nameof(HandheldFolderViewModel.WideFirstColumn) : nameof(HandheldFolderViewModel.NarrowFirstColumn)))
         {
             // What is on screen stays where it is while the window moves under it, then glides on the track
             // spring. A jump of more than a column (a re-sort) just lands.
-            var delta = folder.FirstVisibleColumn - _lastFirstColumn;
-            _lastFirstColumn = folder.FirstVisibleColumn;
+            var first = folder.FirstColumnFor(IsWide);
+            var delta = first - _lastFirstColumn;
+            _lastFirstColumn = first;
             if (Math.Abs(delta) == 1 && !folder.IsResorting)
             {
                 // Only one column is realized past each edge of the window: a held direction that outruns the
@@ -294,7 +327,7 @@ internal sealed class HandheldLauncherMotion
             _folderShift.X = 0;
             return;
         }
-        var behind = _folder is { } folder ? folder.FirstVisibleColumn - folder.WindowFirstColumn : 0;
+        var behind = _folder is { } folder ? folder.FirstColumnFor(IsWide) - folder.WindowFirstColumn : 0;
         _folderShift.X = (-behind * ColumnPitch) + _column.Value;
     }
 
@@ -305,12 +338,12 @@ internal sealed class HandheldLauncherMotion
         // surface, grows out of the tile's place on a spring. No tile moves on its own. The selector stays
         // hidden until the page has landed.
         var zoom = ++_zoom;
-        _folderOrigin = HomeSlotCentre(folder.HomeSlot) ?? new Point(PageWidth / 2, 400);
+        _folderOrigin = HomeSlotCentre(folder) ?? new Point(PageWidth / 2, 400);
         if (!_onScreen)
             return;
         HideSelector();
         var ease = HandheldMotion.ZoomEase();
-        if (HomeSlotContainer(folder.HomeSlot) is { } slot)
+        if (HomeSlotContainer(folder) is { } slot)
         {
             SetSlotOpen(slot, true);
             HandheldComposition.Scale(slot, 1, HandheldMotion.ZoomTileScale, HandheldMotion.ZoomTileOutMilliseconds, ease);
@@ -344,13 +377,13 @@ internal sealed class HandheldLauncherMotion
         if (!_onScreen)
             return;
         HideSelector();
-        var origin = HomeSlotCentre(folder.HomeSlot) ?? _folderOrigin;
+        var origin = HomeSlotCentre(folder) ?? _folderOrigin;
         var page = Ghost(_folderPage);
         var ease = HandheldMotion.ZoomEase();
 
         _homeLayer.Opacity = 1;
         HandheldComposition.Opacity(_homeLayer, 0, 1, HandheldMotion.ZoomHomeInMilliseconds, ease, HandheldMotion.ZoomHomeInDelayMilliseconds);
-        if (HomeSlotContainer(folder.HomeSlot) is { } slot)
+        if (HomeSlotContainer(folder) is { } slot)
         {
             SetSlotOpen(slot, false);
             HandheldComposition.Scale(slot, HandheldMotion.ZoomTileInMilliseconds, TileReturnEasing, HandheldMotion.ZoomTileInDelayMilliseconds,
@@ -423,14 +456,16 @@ internal sealed class HandheldLauncherMotion
         bitmap?.Dispose();
     }
 
-    private Control? HomeSlotContainer(int slot)
+    // The folder's home tile on this Launcher's pages (its place in this screen's shape).
+    private Control? HomeSlotContainer(HandheldFolderViewModel folder)
     {
-        if (_shell?.CurrentPage is not { } page)
+        if (_screen is not { } screen)
             return null;
-        if (_pageTrack.ContainerFromIndex(page.Index) is not { } pageContainer)
+        var at = screen.Grid.PositionOf(folder.HomeIndex);
+        if (_pageTrack.ContainerFromIndex(at.Page) is not { } pageContainer)
             return null;
         var slots = pageContainer.GetVisualDescendants().OfType<ItemsControl>().FirstOrDefault();
-        return slots?.ContainerFromIndex(slot);
+        return slots?.ContainerFromIndex(at.Slot);
     }
 
     private static void SetSlotOpen(Control container, bool open)
@@ -439,7 +474,7 @@ internal sealed class HandheldLauncherMotion
             art.Classes.Set("open", open);
     }
 
-    private Point? HomeSlotCentre(int slot) => HomeSlotContainer(slot) is { } container ? CentreOnCanvas(container) : null;
+    private Point? HomeSlotCentre(HandheldFolderViewModel folder) => HomeSlotContainer(folder) is { } container ? CentreOnCanvas(container) : null;
 
     private Point? CentreOnCanvas(Visual visual) =>
         visual.TranslatePoint(new Point(visual.Bounds.Width / 2, visual.Bounds.Height / 2), _ghostLayer);
@@ -459,7 +494,7 @@ internal sealed class HandheldLauncherMotion
             HandheldComposition.Scale(_launchCover, total, easing, 0,
                 (0f, 1), (press, HandheldMotion.PressScale), (pop, HandheldMotion.PressPopScale), (1f, 0.7));
             HandheldComposition.OffsetFrames(_launchCover, total, new CubicEaseIn(), 0,
-                (0f, default), (pop, default), (1f, new Vector(0, -1100)));
+                (0f, default), (pop, default), (1f, new Vector(0, IsWide ? 1100 : -1100)));
             HandheldComposition.Opacity(_launchCover, total, new LinearEasing(), 0, (0f, 1), (pop, 1), (1f, 0));
         }, DispatcherPriority.Loaded);
     }
@@ -482,7 +517,7 @@ internal sealed class HandheldLauncherMotion
         _now = now;
         var moving = false;
 
-        if (_shell?.CurrentPage is { } page)
+        if (_screen?.CurrentPage is { } page)
         {
             if (!_pagePlaced)
             {

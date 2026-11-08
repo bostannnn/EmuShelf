@@ -17,7 +17,6 @@ public sealed partial class HandheldShellViewModel
 
     private readonly Dictionary<string, Bitmap?[]> _peekCovers = new(StringComparer.Ordinal);
     private readonly HashSet<string> _peekLoading = new(StringComparer.Ordinal);
-    private HandheldHomeSlotViewModel? _peekSlot;
 
     private void ApplyPeek(HandheldFolderSource source, HandheldStageViewModel stage)
     {
@@ -31,20 +30,28 @@ public sealed partial class HandheldShellViewModel
         _ = LoadPeekAsync(source);
     }
 
-    /// <summary>The focused home folder tile shows the same covers as the Stage's big folder.</summary>
+    /// <summary>The focused home folder tile shows the same covers as the Stage's big folder, in both home shapes.</summary>
     private void UpdateHomePeek()
     {
-        HandheldHomeSlotViewModel? focused = null;
-        if (OpenFolder is null && Zone == HandheldZone.Grid && CurrentPage is { } page && _home.Slot < page.Slots.Count)
-            focused = page.Slots[_home.Slot];
-        if (!ReferenceEquals(focused, _peekSlot) && _peekSlot is { } previous)
-            previous.PeekA = previous.PeekB = previous.PeekC = null;
-        _peekSlot = focused;
-        if (focused?.Folder is { } folder && _peekCovers.TryGetValue(folder.Key, out var covers))
+        var homeIndex = HomeIndex;
+        foreach (var screen in Screens)
         {
-            focused.PeekA = covers[0];
-            focused.PeekB = covers[1];
-            focused.PeekC = covers[2];
+            HandheldHomeSlotViewModel? focused = null;
+            var at = screen.Grid.PositionOf(homeIndex);
+            if (OpenFolder is null && Zone == HandheldZone.Grid && screen.CurrentPage is { } page && page.Index == at.Page &&
+                at.Slot < page.Slots.Count)
+            {
+                focused = page.Slots[at.Slot];
+            }
+            if (!ReferenceEquals(focused, screen.PeekSlot) && screen.PeekSlot is { } previous)
+                previous.PeekA = previous.PeekB = previous.PeekC = null;
+            screen.PeekSlot = focused;
+            if (focused?.Folder is { } folder && _peekCovers.TryGetValue(folder.Key, out var covers))
+            {
+                focused.PeekA = covers[0];
+                focused.PeekB = covers[1];
+                focused.PeekC = covers[2];
+            }
         }
     }
 
@@ -98,7 +105,7 @@ public sealed partial class HandheldShellViewModel
     {
         if (OpenFolder is { } folder)
             return folder.Source.Key;
-        return _move is null && Naming is null ? FolderSourceFor(_layout.SlotAt(_home.Page, _home.Slot))?.Key : null;
+        return _move is null && Naming is null ? FolderSourceFor(HomeSlotAt(HomeIndex))?.Key : null;
     }
 
     /// <summary>Drops one folder's peek covers (its games changed); the next focus reads them again.</summary>
@@ -110,9 +117,7 @@ public sealed partial class HandheldShellViewModel
         // Off the Stage and the tile first, then disposed, so no frame can draw a disposed image.
         if (covers.Any(cover => cover is not null && (ReferenceEquals(cover, Stage.PeekA) || ReferenceEquals(cover, Stage.PeekB) || ReferenceEquals(cover, Stage.PeekC))))
             Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
-        if (_peekSlot is { } slot)
-            slot.PeekA = slot.PeekB = slot.PeekC = null;
-        foreach (var page in Pages)
+        foreach (var page in Screens.SelectMany(screen => screen.Pages))
         {
             foreach (var tile in page.Slots)
             {
@@ -128,9 +133,12 @@ public sealed partial class HandheldShellViewModel
     {
         _peekGeneration++;
         Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
-        if (_peekSlot is { } slot)
-            slot.PeekA = slot.PeekB = slot.PeekC = null;
-        _peekSlot = null;
+        foreach (var screen in Screens)
+        {
+            if (screen.PeekSlot is { } slot)
+                slot.PeekA = slot.PeekB = slot.PeekC = null;
+            screen.PeekSlot = null;
+        }
         foreach (var covers in _peekCovers.Values)
         {
             foreach (var cover in covers)

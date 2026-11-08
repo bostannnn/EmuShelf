@@ -273,7 +273,8 @@ public sealed class BackdropRenderer : IDisposable
     /// Draws the backdrop over the whole bound framebuffer at <paramref name="opacity"/> (premultiplied, for the
     /// Stage's ONE / ONE_MINUS_SRC_ALPHA blending). Changes the bound program, vertex array and textures.
     /// </summary>
-    public void Present(BackdropInstance instance, float opacity)
+    /// <param name="crop">The share of the frame's width to cut off (half each side) on a narrower screen.</param>
+    public void Present(BackdropInstance instance, float opacity, float crop = 0f)
     {
         if (instance.Shown is not { } shown || opacity <= 0f)
             return;
@@ -284,6 +285,7 @@ public sealed class BackdropRenderer : IDisposable
         _output.Set("uSource", 0);
         _output.Set("uRes", new Vector2(shown.Width, shown.Height));
         _output.Set("uOpacity", opacity);
+        _output.Set("uCrop", Math.Clamp(crop, 0f, 0.9f));
         _output.Set("uSmooth", output.Smooth ? 1f : 0f);
         _output.Set("uLevels", output.Bits > 0 ? (float)((1 << output.Bits) - 1) : 0f);
         _output.Set("uDither", output.Dither);
