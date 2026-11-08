@@ -106,6 +106,20 @@
     <Style Selector="Grid.narrow controls|Media3DControl#Medium">
       <Setter Property="Width" Value="1240" />
     </Style>
+    <!-- Settings' card (M45 H6a): as wide as the 16:9 Stage's medium, or the narrow canvas less the shot's padding. -->
+    <Style Selector="Border#SettingCard">
+      <Setter Property="Width" Value="1400" />
+    </Style>
+    <Style Selector="Grid.narrow Border#SettingCard">
+      <Setter Property="Width" Value="1048" />
+    </Style>
+    <!-- In styles, not on the element: a value set on the element would beat the warning style. -->
+    <Style Selector="TextBlock.setting-value">
+      <Setter Property="Foreground" Value="#5B58D9" />
+    </Style>
+    <Style Selector="TextBlock.setting-value.warning">
+      <Setter Property="Foreground" Value="#B4531A" />
+    </Style>
     <Style Selector="Border.button-glyph">
       <Setter Property="Width" Value="40" />
       <Setter Property="Height" Value="40" />
@@ -221,6 +235,48 @@
         <Border IsVisible="{Binding Stage.IsApp}" Width="384" Height="384" CornerRadius="96" ClipToBounds="True"
                 Background="#FFFFFF" BoxShadow="0 24 56 0 #2E000000">
           <Image Source="{Binding Stage.AppIcon}" Stretch="Uniform" Margin="32" />
+        </Border>
+
+        <!-- The Settings tile (decision 18): its glyph on the indigo accent, the way a dock app shows its icon. -->
+        <Border IsVisible="{Binding Stage.IsSettingsTile}" Width="384" Height="384" CornerRadius="96"
+                BoxShadow="0 24 56 0 #405B58D9">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+              <GradientStop Offset="0" Color="#6865DE" />
+              <GradientStop Offset="1" Color="#5450CF" />
+            </LinearGradientBrush>
+          </Border.Background>
+          <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="176" Height="176" Foreground="White" />
+        </Border>
+
+        <!--
+          Settings open (M45 H6a): the detail half of its master-detail. Where the focused row sits, what it is, its value,
+          its description, and the section's status line (a scan's progress, an account) when there is one.
+        -->
+        <Border x:Name="SettingCard" IsVisible="{Binding Stage.IsSetting}" MinHeight="420" CornerRadius="56"
+                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 24 56 0 #1F000000"
+                Padding="72,56">
+          <StackPanel Spacing="18">
+            <StackPanel Orientation="Horizontal" Spacing="16">
+              <Border Width="56" Height="56" CornerRadius="16" Background="#5B58D9" VerticalAlignment="Center">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="32" Height="32" Foreground="White" />
+              </Border>
+              <TextBlock Text="{Binding Stage.SettingEyebrow}" FontSize="30" FontWeight="SemiBold" Foreground="#5B6176"
+                         VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <TextBlock Text="{Binding Stage.Title}" FontSize="64" FontWeight="SemiBold" Foreground="#1C2033"
+                       TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="setting-value" Classes.warning="{Binding Stage.IsSettingWarning}" Text="{Binding Stage.SettingValue}"
+                       IsVisible="{Binding Stage.HasSettingValue}" FontSize="44" FontWeight="SemiBold"
+                       TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
+            <TextBlock Text="{Binding Stage.SettingDescription}" IsVisible="{Binding Stage.HasSettingDescription}" FontSize="32"
+                       Foreground="#4B5274" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="44" />
+            <Border IsVisible="{Binding Stage.HasSettingStatus}" Background="#F2F4F8" CornerRadius="20" Padding="24,14"
+                    Margin="0,6,0,0" HorizontalAlignment="Left">
+              <TextBlock Text="{Binding Stage.SettingStatus}" FontSize="26" Foreground="#4B5274" TextWrapping="Wrap" MaxLines="3"
+                         TextTrimming="CharacterEllipsis" />
+            </Border>
+          </StackPanel>
         </Border>
 
         <!-- All apps, the menu, an empty slot, the folder header: a quiet card with what it is. -->

@@ -13626,3 +13626,40 @@ corrected or deleted from the timeline or the game page.
   (Desktop timeline, ranking, game page, editor; Gamepad timeline and editor) is rendered headlessly by
   `ActivitySnapshotTests`; with `EMUSHELF_SNAPSHOT_DIR` set they are written as PNGs.
 
+## 2026-11-08 — M45 H6a: Settings tile, Start menu and Settings across the two screens
+
+- **The stop-gap came first and is gone again.** Its own commit put a Settings row in the Handheld Start menu that
+  borrowed Gamepad mode's Settings overlay on the main display (the Gamepad shell shown for it, the main display's
+  Handheld screens stepped aside). The real Settings replaced it in the next commit; nothing of the borrowing is left.
+- **The tile is `HandheldSlotKind.System` with a new `HandheldSystemTile.Settings`**, beside Recent, rather than a new
+  slot kind: Recent was already EmuShelf's own tile on home, and the store already wrote system tiles by name. The
+  default home is Recent, the platform folders, then Settings; an empty library gets Settings alone. Reconciliation
+  keeps exactly one: on home wins over a folder, the first folder wins over others, and a home saved before H6a (the
+  owner's) gets it appended after its last tile. There is no Remove anywhere for it; deleting the folder it is in puts
+  it where the folder was.
+- **Foldable means a flag on your folder** (`HandheldUserFolder.HoldsSettings`, saved as `"settings": true`), not
+  general non-game folder contents: only Settings can go in a folder, so a list of tile kinds would be machinery for
+  one case. Inside, it is the first tile whatever the sort and is not counted as a game; Y there offers Move to home.
+  It goes in by move mode (dropped on one of your folders; on a game it just lands, two of it never make a folder) or
+  Y → Add to folder… (your existing folders; no New folder from it).
+- **Its face is a three-slider glyph** drawn for EmuShelf (no icon set's gear), white on the Launcher's indigo, with
+  the same footprint as a pinned game. The Stage shows it on a card with the plate "Settings · Library, emulators,
+  saves and more", the way a dock app shows its icon.
+- **Settings is Gamepad mode's projection, laid across the screens.** `HandheldSettingsViewModel` wraps the same
+  `GamepadSettingsViewModel` (same sections in the same order, row kinds, Save and close, choosers, confirmations,
+  live statuses) so every setting Gamepad mode has is here by construction; `MainViewModel` builds it through one
+  shared builder for both modes. The Launcher draws the sections and rows (it takes the screen back from the native
+  Launcher, as the menu does); the Stage draws a card with where the row sits, its label, its value large and its
+  description (a switch's leading state is dropped there since the value shows it), natively pictured: a new subject
+  pops, a change to the same one is pictured again in place with the hints. Both canvases are handled: the 1240 and
+  1920 Launchers and both Stages. B closes without saving and Start saves, as in Gamepad mode; X is Settings' own
+  while it is open (no swap), like the menu and sheets.
+- **Text rows type on a drawn keyboard**, the naming keyboard's look with digits, Shift (LB), symbols (RB), Cancel and
+  Done; Y shows a secret, else types a space. Android's own keyboard cannot open on Screen-2. A hardware keyboard
+  types into the field.
+- **Left out on purpose:** "Run setup again" (Handheld mode's first run is H6d) and the Hotkeys overlay (desktop
+  only). The Start menu is Settings, Switch to Gamepad mode, Quit for now; Search, Add games and Achievements join it
+  with their screens in H6c, Sounds in H6d, rather than as rows that do nothing.
+- **Fixed on the way:** an open folder of yours emptied from inside (its last game removed, or Settings moved out)
+  now shows its empty state with Back focused; the item list changed without telling the view.
+

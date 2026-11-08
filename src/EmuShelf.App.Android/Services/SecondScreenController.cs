@@ -1154,7 +1154,7 @@ internal sealed class SecondScreenController
 
     private void ViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(MainViewModel.Handheld) or nameof(MainViewModel.IsHandheldScreenShown))
+        if (e.PropertyName == nameof(MainViewModel.Handheld))
         {
             UpdateHandheldSurface();
             return;
@@ -1283,9 +1283,7 @@ internal sealed class SecondScreenController
             presentation.Model.Overlay == SecondScreenOverlayKind.None;
         // The main display's Handheld screen gives way while the companion sits over it (a game on Screen-2). Where
         // the two Handheld screens go (and the swap, M45 H5) is HandheldScreenHost's.
-        // So does it while Handheld mode borrows Gamepad mode's Settings overlay there (the M45 H6a stop-gap).
-        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld,
-            mainShowsHandheld: !_gameOnSecondScreen && _viewModel?.IsHandheldSettingsOverlayOpen != true);
+        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen);
     }
 
     private void DetachDisplayManager()

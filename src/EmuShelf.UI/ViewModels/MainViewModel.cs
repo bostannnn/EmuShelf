@@ -2598,60 +2598,16 @@ public partial class MainViewModel : ViewModelBase
     {
         // Building the projection awaits a database read, so a second press before it completes would
         // otherwise start an overlapping open and race on GamepadSettings. One in-flight open at a time.
-        // Handheld mode borrows the ordinary Settings until it has its own (M45 H6a); the wizard stays Gamepad mode's.
-        if (!(IsGamepadMode || (IsHandheldMode && setup is null)) || IsBusy || _openingGamepadSettings)
+        if (!IsGamepadMode || IsBusy || _openingGamepadSettings)
             return;
 
         _openingGamepadSettings = true;
         try
         {
             CloseGamepadSettingsProjection();
-            var settings = await CreateSettingsViewModelAsync();
-            // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
-            // rather than per row while the section rebuilds. A scan started from inside Settings makes
-            // them stale, so the projection can ask for a fresh read through refreshGameCounts.
-            var systemIds = settings.Rows.Select(row => row.SystemId).ToList();
-            Task<Dictionary<string, int>> ReadGameCountsAsync() => Task.Run(() => systemIds.ToDictionary(
-                systemId => systemId,
-                systemId => _library.GetGames(systemId).Count,
-                StringComparer.Ordinal));
-            var gameCounts = await ReadGameCountsAsync();
-            var installed = EmuShelf.App.App.InstalledPackageProbe;
-            GamepadSettings = new GamepadSettingsViewModel(
-                settings,
-                _onScreenKeyboard,
-                ThemeChoices,
-                SetThemeAsync,
-                OpenGamepadHotkeysFromSettings,
-                androidEmulatorChoices: OperatingSystem.IsAndroid()
-                    ? AndroidEmulatorChoiceCatalog.BySystem
-                    : null,
-                gameCountBySystem: systemId => gameCounts.GetValueOrDefault(systemId),
-                isEmulatorChoiceInstalled: installed is null
-                    ? null
-                    : choice => IsAndroidEmulatorChoiceInstalled(choice, installed),
-                closeOnReturnWarning: EmuShelf.App.App.CloseOnReturnPrivilegeStatus,
-                grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
-                    ? null
-                    : GrantCloseOnReturnPrivilegeAsync,
-                setup: setup,
+            GamepadSettings = await CreateGamepadSettingsProjectionAsync(setup, OpenGamepadHotkeysFromSettings,
                 // The wizard is an Android first-run flow; desktop never shows the row.
-                // Handheld mode's first run is its own (M45 H6d), so it offers no "Run setup again" meanwhile.
-                runSetup: OperatingSystem.IsAndroid() && IsGamepadMode ? OpenSetupWizardAsync : null,
-                usageAccess: EmuShelf.App.App.UsageAccess,
-                refreshGameCounts: async () =>
-                {
-                    try
-                    {
-                        gameCounts = await ReadGameCountsAsync();
-                    }
-                    catch (Exception ex)
-                    {
-                        // A stale count is a wrong number on a summary line, not a broken screen: keep the
-                        // previous reading rather than tearing Settings down over a transient library read.
-                        _logger.Warning("Could not refresh the per-platform game counts for Settings.", ex);
-                    }
-                });
+                runSetup: OperatingSystem.IsAndroid() ? OpenSetupWizardAsync : null);
             // The Shizuku grant and emulator installs change while EmuShelf is in the background, so the
             // projection caches those probes and re-reads them here instead of on every rebuild.
             EmuShelf.App.App.ForegroundReturned += RefreshGamepadSettingsDeviceState;
@@ -2666,6 +2622,59 @@ public partial class MainViewModel : ViewModelBase
         {
             _openingGamepadSettings = false;
         }
+    }
+
+    /// <summary>
+    /// Builds the controller Settings projection over a fresh settings model: the one Gamepad mode shows in its overlay
+    /// and Handheld mode across its two screens (M45 H6a).
+    /// </summary>
+    private async Task<GamepadSettingsViewModel> CreateGamepadSettingsProjectionAsync(SetupWizardOptions? setup,
+        Func<Task>? openHotkeys, Func<Task>? runSetup)
+    {
+        var settings = await CreateSettingsViewModelAsync();
+        // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
+        // rather than per row while the section rebuilds. A scan started from inside Settings makes
+        // them stale, so the projection can ask for a fresh read through refreshGameCounts.
+        var systemIds = settings.Rows.Select(row => row.SystemId).ToList();
+        Task<Dictionary<string, int>> ReadGameCountsAsync() => Task.Run(() => systemIds.ToDictionary(
+            systemId => systemId,
+            systemId => _library.GetGames(systemId).Count,
+            StringComparer.Ordinal));
+        var gameCounts = await ReadGameCountsAsync();
+        var installed = EmuShelf.App.App.InstalledPackageProbe;
+        return new GamepadSettingsViewModel(
+            settings,
+            _onScreenKeyboard,
+            ThemeChoices,
+            SetThemeAsync,
+            openHotkeys,
+            androidEmulatorChoices: OperatingSystem.IsAndroid()
+                ? AndroidEmulatorChoiceCatalog.BySystem
+                : null,
+            gameCountBySystem: systemId => gameCounts.GetValueOrDefault(systemId),
+            isEmulatorChoiceInstalled: installed is null
+                ? null
+                : choice => IsAndroidEmulatorChoiceInstalled(choice, installed),
+            closeOnReturnWarning: EmuShelf.App.App.CloseOnReturnPrivilegeStatus,
+            grantCloseOnReturnPrivilege: EmuShelf.App.App.CloseOnReturnPrivilegePrepare is null
+                ? null
+                : GrantCloseOnReturnPrivilegeAsync,
+            setup: setup,
+            runSetup: runSetup,
+            usageAccess: EmuShelf.App.App.UsageAccess,
+            refreshGameCounts: async () =>
+            {
+                try
+                {
+                    gameCounts = await ReadGameCountsAsync();
+                }
+                catch (Exception ex)
+                {
+                    // A stale count is a wrong number on a summary line, not a broken screen: keep the
+                    // previous reading rather than tearing Settings down over a transient library read.
+                    _logger.Warning("Could not refresh the per-platform game counts for Settings.", ex);
+                }
+            });
     }
 
     /// <summary>
@@ -3137,12 +3146,11 @@ public partial class MainViewModel : ViewModelBase
 
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing, except the
-        // Settings overlay Handheld mode borrows (M45 H6a), which owns the pad while it is open.
-        if (IsHandheldMode && !IsHandheldSettingsOverlayOpen)
+        // Handheld mode has its own shell; the Gamepad shell underneath is hidden and gets nothing.
+        if (IsHandheldMode)
             return IsGamepadInputSuspended || (Handheld?.DispatchGamepadAction(action) ?? false);
 
-        if (!IsGamepadShellShown)
+        if (!IsGamepadMode)
             return false;
 
         IsGamepadControllerInputActive = true;
@@ -3202,10 +3210,10 @@ public partial class MainViewModel : ViewModelBase
     /// </summary>
     public bool DispatchBackButton()
     {
-        if (IsHandheldMode && !IsHandheldSettingsOverlayOpen)
+        if (IsHandheldMode)
             return Handheld?.DispatchBack() ?? false;
 
-        if (!IsGamepadShellShown)
+        if (!IsGamepadMode)
             return false;
 
         // Nothing open to back out of → let the platform handle Back (Android exits). A soft keyboard, when
@@ -3513,8 +3521,7 @@ public partial class MainViewModel : ViewModelBase
 
     private void OpenGamepadOverlay(GamepadOverlayKind overlay)
     {
-        // Handheld mode borrows only the Settings overlay (the M45 H6a stop-gap).
-        if (!IsGamepadMode && !(IsHandheldMode && overlay == GamepadOverlayKind.Settings))
+        if (!IsGamepadMode)
             return;
 
         DisposeGamepadAchievementDetails();
@@ -4526,7 +4533,6 @@ public partial class MainViewModel : ViewModelBase
     partial void OnGamepadOverlayChanged(GamepadOverlayKind value)
     {
         NotifyGamepadOverlayState();
-        NotifyHandheldSettingsOverlay();
         // Details may have been assigned before the overlay opened (row build is deferred while it is
         // closed), so slice the rows now that it is showing. SizeChanged corrects the column count.
         if (value == GamepadOverlayKind.Achievements)
@@ -7924,14 +7930,6 @@ public partial class MainViewModel : ViewModelBase
         // reaching the last step and pressing Finish counts as having walked it.
         var setupFinished = saved && GamepadSettings?.SetupCompleted == true;
         CloseGamepadSettingsProjection();
-        // Borrowed by Handheld mode (M45 H6a): closing Settings goes straight back to Handheld mode.
-        if (IsHandheldMode)
-        {
-            CloseGamepadOverlay();
-            if (saved)
-                SetStatus("Settings saved.");
-            return;
-        }
         if (!IsGamepadMode)
             return;
 

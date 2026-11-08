@@ -26,8 +26,7 @@
           X has swapped them (H5). HandheldScreenHost owns both views and puts the right one in this slot.
           GamepadShellView hides itself outside Gamepad mode, so only one of the two is ever shown.
         -->
-        <!-- Hidden while Handheld mode borrows Gamepad mode's Settings overlay (the M45 H6a stop-gap). -->
-        <Panel IsVisible="{Binding IsHandheldScreenShown}">
+        <Panel IsVisible="{Binding IsHandheldMode}">
             <ContentControl x:Name="HandheldMain" />
         </Panel>
 

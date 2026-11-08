@@ -60,6 +60,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _homeLayer = this.FindControl<Control>("HomeLayer")!;
         _canvas = this.FindControl<Control>("Canvas")!;
         _selectorLayer = this.FindControl<Control>("SelectorLayer")!;
+        _settingsCanvas = this.FindControl<Control>("SettingsCanvas")!;
+        _settingsRows = this.FindControl<ItemsControl>("SettingsRows")!;
+        _settingsSections = this.FindControl<ItemsControl>("SettingsSections")!;
+        _settingsThemes = this.FindControl<ItemsControl>("SettingsThemes")!;
+        _settingsChoices = this.FindControl<ItemsControl>("SettingsChoices")!;
         // View wiring only: the motion follows whichever shell the view shows.
         _motion = new HandheldLauncherMotion(this);
         // On a platform with a native Launcher this view stays laid out but invisible, and lends it pictures.
@@ -75,6 +80,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             _shell = DataContext as HandheldShellViewModel;
             if (_shell is { } shell)
                 shell.PropertyChanged += OnShellChanged;
+            WatchSettings(_shell?.Settings);
             _motion.Attach(_shell);
             _feed?.Attach(_shell);
             ApplyScreen();
@@ -93,12 +99,61 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private readonly Control _homeLayer;
     private readonly Control _canvas;
     private readonly Control _selectorLayer;
+    private readonly Control _settingsCanvas;
+    private readonly ItemsControl _settingsRows;
+    private readonly ItemsControl _settingsSections;
+    private readonly ItemsControl _settingsThemes;
+    private readonly ItemsControl _settingsChoices;
     private HandheldHomeScreenViewModel? _screen;
+    private HandheldSettingsViewModel? _settings;
+    private (Point At, GamepadSettingsRowViewModel Row)? _settingsPress;
 
     private void OnShellChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(HandheldShellViewModel.IsSwapped) && PinnedWide is null)
             ApplyScreen();
+        else if (e.PropertyName == nameof(HandheldShellViewModel.Settings))
+            WatchSettings(_shell?.Settings);
+    }
+
+    // ---- Settings (M45 H6a): keep what has the focus in view ----
+
+    private void WatchSettings(HandheldSettingsViewModel? settings)
+    {
+        if (ReferenceEquals(settings, _settings))
+            return;
+        if (_settings is { } old)
+            old.Changed -= OnSettingsChanged;
+        _settings = settings;
+        _settingsPress = null;
+        if (settings is null)
+            return;
+        settings.Changed += OnSettingsChanged;
+        OnSettingsChanged();
+    }
+
+    private void OnSettingsChanged() =>
+        // After layout, so a rebuilt list has its containers.
+        Dispatcher.UIThread.Post(RevealSettingsFocus, DispatcherPriority.Loaded);
+
+    private void RevealSettingsFocus()
+    {
+        if (_settings is not { } settings || !IsVisible)
+            return;
+        var projection = settings.Projection;
+        if (projection.IsChoicePickerOpen)
+            Reveal(_settingsChoices, projection.FocusedChoiceIndex);
+        else if (projection.IsThemesSection)
+            Reveal(_settingsThemes, projection.FocusedThemeIndex);
+        else
+            Reveal(_settingsRows, projection.FocusedRowIndex);
+        Reveal(_settingsSections, settings.Sections.ToList().FindIndex(section => section.IsSelected));
+    }
+
+    private static void Reveal(ItemsControl items, int index)
+    {
+        if (index >= 0 && items.ContainerFromIndex(index) is Control container)
+            container.BringIntoView();
     }
 
     // View wiring: the home layer, the canvas and the selector layer take this Launcher's screen.
@@ -112,6 +167,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         var width = screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
         _canvas.Width = width;
         _selectorLayer.Width = width;
+        _settingsCanvas.Width = width;
         _motion.SetScreen(screen);
         _feed?.SetScreen(screen);
     }
@@ -129,6 +185,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         if (_shell is not { } shell)
             return;
         var source = e.Source as Visual;
+        if (shell.Settings is { } settings)
+        {
+            OnSettingsPressed(settings, source, e);
+            return;
+        }
         // The overlays take taps on their own rows; a tap on the sheet's scrim closes it.
         if (shell.IsSheetOpen)
         {
@@ -237,6 +298,15 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private void OnPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         _longPress.Stop();
+        if (_settingsPress is { } press)
+        {
+            // A row is pressed on release, and only if the finger stayed put: a drag scrolls the list instead.
+            _settingsPress = null;
+            var moved = e.GetPosition(this) - press.At;
+            if (Math.Abs(moved.X) <= DragSlop && Math.Abs(moved.Y) <= DragSlop)
+                _shell?.Settings?.TapRow(press.Row);
+            return;
+        }
         if (_shell is not { } shell || _pressAt is not { } start)
             return;
         _pressAt = null;
@@ -284,6 +354,60 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             // The release that follows must not also count as a tap on the tile.
             _pressAt = null;
             shell.LongPressFolderTile(tile.Index);
+        }
+    }
+
+    // Settings takes its own taps: a section shows it, a row does what A does (on release, so the list can scroll), a
+    // choice or an answer is picked, and a tap outside an open chooser closes it.
+    private void OnSettingsPressed(HandheldSettingsViewModel settings, Visual? source, PointerPressedEventArgs e)
+    {
+        _settingsPress = null;
+        if (settings.IsTyping)
+        {
+            if (Find<HandheldKeyViewModel>(source) is { } key)
+            {
+                settings.PressKey(key);
+                e.Handled = true;
+            }
+            // A press on the field itself is left to the field (a hardware keyboard types there).
+            return;
+        }
+        if (settings.IsChoicePickerOpen)
+        {
+            if (Find<GamepadChoiceOptionViewModel>(source) is { } option)
+                settings.TapChoice(option);
+            else if (!IsInside(source, "SettingsChoiceCard"))
+                settings.TapOutside();
+            e.Handled = true;
+            return;
+        }
+        if (settings.IsConfirmationOpen)
+        {
+            if (IsInside(source, "SettingsConfirmGo"))
+                settings.TapConfirmation(confirm: true);
+            else if (IsInside(source, "SettingsConfirmCancel") || !IsInside(source, "SettingsConfirmCard"))
+                settings.TapConfirmation(confirm: false);
+            e.Handled = true;
+            return;
+        }
+        if (IsInside(source, "SettingsBack"))
+        {
+            settings.Back();
+            e.Handled = true;
+        }
+        else if (Find<HandheldSettingsSectionViewModel>(source) is { } section)
+        {
+            settings.TapSection(section);
+            e.Handled = true;
+        }
+        else if (Find<ThemeChoiceViewModel>(source) is { } theme)
+        {
+            settings.TapTheme(theme);
+            e.Handled = true;
+        }
+        else if (Find<GamepadSettingsRowViewModel>(source) is { } row)
+        {
+            _settingsPress = (e.GetPosition(this), row);
         }
     }
 

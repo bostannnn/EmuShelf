@@ -56,6 +56,25 @@ public sealed class FileHandheldHomeLayoutStoreTests : IDisposable
     }
 
     [Fact]
+    public void SaveThenLoad_KeepsTheSettingsTile_OnHomeOrInYourFolder()
+    {
+        // M45 H6a, decision 18: on home where you moved it…
+        var onHome = HandheldHomeLayout.FromSlots([HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Empty, HandheldSlot.Settings]);
+        new FileHandheldHomeLayoutStore(FilePath).Save(onHome);
+        Assert.Equal(2, new FileHandheldHomeLayoutStore(FilePath).Load()!.IndexOf(HandheldSlot.Settings));
+        Assert.Contains("\"tile\": \"settings\"", File.ReadAllText(FilePath), StringComparison.Ordinal);
+
+        // …or folded into one of your folders.
+        var folded = onHome.WithSlot(3, HandheldSlot.UserFolder("u-a"))
+            .WithFolder(new HandheldUserFolder("u-a", "A", "#3BBD79", [5]))
+            .WithSettingsIn("u-a");
+        new FileHandheldHomeLayoutStore(FilePath).Save(folded);
+        var loaded = new FileHandheldHomeLayoutStore(FilePath).Load()!;
+        Assert.Equal(-1, loaded.IndexOf(HandheldSlot.Settings));
+        Assert.True(loaded.FindFolder("u-a")!.HoldsSettings);
+    }
+
+    [Fact]
     public void ReinstallStyleRestore_ACopiedSettingsFolder_GivesBackTheSameHome()
     {
         new FileHandheldHomeLayoutStore(FilePath).Save(Arranged());

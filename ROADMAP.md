@@ -2382,7 +2382,13 @@ Played. Pad input already reaches one dispatcher from both displays
       of them effectively missing (the in-game companion is still Gamepad mode's, and Settings cannot
       be reached at all: today's Start menu holds only Switch mode and Quit). It is now four
       sub-milestones, each with its own Thor check and `M45 H6<x>: …` commit, in this order.
-- [ ] **H6a — Settings tile, Start menu, Settings.** *Stop-gap first, its own small commit:* a
+- [x] **H6a — Settings tile, Start menu, Settings.** ✅ (2026-11-08; checked on the Thor over adb with both screens
+      read back (native surfaces by `glReadPixels`, the Avalonia Launcher rendered to a bitmap; not kept), on the owner's
+      library, swapped and not: the tile appended to an existing home, opened from the tile, from the Start menu and from
+      inside a folder, every section with its live status, an emulator chooser, a text row on the drawn keyboard
+      (cancelled), the section list, touch, the tile moved and surviving a cold start, folded into a folder, moved back,
+      and the folder deleted. Choices in `DECISIONS.md` 2026-11-08 "M45 H6a". The menu's Search, Add games, Achievements
+      and Sounds rows arrive with their screens in H6c and H6d.) *Stop-gap first, its own small commit:* a
       Settings row in today's Start menu that opens Gamepad mode's settings overlay on the Stage, so
       Settings is reachable at all. Then the real entrance, as the 3DS and Cocoon do it: Settings is
       an app on the grid. `HandheldSlotKind.SystemTile` with one kind for now, Settings (decision 18,

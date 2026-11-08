@@ -68,29 +68,8 @@ public partial class MainViewModel
 
     private SecondScreenViewModel? _handheldCompanion;
 
-    /// <summary>
-    /// Gamepad mode's Settings overlay is open over Handheld mode (the M45 H6a stop-gap, until Handheld mode has
-    /// Settings of its own): the Gamepad shell shows on the main display, and the main display's Handheld screen
-    /// gives way to it.
-    /// </summary>
-    public bool IsHandheldSettingsOverlayOpen => IsHandheldMode && IsGamepadSettingsOpen;
-
-    /// <summary>Whether the Gamepad shell is on screen: in Gamepad mode, or carrying its Settings over Handheld mode.</summary>
-    public bool IsGamepadShellShown => IsGamepadMode || IsHandheldSettingsOverlayOpen;
-
-    /// <summary>The main display's Handheld screen is shown (not while the Settings overlay is over it).</summary>
-    public bool IsHandheldScreenShown => IsHandheldMode && !IsHandheldSettingsOverlayOpen;
-
-    private void NotifyHandheldSettingsOverlay()
-    {
-        OnPropertyChanged(nameof(IsHandheldSettingsOverlayOpen));
-        OnPropertyChanged(nameof(IsGamepadShellShown));
-        OnPropertyChanged(nameof(IsHandheldScreenShown));
-    }
-
     partial void OnIsHandheldModeChanged(bool value)
     {
-        NotifyHandheldSettingsOverlay();
         if (value)
         {
             if (Handheld is not null)
@@ -117,6 +96,61 @@ public partial class MainViewModel
             handheld.Dispose();
         }
     }
+
+    // Handheld mode's Settings (M45 H6a): the same projection Gamepad mode's overlay shows, laid across the two screens by
+    // the shell. One at a time; the device probes it caches are re-read when EmuShelf comes back to the foreground.
+    private GamepadSettingsViewModel? _handheldSettings;
+    private bool _openingHandheldSettings;
+
+    private async Task<GamepadSettingsViewModel?> CreateHandheldSettingsAsync()
+    {
+        if (!IsHandheldMode || _openingHandheldSettings || _handheldSettings is not null)
+            return null;
+        if (IsBusy)
+        {
+            // Gamepad mode's Settings waits for the same thing; say so rather than leave the tile looking dead.
+            SetStatus("Settings can open once the current task finishes.");
+            return null;
+        }
+        _openingHandheldSettings = true;
+        try
+        {
+            // No Hotkeys overlay (Android has none) and no "Run setup again": Handheld mode's first run is its own (H6d).
+            var settings = await CreateGamepadSettingsProjectionAsync(setup: null, openHotkeys: null, runSetup: null);
+            if (!IsHandheldMode)
+            {
+                settings.Dispose();
+                return null;
+            }
+            _handheldSettings = settings;
+            EmuShelf.App.App.ForegroundReturned += RefreshHandheldSettingsDeviceState;
+            return settings;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not open Handheld settings.", ex);
+            SetStatus($"Could not open Settings: {ex.Message}", StatusSeverity.Error);
+            return null;
+        }
+        finally
+        {
+            _openingHandheldSettings = false;
+        }
+    }
+
+    private void CloseHandheldSettings(GamepadSettingsViewModel settings, bool saved)
+    {
+        if (ReferenceEquals(_handheldSettings, settings))
+        {
+            EmuShelf.App.App.ForegroundReturned -= RefreshHandheldSettingsDeviceState;
+            _handheldSettings = null;
+        }
+        settings.Dispose();
+        if (saved)
+            SetStatus("Settings saved.");
+    }
+
+    private void RefreshHandheldSettingsDeviceState() => _handheldSettings?.RefreshDeviceState();
 
     /// <summary>X swapped the Handheld screens: remembered for the next start (M45 H5).</summary>
     private void SaveHandheldScreensSwapped(bool swapped)
@@ -428,7 +462,9 @@ public partial class MainViewModel
 
         public Task SwitchModeAsync(InterfaceMode mode) => owner.SetInterfaceModeAsync(mode);
 
-        public Task OpenSettingsAsync() => owner.RequestSettingsFromGamepadAsync();
+        public Task<GamepadSettingsViewModel?> CreateSettingsAsync() => owner.CreateHandheldSettingsAsync();
+
+        public void CloseSettings(GamepadSettingsViewModel settings, bool saved) => owner.CloseHandheldSettings(settings, saved);
 
         public void Quit() => owner._applicationLifetime?.Shutdown();
     }

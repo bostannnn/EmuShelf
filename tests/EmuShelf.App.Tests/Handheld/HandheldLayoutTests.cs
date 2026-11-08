@@ -8,7 +8,7 @@ namespace EmuShelf.App.Tests.Handheld;
 public class HandheldLayoutTests
 {
     [Fact]
-    public void DefaultLayout_IsRecentThenPlatformFoldersInOrderThenEmptySlots()
+    public void DefaultLayout_IsRecentThenPlatformFoldersInOrderThenSettingsThenEmptySlots()
     {
         var layout = HandheldHomeLayout.CreateDefault(["ps2", "gc", "wii"]);
 
@@ -19,16 +19,20 @@ public class HandheldLayoutTests
         Assert.Equal(HandheldSlot.Recent, page.Slots[0]);
         Assert.Equal(["ps2", "gc", "wii"], page.Slots.Skip(1).Take(3).Select(slot => slot.SystemId));
         Assert.All(page.Slots.Skip(1).Take(3), slot => Assert.Equal(HandheldSlotKind.PlatformFolder, slot.Kind));
-        Assert.All(page.Slots.Skip(4).Concat(layout.Pages[1].Slots), slot => Assert.True(slot.IsEmpty));
+        // Settings is an app on the grid, right after the platform folders (decision 18).
+        Assert.Equal(HandheldSlot.Settings, page.Slots[4]);
+        Assert.All(page.Slots.Skip(5).Concat(layout.Pages[1].Slots), slot => Assert.True(slot.IsEmpty));
     }
 
     [Fact]
-    public void DefaultLayout_EmptyLibraryIsTwoPagesOfEmptySlots()
+    public void DefaultLayout_EmptyLibraryIsSettingsAndTwoPagesOfEmptySlots()
     {
         var layout = HandheldHomeLayout.CreateDefault([]);
 
+        // There is always a way into Settings, even before there are any games.
         Assert.Equal(2, layout.Pages.Count);
-        Assert.All(layout.AllSlots(), slot => Assert.True(slot.IsEmpty));
+        Assert.Equal(HandheldSlot.Settings, layout.SlotAt(0));
+        Assert.All(layout.AllSlots().Skip(1), slot => Assert.True(slot.IsEmpty));
     }
 
     [Fact]
@@ -38,12 +42,13 @@ public class HandheldLayoutTests
 
         var layout = HandheldHomeLayout.CreateDefault(ids);
 
-        // Recent and 43 platforms: 44 tiles need a third page.
+        // Recent, 43 platforms and Settings: 45 tiles need a third page.
         Assert.Equal(3, layout.Pages.Count);
         Assert.Equal("sys18", layout.SlotAt(0, 19).SystemId);
         Assert.Equal("sys19", layout.SlotAt(1, 0).SystemId);
         Assert.Equal("sys42", layout.SlotAt(2, 3).SystemId);
-        Assert.True(layout.SlotAt(2, 4).IsEmpty);
+        Assert.Equal(HandheldSlot.Settings, layout.SlotAt(2, 4));
+        Assert.True(layout.SlotAt(2, 5).IsEmpty);
     }
 
     [Fact]

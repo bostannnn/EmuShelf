@@ -1115,7 +1115,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     /// appended after it. Themes is the one page that is not a projected-row <see cref="Sections"/>
     /// entry, so it is spliced back in here and only when the controller has theme choices
     /// (<see cref="ShowThemes"/>).</summary>
-    private IReadOnlyList<SettingsSection> Pages
+    internal IReadOnlyList<SettingsSection> Pages
     {
         get
         {

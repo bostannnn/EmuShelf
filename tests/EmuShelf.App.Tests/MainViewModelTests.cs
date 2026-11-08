@@ -2091,41 +2091,6 @@ public class MainViewModelTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task HandheldMenu_SettingsBorrowsGamepadOverlay_AndBReturnsToHandheld()
-    {
-        // The M45 H6a stop-gap: Handheld mode's Start menu opens Gamepad mode's Settings over the main display.
-        var mode = new RecordingInterfaceModeService(InterfaceMode.Handheld);
-        var vm = CreateViewModel(interfaceModeService: mode);
-        vm.IsHandheldMode = true;
-        var handheld = Assert.IsType<HandheldShellViewModel>(vm.Handheld);
-        Assert.True(vm.IsHandheldScreenShown);
-        Assert.False(vm.IsGamepadShellShown);
-
-        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
-        Assert.True(handheld.IsMenuOpen);
-        Assert.Equal("Settings", handheld.MenuItems[0].Label);
-        // The row closes the menu and runs what the library seam runs (awaited here rather than fired and forgotten).
-        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
-        await vm.RequestSettingsFromGamepadCommand.ExecuteAsync(null);
-
-        Assert.Equal(GamepadOverlayKind.Settings, vm.GamepadOverlay);
-        Assert.NotNull(vm.GamepadSettings);
-        Assert.True(vm.IsHandheldSettingsOverlayOpen);
-        Assert.True(vm.IsGamepadShellShown);
-        Assert.False(vm.IsHandheldScreenShown);
-        Assert.Equal(InterfaceMode.Handheld, mode.Current);
-
-        // The overlay owns the pad while open; B closes it straight back to Handheld mode.
-        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
-        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
-        Assert.Null(vm.GamepadSettings);
-        Assert.True(vm.IsHandheldScreenShown);
-        Assert.False(vm.IsGamepadShellShown);
-        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
-        Assert.True(handheld.IsMenuOpen);
-    }
-
-    [AvaloniaFact]
     public void GamepadGridNavigation_StaysInRowAndStepsByNearestCentreAcrossRows()
     {
         var vm = CreateViewModel();

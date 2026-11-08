@@ -11,9 +11,10 @@ namespace EmuShelf.App.ViewModels;
 // TapFolderTile); buttons, chips, rows and dock buttons act on the first tap.
 public sealed partial class HandheldShellViewModel
 {
-    // Something with its own handling is open over the Launcher: the companion's drawer, a sheet, naming or move mode.
+    // Something with its own handling is open over the Launcher: the companion's drawer, a sheet, naming, move mode or
+    // Settings (which takes its own taps through HandheldSettingsViewModel).
     private bool IsTouchBlocked => (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None) ||
-        Sheet is not null || Naming is not null || _move is not null;
+        Sheet is not null || Naming is not null || _move is not null || Settings is not null;
 
     /// <summary>A tap on the folder header's Back or sort chip.</summary>
     public void TapHeader(HandheldHeaderItem item)

@@ -47,7 +47,8 @@ public sealed class FileHandheldHomeLayoutStore(string filePath, IAppLogger? log
                         string.IsNullOrWhiteSpace(folder.Name) ? "Folder" : folder.Name!,
                         IsColor(folder.Color) ? folder.Color! : HandheldHomeLayout.FolderColors[0],
                         folder.Games ?? [],
-                        folder.Sort))
+                        folder.Sort,
+                        folder.Settings))
                     .ToList();
                 return HandheldHomeLayout.FromSlots(slots, folders);
             }
@@ -85,6 +86,7 @@ public sealed class FileHandheldHomeLayoutStore(string filePath, IAppLogger? log
                         Color = folder.Color,
                         Games = folder.GameIds.ToList(),
                         Sort = folder.Sort,
+                        Settings = folder.HoldsSettings,
                     }).ToList(),
                 };
                 var temporaryPath = filePath + ".tmp";
@@ -143,5 +145,8 @@ public sealed class FileHandheldHomeLayoutStore(string filePath, IAppLogger? log
         public string? Color { get; set; }
         public List<long>? Games { get; set; }
         public HandheldFolderSort Sort { get; set; }
+
+        /// <summary>The Settings tile is in this folder (decision 18).</summary>
+        public bool Settings { get; set; }
     }
 }

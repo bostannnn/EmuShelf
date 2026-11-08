@@ -131,8 +131,14 @@ public interface IHandheldLibrary
 
     Task SwitchModeAsync(InterfaceMode mode);
 
-    /// <summary>Opens Settings (a stop-gap: Gamepad mode's Settings overlay on the main display, M45 H6a).</summary>
-    Task OpenSettingsAsync() => Task.CompletedTask;
+    /// <summary>
+    /// Builds Settings for Handheld mode (M45 H6a): the controller projection Gamepad mode's Settings uses, over a fresh
+    /// settings model. Null when it cannot open now (the app is busy, or the read failed and the status line says why).
+    /// </summary>
+    Task<GamepadSettingsViewModel?> CreateSettingsAsync() => Task.FromResult<GamepadSettingsViewModel?>(null);
+
+    /// <summary>Settings closed (saved or not): the projection is let go of.</summary>
+    void CloseSettings(GamepadSettingsViewModel settings, bool saved) => settings.Dispose();
 
     void Quit();
 }
@@ -166,7 +172,8 @@ public sealed record HandheldFolderSource(
     HandheldPlatform? Platform = null,
     string? FolderId = null,
     IReadOnlyList<long>? GameIds = null,
-    HandheldFolderSort Sort = HandheldFolderSort.Manual)
+    HandheldFolderSort Sort = HandheldFolderSort.Manual,
+    bool HoldsSettings = false)
 {
     public bool IsUser => Kind == HandheldFolderKind.User;
     public bool IsRecent => Kind == HandheldFolderKind.Recent;
@@ -174,6 +181,8 @@ public sealed record HandheldFolderSource(
     /// <summary>The Stage's line under the folder's name.</summary>
     public string Description => Kind switch
     {
+        HandheldFolderKind.User when HoldsSettings =>
+            $"Your folder · {(GameCount == 0 ? "Settings" : $"{HandheldText.GameCount(GameCount)} and Settings")}",
         HandheldFolderKind.User => $"Your folder · {(GameCount == 0 ? "empty" : HandheldText.GameCount(GameCount))}",
         HandheldFolderKind.Recent => GameCount == 0 ? "Made for you · games you play appear here" : $"Made for you · {HandheldText.GameCount(GameCount)}",
         _ => $"Folder · {HandheldText.GameCount(GameCount)}",
@@ -185,7 +194,7 @@ public sealed record HandheldFolderSource(
 
     public static HandheldFolderSource ForUser(HandheldUserFolder folder) =>
         new(HandheldFolderKind.User, "u:" + folder.Id, folder.Name, folder.Color, string.Empty, folder.GameIds.Count,
-            FolderId: folder.Id, GameIds: folder.GameIds, Sort: folder.Sort);
+            FolderId: folder.Id, GameIds: folder.GameIds, Sort: folder.Sort, HoldsSettings: folder.HoldsSettings);
 
     public static HandheldFolderSource ForRecent(IReadOnlyList<long> gameIds) =>
         new(HandheldFolderKind.Recent, "r:recent", "Recent", HandheldHomeLayout.RecentColor, string.Empty, gameIds.Count,
@@ -241,10 +250,13 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     public bool IsEmpty => Slot.IsEmpty;
     public bool IsFolder => Folder is not null;
     public bool IsGame => Slot.Kind == HandheldSlotKind.Game;
+
+    /// <summary>The Settings tile: a glyph on the indigo accent, an app on the grid (decision 18).</summary>
+    public bool IsSettings => Slot.IsSettings;
     public bool HasCover => Cover is not null;
     public bool IsUnavailable => Game is { IsAvailable: false };
     public bool IsNew => Slot.IsNew;
-    public string Name => Folder?.Name ?? Game?.Title ?? string.Empty;
+    public string Name => Folder?.Name ?? Game?.Title ?? (IsSettings ? HandheldSettingsText.Name : string.Empty);
     public string Monogram => Folder?.Monogram ?? string.Empty;
 
     /// <summary>Your folders and Recent show a glyph on the flap instead of a platform's short name (decision 7).</summary>
@@ -324,11 +336,20 @@ public sealed partial class HandheldPageDotViewModel(int index) : ObservableObje
     public partial bool IsCurrent { get; set; }
 }
 
-/// <summary>A game tile inside an open folder. Owns its decoded cover while it is in the visible window.</summary>
-public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEntry entry) : ObservableObject
+/// <summary>
+/// A tile inside an open folder: a game, or the Settings tile when it was put in one of your folders (decision 18), which
+/// comes first. A game's tile owns its decoded cover while it is in the visible window.
+/// </summary>
+public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEntry entry, bool isSettings = false) : ObservableObject
 {
+    /// <summary>What the Settings tile stands on inside a folder: not a game (its id is never a game's).</summary>
+    public static HandheldGameEntry SettingsEntry { get; } =
+        new(-1, HandheldSettingsText.Name, string.Empty, string.Empty, null, 0, TimeSpan.Zero, IsAvailable: true);
+
     public int Index { get; } = index;
     public HandheldGameEntry Entry { get; } = entry;
+    public bool IsSettings { get; } = isSettings;
+    public bool IsGame => !IsSettings;
     public string Title => Entry.Title;
     public bool IsUnavailable => !Entry.IsAvailable;
     public int Column => Index / HandheldFolderNavigation.Rows;
@@ -400,7 +421,22 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     public IReadOnlyList<HandheldGameEntry> Games { get; internal set; } = [];
 
     /// <summary>All the folder's tiles in the current sort. Only <see cref="VisibleTiles"/> are on screen.</summary>
-    public IReadOnlyList<HandheldGameTileViewModel> Items { get; internal set; } = [];
+    public IReadOnlyList<HandheldGameTileViewModel> Items
+    {
+        get => _items;
+        internal set
+        {
+            // A re-read can empty the folder (its last game or Settings taken out from inside it): the count and the
+            // empty state follow.
+            _items = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(CountText));
+            OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(HasGames));
+        }
+    }
+
+    private IReadOnlyList<HandheldGameTileViewModel> _items = [];
 
     /// <summary>The columns on screen (four plus the one peeking in), column by column.</summary>
     public ObservableCollection<HandheldGameTileViewModel> VisibleTiles { get; } = [];
@@ -411,7 +447,8 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasGames))]
     public partial bool IsLoaded { get; set; }
 
-    public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count) : string.Empty;
+    // The Settings tile, when it is in the folder, is not a game.
+    public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count(tile => !tile.IsSettings)) : string.Empty;
     public bool IsEmpty => IsLoaded && Items.Count == 0;
     public bool HasGames => Items.Count > 0;
 
@@ -498,6 +535,12 @@ public enum HandheldStageKind
     Header,
     /// <summary>A game's Title page is open: its fan art full-bleed with the logo, or its cover on a tint.</summary>
     Hero,
+
+    /// <summary>The Settings tile is focused (on home or in a folder): its glyph on the indigo accent, with a plate.</summary>
+    SettingsTile,
+
+    /// <summary>Settings is open: what the focused row (or section, or choice) is, its value and its description.</summary>
+    Setting,
 }
 
 /// <summary>What the Stage (the top screen) shows for the current focus.</summary>
@@ -516,6 +559,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    [NotifyPropertyChangedFor(nameof(IsSettingsTile))]
+    [NotifyPropertyChangedFor(nameof(IsSetting))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -649,6 +694,45 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool IsFolder => Kind == HandheldStageKind.Folder;
     public bool IsGame => Kind is HandheldStageKind.Game || IsHeroFallback;
     public bool IsApp => Kind == HandheldStageKind.App;
+    public bool IsSettingsTile => Kind == HandheldStageKind.SettingsTile;
+    public bool IsSetting => Kind == HandheldStageKind.Setting;
+
+    // ---- Settings open (Kind Setting): the card that is the detail half of Settings' master-detail (M45 H6a) ----
+
+    /// <summary>Where the card's subject sits: the section ("Emulators"), or "Settings" for a section itself.</summary>
+    [ObservableProperty]
+    public partial string SettingEyebrow { get; set; } = string.Empty;
+
+    /// <summary>The focused row's value ("On", "DuckStation", a folder), large; empty hides it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSettingValue))]
+    public partial string SettingValue { get; set; } = string.Empty;
+
+    public bool HasSettingValue => !string.IsNullOrEmpty(SettingValue);
+
+    /// <summary>The value reports a problem (an emulator missing, a permission not granted).</summary>
+    [ObservableProperty]
+    public partial bool IsSettingWarning { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSettingDescription))]
+    public partial string SettingDescription { get; set; } = string.Empty;
+
+    public bool HasSettingDescription => !string.IsNullOrEmpty(SettingDescription);
+
+    /// <summary>The section's status line (a scan's progress, "Connected as …"); empty hides it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSettingStatus))]
+    public partial string SettingStatus { get; set; } = string.Empty;
+
+    public bool HasSettingStatus => !string.IsNullOrEmpty(SettingStatus);
+
+    /// <summary>
+    /// Counts changes to the card that keep its subject (a toggle flipped, a status line): the native Stage pictures the
+    /// card again on each, without the centre pop a new subject gets.
+    /// </summary>
+    [ObservableProperty]
+    public partial int SettingVersion { get; set; }
 
     /// <summary>The kinds drawn as a plain glyph card: an empty slot, All apps, the menu, the header.</summary>
     public bool IsGlyph => Kind is HandheldStageKind.EmptySlot or HandheldStageKind.AllApps
@@ -659,7 +743,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     /// <summary>The corner achievements pill; the fan-art hero carries the count in its meta line instead.</summary>
     public bool ShowAchievementPill => HasAchievements && !IsHeroArt;
-    public bool HasPlate => Kind != HandheldStageKind.None && !IsHeroArt && !string.IsNullOrEmpty(Title);
+    // Settings' card carries its own title, so it has no plate under it.
+    public bool HasPlate => Kind is not (HandheldStageKind.None or HandheldStageKind.Setting) && !IsHeroArt && !string.IsNullOrEmpty(Title);
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>
@@ -677,6 +762,9 @@ public enum HandheldGlyph
 
     /// <summary>The Recent folder's flap.</summary>
     Clock,
+
+    /// <summary>The Settings tile (decision 18).</summary>
+    Settings,
 }
 
 /// <summary>One button hint in the Stage's hint pill, e.g. (A, "Open"); a button with no letter draws <see cref="Icon"/>.</summary>
@@ -692,6 +780,13 @@ public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> i
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
+}
+
+/// <summary>The words the Settings tile uses wherever it appears.</summary>
+internal static class HandheldSettingsText
+{
+    public const string Name = "Settings";
+    public const string Subtitle = "Library, emulators, saves and more";
 }
 
 internal static partial class HandheldText

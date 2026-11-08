@@ -646,7 +646,7 @@ internal sealed class HandheldNativeLauncherFeed
             Watch(tile);
             if ((_folderTiles.ContainerFromIndex(i) as ContentPresenter)?.Child is not Control wrapper || wrapper.Bounds.Width <= 0)
                 continue;
-            var key = $"{Ref(tile.Cover)}|{tile.Title}|{tile.IsUnavailable}";
+            var key = $"{Ref(tile.Cover)}|{tile.Title}|{tile.IsUnavailable}|{tile.IsSettings}";
             Liftable($"f:{tile.Index}", key, wrapper, LauncherGroup.Folder, LauncherTrack.Column, shift, present, _liftShadow);
         }
     }

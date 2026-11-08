@@ -34,10 +34,10 @@ public sealed partial class HandheldShellViewModel
     public partial bool IsMoving { get; private set; }
 
     /// <summary>
-    /// Something the Avalonia Launcher draws is open (the menu, a sheet, naming, move mode): on the Thor the native
-    /// Launcher hands the screen back to it while this is true.
+    /// Something the Avalonia Launcher draws is open (the menu, a sheet, naming, move mode, Settings): on the Thor the
+    /// native Launcher hands the screen back to it while this is true.
     /// </summary>
-    public bool IsLauncherOverlayOpen => IsMenuOpen || Sheet is not null || Naming is not null || IsMoving;
+    public bool IsLauncherOverlayOpen => IsMenuOpen || Sheet is not null || Naming is not null || IsMoving || Settings is not null;
 
     partial void OnIsMenuOpenChanged(bool value) => OnPropertyChanged(nameof(IsLauncherOverlayOpen));
 
@@ -97,7 +97,9 @@ public sealed partial class HandheldShellViewModel
         }
         if (OpenFolder is { } folder)
         {
-            if (folder.SelectedTile is { } tile)
+            if (folder.SelectedTile is { IsSettings: true })
+                ShowSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
+            else if (folder.SelectedTile is { } tile)
                 ShowSheet(GameSheet(tile.Entry, folder));
             return;
         }
@@ -171,6 +173,8 @@ public sealed partial class HandheldShellViewModel
         }
         if (slot.Kind == HandheldSlotKind.Game)
             return _pins.TryGetValue(slot.GameId, out var game) ? GameSheet(game, folder: null) : null;
+        if (slot.IsSettings)
+            return SettingsSheet(inFolder: null);
         if (FolderSourceFor(slot) is not { } source)
             return null;
         var items = new List<HandheldSheetItemViewModel>
@@ -251,7 +255,11 @@ public sealed partial class HandheldShellViewModel
         if (_layout.FindFolder(folderId) is not { } folder)
             return;
         ShowSheet(new HandheldSheetViewModel($"Delete \"{folder.Name}\"?",
-            $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library and in their platform folders",
+            folder.HoldsSettings
+                ? folder.GameIds.Count == 0
+                    ? "Settings goes back on home, where the folder was"
+                    : $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library, and Settings goes back on home"
+                : $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library and in their platform folders",
             [
                 new HandheldSheetItemViewModel("Delete folder", null, () => DeleteFolder(folderId)),
                 new HandheldSheetItemViewModel("Keep it", null, () => { }),
@@ -330,7 +338,9 @@ public sealed partial class HandheldShellViewModel
             CloseFolder();
         InvalidatePeek("u:" + folderId);
         ApplyLayout(_layout.WithoutFolder(folderId));
-        ShowNotice($"Deleted \"{folder.Name}\". The games are still in the library.");
+        ShowNotice(folder.HoldsSettings
+            ? $"Deleted \"{folder.Name}\". Settings is back on home where it was."
+            : $"Deleted \"{folder.Name}\". The games are still in the library.");
     }
 
     /// <summary>An open folder of yours shows its new contents (a game added or removed from inside it).</summary>
@@ -450,6 +460,13 @@ public sealed partial class HandheldShellViewModel
         var target = move.Lifted[move.Target];
         switch (move.Drop)
         {
+            case HandheldDropKind.AddToFolder when move.Carried.IsSettings && target.FolderId is { } settingsFolderId &&
+                _layout.FindFolder(settingsFolderId) is { } settingsFolder:
+                // Settings goes into the folder (decision 18); home keeps the rest as it was before the lift.
+                _home = PositionOf(move.Target);
+                ApplyLayout(_layout.WithSlots(move.Lifted).WithSettingsIn(settingsFolderId));
+                ShowNotice($"Settings is in {settingsFolder.Name}");
+                return;
             case HandheldDropKind.AddToFolder when target.FolderId is { } folderId && _layout.FindFolder(folderId) is { } folder:
                 InvalidatePeek("u:" + folderId);
                 _home = PositionOf(move.Target);
@@ -555,6 +572,7 @@ public sealed partial class HandheldShellViewModel
     }
 
     private bool CanTouchHome() => OpenFolder is null && TitlePage is null && !IsMenuOpen && Sheet is null && Naming is null &&
+        Settings is null &&
         _move is null && IsLoaded;
 
     /// <summary>A tap on a colour chip while naming.</summary>
@@ -779,6 +797,11 @@ public sealed partial class HandheldShellViewModel
             HandheldDropKind.AddToFolder => $"Drop into {FolderSourceFor(target)?.Name ?? "the folder"}",
             _ => $"Moving · page {(move.Target / SlotsPerPage) + 1}",
         };
+        if (move.Carried.IsSettings)
+        {
+            ShowSettingsTileStage(line);
+            return;
+        }
         if (move.Carried.Kind == HandheldSlotKind.Game && _pins.TryGetValue(move.Carried.GameId, out var carried))
         {
             ShowGameStage(carried, _pinCovers.GetValueOrDefault(carried.Id));

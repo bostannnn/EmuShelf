@@ -36,6 +36,14 @@ public static class HandheldIcons
     public static readonly Geometry Clock = Geometry.Parse(
         "F0 M12 2a10 10 0 1 1 0 20 10 10 0 0 1 0-20zm0 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16zm1 3v4.59l3.2 3.2-1.41 1.42L11 12.41V7z");
 
+    /// <summary>
+    /// Settings (decision 18): three sliders, each with its knob at a different place. Non-zero fill (F1), every shape
+    /// drawn clockwise, so a knob covers its bar instead of cutting a hole where they overlap.
+    /// </summary>
+    public static readonly Geometry Settings = Geometry.Parse(
+        "F1 M3 5.2h18v1.6H3zM8 3a3 3 0 1 1 0 6a3 3 0 1 1 0-6zM3 11.2h18v1.6H3zM16 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6z" +
+        "M3 17.2h18v1.6H3zM10 15a3 3 0 1 1 0 6a3 3 0 1 1 0-6z");
+
     public static readonly Geometry ChevronLeft = Geometry.Parse("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z");
 
     public static readonly Geometry ChevronRight = Geometry.Parse("M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z");
@@ -68,8 +76,13 @@ public static class HandheldViewConverters
             HandheldGlyph.Clock => HandheldIcons.Clock,
             HandheldGlyph.Back => HandheldIcons.Back,
             HandheldGlyph.Sort => HandheldIcons.Sort,
+            HandheldGlyph.Settings => HandheldIcons.Settings,
             _ => null,
         });
+
+    /// <summary>A platform summary's chevron turns down while its rows are open beneath it.</summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter ExpandedTurn =
+        new Avalonia.Data.Converters.FuncValueConverter<bool, ITransform>(expanded => new RotateTransform(expanded ? 90 : 0));
 
     public static readonly Avalonia.Data.Converters.IValueConverter FocusZIndex =
         new Avalonia.Data.Converters.FuncValueConverter<bool, int>(focused => focused ? 1 : 0);

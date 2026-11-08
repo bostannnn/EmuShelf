@@ -304,6 +304,200 @@
       <Setter Property="Padding" Value="32" />
     </Style>
 
+    <!-- Settings (M45 H6a): the tile's face, the section list, the rows and their trailing controls. -->
+    <Style Selector="Border.settings-face">
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+          <GradientStop Offset="0" Color="#6865DE" />
+          <GradientStop Offset="1" Color="#5450CF" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
+    <Style Selector="Border.settings-section">
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="MinHeight" Value="88" />
+      <Setter Property="Padding" Value="24,10" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.settings-section.selected">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BoxShadow" Value="0 2 8 0 #0F000000" />
+    </Style>
+    <Style Selector="Border.settings-section.focused">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+    </Style>
+    <Style Selector="Border.settings-section TextBlock.title">
+      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+    </Style>
+    <Style Selector="Border.settings-section TextBlock.status">
+      <Setter Property="FontSize" Value="21" />
+      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="Border.settings-section TextBlock.status.warning">
+      <Setter Property="Foreground" Value="#B4531A" />
+    </Style>
+    <Style Selector="Border.settings-section.focused TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.settings-row">
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="MinHeight" Value="92" />
+      <Setter Property="Padding" Value="28,12" />
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.settings-row.grouped">
+      <Setter Property="Margin" Value="48,0,0,0" />
+      <Setter Property="MinHeight" Value="84" />
+    </Style>
+    <Style Selector="Border.settings-row.save">
+      <Setter Property="Background" Value="#E9E8FB" />
+      <Setter Property="BorderBrush" Value="#335B58D9" />
+    </Style>
+    <Style Selector="Border.settings-row.focused">
+      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+    </Style>
+    <Style Selector="Border.settings-row TextBlock.label">
+      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.settings-row.disabled TextBlock.label">
+      <Setter Property="Foreground" Value="#8A90A3" />
+    </Style>
+    <Style Selector="Border.settings-row TextBlock.value">
+      <Setter Property="FontSize" Value="24" />
+      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+    </Style>
+    <Style Selector="Border.settings-row TextBlock.value.warning">
+      <Setter Property="Foreground" Value="#B4531A" />
+    </Style>
+    <Style Selector="Border.settings-row TextBlock.destructive">
+      <Setter Property="Foreground" Value="#C23B3B" />
+    </Style>
+    <Style Selector="Border.settings-row.focused TextBlock">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <!-- While the list of sections has the pad, the row it will come back to keeps only an outline. -->
+    <Style Selector="Grid.rail Border.settings-row.focused">
+      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="BorderBrush" Value="#805B58D9" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="BoxShadow" Value="none" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.save.focused">
+      <Setter Property="Background" Value="#E9E8FB" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused TextBlock.label">
+      <Setter Property="Foreground" Value="#1C2033" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused TextBlock.value">
+      <Setter Property="Foreground" Value="#5B6176" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused PathIcon">
+      <Setter Property="Foreground" Value="#8A90A3" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused Border.switch">
+      <Setter Property="Background" Value="#D5D9E4" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused Border.switch.on">
+      <Setter Property="Background" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Grid.rail Border.settings-row.focused Border.switch.on > Border">
+      <Setter Property="Background" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="Border.settings-row PathIcon.chevron">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Foreground" Value="#8A90A3" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.settings-row.focused PathIcon">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <!-- A switch: a pill with its knob left (off) or right (on). -->
+    <Style Selector="Border.switch">
+      <Setter Property="Width" Value="88" />
+      <Setter Property="Height" Value="48" />
+      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="Background" Value="#D5D9E4" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.switch.on">
+      <Setter Property="Background" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.settings-row.focused Border.switch">
+      <Setter Property="Background" Value="#7F7CE6" />
+    </Style>
+    <Style Selector="Border.settings-row.focused Border.switch.on">
+      <Setter Property="Background" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="Border.switch > Border">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Margin" Value="6" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="Background" Value="#FFFFFF" />
+    </Style>
+    <Style Selector="Border.switch.on > Border">
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style Selector="Border.settings-row.focused Border.switch.on > Border">
+      <Setter Property="Background" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.theme-card">
+      <Setter Property="Width" Value="248" />
+      <Setter Property="Height" Value="184" />
+      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="ClipToBounds" Value="True" />
+    </Style>
+    <Style Selector="Border.theme-ring">
+      <Setter Property="CornerRadius" Value="40" />
+      <Setter Property="Padding" Value="8" />
+      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Border.theme-ring.focused">
+      <Setter Property="BorderBrush" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.key.mid">
+      <Setter Property="Width" Value="160" />
+    </Style>
+    <Style Selector="Border.key.space">
+      <Setter Property="Width" Value="252" />
+    </Style>
+    <Style Selector="Border.key.space TextBlock">
+      <Setter Property="FontSize" Value="28" />
+    </Style>
+    <Style Selector="Border.sheet-row PathIcon.pick">
+      <Setter Property="Foreground" Value="#5B58D9" />
+    </Style>
+    <Style Selector="Border.sheet-row.focused PathIcon.pick">
+      <Setter Property="Foreground" Value="White" />
+    </Style>
+    <Style Selector="Border.key.mid TextBlock">
+      <Setter Property="FontSize" Value="28" />
+    </Style>
+
     <Style Selector="TextBlock.chip-text">
       <Setter Property="FontSize" Value="26" />
       <Setter Property="FontWeight" Value="SemiBold" />
@@ -376,6 +570,16 @@
                                   </Border.Background>
                                 </Border>
                               </Panel>
+                            </Border>
+                          </Panel>
+                          <!--
+                            Settings (decision 18): an app on the grid, its glyph on the indigo accent so it reads as neither a
+                            platform's monogram nor your folder's star. Same footprint as a pinned game.
+                          -->
+                          <Panel IsVisible="{Binding IsSettings}" Margin="-3,17,-3,0">
+                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border Classes="settings-face" CornerRadius="40">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="80" Height="80" Foreground="White" />
                             </Border>
                           </Panel>
                           <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out; in move mode it lights up. -->
@@ -519,8 +723,12 @@
                      HorizontalAlignment="Left" VerticalAlignment="Center">
                 <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" Filled="True" />
                 <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" Filled="True" />
+                <!-- Settings, put in one of your folders: the same face as on home. -->
+                <Border Classes="settings-face" CornerRadius="56" IsVisible="{Binding IsSettings}">
+                  <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="104" Height="104" Foreground="White" />
+                </Border>
                 <!-- Covers crop from the top, where a box's title and art usually are. -->
-                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4"
+                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4" IsVisible="{Binding IsGame}"
                         Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
                   <Panel>
                     <TextBlock Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="24" FontWeight="SemiBold"
@@ -1055,6 +1263,253 @@
           </ItemsControl>
         </Grid>
       </Border>
+    </Viewbox>
+  </Border>
+
+  <!--
+    ===== Settings (M45 H6a, decision 18) =====
+    Master-detail across the screens: the sections and their rows here, and on the Stage what the focused one is, its
+    value and its description. The rows are Gamepad mode's (HandheldSettingsViewModel over its projection), drawn in the
+    Launcher's look; the choosers, the confirmations and the keyboard for text rows are states of this layer. It takes
+    this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets SettingsCanvas's width.
+  -->
+  <Border x:Name="SettingsLayer" IsVisible="{Binding IsSettingsOpen}">
+    <Border.Background>
+      <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+        <GradientStop Offset="0" Color="#FAFBFD" />
+        <GradientStop Offset="1" Color="#E4E8EF" />
+      </LinearGradientBrush>
+    </Border.Background>
+    <Viewbox Stretch="Uniform" ClipToBounds="False">
+      <Grid x:Name="SettingsCanvas" Width="1240" Height="1080" ClipToBounds="False">
+
+        <!-- The sections (left) and the section's rows (right). -->
+        <Grid x:Name="SettingsBody" DataContext="{Binding Settings}" x:DataType="vm:HandheldSettingsViewModel"
+              IsVisible="{Binding !IsTyping}" Classes.rail="{Binding Projection.IsRailFocused}"
+              ColumnDefinitions="360,*" RowDefinitions="64,*" Margin="48,40,48,32">
+          <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
+            <Border x:Name="SettingsBack" Classes="chip">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <TextBlock Classes="chip-text" Text="Back" />
+              </StackPanel>
+            </Border>
+            <TextBlock Text="Settings" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033" VerticalAlignment="Center" />
+          </StackPanel>
+          <TextBlock Grid.Column="1" Text="{Binding SectionTitle}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033"
+                     VerticalAlignment="Center" Margin="40,0,0,0" TextTrimming="CharacterEllipsis" />
+
+          <ScrollViewer Grid.Row="1" x:Name="SettingsSectionScroller" Margin="0,24,0,0" VerticalScrollBarVisibility="Hidden">
+            <ItemsControl x:Name="SettingsSections" ItemsSource="{Binding Sections}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldSettingsSectionViewModel">
+                  <Border Classes="settings-section" Classes.selected="{Binding IsSelected}" Classes.focused="{Binding IsFocused}"
+                          Margin="0,0,0,8">
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                      <TextBlock Classes="title" Text="{Binding Title}" />
+                      <TextBlock Classes="status" Classes.warning="{Binding IsWarning}" Text="{Binding Status}"
+                                 IsVisible="{Binding HasStatus}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <!-- The rows: label left, then the one thing that ends a row (a switch, ‹ a choice ›, a value, a chevron). -->
+          <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="SettingsRowScroller" Margin="40,24,0,0"
+                        VerticalScrollBarVisibility="Hidden" IsVisible="{Binding IsRows}">
+            <ItemsControl x:Name="SettingsRows" ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
+                  <Border Classes="settings-row" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}"
+                          Classes.save="{Binding IsSaveRow}" Classes.disabled="{Binding !IsEnabled}" Margin="0,0,0,12">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                      <Border Width="56" Height="56" CornerRadius="14" Background="#EEF0F5" Margin="0,0,20,0"
+                              IsVisible="{Binding HasPlatformIcon}" VerticalAlignment="Center">
+                        <Image Width="40" Height="40" Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                               RenderOptions.BitmapInterpolationMode="None" />
+                      </Border>
+                      <TextBlock Grid.Column="1" Classes="label" Classes.destructive="{Binding IsDestructive}" Text="{Binding Label}" />
+                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" Margin="24,0,0,0" VerticalAlignment="Center">
+                        <!-- A switch. -->
+                        <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
+                          <Border />
+                        </Border>
+                        <!-- ‹ A choice ›: Left/Right step it, A opens the list. -->
+                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronLeft}" IsVisible="{Binding IsChoice}" />
+                        <TextBlock Classes="value" FontWeight="SemiBold" Text="{Binding Value}" IsVisible="{Binding IsChoice}"
+                                   MaxWidth="380" />
+                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsChoice}" />
+                        <!-- A value to edit (text, secret, folder, file), a platform's summary, or something to read. -->
+                        <TextBlock Classes="value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}" MaxWidth="420"
+                                   IsVisible="{Binding IsEditableValue}" />
+                        <TextBlock Classes="value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}" MaxWidth="420"
+                                   IsVisible="{Binding IsSummary}" />
+                        <TextBlock Classes="value" Text="{Binding Value}" MaxWidth="460" IsVisible="{Binding IsInformation}" />
+                        <!-- What an action does when its label does not say ("Sync now"), or that it is running. -->
+                        <TextBlock Classes="value" FontWeight="SemiBold" Text="{Binding ActionText}" IsVisible="{Binding HasActionText}" />
+                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding ShowsChevron}" />
+                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsSummary}"
+                                  RenderTransform="{Binding IsExpanded, Converter={x:Static vm:HandheldViewConverters.ExpandedTurn}}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+
+          <!-- Themes: the gallery, three to a row as the pad moves through it. -->
+          <ScrollViewer Grid.Row="1" Grid.Column="1" x:Name="SettingsThemeScroller" Margin="40,24,0,0"
+                        VerticalScrollBarVisibility="Hidden" IsVisible="{Binding IsThemes}">
+            <ItemsControl x:Name="SettingsThemes" ItemsSource="{Binding ThemeChoices}" HorizontalAlignment="Left">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <UniformGrid Columns="3" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ThemeChoiceViewModel">
+                  <Border Classes="theme-ring" Classes.focused="{Binding IsFocused}" Margin="0,0,16,16">
+                    <StackPanel Spacing="10">
+                      <Border Classes="theme-card" Background="{Binding PreviewBackground}">
+                        <Grid RowDefinitions="Auto,*" Margin="18">
+                          <Border Background="{Binding PreviewSurface}" CornerRadius="12" Height="48">
+                            <Border Width="48" Height="12" CornerRadius="6" Background="{Binding PreviewAccent}"
+                                    HorizontalAlignment="Left" Margin="14,0" />
+                          </Border>
+                          <TextBlock Grid.Row="1" Text="Aa" FontSize="34" FontWeight="SemiBold" Foreground="{Binding PreviewText}"
+                                     VerticalAlignment="Bottom" />
+                        </Grid>
+                      </Border>
+                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0">
+                        <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="24" Height="24" Foreground="#5B58D9"
+                                  IsVisible="{Binding IsSelected}" />
+                        <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" Foreground="#1C2033"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="200" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Grid>
+
+        <!-- State: a choice's list, a card over a scrim (A picks, B leaves it as it was). -->
+        <Border x:Name="SettingsChoiceSheet" DataContext="{Binding Settings}" x:DataType="vm:HandheldSettingsViewModel"
+                IsVisible="{Binding IsChoicePickerOpen}" Background="#521C2033" Margin="-400">
+          <Border x:Name="SettingsChoiceCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="760" MaxHeight="900"
+                  CornerRadius="40" Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+            <Grid RowDefinitions="Auto,*">
+              <TextBlock Text="{Binding Projection.ChoicePickerTitle}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+                         Margin="24,8,24,12" TextTrimming="CharacterEllipsis" />
+              <ScrollViewer Grid.Row="1" x:Name="SettingsChoiceScroller" VerticalScrollBarVisibility="Hidden">
+                <ItemsControl x:Name="SettingsChoices" ItemsSource="{Binding ChoiceOptions}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:GamepadChoiceOptionViewModel">
+                      <Border Classes="sheet-row" Classes.focused="{Binding IsFocused}" Margin="0,0,0,4">
+                        <Grid ColumnDefinitions="*,Auto">
+                          <TextBlock Classes="label" Text="{Binding DisplayName}" VerticalAlignment="Center"
+                                     TextTrimming="CharacterEllipsis" />
+                          <PathIcon Grid.Column="1" Classes="pick" Data="{x:Static vm:HandheldIcons.Check}" Width="32" Height="32"
+                                    IsVisible="{Binding IsSelected}" Margin="24,0,0,0" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </Grid>
+          </Border>
+        </Border>
+
+        <!-- State: a confirmation (a destructive row, or one that disconnects), Cancel first. -->
+        <Border x:Name="SettingsConfirmSheet" DataContext="{Binding Settings}" x:DataType="vm:HandheldSettingsViewModel"
+                IsVisible="{Binding IsConfirmationOpen}" Background="#521C2033" Margin="-400">
+          <Border x:Name="SettingsConfirmCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="760"
+                  CornerRadius="40" Background="#FFFFFF" Padding="24,24,24,24" BoxShadow="0 20 48 0 #33000000">
+            <StackPanel Spacing="12">
+              <StackPanel Margin="24,0,24,12" Spacing="8">
+                <TextBlock Text="{Binding Projection.ConfirmationTitle}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+                           TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Projection.ConfirmationText}" FontSize="24" Foreground="#5B6176" TextWrapping="Wrap" />
+              </StackPanel>
+              <Border x:Name="SettingsConfirmCancel" Classes="sheet-row" Classes.focused="{Binding IsCancelFocused}">
+                <TextBlock Classes="label" Text="Cancel" VerticalAlignment="Center" />
+              </Border>
+              <Border x:Name="SettingsConfirmGo" Classes="sheet-row" Classes.focused="{Binding IsConfirmFocused}">
+                <TextBlock Classes="label" Text="{Binding ConfirmLabel}" VerticalAlignment="Center" />
+              </Border>
+            </StackPanel>
+          </Border>
+        </Border>
+
+        <!--
+          State: typing a text row (a name, a key, a password) on the drawn keyboard, the naming keyboard's look: Android's
+          own keyboard cannot open on the Thor's second screen. The field takes a hardware keyboard too.
+        -->
+        <Grid x:Name="SettingsKeyboard" DataContext="{Binding Settings.Keyboard}" x:DataType="vm:HandheldTextKeyboardViewModel"
+              IsVisible="{Binding $parent[UserControl].((vm:HandheldShellViewModel)DataContext).Settings.IsTyping, FallbackValue=False}"
+              RowDefinitions="Auto,*,Auto" Width="1112" Margin="0,48,0,40" HorizontalAlignment="Center">
+          <Border Classes="name-field" Classes.focused="True">
+            <Grid ColumnDefinitions="Auto,*">
+              <TextBlock Text="{Binding Title}" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center"
+                         Margin="0,0,24,0" MaxWidth="420" TextTrimming="CharacterEllipsis" />
+              <TextBox x:Name="SettingsField" Grid.Column="1" Classes="name-input" Text="{Binding Text, Mode=TwoWay}"
+                       PasswordChar="{Binding MaskChar}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                       Background="Transparent" BorderThickness="0" MinHeight="80" VerticalContentAlignment="Center"
+                       Focusable="True" />
+            </Grid>
+          </Border>
+          <ItemsControl Grid.Row="1" ItemsSource="{Binding KeyRows}" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="14" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldKeyRowViewModel">
+                <ItemsControl ItemsSource="{Binding Keys}" HorizontalAlignment="Center">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Orientation="Horizontal" Spacing="12" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HandheldKeyViewModel">
+                      <Border Classes="key" Classes.mid="{Binding IsMid}" Classes.space="{Binding IsSpace}"
+                              Classes.done="{Binding IsDone}" Classes.focused="{Binding IsFocused}">
+                        <TextBlock Text="{Binding Label}" />
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <ItemsControl Grid.Row="2" ItemsSource="{Binding $parent[UserControl].((vm:HandheldShellViewModel)DataContext).Hints}"
+                        HorizontalAlignment="Center">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="40" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldHint">
+                <StackPanel Orientation="Horizontal" Spacing="12">
+                  <Border Classes="hint-glyph">
+                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="Bold" Foreground="White"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <TextBlock Text="{Binding Label}" FontSize="24" Foreground="#5B6176" VerticalAlignment="Center" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Grid>
+      </Grid>
     </Viewbox>
   </Border>
   </Panel>

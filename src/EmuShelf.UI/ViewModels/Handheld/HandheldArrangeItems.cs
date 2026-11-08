@@ -94,6 +94,11 @@ public enum HandheldKeyKind
     Space,
     Delete,
     Done,
+
+    /// <summary>Settings' keyboard (M45 H6a): capitals, symbols, and leaving without saving.</summary>
+    Shift,
+    Symbols,
+    Cancel,
 }
 
 /// <summary>One key of the naming keyboard.</summary>
@@ -103,6 +108,11 @@ public sealed partial class HandheldKeyViewModel(string label, HandheldKeyKind k
     public HandheldKeyKind Kind { get; } = kind;
     public bool IsWide => Kind != HandheldKeyKind.Character;
     public bool IsDone => Kind == HandheldKeyKind.Done;
+
+    /// <summary>Settings' keyboard sizes its keys itself: Space wider, the other named keys medium.</summary>
+    public bool IsSpace => Kind == HandheldKeyKind.Space;
+
+    public bool IsMid => Kind is not (HandheldKeyKind.Character or HandheldKeyKind.Space);
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }

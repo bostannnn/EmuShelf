@@ -115,12 +115,23 @@ public partial class HandheldShellViewModelTests
             return Task.CompletedTask;
         }
 
+        /// <summary>Builds the Settings projection the shell opens (M45 H6a); null leaves Settings closed.</summary>
+        public Func<GamepadSettingsViewModel?>? SettingsFactory { get; set; }
+
         public int SettingsOpened { get; private set; }
 
-        public Task OpenSettingsAsync()
+        public List<bool> SettingsClosed { get; } = [];
+
+        public Task<GamepadSettingsViewModel?> CreateSettingsAsync()
         {
             SettingsOpened++;
-            return Task.CompletedTask;
+            return Task.FromResult(SettingsFactory?.Invoke());
+        }
+
+        public void CloseSettings(GamepadSettingsViewModel settings, bool saved)
+        {
+            SettingsClosed.Add(saved);
+            settings.Dispose();
         }
 
         public void Quit()
@@ -160,9 +171,10 @@ public partial class HandheldShellViewModelTests
 
         var page = Assert.IsType<HandheldHomePageViewModel>(shell.CurrentPage);
         Assert.Equal(20, page.Slots.Count);
-        // The saved home has the two platforms; reconciliation puts the missing Recent folder after them.
+        // The saved home has the two platforms; reconciliation puts the missing Recent folder after them, then Settings.
         Assert.Equal(["PS2 System", "GC System", "Recent"], page.Slots.Where(slot => slot.IsFolder).Select(slot => slot.Name));
-        Assert.Equal(17, page.Slots.Count(slot => slot.IsEmpty));
+        Assert.True(page.Slots[3].IsSettings);
+        Assert.Equal(16, page.Slots.Count(slot => slot.IsEmpty));
         Assert.True(page.Slots[0].IsFocused);
         Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);
         Assert.Equal("PS2 System", shell.Stage.Title);
@@ -176,14 +188,14 @@ public partial class HandheldShellViewModelTests
     {
         var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3));
 
-        // ps2, then Recent, then the first empty slot.
-        Press(shell, GamepadAction.NavigateRight, 2);
-        Assert.True(shell.CurrentPage!.Slots[2].IsFocused);
+        // ps2, then Recent, then Settings, then the first empty slot.
+        Press(shell, GamepadAction.NavigateRight, 3);
+        Assert.True(shell.CurrentPage!.Slots[3].IsFocused);
         Assert.Equal(HandheldStageKind.EmptySlot, shell.Stage.Kind);
 
         Press(shell, GamepadAction.Confirm);
 
-        Assert.Equal(2, shell.HomePosition.Slot);
+        Assert.Equal(3, shell.HomePosition.Slot);
         Assert.False(shell.IsFolderOpen);
         Assert.True(shell.IsNaming);
         Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);

@@ -269,6 +269,11 @@ internal sealed class HandheldNativeStageFeed
             case nameof(HandheldStageViewModel.AchievementText):
                 Schedule(centre: false, pop: false, chrome: true);
                 break;
+            case nameof(HandheldStageViewModel.SettingVersion):
+                // Settings' card changed in place (a switch flipped, a chooser opened on the same row, a key typed):
+                // pictured again without the pop, with the hints, which change with it (only a new subject re-checks them).
+                Schedule(centre: true, pop: false, chrome: true);
+                break;
         }
     }
 

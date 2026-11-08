@@ -141,6 +141,10 @@ public sealed partial class HandheldShellViewModel
             _pinCovers.TryGetValue(carried.GameId, out carriedCover);
             carriedTitle = _pins.GetValueOrDefault(carried.GameId)?.Title;
         }
+        else if (look == HandheldMoveLook.DropTarget && _move is { Carried.IsSettings: true })
+        {
+            carriedTitle = HandheldSettingsText.Name;
+        }
         return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look,
             carriedCover, carriedTitle);
     }

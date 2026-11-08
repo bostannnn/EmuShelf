@@ -14,7 +14,7 @@ public enum HandheldSlotKind
     /// <summary>A game pinned straight to home (by game id). A pin is a reference, never a move (decision 12).</summary>
     Game,
 
-    /// <summary>A tile EmuShelf provides (by <see cref="HandheldSystemTile"/>), such as the Recent folder.</summary>
+    /// <summary>A tile EmuShelf provides (by <see cref="HandheldSystemTile"/>): the Recent folder, or Settings.</summary>
     System,
 }
 
@@ -23,6 +23,12 @@ public enum HandheldSystemTile
 {
     /// <summary>The Recent folder (decision 14): the last twelve games played, newest first.</summary>
     Recent,
+
+    /// <summary>
+    /// Settings as an app on the grid (decision 18): movable and foldable into one of your folders, never removable,
+    /// so there is always a way in.
+    /// </summary>
+    Settings,
 }
 
 /// <summary>
@@ -48,7 +54,12 @@ public sealed record HandheldSlot(
 
     public static HandheldSlot Recent { get; } = new(HandheldSlotKind.System, SystemTile: HandheldSystemTile.Recent);
 
+    public static HandheldSlot Settings { get; } = new(HandheldSlotKind.System, SystemTile: HandheldSystemTile.Settings);
+
     public bool IsEmpty => Kind == HandheldSlotKind.Empty;
+
+    /// <summary>The Settings tile (decision 18).</summary>
+    public bool IsSettings => Kind == HandheldSlotKind.System && SystemTile == HandheldSystemTile.Settings;
 
     /// <summary>Whether the slot opens as a folder (platform, yours, or Recent).</summary>
     public bool IsFolder => Kind is HandheldSlotKind.PlatformFolder or HandheldSlotKind.UserFolder ||
@@ -61,14 +72,16 @@ public sealed record HandheldSlot(
 /// <summary>
 /// One of your folders: a name, a colour (#RRGGBB) and the games in it, in the order they were added
 /// (its Manual order), plus the sort chip it was left on. Folders hold references; deleting one never
-/// touches its games.
+/// touches its games. <see cref="HoldsSettings"/> is the Settings tile put in it (decision 18): it shows first,
+/// before the games, and goes back to home if the folder is deleted.
 /// </summary>
 public sealed record HandheldUserFolder(
     string Id,
     string Name,
     string Color,
     IReadOnlyList<long> GameIds,
-    HandheldFolderSort Sort = HandheldFolderSort.Manual)
+    HandheldFolderSort Sort = HandheldFolderSort.Manual,
+    bool HoldsSettings = false)
 {
     public bool Contains(long gameId) => GameIds.Contains(gameId);
 }
@@ -174,8 +187,8 @@ public sealed class HandheldHomeLayout
 
     /// <summary>
     /// The layout a new user starts with: the Recent folder, then one platform folder per platform that has
-    /// games, in the order given (the navigation order), filling each page row by row, then empty slots to
-    /// the end of the last page. An empty library gets only the empty slots.
+    /// games, in the order given (the navigation order), then Settings (decision 18), filling each page row by
+    /// row, then empty slots to the end of the last page. An empty library gets Settings alone.
     /// </summary>
     public static HandheldHomeLayout CreateDefault(IEnumerable<string> systemIds)
     {
@@ -184,8 +197,11 @@ public sealed class HandheldHomeLayout
             .Select(id => HandheldSlot.PlatformFolder(id))
             .ToList();
         IEnumerable<HandheldSlot> slots = folders.Count == 0 ? [] : folders.Prepend(HandheldSlot.Recent);
-        return FromSlots(slots);
+        return FromSlots(slots.Append(HandheldSlot.Settings));
     }
+
+    /// <summary>The folder of yours the Settings tile is in, or null when it is on home.</summary>
+    public HandheldUserFolder? SettingsFolder => Folders.FirstOrDefault(folder => folder.HoldsSettings);
 
     // ---- Edits (each returns a new layout) ----
 
@@ -212,13 +228,46 @@ public sealed class HandheldHomeLayout
         return new HandheldHomeLayout(Pages, folders);
     }
 
-    /// <summary>Deletes one of your folders and its tile. The games are untouched: a folder only holds references.</summary>
+    /// <summary>
+    /// Deletes one of your folders and its tile. The games are untouched: a folder only holds references. Settings, if
+    /// it was in the folder, takes the folder's place on home (it can never be lost).
+    /// </summary>
     public HandheldHomeLayout WithoutFolder(string folderId)
     {
+        // Only if Settings is not on home already (a hand-edited file can claim both).
+        var holdsSettings = FindFolder(folderId)?.HoldsSettings == true && IndexOf(HandheldSlot.Settings) < 0;
         var slots = AllSlots()
-            .Select(slot => slot.Kind == HandheldSlotKind.UserFolder && slot.FolderId == folderId ? HandheldSlot.Empty : slot)
+            .Select(slot => slot.Kind == HandheldSlotKind.UserFolder && slot.FolderId == folderId
+                ? holdsSettings ? HandheldSlot.Settings : HandheldSlot.Empty
+                : slot)
             .ToList();
         return FromSlots(slots, Folders.Where(folder => folder.Id != folderId));
+    }
+
+    /// <summary>Puts the Settings tile in one of your folders: its slot on home empties, and no other folder holds it.</summary>
+    public HandheldHomeLayout WithSettingsIn(string folderId)
+    {
+        if (FindFolder(folderId) is null)
+            return this;
+        var slots = AllSlots().Select(slot => slot.IsSettings ? HandheldSlot.Empty : slot).ToList();
+        var folders = Folders.Select(folder => folder with { HoldsSettings = folder.Id == folderId }).ToList();
+        return FromSlots(slots, folders);
+    }
+
+    /// <summary>
+    /// Takes the Settings tile out of its folder and puts it on home at <paramref name="index"/> (the first empty slot when
+    /// that is -1 or taken; a new page when home is full). Unchanged when Settings is on home already.
+    /// </summary>
+    public HandheldHomeLayout WithSettingsOnHome(int index, out int placed)
+    {
+        placed = IndexOf(HandheldSlot.Settings);
+        if (placed >= 0)
+            return this;
+        var folders = Folders.Select(folder => folder with { HoldsSettings = false }).ToList();
+        placed = index >= 0 && index < SlotCount && SlotAt(index).IsEmpty ? index : FirstEmptySlot();
+        if (placed < 0)
+            placed = SlotCount;
+        return new HandheldHomeLayout(Pages, folders).WithSlot(placed, HandheldSlot.Settings);
     }
 
     /// <summary>Makes a new folder of yours at <paramref name="index"/> holding <paramref name="gameIds"/>.</summary>

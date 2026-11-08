@@ -62,8 +62,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _heldDirection = new HandheldHeldDirection(_clock);
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
-        // A stop-gap until Handheld mode has its own Settings (M45 H6a): Gamepad mode's Settings, on the main display.
-        MenuItems.Add(new HandheldMenuItemViewModel("Settings", () => _library.OpenSettingsAsync()));
+        // The Start menu stays a list (decision 18); Settings is also a tile on home. Search, Add games, Achievements and
+        // Sounds join it with their screens (M45 H6c, H6d).
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
         MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
         MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
         RefreshStatus();
@@ -279,6 +280,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
             return companion.DispatchGamepadAction(action) || action is GamepadAction.Cancel;
 
+        // Settings is open over everything else on the Launcher: it owns the pad until it closes.
+        if (Settings is { } settings)
+            return DispatchSettingsAction(settings, action);
+
         if (IsMenuOpen)
             return DispatchMenuAction(action);
 
@@ -349,6 +354,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         if (_companion is { } companion && companion.Overlay != SecondScreenOverlayKind.None)
             return companion.DispatchGamepadAction(GamepadAction.Cancel);
+        if (Settings is { } settings)
+            return DispatchSettingsAction(settings, GamepadAction.Cancel);
         if (!IsMenuOpen && (Naming is not null || Sheet is not null || _move is not null))
             return DispatchGamepadAction(GamepadAction.Cancel);
         if (!IsMenuOpen && TitlePage is { } title)
@@ -549,13 +556,21 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
         if (OpenFolder is { } folder)
         {
-            // A on a game opens its Title page; Play there is the second press (spec decision 13).
-            if (folder.SelectedTile is { } tile)
+            // A on a game opens its Title page; Play there is the second press (spec decision 13). The Settings tile
+            // (put in this folder) opens Settings.
+            if (folder.SelectedTile is { IsSettings: true })
+                _ = OpenSettingsAsync();
+            else if (folder.SelectedTile is { } tile)
                 OpenTitle(tile.Entry);
             return;
         }
 
         var slot = HomeSlotAt(HomeIndex);
+        if (slot.IsSettings)
+        {
+            _ = OpenSettingsAsync();
+            return;
+        }
         switch (slot.Kind)
         {
             case HandheldSlotKind.Empty:
@@ -668,6 +683,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _stageGameId = -1; // the Stage re-reads the selected game's facts
         var firstColumn = folder.FirstVisibleColumn;
         ApplySort(folder, folder.Sort, keepColumn: firstColumn);
+        // Emptied from inside (its last tile moved out): the selection goes to Back, as when an empty folder opens.
+        if (!folder.HasGames && Zone == HandheldZone.Grid)
+        {
+            Zone = HandheldZone.Header;
+            folder.FocusedHeaderItem = HandheldHeaderItem.Back;
+            UpdateFocus();
+        }
         OnPropertyChanged(nameof(OpenFolder));
         _library.ReleaseGames(previous);
     }
@@ -721,7 +743,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             game => game.Title,
             game => game.LastPlayedAt,
             game => game.PlayCount);
-        folder.Items = sorted.Select((entry, index) => new HandheldGameTileViewModel(index, entry)).ToList();
+        // Settings, when it is in one of your folders, comes first whatever the sort (decision 18).
+        var settingsTile = folder.Source.HoldsSettings ? 1 : 0;
+        folder.Items = Enumerable.Range(0, settingsTile)
+            .Select(_ => new HandheldGameTileViewModel(0, HandheldGameTileViewModel.SettingsEntry, isSettings: true))
+            .Concat(sorted.Select((entry, index) => new HandheldGameTileViewModel(index + settingsTile, entry)))
+            .ToList();
         // Your folders remember the sort chip they were left on.
         if (folder.Source is { IsUser: true, FolderId: { } folderId } && folder.Sort != sort &&
             _layout.FindFolder(folderId) is { } saved && saved.Sort != sort)
@@ -792,7 +819,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             var tile = folder.Items[i];
             if (i >= keepFrom && i < keepTo)
             {
-                if (tile.Cover is null && tile.CoverLoad is null)
+                if (tile.IsGame && tile.Cover is null && tile.CoverLoad is null)
                     _ = LoadTileCoverAsync(tile);
             }
             else
@@ -1067,6 +1094,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void UpdateStageCore()
     {
+        if (Settings is { } settings)
+        {
+            ShowSettingsStage(settings);
+            return;
+        }
         if (Naming is { } naming)
         {
             ShowNamingStage(naming);
@@ -1113,6 +1145,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                     folder.IsSortFocused ? "Press A to change the order" : folder.Name);
                 return;
             }
+            if (folder.SelectedTile is { IsSettings: true })
+            {
+                ShowSettingsTileStage();
+                return;
+            }
             if (folder.SelectedTile is { } tile)
             {
                 ShowGameStage(tile.Entry, tile.Cover);
@@ -1129,6 +1166,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
 
         var slot = HomeSlotAt(HomeIndex);
+        if (slot.IsSettings)
+        {
+            ShowSettingsTileStage();
+            return;
+        }
         if (slot.Kind == HandheldSlotKind.Game)
         {
             if (_pins.TryGetValue(slot.GameId, out var pinned))
@@ -1193,6 +1235,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldStageKind.Menu => HandheldGlyph.Menu,
             HandheldStageKind.EmptySlot => HandheldGlyph.Plus,
             HandheldStageKind.Header => OpenFolder?.IsSortFocused == true ? HandheldGlyph.Sort : HandheldGlyph.Back,
+            HandheldStageKind.SettingsTile => HandheldGlyph.Settings,
             _ => HandheldGlyph.None,
         };
     }
@@ -1411,6 +1454,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void BuildHints()
     {
+        if (Settings is { } settings)
+        {
+            AddSettingsHints(settings);
+            return;
+        }
         if (IsMenuOpen)
         {
             _nextHints.Add(new HandheldHint("A", "Select"));
@@ -1440,9 +1488,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         if (OpenFolder is { } folder)
         {
-            if (folder.SelectedTile is not null)
+            if (folder.SelectedTile is { } selected)
             {
-                _nextHints.Add(new HandheldHint("A", "Play"));
+                _nextHints.Add(new HandheldHint("A", selected.IsSettings ? "Open" : "Play"));
                 _nextHints.Add(new HandheldHint("Y", "More"));
             }
             _nextHints.Add(new HandheldHint("B", "Back"));
@@ -1459,6 +1507,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (_disposed)
             return;
         _disposed = true;
+        if (Settings is { } settings)
+            CloseSettings(settings, saved: false);
         StopStatusUpdates();
         StopMediumTimer();
         _mediumTimer?.Dispose();
