@@ -408,6 +408,9 @@ public partial class GameViewModel : ObservableObject, IDisposable
     public IAsyncRelayCommand<GameViewModel?> SetCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> LoadCoverCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenAchievementsCommand { get; }
+
+    /// <summary>Opens this game's page of the play log (M46 P3).</summary>
+    public IAsyncRelayCommand<GameViewModel?> OpenPlayHistoryCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> ScrapeCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> ShowInFolderCommand { get; }
     public IAsyncRelayCommand<GameViewModel?> OpenTextureFolderCommand { get; }
@@ -800,7 +803,8 @@ public partial class GameViewModel : ObservableObject, IDisposable
         IAsyncRelayCommand<GameViewModel?>? scrapeCommand = null,
         IAsyncRelayCommand<GameViewModel?>? showInFolderCommand = null,
         IAsyncRelayCommand<GameViewModel?>? openTextureFolderCommand = null,
-        bool canOpenTextureFolder = false)
+        bool canOpenTextureFolder = false,
+        IAsyncRelayCommand<GameViewModel?>? openPlayHistoryCommand = null)
     {
         Model = game;
         _discs = discs ?? [new GameDisc(1, game)];
@@ -846,6 +850,7 @@ public partial class GameViewModel : ObservableObject, IDisposable
         ScrapeCommand = scrapeCommand ?? NoGameCommand;
         ShowInFolderCommand = showInFolderCommand ?? NoGameCommand;
         OpenTextureFolderCommand = openTextureFolderCommand ?? NoGameCommand;
+        OpenPlayHistoryCommand = openPlayHistoryCommand ?? NoGameCommand;
         CanOpenTextureFolder = canOpenTextureFolder;
         RemoveSelectedCommand = removeSelectedCommand ?? NoCommand;
         ScrapeSelectedCommand = scrapeSelectedCommand ?? NoCommand;

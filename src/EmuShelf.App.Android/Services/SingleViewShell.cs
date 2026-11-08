@@ -84,6 +84,9 @@ public sealed class SingleViewShell : IPlatformShell
             () => System.Threading.Tasks.Task.Run(() => _emulatorTerminator.PreparePrivilege());
         global::EmuShelf.App.App.CloseOnReturnPrivilegeStatus = _emulatorTerminator.PrivilegeWarning;
         global::EmuShelf.App.App.InstalledPackageProbe = gameLauncher.IsInstalled;
+        _usageAccess = new AndroidUsageAccess(() => global::Android.App.Application.Context, boot.Logger);
+        // Settings offers "Accurate play time" only where the events it needs exist (Android 10+).
+        global::EmuShelf.App.App.UsageAccess = OperatingSystem.IsAndroidVersionAtLeast(29) ? _usageAccess : null;
         // Both probes above answer questions only the system can change — the user grants Shizuku in
         // Shizuku's own dialog, and installs an emulator from a store — so Settings caches them and
         // re-reads on return instead of paying a binder round trip per platform on every rebuild. This
@@ -113,6 +116,7 @@ public sealed class SingleViewShell : IPlatformShell
     }
 
     private readonly IPendingPlaySessionStore _pendingSessions;
+    private readonly AndroidUsageAccess _usageAccess;
     private readonly IAppLogger _logger;
     private readonly SecondScreenController _secondScreen;
     private readonly ISettingsService _settingsService;
@@ -241,8 +245,9 @@ public sealed class SingleViewShell : IPlatformShell
 
     // Runs the post-play work for a launch that has returned. Called on the Android main thread (the same
     // thread as Avalonia's UI thread) from the top-resumed signal, so the reentrancy guard is a plain bool.
-    // The launch duration is wall-clock from launch to this return — approximate, since time spent away
-    // from the game before returning to EmuShelf counts too; good enough for a play-time estimate.
+    // The session's length is the emulator's on-screen time from Android's usage events when the user has
+    // granted Usage access (M46 P2); otherwise, or when the events have aged out, it is the wall-clock gap
+    // from launch to this return, which counts device sleep and time in other apps, stored as an estimate.
     private void CompletePendingSession(MainViewModel viewModel)
     {
         if (_completingSession)
@@ -253,14 +258,23 @@ public sealed class SingleViewShell : IPlatformShell
             return;
 
         _completingSession = true;
-        var elapsedMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - session.StartedAtUnixMs;
-        var duration = TimeSpan.FromMilliseconds(Math.Max(0, elapsedMs));
+        var startedAt = DateTimeOffset.FromUnixTimeMilliseconds(session.StartedAtUnixMs);
+        var returnedAt = DateTimeOffset.UtcNow;
 
         Dispatcher.UIThread.Post(async () =>
         {
             try
             {
-                await viewModel.CompleteDeferredPlaySessionAsync(session.GameId, duration);
+                // Binder calls, so off the UI thread. A record without its emulator's package (written before
+                // the field existed) has nothing to look up and keeps the estimate.
+                var events = session.EmulatorPackage is { } package
+                    ? await System.Threading.Tasks.Task.Run(() =>
+                        _usageAccess.ReadForegroundEvents(package, startedAt, returnedAt))
+                    : null;
+                var (duration, measurement) = DeferredPlayTiming.Resolve(startedAt, returnedAt, events);
+                _logger.Information(
+                    $"Play session for {session.GameTitle}: {duration:g} ({measurement}; wall clock {returnedAt - startedAt:g}).");
+                await viewModel.CompleteDeferredPlaySessionAsync(session.GameId, duration, measurement);
                 // Now that the post-play work (play-time accrual and the save-sync push, which reads the
                 // emulator's save files) has run, close the emulator so it stops draining the battery in the
                 // background. Opt-in and best-effort — see AndroidEmulatorProcessTerminator; a failure or a

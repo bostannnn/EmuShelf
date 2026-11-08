@@ -1126,6 +1126,10 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty]
     public partial GamepadHotkeysViewModel? GamepadHotkeys { get; set; }
 
+    /// <summary>The play log overlay (M46 P3); the same view model the Desktop Activity window shows.</summary>
+    [ObservableProperty]
+    public partial ActivityViewModel? GamepadActivity { get; set; }
+
     /// <summary>Bumped each time a Search/Rename overlay opens so the view can raise the system keyboard once
     /// per open. A screen tap on the field raises the IME natively; a gamepad-directional focus does not, so
     /// the view forces it up on this signal (the same pattern the couch Settings text entry uses).</summary>
@@ -1151,6 +1155,32 @@ public partial class MainViewModel : ViewModelBase
     public bool IsGamepadSystemMenuOpen => GamepadOverlay == GamepadOverlayKind.SystemMenu;
     public bool IsGamepadSettingsOpen => GamepadOverlay == GamepadOverlayKind.Settings;
     public bool IsGamepadHotkeysOpen => GamepadOverlay == GamepadOverlayKind.Hotkeys;
+    public bool IsGamepadActivityOpen => GamepadOverlay == GamepadOverlayKind.Activity;
+
+    // The footer legend follows the play log's editor: browsing keys, or the editor's own.
+    public bool IsGamepadActivityBrowsing => IsGamepadActivityOpen && GamepadActivity?.IsEditing != true;
+    public bool IsGamepadActivityEditing => IsGamepadActivityOpen && GamepadActivity?.IsEditing == true;
+
+    partial void OnGamepadActivityChanged(ActivityViewModel? oldValue, ActivityViewModel? newValue)
+    {
+        if (oldValue is not null)
+            oldValue.PropertyChanged -= OnGamepadActivityPropertyChanged;
+        if (newValue is not null)
+            newValue.PropertyChanged += OnGamepadActivityPropertyChanged;
+        NotifyGamepadActivityLegend();
+    }
+
+    private void OnGamepadActivityPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(ActivityViewModel.IsEditing))
+            NotifyGamepadActivityLegend();
+    }
+
+    private void NotifyGamepadActivityLegend()
+    {
+        OnPropertyChanged(nameof(IsGamepadActivityBrowsing));
+        OnPropertyChanged(nameof(IsGamepadActivityEditing));
+    }
     public bool IsGamepadSettingsTextEntryOpen => IsGamepadSettingsOpen && GamepadSettings?.IsTextEntryOpen == true;
     public bool IsGamepadSettingsConfirmationOpen => IsGamepadSettingsOpen && GamepadSettings?.IsConfirmationOpen == true;
     public bool IsGamepadSettingsChoicePickerOpen =>
@@ -1219,20 +1249,20 @@ public partial class MainViewModel : ViewModelBase
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or
          GamepadOverlayKind.Rename or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
          GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Settings or GamepadOverlayKind.Hotkeys or
-         GamepadOverlayKind.LaunchScreen or
+         GamepadOverlayKind.Activity or GamepadOverlayKind.LaunchScreen or
          GamepadOverlayKind.RemoveConfirmation or GamepadOverlayKind.DesktopModeConfirmation or
          GamepadOverlayKind.QuitConfirmation);
     public bool ShowsGamepadOverlayOptions => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Search or GamepadOverlayKind.Rename or
          GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or GamepadOverlayKind.BatchScraper or
          GamepadOverlayKind.CoverSearch or GamepadOverlayKind.Hotkeys or GamepadOverlayKind.LaunchScreen or
-         GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.Activity or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     // Confirmations render their own centred title inside the dialog card, so the chrome header title
     // is suppressed for them (it would otherwise pin a second title to the top-left of the sheet).
     public bool ShowsGamepadOverlayChromeTitle => GamepadOverlay is not
         (GamepadOverlayKind.Achievements or GamepadOverlayKind.Settings or GamepadOverlayKind.Scraper or
-         GamepadOverlayKind.BatchScraper or GamepadOverlayKind.RemoveConfirmation or
+         GamepadOverlayKind.BatchScraper or GamepadOverlayKind.Activity or GamepadOverlayKind.RemoveConfirmation or
          GamepadOverlayKind.DesktopModeConfirmation or GamepadOverlayKind.QuitConfirmation);
     /// <summary>The quiet platform line under the actions sheet's title — the header names the game,
     /// this names where it lives. Null for every other overlay (no eyebrow row).</summary>
@@ -1265,6 +1295,7 @@ public partial class MainViewModel : ViewModelBase
         GamepadOverlayKind.SystemMenu => "Menu",
         GamepadOverlayKind.Settings => "Settings",
         GamepadOverlayKind.Hotkeys => "Hotkeys",
+        GamepadOverlayKind.Activity => "Activity",
         GamepadOverlayKind.DesktopModeConfirmation => "Switch to Desktop mode?",
         GamepadOverlayKind.QuitConfirmation => "Quit EmuShelf?",
         _ => string.Empty,
@@ -2605,6 +2636,7 @@ public partial class MainViewModel : ViewModelBase
                 setup: setup,
                 // The wizard is an Android first-run flow; desktop never shows the row.
                 runSetup: OperatingSystem.IsAndroid() ? OpenSetupWizardAsync : null,
+                usageAccess: EmuShelf.App.App.UsageAccess,
                 refreshGameCounts: async () =>
                 {
                     try
@@ -2761,6 +2793,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
+        CloseGamepadActivity();
         if (closingOverlay == GamepadOverlayKind.Settings)
             CloseGamepadSettingsProjection();
         FocusedGamepadAchievement = null;
@@ -3143,6 +3176,14 @@ public partial class MainViewModel : ViewModelBase
         if (IsGamepadHotkeysOpen)
             return DispatchHotkeysOverlayAction(action);
 
+        // The play log owns every button while open; B with nothing left to back out of closes it.
+        if (IsGamepadActivityOpen && GamepadActivity is { } activity)
+        {
+            if (!activity.Dispatch(action))
+                CloseGamepadOverlay();
+            return true;
+        }
+
         return HasGamepadOverlay
             ? DispatchOverlayAction(action)
             : DispatchLibraryAction(action);
@@ -3477,6 +3518,7 @@ public partial class MainViewModel : ViewModelBase
         DisposeGamepadCoverSearchDetails();
         DisposeGamepadBatchScraperDetails();
         DisposeGamepadHotkeysDetails();
+        CloseGamepadActivity();
         FocusedGamepadAchievement = null;
         // A pending import folder is only meaningful while the ImportSystem chooser is up. Transitioning
         // to any other overlay (e.g. Menu from the chooser) abandons the import, so drop it here — the
@@ -3539,6 +3581,7 @@ public partial class MainViewModel : ViewModelBase
                     AddOption("Add games", AddFolderFromGamepadCommand, icon: GamepadOptionIcons.Add);
                 if (CanScrapeAllInView)
                     AddOption("Scrape all in view", ScrapeAllInViewCommand, icon: GamepadOptionIcons.Scrape);
+                AddOption("Activity", OpenActivityCommand, icon: GamepadOptionIcons.Activity);
                 AddOption("Settings", RequestSettingsFromGamepadCommand, icon: GamepadOptionIcons.Settings);
                 if (SupportsDesktopMode)
                     AddOption("Switch to Desktop mode", RequestDesktopModeFromGamepadCommand, icon: GamepadOptionIcons.Desktop);
@@ -3575,6 +3618,7 @@ public partial class MainViewModel : ViewModelBase
             AddOption("Select disc", OpenFocusedDiscSelectionCommand, icon: GamepadOptionIcons.Cover);
         if (FocusedGame?.CanOpenAchievementDetails == true)
             AddOption("Achievements", OpenFocusedAchievementsCommand, icon: GamepadOptionIcons.Achievements);
+        AddOption("Play history", OpenFocusedPlayHistoryCommand, icon: GamepadOptionIcons.Activity);
         AddOption("Edit title", EditFocusedTitleCommand, icon: GamepadOptionIcons.Edit);
         AddOption("Set cover", SetFocusedCoverCommand, icon: GamepadOptionIcons.Cover);
         AddOption("Scrape with ScreenScraper", ScrapeFocusedGameCommand, icon: GamepadOptionIcons.Scrape);
@@ -3853,6 +3897,57 @@ public partial class MainViewModel : ViewModelBase
             _ = ReloadGamesAsync();
     }
 
+    /// <summary>Opens the play log: the Gamepad overlay in Gamepad mode, else the Desktop window.</summary>
+    [RelayCommand]
+    private Task OpenActivityAsync() => ShowActivityAsync(gameId: null);
+
+    /// <summary>Opens one game's page of the play log (a game's context menu, the Y sheet).</summary>
+    [RelayCommand]
+    private Task OpenPlayHistoryAsync(GameViewModel? game) =>
+        game is null ? Task.CompletedTask : ShowActivityAsync(game.Model.Id);
+
+    [RelayCommand]
+    private Task OpenFocusedPlayHistoryAsync() => OpenPlayHistoryAsync(FocusedGame);
+
+    private async Task ShowActivityAsync(long? gameId)
+    {
+        var activity = new ActivityViewModel(_library, logger: _logger);
+        if (IsGamepadMode)
+        {
+            OpenGamepadOverlay(GamepadOverlayKind.Activity);
+            GamepadActivity = activity;
+            await activity.LoadAsync(gameId);
+            return;
+        }
+
+        await activity.LoadAsync(gameId);
+        await _dialogs.ShowActivityAsync(activity);
+        await RefreshAfterActivityAsync(activity);
+    }
+
+    // Edits and deletions change the play totals every library surface shows.
+    private void CloseGamepadActivity()
+    {
+        if (GamepadActivity is not { } activity)
+            return;
+        GamepadActivity = null;
+        _ = RefreshAfterActivityAsync(activity);
+    }
+
+    private async Task RefreshAfterActivityAsync(ActivityViewModel activity)
+    {
+        if (!activity.HasChanges)
+            return;
+        try
+        {
+            await RefreshAfterPlayRecordedAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error("Could not refresh the library after editing the play log.", ex);
+        }
+    }
+
     private void DisposeGamepadHotkeysDetails()
     {
         if (GamepadHotkeys is not { } details)
@@ -3879,6 +3974,8 @@ public partial class MainViewModel : ViewModelBase
         OnPropertyChanged(nameof(IsGamepadSystemMenuOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsOpen));
         OnPropertyChanged(nameof(IsGamepadHotkeysOpen));
+        OnPropertyChanged(nameof(IsGamepadActivityOpen));
+        NotifyGamepadActivityLegend();
         OnPropertyChanged(nameof(IsGamepadSettingsTextEntryOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsConfirmationOpen));
         OnPropertyChanged(nameof(IsGamepadSettingsNormal));
@@ -6596,6 +6693,7 @@ public partial class MainViewModel : ViewModelBase
         // recorded (including a game stamped just before a start failure), and a refresh error must
         // never be able to overwrite the launch-completion status with a false failure message.
         var recordedPlay = false;
+        long? playSessionId = null;
         var started = false;
         try
         {
@@ -6638,8 +6736,10 @@ public partial class MainViewModel : ViewModelBase
                     // This callback runs only after preflight passes and immediately before the
                     // emulator process starts, so a game whose launch fails validation is never
                     // recorded, and one that starts is recorded even if EmuShelf is killed mid-session.
-                    // Stamps last-played and increments the play count in one write.
-                    await Task.Run(
+                    // Opens the play session, stamps last-played and increments the play count in one
+                    // write. On Android the session stays open until EmuShelf returns
+                    // (CompleteDeferredPlaySessionAsync); on desktop it closes below when the emulator exits.
+                    playSessionId = await Task.Run(
                         () => _library.RecordLaunchStarted(launchGame.Id, DateTimeOffset.UtcNow),
                         cancellationToken);
                     recordedPlay = true;
@@ -6657,14 +6757,18 @@ public partial class MainViewModel : ViewModelBase
                 _logger.Warning($"Launch did not start or complete successfully: {result.StatusText}");
             if (result.ProcessExited && game.RetroAchievementsGameId is { } retroAchievementsGameId)
                 _ = RefreshRetroAchievementsAfterTrackedExitAsync(retroAchievementsGameId);
-            // A tracked exit reports the emulator's runtime; accrue it as play time. Guarded and off the
-            // UI thread so a write failure can never turn a completed launch into a reported error. The
-            // Recently Played refresh in the finally then rebuilds the collection with the new total.
-            if (result is { ProcessExited: true, PlayDuration: { } playDuration })
+            // A tracked exit reports the emulator's runtime; it closes the session and accrues as play time.
+            // Guarded and off the UI thread so a write failure can never turn a completed launch into a
+            // reported error. The Recently Played refresh in the finally then rebuilds the collection with
+            // the new total. A launch that never exited normally leaves its session open: unknown length.
+            if (result is { ProcessExited: true, PlayDuration: { } playDuration } && playSessionId is { } sessionId)
             {
                 try
                 {
-                    await Task.Run(() => _library.AddPlaytime(launchGame.Id, playDuration));
+                    await Task.Run(() => _library.CompletePlaySession(
+                        sessionId,
+                        playDuration,
+                        PlaySessionMeasurement.TrackedProcess));
                 }
                 catch (Exception ex)
                 {
@@ -6742,7 +6846,10 @@ public partial class MainViewModel : ViewModelBase
     /// session interrupted by process death. Must be called on the UI thread (it touches launch status and
     /// grid state). The caller clears the pending-session record after this returns.
     /// </summary>
-    public async Task CompleteDeferredPlaySessionAsync(long gameId, TimeSpan playDuration)
+    public async Task CompleteDeferredPlaySessionAsync(
+        long gameId,
+        TimeSpan playDuration,
+        PlaySessionMeasurement measurement = PlaySessionMeasurement.WallClockEstimate)
     {
         // Off the UI thread: this runs the instant the couch returns to the foreground, and the library
         // read (a full-table query) would otherwise hitch that first frame on a large library.
@@ -6760,18 +6867,33 @@ public partial class MainViewModel : ViewModelBase
         // sitting the number is meaningless, so drop it rather than record a fake multi-day playtime. The
         // launch itself was already stamped (last-played + play count) at start, so a dropped duration only
         // loses the (approximate) minutes, not the "played" signal.
-        if (playDuration > TimeSpan.Zero && playDuration <= MaxDeferredPlaySession)
+        // Measured on-screen time (Usage access, M46 P2) is real however long it is; only the wall-clock
+        // estimate needs the plausibility cap.
+        // A measured zero is a known length (the game never stayed on screen); a zero estimate is not.
+        var measured = measurement != PlaySessionMeasurement.WallClockEstimate;
+        var plausible = measured || playDuration <= MaxDeferredPlaySession;
+        if ((playDuration > TimeSpan.Zero || measured) && plausible)
         {
             try
             {
-                await Task.Run(() => _library.AddPlaytime(gameId, playDuration));
+                // The open session is this launch's: Android keeps at most one pending session, recorded
+                // just after its row was opened. None is open when the launch never opened one: Steam
+                // (GameNative) launches skip the pre-launch callback, and a pending record can predate the
+                // play log (v21). Record that play as a finished session then, so its time is not lost.
+                await Task.Run(() =>
+                {
+                    var sessionId = _library.FindOpenPlaySession(gameId)
+                        ?? _library.RecordLaunchStarted(gameId, DateTimeOffset.UtcNow - playDuration);
+                    if (sessionId is { } id)
+                        _library.CompletePlaySession(id, playDuration, measurement);
+                });
             }
             catch (Exception ex)
             {
                 _logger.Error("Could not record playtime after a deferred launch.", ex);
             }
         }
-        else if (playDuration > MaxDeferredPlaySession)
+        else if (!plausible)
         {
             _logger.Information(
                 $"Skipped implausible deferred playtime of {playDuration:g} for {game.Title} " +

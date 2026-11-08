@@ -740,6 +740,41 @@ public sealed class GamepadSettingsViewModelTests
     }
 
     [AvaloniaFact]
+    public async Task LibrarySection_AccuratePlayTimeRow_OpensUsageAccess_AndReReadsTheGrantOnReturn()
+    {
+        var usage = new FakeUsageAccess();
+        using var viewModel = CreateGamepadSettings(usageAccess: usage);
+        viewModel.SelectedSection = SettingsSection.General;
+
+        var row = viewModel.Rows.Single(candidate => candidate.Key == "general.accurate-playtime");
+        Assert.Equal("A ALLOW", row.Value);
+        Assert.Contains("Usage access", row.Description, StringComparison.Ordinal);
+        await row.SelectCommand.ExecuteAsync(null);
+        Assert.Equal(1, usage.Requests);
+
+        // Granted on Android's screen while EmuShelf was away: the cached reading holds until the return.
+        usage.Granted = true;
+        var readsBefore = usage.Reads;
+        viewModel.SelectedSection = SettingsSection.Emulators;
+        viewModel.SelectedSection = SettingsSection.General;
+        Assert.Equal(readsBefore, usage.Reads);
+        viewModel.RefreshDeviceState();
+
+        row = viewModel.Rows.Single(candidate => candidate.Key == "general.accurate-playtime");
+        Assert.Equal("On", row.Value);
+        Assert.StartsWith("Counts only the time a game is on screen", row.Description, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public void LibrarySection_WithoutUsageAccess_HasNoAccuratePlayTimeRow()
+    {
+        using var viewModel = CreateGamepadSettings();
+        viewModel.SelectedSection = SettingsSection.General;
+
+        Assert.DoesNotContain(viewModel.Rows, row => row.Key == "general.accurate-playtime");
+    }
+
+    [AvaloniaFact]
     public async Task EmulatorsSection_FolderRow_RescansOnA_AndForgetsOnYAfterConfirmation()
     {
         var rescanned = new List<string>();
@@ -1163,7 +1198,8 @@ public sealed class GamepadSettingsViewModelTests
         Func<string?>? closeOnReturnWarning = null,
         Func<Task>? grantCloseOnReturnPrivilege = null,
         Func<Task>? refreshGameCounts = null,
-        SetupWizardOptions? setup = null) => new(
+        SetupWizardOptions? setup = null,
+        IAppUsageAccess? usageAccess = null) => new(
             CreateSettings(
                 maintenance,
                 metadataPreferences,
@@ -1181,7 +1217,29 @@ public sealed class GamepadSettingsViewModelTests
             closeOnReturnWarning: closeOnReturnWarning,
             grantCloseOnReturnPrivilege: grantCloseOnReturnPrivilege,
             refreshGameCounts: refreshGameCounts,
-            setup: setup);
+            setup: setup,
+            usageAccess: usageAccess);
+
+    private sealed class FakeUsageAccess : IAppUsageAccess
+    {
+        public bool Granted { get; set; }
+        public int Reads { get; private set; }
+        public int Requests { get; private set; }
+
+        public bool IsGranted
+        {
+            get
+            {
+                Reads++;
+                return Granted;
+            }
+        }
+
+        public void RequestGrant() => Requests++;
+
+        public IReadOnlyList<AppForegroundEvent>? ReadForegroundEvents(
+            string packageName, DateTimeOffset from, DateTimeOffset to) => null;
+    }
 
     /// <summary>Emulators lists one summary row per platform; A on it reveals that platform's rows.</summary>
     private static async Task ExpandPlatformAsync(GamepadSettingsViewModel viewModel, string systemId)

@@ -11,7 +11,7 @@ namespace EmuShelf.Infrastructure.Persistence;
 /// </summary>
 public sealed class LibraryDatabase
 {
-    private const int CurrentSchemaVersion = 20;
+    private const int CurrentSchemaVersion = 21;
 
     private readonly IAppPaths _appPaths;
 
@@ -169,7 +169,13 @@ public sealed class LibraryDatabase
         }
 
         if (version < 20)
+        {
             ApplyMigrationV20(connection);
+            version = 20;
+        }
+
+        if (version < 21)
+            ApplyMigrationV21(connection);
     }
 
     private static int GetSchemaVersion(SqliteConnection connection)
@@ -929,6 +935,50 @@ public sealed class LibraryDatabase
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "UPDATE SchemaVersion SET Version = 20;";
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
+    private static void ApplyMigrationV21(SqliteConnection connection)
+    {
+        using var transaction = connection.BeginTransaction();
+
+        // The play log (M46): one row per sitting. The Games totals (PlaytimeSeconds, PlayCount,
+        // LastPlayedUnixMilliseconds) stay as a cache kept in step with these rows. Nothing is backfilled:
+        // play recorded before v21 stays in the totals as "earlier play" and is never invented as sessions.
+        // No foreign key on GameId, on purpose: removing a game keeps its sessions (GamePath is stamped then,
+        // so re-adding the same file relinks them). Games ids are AUTOINCREMENT, so a removed game's id is
+        // never reused by another game. GameTitle and SystemId are a snapshot so a removed game still reads.
+        // DurationSeconds and Measurement are null while a session is open, or when its length is unknown.
+        using (var create = connection.CreateCommand())
+        {
+            create.Transaction = transaction;
+            create.CommandText =
+                """
+                CREATE TABLE IF NOT EXISTS PlaySessions (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    GameId INTEGER NOT NULL,
+                    GameTitle TEXT NOT NULL,
+                    SystemId TEXT NOT NULL,
+                    GamePath TEXT NULL COLLATE NOCASE,
+                    StartedUnixMilliseconds INTEGER NOT NULL,
+                    DurationSeconds INTEGER NULL,
+                    Measurement INTEGER NULL,
+                    DeviceId TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS IX_PlaySessions_GameStarted
+                    ON PlaySessions (GameId, StartedUnixMilliseconds);
+                CREATE INDEX IF NOT EXISTS IX_PlaySessions_Started
+                    ON PlaySessions (StartedUnixMilliseconds);
+                CREATE INDEX IF NOT EXISTS IX_PlaySessions_RemovedGamePath
+                    ON PlaySessions (GamePath) WHERE GamePath IS NOT NULL;
+                """;
+            create.ExecuteNonQuery();
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = "UPDATE SchemaVersion SET Version = 21;";
         command.ExecuteNonQuery();
         transaction.Commit();
     }

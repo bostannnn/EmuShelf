@@ -96,6 +96,9 @@ public interface IDialogService
 
     Task ShowAchievementDetailsAsync(EmuShelf.App.ViewModels.AchievementDetailsViewModel viewModel) => Task.CompletedTask;
 
+    /// <summary>Shows the play log window (M46 P3). Heads without windows open the Gamepad overlay instead.</summary>
+    Task ShowActivityAsync(EmuShelf.App.ViewModels.ActivityViewModel viewModel) => Task.CompletedTask;
+
     /// <summary>
     /// Opens the ScreenScraper scrape/apply window for one game. Returns true when data was applied,
     /// so the caller can refresh the library. Implementations without the provider return false.

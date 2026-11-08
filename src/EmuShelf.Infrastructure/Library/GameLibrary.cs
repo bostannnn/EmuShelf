@@ -14,11 +14,13 @@ public sealed class GameLibrary : IGameLibrary
 {
     private readonly LibraryDatabase _database;
     private readonly IRelativePathResolver _pathResolver;
+    private readonly IDeviceIdentity _device;
 
-    public GameLibrary(LibraryDatabase database, IRelativePathResolver pathResolver)
+    public GameLibrary(LibraryDatabase database, IRelativePathResolver pathResolver, IDeviceIdentity? device = null)
     {
         _database = database;
         _pathResolver = pathResolver;
+        _device = device ?? FixedDeviceIdentity.Unknown;
     }
 
     public IReadOnlyList<Game> GetGames(string? systemId = null)
@@ -122,6 +124,8 @@ public sealed class GameLibrary : IGameLibrary
             transaction,
             source.Id,
             entries);
+        if (addedIds.Count > 0)
+            RelinkRemovedGameSessions(connection, transaction, addedIds);
         transaction.Commit();
         return new ExternalLibraryImportResult(addedIds, updated, markedSourceMissing);
     }
@@ -431,9 +435,18 @@ public sealed class GameLibrary : IGameLibrary
             deleteCommand.Parameters.AddWithValue("$systemId", systemId);
             var suppressedPath = deleteCommand.Parameters.Add("$path", SqliteType.Text);
 
+            using var keepSessions = connection.CreateCommand();
+            keepSessions.Transaction = transaction;
+            keepSessions.CommandText = KeepSessionsOfRemovedGamesSql(
+                "SELECT Id FROM Games WHERE SystemId = $systemId AND Path = $path");
+            keepSessions.Parameters.AddWithValue("$systemId", systemId);
+            var keepPath = keepSessions.Parameters.Add("$path", SqliteType.Text);
+
             foreach (var pathToSuppress in suppressedPaths.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 suppressedPath.Value = _pathResolver.ToStorablePath(pathToSuppress);
+                keepPath.Value = suppressedPath.Value;
+                keepSessions.ExecuteNonQuery();
                 deleteCommand.ExecuteNonQuery();
             }
         }
@@ -514,6 +527,8 @@ public sealed class GameLibrary : IGameLibrary
                 addedIds.Add((long)insertedIdCommand.ExecuteScalar()!);
         }
 
+        if (addedIds.Count > 0)
+            RelinkRemovedGameSessions(connection, transaction, addedIds);
         transaction.Commit();
         return new GameImportResult(addedIds);
     }
@@ -542,35 +557,269 @@ public sealed class GameLibrary : IGameLibrary
         transaction.Commit();
     }
 
-    public void RecordLaunchStarted(long gameId, DateTimeOffset startedAt)
+    public long? RecordLaunchStarted(long gameId, DateTimeOffset startedAt)
     {
         using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
-        // Timestamp and count move together in one statement so a launch is recorded atomically:
-        // last-played drives Recently Played, the count is the "times launched" total. Both are
-        // stamped at start (not exit), so a session ended by an app kill still counts.
+        command.Transaction = transaction;
+        // The session row and the cached totals move together in one transaction: last-played drives
+        // Recently Played, the count is the "times launched" total, and the open row is this sitting in the
+        // play log. All are stamped at start (not exit), so a session ended by an app kill still counts.
         command.CommandText =
-            "UPDATE Games SET LastPlayedUnixMilliseconds = $lastPlayed, PlayCount = PlayCount + 1 WHERE Id = $id;";
-        command.Parameters.AddWithValue("$lastPlayed", startedAt.ToUnixTimeMilliseconds());
+            """
+            UPDATE Games SET LastPlayedUnixMilliseconds = $started, PlayCount = PlayCount + 1 WHERE Id = $id;
+            INSERT INTO PlaySessions (GameId, GameTitle, SystemId, StartedUnixMilliseconds, DeviceId)
+            SELECT Id, Title, SystemId, $started, $device FROM Games WHERE Id = $id;
+            SELECT CASE WHEN changes() > 0 THEN last_insert_rowid() END;
+            """;
+        command.Parameters.AddWithValue("$started", startedAt.ToUnixTimeMilliseconds());
         command.Parameters.AddWithValue("$id", gameId);
-        command.ExecuteNonQuery();
+        command.Parameters.AddWithValue("$device", _device.DeviceId);
+        var sessionId = command.ExecuteScalar();
+        transaction.Commit();
+        return sessionId is long id ? id : null;
     }
 
-    public void AddPlaytime(long gameId, TimeSpan duration)
+    public bool CompletePlaySession(long sessionId, TimeSpan duration, PlaySessionMeasurement measurement)
     {
-        // Only whole seconds are stored, and a zero/negative span (a launch that failed to start, or a
-        // process that exited instantly) adds nothing rather than writing a no-op row update.
-        var seconds = (long)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero);
-        if (seconds <= 0)
-            return;
+        // Whole seconds only; a negative span (clock skew) is a zero-length session, not a deduction.
+        var seconds = Math.Max(0, (long)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero));
 
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        using var close = connection.CreateCommand();
+        close.Transaction = transaction;
+        // Only an open session closes, so completing twice (a retried Android return) never adds twice.
+        close.CommandText =
+            """
+            UPDATE PlaySessions SET DurationSeconds = $seconds, Measurement = $measurement
+            WHERE Id = $id AND DurationSeconds IS NULL;
+            """;
+        close.Parameters.AddWithValue("$seconds", seconds);
+        close.Parameters.AddWithValue("$measurement", (int)measurement);
+        close.Parameters.AddWithValue("$id", sessionId);
+        if (close.ExecuteNonQuery() == 0)
+            return false;
+
+        if (seconds > 0)
+        {
+            // A session whose game was removed mid-play updates no row here; its time joins the totals if
+            // the game is re-added (RelinkRemovedGameSessions).
+            using var accrue = connection.CreateCommand();
+            accrue.Transaction = transaction;
+            accrue.CommandText =
+                """
+                UPDATE Games SET PlaytimeSeconds = PlaytimeSeconds + $seconds
+                WHERE Id = (SELECT GameId FROM PlaySessions WHERE Id = $id AND GamePath IS NULL);
+                """;
+            accrue.Parameters.AddWithValue("$seconds", seconds);
+            accrue.Parameters.AddWithValue("$id", sessionId);
+            accrue.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+        return true;
+    }
+
+    public long? FindOpenPlaySession(long gameId)
+    {
         using var connection = _database.CreateConnection();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "UPDATE Games SET PlaytimeSeconds = PlaytimeSeconds + $seconds WHERE Id = $id;";
-        command.Parameters.AddWithValue("$seconds", seconds);
+            """
+            SELECT Id FROM PlaySessions
+            WHERE GameId = $id AND GamePath IS NULL AND DurationSeconds IS NULL
+            ORDER BY StartedUnixMilliseconds DESC, Id DESC
+            LIMIT 1;
+            """;
         command.Parameters.AddWithValue("$id", gameId);
+        return command.ExecuteScalar() is long id ? id : null;
+    }
+
+    public IReadOnlyList<PlaySession> GetPlaySessions(long gameId) =>
+        ReadPlaySessions("WHERE GameId = $id AND GamePath IS NULL", command => command.Parameters.AddWithValue("$id", gameId));
+
+    public IReadOnlyList<PlaySession> GetPlaySessionsBetween(DateTimeOffset from, DateTimeOffset to) =>
+        ReadPlaySessions(
+            "WHERE StartedUnixMilliseconds >= $from AND StartedUnixMilliseconds < $to",
+            command =>
+            {
+                command.Parameters.AddWithValue("$from", from.ToUnixTimeMilliseconds());
+                command.Parameters.AddWithValue("$to", to.ToUnixTimeMilliseconds());
+            });
+
+    public bool EditPlaySession(long sessionId, TimeSpan duration)
+    {
+        var seconds = Math.Max(0, (long)Math.Round(duration.TotalSeconds, MidpointRounding.AwayFromZero));
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        if (ReadSessionTotalsRow(connection, transaction, sessionId) is not { } row)
+            return false;
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // The game's play time moves by the difference; a removed game's session changes only itself (its
+        // time joins the totals when the game is re-added, RelinkRemovedGameSessions).
+        command.CommandText =
+            """
+            UPDATE PlaySessions SET DurationSeconds = $seconds, Measurement = $edited WHERE Id = $id;
+            UPDATE Games SET PlaytimeSeconds = max(0, PlaytimeSeconds + $delta) WHERE Id = $gameId AND $linked = 1;
+            """;
+        command.Parameters.AddWithValue("$seconds", seconds);
+        command.Parameters.AddWithValue("$edited", (int)PlaySessionMeasurement.Edited);
+        command.Parameters.AddWithValue("$id", sessionId);
+        command.Parameters.AddWithValue("$delta", seconds - row.Seconds);
+        command.Parameters.AddWithValue("$gameId", row.GameId);
+        command.Parameters.AddWithValue("$linked", row.IsLinked ? 1 : 0);
         command.ExecuteNonQuery();
+        transaction.Commit();
+        return true;
+    }
+
+    public bool DeletePlaySession(long sessionId)
+    {
+        using var connection = _database.CreateConnection();
+        using var transaction = connection.BeginTransaction();
+        if (ReadSessionTotalsRow(connection, transaction, sessionId) is not { } row)
+            return false;
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        // Last-played follows the newest remaining session only when it was this one; with none left it
+        // is cleared if no plays remain, else kept (the remaining plays predate the log and their time is
+        // unknown).
+        command.CommandText =
+            """
+            DELETE FROM PlaySessions WHERE Id = $id;
+            UPDATE Games SET
+                PlaytimeSeconds = max(0, PlaytimeSeconds - $seconds),
+                PlayCount = max(0, PlayCount - 1),
+                LastPlayedUnixMilliseconds = CASE
+                    WHEN LastPlayedUnixMilliseconds IS NOT $started THEN LastPlayedUnixMilliseconds
+                    ELSE COALESCE(
+                        (SELECT MAX(StartedUnixMilliseconds) FROM PlaySessions
+                         WHERE GameId = $gameId AND GamePath IS NULL),
+                        CASE WHEN PlayCount - 1 > 0 THEN LastPlayedUnixMilliseconds END)
+                END
+            WHERE Id = $gameId AND $linked = 1;
+            """;
+        command.Parameters.AddWithValue("$id", sessionId);
+        command.Parameters.AddWithValue("$seconds", row.Seconds);
+        command.Parameters.AddWithValue("$started", row.StartedUnixMilliseconds);
+        command.Parameters.AddWithValue("$gameId", row.GameId);
+        command.Parameters.AddWithValue("$linked", row.IsLinked ? 1 : 0);
+        command.ExecuteNonQuery();
+        transaction.Commit();
+        return true;
+    }
+
+    private sealed record SessionTotalsRow(long GameId, long Seconds, long StartedUnixMilliseconds, bool IsLinked);
+
+    private static SessionTotalsRow? ReadSessionTotalsRow(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        long sessionId)
+    {
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            SELECT GameId, COALESCE(DurationSeconds, 0), StartedUnixMilliseconds, GamePath IS NULL
+            FROM PlaySessions WHERE Id = $id;
+            """;
+        command.Parameters.AddWithValue("$id", sessionId);
+        using var reader = command.ExecuteReader();
+        return reader.Read()
+            ? new SessionTotalsRow(reader.GetInt64(0), reader.GetInt64(1), reader.GetInt64(2), reader.GetInt64(3) != 0)
+            : null;
+    }
+
+    private IReadOnlyList<PlaySession> ReadPlaySessions(string where, Action<SqliteCommand> bind)
+    {
+        using var connection = _database.CreateConnection();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT Id, GameId, GameTitle, SystemId, StartedUnixMilliseconds, DurationSeconds, Measurement, DeviceId,
+                   GamePath IS NOT NULL
+            FROM PlaySessions
+            {where}
+            ORDER BY StartedUnixMilliseconds DESC, Id DESC;
+            """;
+        bind(command);
+        using var reader = command.ExecuteReader();
+        var sessions = new List<PlaySession>();
+        while (reader.Read())
+        {
+            sessions.Add(new PlaySession(
+                reader.GetInt64(0),
+                reader.GetInt64(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                DateTimeOffset.FromUnixTimeMilliseconds(reader.GetInt64(4)),
+                reader.IsDBNull(5) ? null : TimeSpan.FromSeconds(reader.GetInt64(5)),
+                reader.IsDBNull(6) ? null : (PlaySessionMeasurement)reader.GetInt32(6),
+                reader.GetString(7),
+                reader.GetInt64(8) != 0));
+        }
+        return sessions;
+    }
+
+    // Marks the sessions of games about to be deleted as belonging to a removed game: the game's stored path
+    // and latest title are stamped on them, so the log keeps reading and re-adding the same file relinks
+    // them. gameIdSelector is SQL selecting the ids of the games being removed.
+    private static string KeepSessionsOfRemovedGamesSql(string gameIdSelector) =>
+        $"""
+        UPDATE PlaySessions
+        SET GamePath = (SELECT Path FROM Games WHERE Games.Id = PlaySessions.GameId),
+            GameTitle = COALESCE((SELECT Title FROM Games WHERE Games.Id = PlaySessions.GameId), GameTitle)
+        WHERE GamePath IS NULL AND GameId IN ({gameIdSelector})
+          AND EXISTS (SELECT 1 FROM Games WHERE Games.Id = PlaySessions.GameId);
+        """;
+
+    // A game added at the path of a removed one gets that game's sessions back, and their count, time and
+    // latest start join its totals. Runs inside the import transaction, for the rows this import inserted
+    // only, so a game that merely moved to that path (a folder relocation) never takes another game's
+    // history. Paths compare in their stored form, case-insensitively, the same rule as Games.Path's unique
+    // index. Play from before the log lived only on the removed row, so it is not recovered.
+    private static void RelinkRemovedGameSessions(
+        SqliteConnection connection,
+        SqliteTransaction transaction,
+        IReadOnlyList<long> addedIds)
+    {
+        using (var any = connection.CreateCommand())
+        {
+            any.Transaction = transaction;
+            any.CommandText = "SELECT EXISTS (SELECT 1 FROM PlaySessions WHERE GamePath IS NOT NULL);";
+            if ((long)any.ExecuteScalar()! == 0)
+                return;
+        }
+
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText =
+            """
+            UPDATE Games SET
+                PlayCount = PlayCount +
+                    (SELECT COUNT(*) FROM PlaySessions s WHERE s.GamePath = Games.Path),
+                PlaytimeSeconds = PlaytimeSeconds +
+                    (SELECT COALESCE(SUM(s.DurationSeconds), 0) FROM PlaySessions s WHERE s.GamePath = Games.Path),
+                LastPlayedUnixMilliseconds = max(
+                    COALESCE(LastPlayedUnixMilliseconds, 0),
+                    (SELECT MAX(s.StartedUnixMilliseconds) FROM PlaySessions s WHERE s.GamePath = Games.Path))
+            WHERE Id = $id AND Path IN (SELECT GamePath FROM PlaySessions WHERE GamePath IS NOT NULL);
+
+            UPDATE PlaySessions
+            SET GameId = $id, GamePath = NULL
+            WHERE GamePath IS NOT NULL AND GamePath = (SELECT Path FROM Games WHERE Id = $id);
+            """;
+        var id = command.Parameters.Add("$id", SqliteType.Integer);
+        foreach (var addedId in addedIds)
+        {
+            id.Value = addedId;
+            command.ExecuteNonQuery();
+        }
     }
 
     public void UpdateTitle(long gameId, string title)
@@ -647,12 +896,19 @@ public sealed class GameLibrary : IGameLibrary
 
         using var connection = _database.CreateConnection();
         using var transaction = connection.BeginTransaction();
+        using var keepSessions = connection.CreateCommand();
+        keepSessions.Transaction = transaction;
+        keepSessions.CommandText = KeepSessionsOfRemovedGamesSql("$id");
+        var keepId = keepSessions.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Integer);
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = "DELETE FROM Games WHERE Id = $id;";
         var id = command.Parameters.Add("$id", Microsoft.Data.Sqlite.SqliteType.Integer);
         foreach (var gameId in gameIds.Distinct())
         {
+            // The play log outlives the library record (only EmuShelf's own rows change; no file is touched).
+            keepId.Value = gameId;
+            keepSessions.ExecuteNonQuery();
             id.Value = gameId;
             command.ExecuteNonQuery();
         }

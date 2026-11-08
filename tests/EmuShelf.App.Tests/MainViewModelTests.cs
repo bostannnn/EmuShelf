@@ -1854,7 +1854,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
+            ["Search", "Activity", "Settings", "Switch to Desktop mode", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
 
         vm.RequestDesktopModeFromGamepadCommand.Execute(null);
@@ -1920,7 +1920,7 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
         Assert.Equal(GamepadOverlayKind.SystemMenu, vm.GamepadOverlay);
         Assert.Equal(
-            ["Search", "Add games", "Settings", "Quit EmuShelf"],
+            ["Search", "Add games", "Activity", "Settings", "Quit EmuShelf"],
             vm.GamepadOverlayOptions.Select(option => option.Label));
         Assert.DoesNotContain(vm.GamepadOverlayOptions, option => option.Label == "Switch to Desktop mode");
         Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
@@ -3155,6 +3155,166 @@ public class MainViewModelTests : IDisposable
         await refresh.Called.WaitAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(4321, refresh.GameId);
+    }
+
+    [AvaloniaFact]
+    public async Task LaunchGame_TrackedExit_ClosesThePlaySessionWithTheProcessRuntime()
+    {
+        // M46: the desktop path opens a session at launch and closes it at the tracked exit.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(
+                new GameLaunchResult(true, "Alpha finished", ProcessExited: true, PlayDuration: TimeSpan.FromMinutes(7))));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(7), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.TrackedProcess, session.Measurement);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.FromMinutes(7), stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_ClosesTheLaunchOpenSession_AsAWallClockEstimate()
+    {
+        // M46: the Android path leaves the session open at launch (no process to await) and closes that
+        // same row on return rather than adding another.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+        Assert.Null(Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromMinutes(25));
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(25), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.WallClockEstimate, session.Measurement);
+        Assert.Equal(TimeSpan.FromMinutes(25), _library.GetGames().Single().Playtime);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_WithNoOpenSession_RecordsTheReturnedPlay()
+    {
+        // Steam (GameNative) launches on Android skip the pre-launch callback that opens the session, and a
+        // pending record can predate the play log; the returned minutes must still be kept.
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromMinutes(40));
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromMinutes(40), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.WallClockEstimate, session.Measurement);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.FromMinutes(40), stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_MeasuredOnScreenTime_IsKeptBeyondTwelveHours()
+    {
+        // The cap guards the wall-clock estimate; usage access measures real on-screen time (M46 P2).
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromHours(13), PlaySessionMeasurement.UsageAccess);
+
+        var session = Assert.Single(_library.GetPlaySessions(game.Id));
+        Assert.Equal(TimeSpan.FromHours(13), session.Duration);
+        Assert.Equal(PlaySessionMeasurement.UsageAccess, session.Measurement);
+    }
+
+    [AvaloniaFact]
+    public async Task GamepadMenuActivity_OpensThePlayLog_AndBClosesIt()
+    {
+        var vm = CreateViewModel();
+        vm.IsGamepadMode = true;
+
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Menu));
+        Assert.Contains("Activity", vm.GamepadOverlayOptions.Select(option => option.Label));
+        await vm.OpenActivityCommand.ExecuteAsync(null);
+
+        Assert.Equal(GamepadOverlayKind.Activity, vm.GamepadOverlay);
+        Assert.NotNull(vm.GamepadActivity);
+        Assert.True(vm.GamepadActivity!.IsTimeline);
+        Assert.True(vm.DispatchGamepadAction(GamepadAction.Cancel));
+        Assert.Equal(GamepadOverlayKind.None, vm.GamepadOverlay);
+        Assert.Null(vm.GamepadActivity);
+    }
+
+    [AvaloniaFact]
+    public async Task PlayHistory_OnDesktop_OpensTheWindowOnThatGamesPage()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel();
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+
+        await game.OpenPlayHistoryCommand.ExecuteAsync(game);
+
+        var shown = Assert.Single(_dialogs.ShownActivities);
+        Assert.True(shown.IsGamePage);
+        Assert.Equal(game.Model.Title, shown.GameTitle);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_AMeasuredZero_ClosesTheSessionAtZero()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.Zero, PlaySessionMeasurement.UsageAccess);
+
+        Assert.Equal(TimeSpan.Zero, Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+    }
+
+    [AvaloniaFact]
+    public async Task CompleteDeferredPlaySession_BeyondTwelveHours_LeavesThePlayOfUnknownLength()
+    {
+        var folder = MakeRomsFolder();
+        _dialogs.FilesToReturn = [Path.Combine(folder, "Alpha.cue")];
+        _dialogs.SystemToReturn = Ps1;
+        var vm = CreateViewModel(
+            launchService: new RecordingLaunchService(new GameLaunchResult(true, "Launched Alpha")));
+        await vm.AddGamesCommand.ExecuteAsync(null);
+        var game = vm.Games.Single();
+        await vm.LaunchGameCommand.ExecuteAsync(game);
+
+        await vm.CompleteDeferredPlaySessionAsync(game.Id, TimeSpan.FromHours(30));
+
+        Assert.Null(Assert.Single(_library.GetPlaySessions(game.Id)).Duration);
+        var stored = _library.GetGames().Single();
+        Assert.Equal(TimeSpan.Zero, stored.Playtime);
+        Assert.Equal(1, stored.PlayCount);
     }
 
     [AvaloniaFact]

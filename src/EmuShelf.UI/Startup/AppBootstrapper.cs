@@ -162,7 +162,10 @@ public sealed class AppBootstrapper
 
         Systems = KnownSystems.All;
         Emulators = KnownEmulators.All;
-        Library = new GameLibrary(database, PathResolver);
+        Library = new GameLibrary(
+            database,
+            PathResolver,
+            new FileDeviceIdentity(Path.Combine(Paths.SettingsDirectory, "device.json"), Logger));
         MetadataStore = new SqliteGameMetadataStore(database, PathResolver);
         GameDetailsStore = new SqliteGameDetailsStore(database, PathResolver);
         ScrapeProviders = new GameScrapeProviderRegistry(KnownScrapeProviders.All);

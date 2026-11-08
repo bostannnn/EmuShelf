@@ -1,0 +1,263 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             x:Class="EmuShelf.App.Views.ActivityView"
+             x:Name="Root"
+             x:DataType="vm:ActivityViewModel">
+    <!-- The play log (M46 P3), shared by the Desktop window and the Gamepad overlay. Rows are buttons so a
+         click and the Gamepad ring (IsFocused) do the same thing; the session editor sits over the list. -->
+    <UserControl.Styles>
+        <Style Selector="Button.activity-row">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="CornerRadius" Value="9" />
+            <Setter Property="Background" Value="{DynamicResource EmuCardBrush}" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="Button.activity-row.focused">
+            <Setter Property="BorderBrush" Value="{DynamicResource EmuAccentBrush}" />
+        </Style>
+        <Style Selector="Button.activity-tab">
+            <Setter Property="Padding" Value="14,6" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextSecondaryBrush}" />
+        </Style>
+        <Style Selector="Button.activity-tab.selected">
+            <Setter Property="Background" Value="{DynamicResource EmuAccentBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuWindowBackgroundBrush}" />
+        </Style>
+        <Style Selector="TextBlock.activity-label">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="LetterSpacing" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource EmuTextTertiaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*" RowSpacing="14">
+        <!-- Title and page tabs -->
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <Button Classes="activity-tab" Content="‹ Back" IsVisible="{Binding IsGamePage}"
+                        Command="{Binding GoBackCommand}" />
+                <TextBlock Text="{Binding Title}" FontSize="26" FontWeight="Bold" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button Classes="activity-tab" Classes.selected="{Binding IsTimeline}" Content="Timeline"
+                        Command="{Binding ShowTimelineCommand}" />
+                <Button Classes="activity-tab" Classes.selected="{Binding IsRanking}" Content="Most played"
+                        Command="{Binding ShowRankingCommand}" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Per-page bar: the week, the ranking order, or the game's numbers -->
+        <Panel Grid.Row="1">
+            <Grid IsVisible="{Binding IsTimeline}" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <Button Classes="activity-tab" Content="‹" Command="{Binding OlderWeekCommand}" ToolTip.Tip="Earlier week" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding WeekLabel}" FontSize="18" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding WeekTotalText}" FontSize="15" VerticalAlignment="Center"
+                               Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                </StackPanel>
+                <Button Grid.Column="2" Classes="activity-tab" Content="›" Command="{Binding NewerWeekCommand}"
+                        IsEnabled="{Binding CanShowNewerWeek}" ToolTip.Tip="Later week" />
+            </Grid>
+            <StackPanel IsVisible="{Binding IsRanking}" Orientation="Horizontal" Spacing="10">
+                <Button Classes="activity-tab" Content="‹" Command="{Binding CycleMetricCommand}">
+                    <Button.CommandParameter><x:Int32>-1</x:Int32></Button.CommandParameter>
+                </Button>
+                <TextBlock Text="{Binding RankingMetricLabel}" FontSize="18" FontWeight="SemiBold"
+                           VerticalAlignment="Center" />
+                <Button Classes="activity-tab" Content="›" Command="{Binding CycleMetricCommand}">
+                    <Button.CommandParameter><x:Int32>1</x:Int32></Button.CommandParameter>
+                </Button>
+            </StackPanel>
+            <StackPanel IsVisible="{Binding IsGamePage}" Spacing="8">
+                <UniformGrid Columns="5">
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="activity-label" Text="PLAY TIME" />
+                        <TextBlock Text="{Binding GameTotalText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="activity-label" Text="PLAYED" />
+                        <TextBlock Text="{Binding GamePlaysText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="activity-label" Text="AVERAGE" />
+                        <TextBlock Text="{Binding GameAverageText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="activity-label" Text="FIRST PLAYED" />
+                        <TextBlock Text="{Binding GameFirstPlayedText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <StackPanel Spacing="2">
+                        <TextBlock Classes="activity-label" Text="LAST PLAYED" />
+                        <TextBlock Text="{Binding GameLastPlayedText}" FontSize="18" FontWeight="SemiBold" />
+                    </StackPanel>
+                </UniformGrid>
+                <TextBlock Text="{Binding GameEarlierText}" IsVisible="{Binding HasGameEarlierPlay}" FontSize="13"
+                           Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+            </StackPanel>
+        </Panel>
+
+        <Panel Grid.Row="2">
+            <ScrollViewer x:Name="RowsScroller" VerticalScrollBarVisibility="Auto">
+                <Panel Margin="0,0,10,0">
+                    <!-- Timeline: days, newest first, each with its sessions -->
+                    <StackPanel IsVisible="{Binding IsTimeline}" Spacing="14">
+                        <TextBlock IsVisible="{Binding IsWeekEmpty}" FontSize="15"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                   Text="No games played this week." />
+                        <ItemsControl ItemsSource="{Binding Days}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ActivityDayViewModel">
+                                    <StackPanel Spacing="6" Margin="0,0,0,12">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding Label}" FontSize="16" FontWeight="Bold" />
+                                            <TextBlock Grid.Column="1" Text="{Binding TotalText}" FontSize="15"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                        </Grid>
+                                        <ItemsControl ItemsSource="{Binding Sessions}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:ActivitySessionViewModel">
+                                                    <Button Classes="activity-row" Classes.focused="{Binding IsFocused}"
+                                                            Command="{Binding #Root.((vm:ActivityViewModel)DataContext).OpenRowCommand}"
+                                                            CommandParameter="{Binding}">
+                                                        <Button.ContextMenu>
+                                                            <ContextMenu>
+                                                                <MenuItem Header="Edit length or delete…"
+                                                                          Command="{Binding EditCommand}" />
+                                                            </ContextMenu>
+                                                        </Button.ContextMenu>
+                                                        <Grid ColumnDefinitions="90,*,Auto,Auto" ColumnSpacing="12">
+                                                            <TextBlock Text="{Binding WhenText}" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding GameTitle}" FontSize="15"
+                                                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <TextBlock Grid.Column="2" Text="{Binding NoteText}" FontSize="12"
+                                                                       IsVisible="{Binding HasNote}" VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                                            <TextBlock Grid.Column="3" Text="{Binding LengthText}" FontSize="15"
+                                                                       VerticalAlignment="Center" />
+                                                        </Grid>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- Ranking -->
+                    <StackPanel IsVisible="{Binding IsRanking}">
+                        <TextBlock IsVisible="{Binding IsRankingEmpty}" FontSize="15"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}"
+                                   Text="Nothing played yet." />
+                        <ItemsControl ItemsSource="{Binding RankItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ActivityRankItemViewModel">
+                                    <Button Classes="activity-row" Classes.focused="{Binding IsFocused}"
+                                            Command="{Binding #Root.((vm:ActivityViewModel)DataContext).OpenRowCommand}"
+                                            CommandParameter="{Binding}">
+                                        <Grid ColumnDefinitions="40,*,Auto,Auto" ColumnSpacing="12">
+                                            <TextBlock Text="{Binding Place}" FontSize="15" FontWeight="Bold"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                            <TextBlock Grid.Column="1" Text="{Binding Title}" FontSize="15"
+                                                       FontWeight="SemiBold" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Grid.Column="2" Text="{Binding DetailText}" FontSize="13"
+                                                       VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                                            <TextBlock Grid.Column="3" Text="{Binding ValueText}" FontSize="15"
+                                                       FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- One game's sessions -->
+                    <ItemsControl IsVisible="{Binding IsGamePage}" ItemsSource="{Binding GameSessions}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ActivitySessionViewModel">
+                                <Button Classes="activity-row" Classes.focused="{Binding IsFocused}"
+                                        Command="{Binding EditCommand}">
+                                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                                        <TextBlock Text="{Binding WhenText}" FontSize="15" VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="1" Text="{Binding NoteText}" FontSize="12"
+                                                   IsVisible="{Binding HasNote}" VerticalAlignment="Center"
+                                                   Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding LengthText}" FontSize="15"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Panel>
+            </ScrollViewer>
+
+            <!-- The session editor, over the list -->
+            <Border IsVisible="{Binding IsEditing}" Background="#99000000" CornerRadius="12">
+                <Border HorizontalAlignment="Center" VerticalAlignment="Center" Width="440" Padding="24"
+                        CornerRadius="14" Background="{DynamicResource EmuPopoverBrush}"
+                        BorderBrush="{DynamicResource EmuStrongBorderBrush}" BorderThickness="2">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="{Binding EditingSession.GameTitle}" FontSize="20" FontWeight="Bold"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding EditingSession.FullWhenText}"
+                                   Foreground="{DynamicResource EmuTextSecondaryBrush}" />
+                        <StackPanel IsVisible="{Binding !IsConfirmingDelete}" Spacing="14">
+                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+                                <Button Classes="activity-tab" Content="−10" Command="{Binding AdjustEditCommand}">
+                    <Button.CommandParameter><x:Int32>-10</x:Int32></Button.CommandParameter>
+                </Button>
+                                <Button Grid.Column="1" Classes="activity-tab" Content="−1" Command="{Binding AdjustEditCommand}">
+                    <Button.CommandParameter><x:Int32>-1</x:Int32></Button.CommandParameter>
+                </Button>
+                                <TextBlock Grid.Column="2" Text="{Binding EditLengthText}" FontSize="26" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Button Grid.Column="3" Classes="activity-tab" Content="+1" Command="{Binding AdjustEditCommand}">
+                    <Button.CommandParameter><x:Int32>1</x:Int32></Button.CommandParameter>
+                </Button>
+                                <Button Grid.Column="4" Classes="activity-tab" Content="+10" Command="{Binding AdjustEditCommand}">
+                    <Button.CommandParameter><x:Int32>10</x:Int32></Button.CommandParameter>
+                </Button>
+                            </Grid>
+                            <TextBlock Text="← → change by a minute · LB RB by ten" FontSize="12" HorizontalAlignment="Center"
+                                       Foreground="{DynamicResource EmuTextTertiaryBrush}" />
+                            <StackPanel Spacing="6">
+                                <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsSaveFocused}"
+                                        Content="Save length" Command="{Binding SaveEditCommand}" />
+                                <Button Classes="gamepad-modal-option destructive" Classes.focused="{Binding IsDeleteFocused}"
+                                        Content="Delete session" Command="{Binding DeleteEditCommand}" />
+                                <Button Classes="gamepad-modal-option" Classes.focused="{Binding IsCancelFocused}"
+                                        Content="Cancel" Command="{Binding CancelEditCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                        <StackPanel IsVisible="{Binding IsConfirmingDelete}" Spacing="14">
+                            <TextBlock TextWrapping="Wrap" FontSize="15"
+                                       Text="Delete this session? Its time and the play come off the game's totals. Your game files are not touched." />
+                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                <Button Classes="gamepad-modal-option" Content="Keep" Command="{Binding GoBackCommand}" />
+                                <Button Classes="gamepad-modal-option destructive focused" Content="Delete"
+                                        Command="{Binding DeleteEditCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Border>
+        </Panel>
+    </Grid>
+</UserControl>

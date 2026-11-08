@@ -13436,3 +13436,115 @@ browsed and arranged by touch alone". Finished in the same branch, before H4 was
   `Settings/handheld-home.json`. Not driven on the device: Play from the Title page (it would start an
   emulator; covered headlessly) and the dock's buttons. The test edits were reverted afterwards (the file
   deleted, so home is the default again).
+
+## 2026-11-08 — M46 P1: how the sessions table is kept in step with the totals
+
+The P1 slice of the play log. The choices the roadmap left open:
+
+- **Earlier play is derived, not stored.** It is the game's totals minus what its sessions account for
+  (`GamePlayHistory.From`), so there is no second set of columns to keep right. The invariant is that every
+  write moves the session row and the totals in the same transaction: `RecordLaunchStarted` opens the row,
+  stamps last-played and adds one play; `CompletePlaySession` closes it and adds its seconds. `AddPlaytime`
+  is gone; nothing adds time without a session any more.
+- **Closing a row is idempotent.** Only an open row closes, so the same session can never add its
+  minutes twice. A zero or negative span closes the row at zero rather
+  than leaving it open; a session the Android path drops as implausible (over 12 h) stays open, which is
+  what "a play of unknown length" means.
+- **Android finds its session instead of carrying its id.** The launch service writes the pending record,
+  but the row is opened in the view model's `beforeStart` callback, and the launch interface has no way to
+  hand an id back. Changing that delegate touches every launcher and fake for no gain: Android keeps at
+  most one pending session, written just after its row was opened, so on return the game's newest open
+  session *is* that launch's. When none is open, the returned play is recorded as a finished session
+  (started its duration ago): Steam launches through GameNative skip the pre-launch callback that opens
+  the row, and a pending record can predate v21. That also counts the Steam play, which M43 never did.
+  The cost: a return retried because its pending record failed to clear finds no open row and adds a
+  second session, as M43 double-added in the same case. That file delete in app-private storage
+  essentially never fails, while losing every Android Steam session is certain.
+- **A desktop launch that never reports a tracked exit stays open**, a play of unknown length, the same
+  as a killed session. Nothing closes it later.
+- **Removing a game keeps its sessions; re-adding the same file relinks them.** The rows carry no foreign
+  key. On removal the game's stored path and latest title are stamped on its sessions; when a game is later
+  inserted at that path (any import path, compared case-insensitively like `Games.Path`; only rows the
+  import itself inserted, so a game that just moved there by a folder relocation never takes them), the
+  sessions move to the new id and their count, time and latest start are *added* to its totals. Games ids are
+  AUTOINCREMENT, so an orphaned session can never attach to an unrelated game by id. Play from before the
+  log lived only on the removed row and is not recovered.
+- **The device id is `Settings/device.json`**, a random id made on first use and kept with the portable
+  folder. Copying a whole install to a second machine therefore copies its id too; a sync (later, beside
+  M33) must treat two installs that share an id as one device. A damaged file gets a fresh id.
+- **Running the desktop app from a worktree on macOS** writes to `~/Library/Application Support/EmuShelf`,
+  the owner's real library. To check the upgrade without touching it, the Release build was started with
+  `HOME` pointed at a scratch folder (and `DOTNET_ROOT` at the user-local SDK). The Debug build doesn't
+  start that way: `AvaloniaUI.DiagnosticsSupport` is `PrivateAssets="All"` in `EmuShelf.UI`, so it's never
+  copied beside the desktop head, yet Debug attaches the dev tools. It's not fixed here (outside P1).
+
+## 2026-11-08 — M46 P2: timing Android play by the emulator's on-screen time
+
+With Usage access granted, an Android session's length is the time the emulator's activities were
+resumed with the screen on, between the launch and EmuShelf's return. The rest:
+
+- **The grant is the opt-in; there is no setting.** The Library row "Accurate play time" shows whether
+  Usage access is granted, and A opens Android's Usage access screen (package-scoped where the firmware
+  resolves it), which is also where it is turned off. A separate toggle would only add a state where access
+  is granted and ignored. The grant is cached and re-read on return, like the Shizuku probe.
+- **The calculation is in Core** (`ForegroundTime.Measure`, `DeferredPlayTiming.Resolve`) so it is tested
+  on macOS, including a real Thor session from `dumpsys usagestats`. The Thor reports a sleep as
+  SCREEN_NON_INTERACTIVE a second before the activity's PAUSED and STOPPED, and a wake as INTERACTIVE and
+  RESUMED in the same second; RetroArch was seen leaving with STOPPED and no PAUSED. So the reader passes
+  PAUSED and STOPPED as pauses, and a screen-off ends any sitting on its own, in case an emulator keeps an
+  activity resumed. Several resumed activities of one app count once. A game still resumed at the return
+  (its own display on a dual-screen device) counts up to the return.
+- **No events of the emulator in the window means unknown, not zero.** Android keeps usage events for a
+  few days, so a return long after process death may find none; the session then keeps the wall-clock
+  estimate, marked as one. If the oldest events have aged out mid-session the first event seen can be a
+  pause, which is credited from the launch: the best reading left, and rare.
+- **The 12-hour cap now applies only to estimates.** It existed because a wall-clock gap after process
+  death can be days; measured on-screen time is real however long.
+- **"About" labelling waits for P3.** P2 stores how each session was measured, but no screen lists
+  sessions yet, and a game's total mixes measured time, estimates and earlier play, so totals stay plain.
+- **Android 10 (API 29) and later only.** The activity event types it relies on start there; below it the
+  row is not offered and play keeps the estimate. The Thor runs 13.
+- **Installed on the Thor only after M45 H4 finished.** That agent had installed its own build minutes
+  before and was testing on the device, so this one waited. The in-app grant and a session timed by the
+  app are the remaining device check; the row is reached from Gamepad mode until M45 H6a.
+- **A Debug APK installed with plain `adb install -r` runs the previous build's code.** .NET Android Debug
+  builds use fast deployment: the APK leaves out the app's assemblies, which `-t:Install` pushes to the
+  device separately, so a bare `adb install` kept the M45 build's assemblies (the library stayed at schema
+  20). Deploy Debug builds with `-t:Install`, as `docs/android-port-plan.md` says, or embed the assemblies
+  in the APK.
+
+## 2026-11-08 — M46 P3: the Activity screen
+
+The play log as a screen: a week's timeline, a "Most played" ranking, and one game's page, with sessions
+corrected or deleted from the timeline or the game page.
+
+- **One view model and one view for both modes.** `ActivityViewModel` and `ActivityView` serve the
+  Desktop `ActivityWindow` and the Gamepad overlay (`GamepadOverlayKind.Activity`). Rows are buttons whose
+  focus ring follows the view model, so a click and the D-pad do the same thing. Desktop opens it from a
+  toolbar button and a game's context menu ("Play history…"); Gamepad from the Start menu ("Activity")
+  and the Y sheet ("Play history"). Handheld mode gets its own tile in P4.
+- **The timeline lists sessions, not per-game sums.** The roadmap said "each day's games and minutes";
+  a day shows each sitting with its time and length under the day's total instead, because a session is
+  what can be edited or deleted, and a sum per game would hide the one to fix.
+- **Paged by week.** One week loads at a time (the culture's first day of the week, local midnight to
+  midnight); ← → or the arrows move a week. The current week has no "later" step.
+- **The average is play time over plays**, from the same totals the library shows, so a game page, the
+  ranking and the list columns agree. It counts earlier play and plays of unknown length; averaging only
+  logged sessions with a known length would give a game page a different number from the ranking.
+- **Editing.** Lengths are set in whole minutes (0 to 24 h) and marked `Edited`; the game's play time
+  moves by the difference. Editing an open session gives it a length. Deleting one takes a play and its
+  time off the totals; last-played falls back to the newest remaining session when it was that one, is
+  cleared when no plays remain, and is kept when only plays from before the log remain (their time is
+  unknown). Deleting asks first, in the editor, which names what changes and that no game file is touched.
+- **Estimates read "about 25m"** rather than carrying a separate "estimate" note; an edited session and
+  a session of unknown length ("?") get a note. This is the P2 promise to label estimates.
+- **B goes back where you came from.** A game page reached from the timeline or the ranking backs out to
+  it; one opened straight from a game ("Play history") closes the screen, like the other Y-sheet overlays.
+- **Each session row carries its own edit command.** The Desktop row's context menu lives in a popup, outside
+  the view's name scope, so it can't reliably reach the screen's view model by name.
+- **Removed games stay on the timeline** marked "(removed)", but cannot be opened or ranked: the ranking
+  and game pages read the library, which no longer has them.
+- **Verified by rendering.** No desktop control was available to click through the app, so every page
+  (Desktop timeline, ranking, game page, editor; Gamepad timeline and editor) is rendered headlessly by
+  `ActivitySnapshotTests`; with `EMUSHELF_SNAPSHOT_DIR` set they are written as PNGs.
+

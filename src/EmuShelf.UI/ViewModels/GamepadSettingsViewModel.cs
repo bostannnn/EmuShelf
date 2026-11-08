@@ -287,6 +287,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     private bool _secondScreenReadyRead;
     private bool _cachedSecondScreenReady;
     private bool _storageGrantedRead;
+    private readonly IAppUsageAccess? _usageAccess;
+    private readonly IRelayCommand _requestUsageAccessCommand;
+    private bool _usageAccessGranted;
+    private bool _usageAccessRead;
     private bool _cachedStorageGranted;
     // Ordinary Settings only: the Library row that re-runs the wizard on demand (Android).
     private readonly IAsyncRelayCommand? _runSetupCommand;
@@ -601,6 +605,20 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         }
     }
 
+    // A binder round trip, changed only on Android's Usage access screen: read once, re-read on return.
+    private bool UsageAccessGranted
+    {
+        get
+        {
+            if (!_usageAccessRead)
+            {
+                _usageAccessGranted = _usageAccess?.IsGranted ?? false;
+                _usageAccessRead = true;
+            }
+            return _usageAccessGranted;
+        }
+    }
+
     /// <summary>The display name of the platform's chosen Android emulator when it is not installed on this
     /// device, else null. Only standalone-app choices are probed; RetroArch cores live inside RetroArch.</summary>
     private string? EmulatorMissingFor(EmulatorSettingsRowViewModel row)
@@ -632,6 +650,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _closeOnReturnWarningRead = false;
         _secondScreenReadyRead = false;
         _storageGrantedRead = false;
+        _usageAccessRead = false;
         RebuildRows();
     }
 
@@ -724,9 +743,13 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         Func<Task>? grantCloseOnReturnPrivilege = null,
         Func<Task>? refreshGameCounts = null,
         SetupWizardOptions? setup = null,
-        Func<Task>? runSetup = null)
+        Func<Task>? runSetup = null,
+        IAppUsageAccess? usageAccess = null)
     {
         _settings = settings;
+        _usageAccess = usageAccess;
+        // The grant is made on Android's own screen; the answer is read again on return (RefreshDeviceState).
+        _requestUsageAccessCommand = new RelayCommand(() => _usageAccess?.RequestGrant());
         _setup = setup;
         _runSetupCommand = runSetup is null || setup is not null ? null : new AsyncRelayCommand(runSetup);
         _gameCountBySystem = gameCountBySystem;
@@ -1727,6 +1750,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 // writes under the data folder — the same reason Save/Cancel gate on IsBusy.
                 enabled: !_settings.IsBusy,
                 GamepadSettingsRowKind.Folder,
+                excludeFromParity: true);
+        }
+        // Android only (M46 P2): without Usage access, play time is the gap until EmuShelf comes back, so a
+        // sleeping device counts as play. The grant itself is the opt-in; A opens Android's screen either
+        // way, which is also where it is turned off. Surface-specific, so excluded from parity.
+        if (_usageAccess is not null)
+        {
+            var granted = UsageAccessGranted;
+            yield return ActionRow(
+                "general.accurate-playtime",
+                "Accurate play time",
+                granted
+                    ? "Counts only the time a game is on screen · A opens Usage access"
+                    : "Allow Usage access so sleep and other apps don't count as play",
+                granted ? "On" : "A ALLOW",
+                _requestUsageAccessCommand,
+                enabled: true,
                 excludeFromParity: true);
         }
         if (_runSetupCommand is not null)

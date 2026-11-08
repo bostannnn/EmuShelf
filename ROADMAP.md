@@ -2497,7 +2497,7 @@ Played. Pad input already reaches one dispatcher from both displays
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
 
-## M46 — Play log: sessions, accurate handheld timing, an Activity screen (planned)
+## M46 — Play log: sessions, accurate handheld timing, an Activity screen (in progress)
 
 Builds on M43, whose two totals per game (`Games.PlaytimeSeconds`, `Games.PlayCount`) can't say when
 a game was played or for how long each time. The goal is what the 3DS Activity Log and Cocoon's Log
@@ -2518,7 +2518,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
   session whose EmuShelf was killed adds no time at all.
 - **Per-device totals can't be merged** later by a sync, and a wrong session can't be corrected.
 
-- [ ] **P1 — the sessions table.** Schema v21: `PlaySessions` (id, game id, started at UTC, duration
+- [x] **P1 — the sessions table.** ✅ (2026-11-08; built and tested on macOS, the v20 → v21 upgrade
+      checked in the Release app against a scratch library; the launch-and-exit path is covered by
+      view-model tests with the real library, not by a hands-on launch, and the Thor check is still to
+      come. Choices in `DECISIONS.md` 2026-11-08 "M46 P1".) Schema v21: `PlaySessions` (id, game id, started at UTC, duration
       in seconds or null while open, device id, how the duration was measured: tracked process / usage
       access / wall-clock estimate / edited). A row is inserted at launch where `RecordLaunchStarted`
       runs today, and closed where `AddPlaytime` runs (desktop exit, Android
@@ -2533,7 +2536,14 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       Tests: migration from v20 with existing totals, open and closed rows, cache consistency, an
       unclosed row after a simulated kill, removal keeps history. **Exit:** on macOS and the Thor every
       launch writes one row, and the totals match the sum of the rows plus earlier play.
-- [ ] **P2 — accurate timing on Android through Usage access.** An opt-in "Accurate play time" row in
+- [x] **P2 — accurate timing on Android through Usage access.** ✅ (2026-11-08; built and tested on
+      macOS, the Android head compiles with no new warnings, and the timing is checked against a real
+      Thor session read with `dumpsys usagestats`: three sleeps in 98.6 wall-clock minutes, 28:58 on
+      screen. Installed on the Thor at 13:05 once M45 H4 was done: the owner's library (1001 games)
+      upgraded to schema 21 and the app starts cleanly. Still open on the device: granting access in the
+      new row and a session timed by the app itself. The row is in Gamepad mode's Settings (Library);
+      Handheld mode can't reach Settings until M45 H6a.
+      Choices in `DECISIONS.md` 2026-11-08 "M46 P2".) An opt-in "Accurate play time" row in
       Settings (Library) that explains the permission and opens Android's Usage access page, as Cocoon
       does. Granted: the session's length is the time the emulator's package was actually in the
       foreground between launch and return, from `UsageStatsManager` activity resumed / paused events,
@@ -2542,7 +2552,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       "about" wherever it shows. Behind an interface in Core so the computation from a list of events is
       unit-tested on macOS. **Exit:** on the Thor, a session with the screen asleep in the middle records
       only the awake minutes, checked against `adb shell dumpsys usagestats`.
-- [ ] **P3 — the Activity screen (Desktop and Gamepad).** A day-by-day timeline (each day's games and
+- [x] **P3 — the Activity screen (Desktop and Gamepad).** ✅ (2026-11-08; built and tested on macOS;
+      every page rendered headlessly at Desktop and Gamepad sizes by `ActivitySnapshotTests`. Not yet
+      used on a real week of Thor play; that check waits for the device testing together with P2. Choices
+      in `DECISIONS.md` 2026-11-08 "M46 P3".) A day-by-day timeline (each day's games and
       minutes, newest first, with a week total); a page per game with total, times played, average per
       session, first and last played and its recent sessions; a ranking by total time, times played or
       average. Edit a session's length or delete it from the timeline or the game page (Y / long press
