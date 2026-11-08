@@ -165,6 +165,23 @@ must NOT prompt for the config folder (it finds `games.yml` beside the exe).
 
 ---
 
+## Play log (M46) — pending
+
+Desktop and Thor checks for the play log, to run together. Verify rows with
+`SELECT GameTitle, datetime(StartedUnixMilliseconds/1000,'unixepoch'), DurationSeconds, Measurement FROM PlaySessions ORDER BY Id DESC;`
+(Measurement: 1 tracked process, 2 usage access, 3 estimate, 4 edited).
+
+| # | Step | Result | Evidence |
+| --- | --- | --- | --- |
+| 1 | Desktop: launch a game, play a few minutes, quit the emulator; one row with the runtime (Measurement 1) | | |
+| 2 | Desktop: toolbar **Activity** shows the session under Today with the week total | | |
+| 3 | Desktop: right-click a game → **Play history…** opens its page with totals and sessions | | |
+| 4 | Desktop: edit a session's length and delete another; totals in the list columns follow | | |
+| 5 | Gamepad: Start → **Activity**; ← → change week, LB/RB switch pages, Y edits, B backs out | | |
+| 6 | Thor: Settings → Library → **Accurate play time** opens Usage access; the row reads **On** after granting | | |
+| 7 | Thor: launch a game, sleep the device a few minutes mid-game, return; the log line shows on-screen time well under the wall clock (Measurement 2) | | `Play session for …` in `Logs/` |
+| 8 | Thor: compare that length with `adb shell dumpsys usagestats` for the emulator package | | |
+
 ## Findings & fixes
 
 | ID | Area | Description | Status |

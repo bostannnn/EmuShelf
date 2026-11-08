@@ -989,6 +989,12 @@ dropped, but the launch was already stamped last-played + play-count at start. S
 Still deferred: an API-<29 `OnResume` fallback (the Thor is 33), and the actual save data to push
 (E-android). Remaining B core below is the testable groundwork under this:
 
+*Update, M46 (2026-11-08):* each launch now also opens a row in the play log (`PlaySessions`, schema
+v21), which the return closes. With Usage access granted the length is the emulator's on-screen time
+from `UsageStatsManager` events, so sleep and other apps no longer count; without it the wall-clock
+figure above remains, stored as an estimate. The 12 h cap now applies only to that estimate. See
+`DECISIONS.md` 2026-11-08 "M46 P1" and "M46 P2".
+
 The testable core of B is in and green in the desktop suite (41 new unit tests): `AndroidLaunchProfile` + `AndroidEmulatorLaunchProfiles` encode the
 measured per-emulator intents (DuckStation/ARMSX2/Dolphin/PPSSPP/Azahar/WatermelonDS/RetroArch);
 `AndroidIntentFactory` and `AndroidLaunchResolver` are pure functions turning (system, game path,
@@ -1524,6 +1530,11 @@ Build and install on the Thor (from `src/EmuShelf.App.Android`):
 ```bash
 ~/.dotnet/dotnet build -t:Install -c Debug -p:AndroidSdkDirectory=$HOME/Library/Android/sdk_new "-p:JavaSdkDirectory=/Applications/Android Studio.app/Contents/jbr/Contents/Home" -p:AdbTarget="-s 2fd555f4"
 ```
+
+Use `-t:Install`, not a plain `adb install -r` of the APK. Debug builds use fast deployment: the APK
+leaves out the app's assemblies and `-t:Install` pushes them to the device separately, so a bare
+`adb install` of a Debug APK keeps running whatever assemblies the previous Debug install pushed
+(found 2026-11-08, `DECISIONS.md` "M46 P2").
 
 The original setup, kept for history:
 

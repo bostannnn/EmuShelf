@@ -11,6 +11,10 @@ removable media, so other apps with access to that location may also read it. Ke
 backups of this folder and your emulator saves. Choosing another data folder does
 not erase the previous folder.
 
+The library database also keeps a play log: which game you launched, when, and for how long. It
+stays in that folder and is never uploaded. You can correct or delete any session from **Activity**,
+and removing a game keeps its sessions until you delete them there.
+
 Account credentials use the provider's credential store; do not share credential files
 or your complete Settings folder when asking for help. Logs and library files can
 include local paths and game titles. Review them before sharing.
@@ -44,6 +48,11 @@ an achievements or cloud account.
   if you want that second-screen behavior; disable it in Android Accessibility Settings.
 - **Optional Shizuku access:** permits closing a launched emulator when you return, if
   you enable that option. EmuShelf can still be used without Shizuku.
+- **Optional usage access:** with your grant on Android's Usage access screen (Settings → Library →
+  Accurate play time), EmuShelf reads when the launched emulator was on screen, so play time leaves
+  out sleep and other apps. It uses only the launched emulator's on-screen events and the screen
+  turning off, reads them only when you return from a game, and keeps only the resulting length. Without it, play time is the time from
+  launch until you come back. Revoke it on the same Android screen.
 - **Foreground service:** keeps the companion display available during a game session.
   Its notification returns to EmuShelf when tapped.
 
