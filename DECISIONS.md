@@ -14279,3 +14279,39 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   `AppSettings.HandheldLook` (a string in settings.json, Classic when absent) and set on
   `HandheldShellViewModel.Look` when Handheld mode starts, as `HandheldSounds` is. There is no save path and no
   Settings row yet; B10 removes Classic (D5).
+
+## 2026-11-13 — M47 R3: M PLUS Rounded 1c ships whole
+
+- **Source:** the Medium (500), Bold (700) and Black (900) files from `google/fonts` `ofl/mplusrounded1c` at commit
+  `bc0a790` ("hotfix v1.060", 2026-11-12), checked against GitHub's blob hashes and opened with fontTools before
+  use. That folder has no `OFL.txt`; the licence text is the one Google Fonts puts in the family's download.
+- **Licence:** SIL Open Font License 1.1, unmodified standard text. It declares **no Reserved Font Name**, and its
+  copy carries no copyright line; the line is in the fonts' name table: "Copyright 2016 The Rounded M+ Project
+  Authors." The shipped `MPLUSRounded1c-OFL.txt` is that line followed by Google's text. For a subset this means:
+  a subset is a Modified Version under the OFL, and with no reserved name it could legally keep its name, provided
+  it ships with this licence and stays under it. That question does not arise, because we ship the files whole.
+- **The name inside the files is "Rounded Mplus 1c"**, not Google Fonts' display name. Avalonia finds the face only
+  by the inside name; `#M PLUS Rounded 1c` throws "Could not create glyphTypeface" rather than falling back. The
+  resource is `avares://EmuShelf.UI/Assets/Fonts/MPLUSRounded1c#Rounded Mplus 1c`, a folder with only these three
+  files so that `FontWeight` picks the file.
+- **Measured:** each weight has 8,546 glyphs and maps 8,201 characters (4,954 of them kanji). Medium 3,432,376
+  bytes, Bold 3,542,384, Black 3,635,260: 10,610,020 for three. Estimates of what that adds to the APK: about
+  4.9 MB deflated (zlib level 9), about 7.0 MB with LZ4, which is how .NET for Android compresses the assembly
+  store the fonts end up in (they are Avalonia resources inside `EmuShelf.UI.dll`). Both are estimates, not an
+  APK build. Against the ~123 MB Release APK that is roughly 4 to 6 percent. The desktop builds carry the same
+  10.6 MB inside `EmuShelf.UI.dll`, because the UI library is shared.
+- **The subset measured:** Basic Latin, Latin-1, Latin Extended-A, General Punctuation, the arrows, geometric shapes
+  and the symbols the Handheld strings use (·, …, ×, −, ≈, ≤, ✓, ▲▼◀▶●, ‹›, “”). 498 glyphs, 464 characters,
+  250,260 bytes for three (99 KB deflated, 136 KB LZ4). It drops all kana, kanji and full-width forms, Cyrillic,
+  Greek, Vietnamese and Latin Extended-B. ▾ (U+25BE, in one desktop Settings string) is not in the font either way.
+  A Latin-plus-Japanese subset saves only 17 percent (Bold 2.9 MB against 3.5 MB), so it was not pursued.
+- **Fallback, rendered through Avalonia headlessly on macOS:** a line mixing Latin, kana, kanji, one kanji the font
+  lacks (鷗) and Hangul was shaped and drawn with each font at all three weights. No glyph came out as a
+  missing-glyph box in either case; Avalonia falls back per glyph run. With the whole font everything but 鷗 and the
+  Hangul stays in this face at the asked weight. With the subset the kana fall to Apple SD Gothic Neo and the kanji
+  to PingFang SC (Chinese forms, Medium whatever the weight), so one Japanese title is drawn in three faces and two
+  weights. Android's fallback (Noto Sans CJK) is expected to behave the same way but was not checked on the device.
+- **Decision: ship whole.** Fallback would keep a subset legible, but Big Type sets the focused name across the Stage
+  at display size, where a title switching face and weight mid-line is plain to see, and Japanese titles are likely in
+  a PS1/PS2 library with imports. Five to seven megabytes is the price of the face holding for them. Not done here:
+  applying the face to any view (B2), and a way to keep the fonts out of the desktop builds if their size matters.

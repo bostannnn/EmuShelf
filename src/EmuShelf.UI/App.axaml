@@ -14,6 +14,13 @@
                  Gamepad shell only; Desktop keeps the default Inter UI font. -->
             <FontFamily x:Key="EmuGamepadFontFamily">avares://EmuShelf.UI/Assets/Fonts/Exo2.ttf#Exo 2</FontFamily>
 
+            <!-- Handheld (Big Type, M47) face: M PLUS Rounded 1c, whole and unmodified, weights 500, 700
+                 and 900 (SIL OFL — see THIRD-PARTY-NOTICES.md). The folder holds only those three files, so
+                 FontWeight picks the file. The name after # is the one inside the files ("Rounded Mplus
+                 1c"); Google Fonts' display name "M PLUS Rounded 1c" does not resolve and throws. Not
+                 applied to any view yet (M47 R3 prepared it; B2 applies it). -->
+            <FontFamily x:Key="EmuHandheldFontFamily">avares://EmuShelf.UI/Assets/Fonts/MPLUSRounded1c#Rounded Mplus 1c</FontFamily>
+
             <!-- Gamepad type scale — deliberately larger than Desktop for TV / Steam Deck viewing
                  distance. The couch library views route their font sizes through these six tokens, so
                  rescaling the whole thing is a matter of nudging these numbers. -->

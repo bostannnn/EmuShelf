@@ -37,6 +37,9 @@
     <None Update="Assets\ThirdParty\Exo2-OFL.txt"
           CopyToOutputDirectory="PreserveNewest"
           TargetPath="ThirdParty\Fonts\Exo2-OFL.txt" />
+    <None Update="Assets\ThirdParty\MPLUSRounded1c-OFL.txt"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="ThirdParty\Fonts\MPLUSRounded1c-OFL.txt" />
     <None Include="..\..\THIRD-PARTY-NOTICES.md"
           Link="THIRD-PARTY-NOTICES.md"
           CopyToOutputDirectory="PreserveNewest"

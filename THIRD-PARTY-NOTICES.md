@@ -138,6 +138,17 @@ the source project's terms and to the rights of their respective publishers.
   single variable font covering every weight. It is unmodified, and Desktop mode does not use it.
 - License: SIL Open Font License 1.1; the complete text ships at `ThirdParty/Fonts/Exo2-OFL.txt` and
   is retained in `src/EmuShelf.App/Assets/ThirdParty/Exo2-OFL.txt`.
+- [M PLUS Rounded 1c](https://fonts.google.com/specimen/M+PLUS+Rounded+1c), by Coji Morishita, the
+  M+ Fonts Project and the Rounded M+ Project Authors, is bundled for Handheld mode at
+  `src/EmuShelf.UI/Assets/Fonts/MPLUSRounded1c/` — the Medium (500), Bold (700) and Black (900) files,
+  version 1.060 from [google/fonts](https://github.com/google/fonts/tree/main/ofl/mplusrounded1c)
+  (commit `bc0a790`). They are whole and unmodified; the name inside the files is "Rounded Mplus 1c".
+- Copyright: Copyright 2016 The Rounded M+ Project Authors.
+- License: SIL Open Font License 1.1, with no Reserved Font Name; the complete text ships at
+  `ThirdParty/Fonts/MPLUSRounded1c-OFL.txt` and is retained in
+  `src/EmuShelf.UI/Assets/ThirdParty/MPLUSRounded1c-OFL.txt`. Google Fonts' licence file for this
+  family carries no copyright line, so the line above, taken from the fonts' own name table, heads
+  the shipped copy.
 
 ## Bundled 3D models (couch physical-media shelf)
 

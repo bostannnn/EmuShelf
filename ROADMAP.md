@@ -2738,9 +2738,19 @@ report against the exits below and against the mock, and does not build.
       `BackdropCatalog` is enough and no readback is needed. One zone could not be baked: `ps2-sea`'s button hints
       change ink over time. **Still to do, with B4:** the table comes from the JavaScript prototypes, not the GLSL
       ports, so look at each console's backdrops on the Thor once, and choose `ps2-sea`'s hint ink there.
-- [ ] **R3 — The font on Android.** Confirm the licence text (SIL OFL on Google Fonts), measure the three weights'
+- [x] **R3 — The font on Android.** Confirm the licence text (SIL OFL on Google Fonts), measure the three weights'
       size in the APK (the family has 8,546 glyphs including Japanese), decide between shipping whole and a Latin
       subset with the system face as fallback, and check one Japanese title renders either way.
+      ✅ (2026-11-13; `DECISIONS.md` "M47 R3: M PLUS Rounded 1c ships whole".) OFL 1.1, no Reserved Font Name,
+      "Copyright 2016 The Rounded M+ Project Authors." Each weight has 8,546 glyphs (8,201 mapped characters):
+      Medium 3,432,376 bytes, Bold 3,542,384, Black 3,635,260; 10.6 MB for three, about 4.9 MB deflated and
+      7.0 MB with LZ4 (the assembly store's compression), both estimates. A Latin subset (Latin-1, Latin
+      Extended-A, punctuation, arrows, the UI's symbols) is 250 KB for three (99 KB deflated) and drops the 5,143
+      kana and kanji, and Cyrillic, Greek and Vietnamese. Fallback works per glyph either way (no missing-glyph
+      box, Avalonia on macOS), but with the subset a Japanese title is drawn in two system faces at one weight
+      under Latin in this one. **Shipped whole**: the three files are in `Assets/Fonts/MPLUSRounded1c/`, declared
+      as `EmuHandheldFontFamily` (the name after `#` must be "Rounded Mplus 1c", the name inside the files), the
+      licence ships beside Exo 2's, and nothing applies it yet; B2 does.
 - [ ] **R4 — Real covers and real panels.** Load the owner's covers into the stress sheet (it reads them in the
       browser only), and look at the nine flat colours on the Thor's AMOLED panels at normal brightness.
 - [ ] **R5 — The bottom panel's rate.** `HANDHELD-MODE.md` records both displays at 120 Hz; reviews list the bottom
