@@ -365,8 +365,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
         Cover = cover;
         _isMoving = isMoving;
         MoveLook = moveLook;
-        var colour = folder?.AccentColor;
-        AccentBrush = colour is not null && Color.TryParse(colour, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        AccentBrush = HandheldTokens.ConsoleBrush(folder?.AccentColor);
     }
 
     public int Index { get; }
@@ -538,7 +537,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     {
         Source = source;
         HomeSlot = homeSlot;
-        AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        AccentBrush = HandheldTokens.ConsoleBrush(source.AccentColor);
     }
 
     /// <summary>Where the folder's games come from (a platform, one of your folders, Recent).</summary>

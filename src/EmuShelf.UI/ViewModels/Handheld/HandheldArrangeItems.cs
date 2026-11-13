@@ -73,7 +73,7 @@ public sealed partial class HandheldSheetViewModel : ObservableObject
 public sealed partial class HandheldColorChipViewModel(string color) : ObservableObject
 {
     public string Color { get; } = color;
-    public IBrush Brush { get; } = new SolidColorBrush(Avalonia.Media.Color.Parse(color));
+    public IBrush Brush { get; } = HandheldTokens.ConsoleBrush(color);
 
     /// <summary>The folder's colour.</summary>
     [ObservableProperty]

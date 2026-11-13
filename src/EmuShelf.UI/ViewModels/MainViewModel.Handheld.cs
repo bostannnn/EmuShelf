@@ -159,6 +159,8 @@ public partial class MainViewModel
                 Look = _settingsService?.Load().HandheldLook ?? HandheldLook.Classic,
                 SaveSounds = SaveHandheldSounds,
             };
+            // The tokens take the look's values once, before the Handheld views that read them are built (M47 B1).
+            HandheldTokens.Use(handheld.Look);
             Handheld = handheld;
             handheld.ShowStatus(StatusText, StatusSeverity);
             AnnounceHandheldUpdate();

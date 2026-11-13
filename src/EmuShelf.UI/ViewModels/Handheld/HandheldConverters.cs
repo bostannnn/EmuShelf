@@ -92,11 +92,6 @@ public static class HandheldIcons
 /// <summary>Small view-only mappings for the Handheld views.</summary>
 public static class HandheldViewConverters
 {
-    private static readonly IBrush Selector = new SolidColorBrush(Color.Parse("#5B58D9"));
-    private static readonly IBrush Dot = new SolidColorBrush(Color.Parse("#38465088"));
-    private static readonly IBrush Ink = new SolidColorBrush(Color.Parse("#1E2235"));
-    private static readonly IBrush Muted = new SolidColorBrush(Color.Parse("#5B6176"));
-
     /// <summary>A <see cref="HandheldGlyph"/> as the vector the views draw.</summary>
     public static readonly Avalonia.Data.Converters.IValueConverter GlyphGeometry =
         new Avalonia.Data.Converters.FuncValueConverter<HandheldGlyph, Geometry?>(glyph => glyph switch
@@ -132,33 +127,30 @@ public static class HandheldViewConverters
         new Avalonia.Data.Converters.FuncValueConverter<bool, int>(focused => focused ? 1 : 0);
 
     public static readonly Avalonia.Data.Converters.IValueConverter DotWidth =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? 52 : 18);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? HandheldTokens.PageIndicatorWidth : HandheldTokens.PageDotWidth);
 
     public static readonly Avalonia.Data.Converters.IValueConverter DotBrush =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? Selector : Dot);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? HandheldTokens.ClassicAccent : HandheldTokens.PageDot);
 
     public static readonly Avalonia.Data.Converters.IValueConverter UnavailableOpacity =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(unavailable => unavailable ? 0.4 : 1);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(unavailable => unavailable ? HandheldTokens.MissingTileOpacity : 1);
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowBrush =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Selector : Brushes.Transparent);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? HandheldTokens.ClassicAccent : Brushes.Transparent);
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowNote =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Muted);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? HandheldTokens.OnAccent : HandheldTokens.OnGroundMuted);
 
     public static readonly Avalonia.Data.Converters.IValueConverter MenuRowText =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? Brushes.White : Ink);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(focused => focused ? HandheldTokens.OnAccent : HandheldTokens.MenuRowInk);
 }
 
 /// <summary>The companion's own mappings (M45 H6b): white dots on its dark ground.</summary>
 public static class HandheldCompanionConverters
 {
-    private static readonly IBrush CurrentDot = Brushes.White;
-    private static readonly IBrush Dot = new SolidColorBrush(Color.Parse("#4DFFFFFF"));
-
     public static readonly Avalonia.Data.Converters.IValueConverter DotWidth =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? 40 : 14);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, double>(current => current ? HandheldTokens.CompanionPhotoDotCurrentWidth : HandheldTokens.CompanionPhotoDot);
 
     public static readonly Avalonia.Data.Converters.IValueConverter DotBrush =
-        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? CurrentDot : Dot);
+        new Avalonia.Data.Converters.FuncValueConverter<bool, IBrush>(current => current ? HandheldTokens.CompanionPhotoDotCurrentFill : HandheldTokens.CompanionPhotoDotFill);
 }

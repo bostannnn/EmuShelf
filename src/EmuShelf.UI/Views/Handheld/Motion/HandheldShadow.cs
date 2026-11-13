@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
+using EmuShelf.App.ViewModels;
 
 namespace EmuShelf.App.Views.Handheld;
 
@@ -22,7 +23,7 @@ public sealed class HandheldShadow : Control
         AvaloniaProperty.Register<HandheldShadow, double>(nameof(Blur), 20);
 
     public static readonly StyledProperty<Color> ColorProperty =
-        AvaloniaProperty.Register<HandheldShadow, Color>(nameof(Color), Color.FromArgb(0x24, 0, 0, 0));
+        AvaloniaProperty.Register<HandheldShadow, Color>(nameof(Color), HandheldTokens.ClassicShadow);
 
     /// <summary>
     /// A filled shadow (a blurred, filled shape) rather than a box shadow's ring. A box shadow leaves the

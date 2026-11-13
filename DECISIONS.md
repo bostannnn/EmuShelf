@@ -14266,3 +14266,46 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   `AppSettings.HandheldLook` (a string in settings.json, Classic when absent) and set on
   `HandheldShellViewModel.Look` when Handheld mode starts, as `HandheldSounds` is. There is no save path and no
   Settings row yet; B10 removes Classic (D5).
+
+## 2026-11-13 — M47 B1: Handheld's design tokens are a static C# class, named by role
+
+- **One home: `HandheldTokens`** (`src/EmuShelf.UI/ViewModels/Handheld/HandheldTokens.cs`), a static class of static
+  properties. XAML reads it with `{x:Static vm:HandheldTokens.Name}`, code reads the same properties. Chosen over a
+  resource dictionary that code looks up because the Handheld views already read `HandheldIcons` and
+  `HandheldViewConverters` this way; because `x:Static` compiles to a plain property read where `StaticResource` walks
+  the tree at load and code would look values up by string; because the native feeds, the motion and the converters
+  get typed, compile-checked names; and because a missing token is a build error, not a blank brush at run time.
+- **A second look without touching the views again.** Every token has a private setter and is assigned in
+  `UseClassicValues()`, which the static constructor runs. `HandheldTokens.Use(look)` assigns them all for a look and is
+  called once, in `MainViewModel` when Handheld mode starts, with `HandheldShellViewModel.Look`, before the views that
+  read the tokens are built; views read them when they are built, so a look never changes under a running Handheld
+  mode. B1 gives Big Type no values of its own (`Use(BigType)` keeps today's); B3 onward assign, after the Classic
+  values, only the tokens whose Big Type value differs. Derived tokens (the ring anchors' inner corners, the borders made
+  from a width) are computed from their base and need no second value. Code that cached a design value in a
+  `static readonly` field or a `const` now reads the token each time it is used, so it follows the look.
+- **Names by role, never by value.** Where a role is the same as one in the Big Type table (the mock's `tokens.js`) the
+  name is that table's: `TileHome`, `TileFolder`, `TileRadius`, `DockTile`, `DockRadius`, `DockGap`, `Key`, `KeyRadius`,
+  `RingStroke`, `RingRadiusTile`, `RingRadiusDock`, `RingRadiusRow`, `Ring`, `OnGround`, `Danger`, `Heading`,
+  `HeadingCount`, `SheetTitle`, `Row`, `RowValue`, `RailRow`, `Hint`, `HintGlyph`, `Facts`, `DisplayName`, `Line`,
+  `Monogram`, `FolderPitch`, `SwitchWidth`, `SwitchHeight`, `SwitchKnob`, `ProgressHeight`, `MissingTileOpacity`. Where
+  today's look has two values for one Big Type role, each gets a name of its own that says where it is
+  (`Heading` 34 for Settings and panels, `FolderHeading` 32 for a folder's name). A name starting with `Classic` exists
+  only in today's look (the indigo accent fills, white surfaces and hairlines, frosted pills, the name plate, every
+  shadow and gradient, the selector's keylines and glow) so B10 can delete them in one sweep; a type size or colour that
+  carries on in Big Type (the type on the Launcher, a row's label) is not `Classic` even where its value will change.
+  Weights are per type role (`HeadingWeight`, `RowWeight`, `CardWeight`…), because Big Type sets weight per role.
+- **One accessor for a console's colour:** `HandheldTokens.ConsoleColour(string?)` returns the parsed colour or null,
+  and `ConsoleBrush(string?)` the brush or grey, exactly the fallbacks the seven sites had (a backdrop is left out when
+  the colour does not parse; a brush is grey). It lives in `EmuShelf.UI` beside the tokens, not on `GameSystem`, because
+  `EmuShelf.Core` has no package dependencies and an Avalonia `Color` cannot live there; `GameSystem.AccentColor` stays
+  the stored text. It takes the text rather than a system so it also serves your folders' colours (a folder's source
+  carries either). The naming panel's colour chips use it too; they had `Color.Parse`, which threw on bad text.
+- **Proven by the frames, not by eye.** The 879 literals in the five views were rewritten by a script that refused any
+  replacement whose token's value differed from the literal it replaced; then the B0 design set was rendered before and
+  after and compared with no tolerance: 158 of 158 frames identical (the PNG files were byte-identical too).
+- **Left inline on purpose:** `Transparent` and `BoxShadow="none"` (an absence, not a design value); layout (margins,
+  paddings, the widths and heights of cards and pictures, grid rows and columns, most spacings), hairline and border
+  widths other than the selector's, opacities, render transforms (the 1.13 focus lift, the folder flap's peeks) and every
+  transition's duration and easing: motion is B5's, and moving layout would only rename numbers the restyle redraws.
+  The backdrops' own drawing in `HandheldEraBackdrop` (only its plain gradient moved), the cover tint read from the
+  artwork, and `EmuShelf.Rendering` with its shaders are untouched.
