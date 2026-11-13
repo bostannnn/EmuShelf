@@ -2698,6 +2698,12 @@ native side only pictures them.
 time, each from the previous step's branch. The design session that wrote this plan starts them, checks what they
 report against the exits below and against the mock, and does not build.
 
+**Where the device checks run.** From 2026-11-14 the owner's Thor is not available, and the owner's instruction is to
+use an emulator: each step's device check runs on the Android emulator with a second display the size of the Thor's
+bottom screen, and its note says "emulator", never "Thor". An emulator check shows that the app starts, that both
+screens draw and whether the native compositors ran; it cannot judge colour on the AMOLED panels, real frame times or
+feel. Every exit that says "on the Thor" therefore stays open for the owner until the device is back.
+
 ### Before building: decide (owner)
 
 - [x] **D1 — A on a game plays.** ✅ (owner, 2026-11-13; `DECISIONS.md` "Handheld: A on a game plays".) Built by
