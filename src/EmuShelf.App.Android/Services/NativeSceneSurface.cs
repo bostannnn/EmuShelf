@@ -313,6 +313,8 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         {
             var api = GL.GetApi(new LamdaNativeContext(GetProcAddress));
             _compositor = _create(api);
+            if (_compositor is StageCompositor stage)
+                stage.BackdropStarted += id => global::Android.Util.Log.Info("EmuShelfStage", $"{_name}: backdrop '{id}' in");
         }
         catch (Exception ex)
         {

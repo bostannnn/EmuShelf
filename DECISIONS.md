@@ -13961,3 +13961,99 @@ corrected or deleted from the timeline or the game page.
   dismisses it in `OnPause`), which a recreation happens to clean up; and a swap injected over `adb shell input` is
   sometimes dropped, before and after a recreation alike. No unit test: the hazard needs two Android windows, and the
   headless platform's windows dispose their layout managers on close, which is exactly the fixed behaviour.
+
+## 2026-11-13 — M45 H7: the backdrops measured on the Thor, the hour at rest, and M46 P2's sleep check
+
+Measurements for H7a/H7b's exits (the heaviest backdrop of each draw path), H7c's hour-long idle run, and M46 P2's
+screen-asleep session. They were taken over adb on the Ayn Thor using the Release AOT build of `b0b0de9` plus the
+logging below. The device was tethered and charging the whole time.
+
+**Method** (the scripts are not committed; this is enough to rebuild them):
+- **CPU:** ticks from `/proc/<pid>/stat` for the app, `surfaceflinger` and `vendor.qti.hardware.display.composer-service`
+  (the HAL), plus each `GLThread` from `/proc/<pid>/task/*/stat`. The Stage is the GL thread that logs `StageSecond`.
+- **GPU:** `/sys/class/kgsl/kgsl-3d0/gpubusy` (busy and total µs since the last read). `gpu_busy_percentage` is too
+  coarse at these loads.
+- **Frames:** counted per EmuShelf BLAST layer from `dumpsys SurfaceFlinger --latency`. It keeps only 128 frames, so it
+  is polled every 2 s while the Stage animates.
+- **Temperatures:** thermal zones 31 (cpuss-0), 63 (gpuss-0), 90 (xo-therm) and 94 (battery).
+- **Clocks:** everything is stamped with the device's `date +%s.%N`. `logcat -v epoch` shares that clock; `-v
+  monotonic` does not match `/proc/uptime`.
+- **Which backdrop is up:** each backdrop is pinned down by a new log line. `StageCompositor.BackdropStarted` fires on
+  the render thread when a system's first pick or the next in its rotation starts, and `NativeSceneSurface` logs it as
+  `EmuShelfStage: StageSecond: backdrop '<id>' in`. A resume is already logged.
+- **Driving it:** a survey walked the home grid with the Start menu open, so the Stage keeps animating past the
+  one-minute rest. It used 55 s per system and two passes. Windows from 3 s before to 6 s after each press, and the
+  first 2 s of each backdrop (the crossfade), are left out. Over adb the D-pad is `input keyevent 19–22`, A/B/Start are
+  `input gamepad keyevent 96/97/108`, and the first press after 15 s idle only wakes the drift.
+
+**Every backdrop costs about the same, and it is the frame, not the shader.** 49 of 53 were caught; 3–100 s each.
+
+| Draw path | Heaviest by Stage GL thread | Stage GL | GPU | Heaviest by GPU | GPU |
+|---|---|---|---|---|---|
+| Full-screen fragment shaders | `wii-pointer-v2`, `gc-fur` | 6.3% | 2.1–3.0% | `tiles` | 4.2% |
+| Lit boxes and heightfields | `gc-cubes-v3`, `ps2-towers` | 6.7% | 1.3% | (same) | 1.3% |
+| Lines, points, particles | `ps2-trails-v3`, `ps2-orbs-v3`, `arc-vector-v3` | 6.8–6.9% | 1.2–1.3% | `nes-stars` | 2.5% |
+| PS1 meshes | `tide`, `field`, `ps1-terrace-v2`, `ps1-pipe` | 5.9–6.1% | 1.2% | (same) | 1.2% |
+
+- **Across all 49:**
+  - App 10.9–12.6% of a core, Stage GL thread 5.6–6.9%, SurfaceFlinger about 10%, HAL about 6.4%.
+  - Stage at 27.5–28.0 fps; the GPU never left its lowest clock (401 MHz).
+  - Every one is well under H7a's kill criterion (about 10% GL thread, 15% GPU).
+  - The spread between the cheapest and the heaviest backdrop is about 1 point of GL thread and 3 points of GPU. The
+    other 20 points are the per-posted-frame cost that the 2026-11-07 rest entry found.
+- **Not caught:**
+  - `ps3-sheet`, `ps3-wire` and `ps3-twin`: the Thor's library has no PS3 games, so PS3 has no home tile.
+  - `frames`: the PS1 rotation never landed on it. It belongs to the PS1-mesh path, whose other four are measured.
+- **Rows that mix animating with resting:** `nes-raster` (100 s) and `psp-field-v2` (93 s) include time when the
+  Stage was resting.
+
+**Idle on home, idle on a game, and scrolling** (H7a's three cases, same method):
+
+| Case | Secs | App | Stage GL | SF | HAL | GPU | fps | CPU / GPU / xo °C |
+|---|---|---|---|---|---|---|---|---|
+| Idle on home, menu open (any backdrop, above) | — | 10.9–12.6 | 5.6–6.9 | 10.0 | 6.4 | 0.9–4.2 | 27.8 | — |
+| Idle on a game (GC folder, game focused, menu open), run 1 | 49 | 16.4 | 7.9 | 10.1 | 6.4 | 4.0 | 27.8 | 52.6 / 47.5 / 45.3 |
+| Same, run 2 | 47 | 16.6 | 8.1 | 10.1 | 6.4 | 3.6 | 27.7 | — |
+| Scrolling home (R R L L every 150 ms, from GC) | 28 | 53.1 | 7.0 | 18.6 | 10.8 | 6.8 | 52.1 | 54.2 / 48.3 / 45.1 |
+
+- **What scrolling costs:** the app's UI and Launcher work while scrolling, not the Stage. Its GL thread stays at 7%.
+- **A game on the Stage:** adds the medium's sway to the backdrop's frames. That is about 4 points of app CPU and 1–2
+  points of GL thread, with no extra frames, since the sway rides on backdrop frames.
+- **Heat:** about 35 minutes of forced animation (the survey's open menu, a 1 s sampler, charging) took the sensors
+  from 34.5 / 31.7 / 28.6 °C to about 50 / 47 / 45 °C. Whether the fan ramped is the owner's ear, not adb's.
+- **Not measured: battery drain.** The Thor was tethered and charging (87% throughout), so 30 minutes of drain cannot be
+  read. It needs wireless adb and an unplugged device, which is the owner's call. `dumpsys battery unplug` only fakes
+  the charger state for the framework and does not stop the charging.
+
+**H7c's hour at rest: no measurable cost from the backdrop.** The run was 62 minutes with no input, starting just
+after a press on home (PSP focused), and sampled every 10 s.
+- **What happened:**
+  - The idle drift went once round the recent games, about 60 s with a backdrop per game.
+  - It came to rest on the newest game. The Stage's last frames were about 70 s after the press.
+  - From then on, the Stage layer presented one frame a minute (the clock pill), and the Stage GL thread gained 0
+    ticks for 57 minutes.
+  - Every 5-minute window after the first had the app at 0.19–0.23% of a core, the same as the backgrounded-app floor.
+  - The sensors held at 47–49 / 45–46 / 43.5–43.8 °C, cooling slowly from the survey's heat. The battery sensor rose
+    27 → 30 °C from charging.
+- **SurfaceFlinger and the HAL are higher here (5.8% and 3.5%, GPU 2.2%), and that is not EmuShelf.** The ROM's
+  burn-in protection (`system_server`'s "Burn-in Protection Refresher" windows, one per screen) composites for about
+  9 s every ~40 s once the screens sit still. A 20-s window between its passes read SF 0.4%, HAL 0.2%, GPU 0%. That is
+  the old floor.
+
+**M46 P2's exit: a session with the screen asleep records only the awake minutes.** The session was Bleach: Heat the
+Soul in PPSSPP, launched from Handheld mode (top screen). Usage access was granted.
+- **The run:** about 2 min playing, `input keyevent KEYCODE_SLEEP` for 2 min, `KEYCODE_WAKEUP` (back into PPSSPP), 1
+  min, then `am start` back to EmuShelf. Wall clock: 305 s.
+- **usagestats:** PPSSPP resumed 16:41:41, paused 16:43:45 (sleep), resumed 16:45:45, paused 16:46:45. That is 124 s +
+  60 s = 184 s.
+- **The app recorded:** `PlaySessions` row 6, 184 s, `Measurement = 2` (usage events). The game's row has 184 s and
+  one play.
+- **The earlier session agrees too:** session 5 (the owner's THUG2 Remix, 1125 s) matches usagestats exactly, with no
+  sleep in it.
+
+**Seen on the way, not fixed:**
+- **A home tile went undrawn.** After the survey, a burst of scrolling (which flips to page 2 and back) and a folder
+  opened and closed, the PSP tile (row 1, column 6) was blank while unfocused, not even an empty-slot outline. Focusing
+  it brought it back. It is in ROADMAP under M45.
+- **The drift swallowed a launch press twice.** Anything slower than 15 s between presses meets the drift. That is by
+  design (decision 14), and a person reading a menu won't hit it. A script will.

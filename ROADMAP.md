@@ -2496,6 +2496,10 @@ Played. Pad input already reaches one dispatcher from both displays
         compile on the device's GL ES (no "unavailable" lines in logcat). First reading idle on a game
         (Release AOT, one sample): the Stage's GL thread ~15% of a core (4% before), GPU ~4%. The full
         measurement suite is folded into H7b's exit, against the heaviest backdrop of each draw path.
+        *Measured 2026-11-13 (`DECISIONS.md` 2026-11-13 "M45 H7: the backdrops measured on the Thor"):* idle on home 5.6–6.9%
+        GL thread, 0.9–4.2% GPU at 28 fps, for all 49 backdrops the Thor can show; idle on a game 8% GL, 4% GPU; scrolling home
+        7% GL, 7% GPU, app 53%. Well under the kill criterion. Still open: battery drain over 30 minutes, which needs the Thor
+        unplugged (wireless adb), so it waits for the owner.
   - [ ] **H7b — the remaining 37 and rotation.** Port the rest of `picks.json`, then turn on per-system
         rotation (dwell and crossfade timed in the compositor, so the UI thread never wakes for
         it). Each port is checked against the prototype in the preview tool. **Exit:** all 53 on the
@@ -2509,6 +2513,10 @@ Played. Pad input already reaches one dispatcher from both displays
         the Thor with no "unavailable" lines in logcat.* Still open for the exit: the owner's judgement of
         the rotation, and the measurements (only a rough `top` reading so far: the busiest app thread at
         4–12% of a core while GameCube rotated).
+        *Measured 2026-11-13:* the heaviest of each draw path is `wii-pointer-v2`/`gc-fur` (fragment, 6.3% GL), `gc-cubes-v3`
+        (boxes, 6.7%), `ps2-trails-v3` (lines and particles, 6.9%) and the PS1 meshes (6.0%); the heaviest GPU is `tiles` at 4.2%.
+        All 49 cost within a point of each other, since the cost is per posted frame. Not caught: the three PS3 backdrops (no
+        PS3 games on the Thor) and `frames`. Still open for the exit: the owner's judgement of the rotation.
   - [x] **H7c — rest and fallbacks.** ✅ (2026-11-08; checked on the Thor over adb, Release AOT: reduced motion
         (`animator_duration_scale 0`) and battery saver (`low_power 1` with the battery faked unplugged, since Android
         refuses the saver while charging) each hold the Stage still within two seconds, through navigations and past
@@ -2529,7 +2537,11 @@ Played. Pad input already reaches one dispatcher from both displays
         idle drift together, and lifting it puts the ordinary minute rule back; the surface captures the old
         compositor's running backdrop and rest state and applies them after the retained replay. Idle measured over
         five minutes, not an hour: two and five minutes after the last press the app was at 0.0–1.5% of a core with no
-        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. Still open for the exit: the hour-long run. With the recreation crash
+        Stage frames and the GPU at 0–6%, the CPU and GPU sensors a degree cooler than while animating. *The hour, 2026-11-13:* 62 minutes without input on
+        home; once the drift rested (about 70 s in), the Stage GL thread gained no ticks for the rest of the hour, the
+        Stage presented one frame a minute (the clock), and the app sat at 0.19–0.23% of a core in every 5-minute window,
+        the background floor. What SurfaceFlinger did meanwhile was the ROM's burn-in refresher, not EmuShelf. Exit met.
+        With the recreation crash
         (below) fixed, two font-scale recreations of the merged build left the app up with both Stages logging their
         resume each time (the Thor runs that build, installed 2026-11-08 22:16).
     - [x] **Recreating the activity crashes Handheld mode.** ✅ (2026-11-08; found by the font-scale change used
@@ -2538,12 +2550,15 @@ Played. Pad input already reaches one dispatcher from both displays
           `DECISIONS.md` 2026-11-08 "M45 H7c: a recreated activity no longer kills Handheld mode".)
 - [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
       each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
-      full measurement suite (folded into H7b); H7b's owner judgement of the rotation and the
-      measurements for the heaviest backdrop of each draw path; H7c's hour-long idle run; H2's
+      battery drain over 30 minutes unplugged (the rest of its suite was measured 2026-11-13); H7b's owner
+      judgement of the rotation (its measurements were taken 2026-11-13); H2's
       Launcher-side look, which awaits the owner's hands-on check;
       H6d's real fresh install on the Thor (cleared data or a second device: the pre-boot steps, then Handheld mode, the
       wizard and a playable home, end to end; the device check faked "fresh" in the owner's settings), its empty library on
       the device (checked headlessly only), and the owner's ear on the five sounds (character and level).
+- [ ] **A home tile goes undrawn until focused.** Found 2026-11-13 on the Thor: after a burst of scrolling that
+      flipped to page 2 and back, and the GameCube folder opened and closed, the PSP tile (row 1, column 6) was blank
+      while unfocused, not even an empty-slot outline; focusing it brought it back. Not reproduced or investigated yet.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
@@ -2594,6 +2609,9 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       upgraded to schema 21 and the app starts cleanly. Still open on the device: granting access in the
       new row and a session timed by the app itself. The row is in Gamepad mode's Settings (Library);
       Handheld mode can't reach Settings until M45 H6a.
+      *Exit checked 2026-11-13:* access granted. A PPSSPP session launched from Handheld mode had 2 minutes awake, 2
+      asleep and 1 awake (305 s wall clock), and recorded 184 s measured from usage events, exactly what `dumpsys
+      usagestats` shows (124 s + 60 s). `DECISIONS.md` 2026-11-13.
       Choices in `DECISIONS.md` 2026-11-08 "M46 P2".) An opt-in "Accurate play time" row in
       Settings (Library) that explains the permission and opens Android's Usage access page, as Cocoon
       does. Granted: the session's length is the time the emulator's package was actually in the

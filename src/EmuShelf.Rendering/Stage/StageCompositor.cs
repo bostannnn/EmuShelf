@@ -51,6 +51,13 @@ public sealed class StageCompositor : INativeScene
     private readonly uint _vao;
 
     private BackdropRenderer? _animator;
+
+    /// <summary>
+    /// Raised on the render thread with a backdrop's id when it starts: a system's first pick or the next in its
+    /// rotation (not a resume, which the host already reports). The host logs it, so a device measurement can tell
+    /// which backdrop was on screen.
+    /// </summary>
+    public event Action<string>? BackdropStarted;
     private IReadOnlyList<string>? _animatedIds;
     private readonly Random _random = new();
     private BackdropState? _backdrop;
@@ -211,6 +218,8 @@ public sealed class StageCompositor : INativeScene
                     // A system opens on one of its backdrops at random, then takes turns (BackdropRotation).
                     _animator ??= new BackdropRenderer(_gl, _dialect, _major, _minor);
                     _backdrop.Animated = _animator.Start(BackdropRotation.Pick(ids, null, _random), _backdropClock);
+                    if (_backdrop.Animated is { } started)
+                        BackdropStarted?.Invoke(started.Id);
                 }
                 _backdropFadeStart = now;
                 break;
@@ -589,6 +598,7 @@ public sealed class StageCompositor : INativeScene
         state.Previous = showing;
         state.Animated = next;
         state.RotationStart = clock;
+        BackdropStarted?.Invoke(next.Id);
     }
 
     private void UpdateAnimated(BackdropState state, float clock)
