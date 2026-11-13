@@ -5,18 +5,19 @@
 /* Layout: the device sits left and stays in view while the numbered moves read beside it; one column under 1180px. */
 :root{
   --bg:#F2F1F6; --fg:#17162B; --mute:#5F5D78; --line:#D8D6E4; --card:#FFFFFF; --accent:#5247C8;
-  --bezel:#1C1B27; --key:#302F40; --keyfg:#CFCDE0;
+  --bezel:#1C1B27; --key:#302F40; --keyfg:#CFCDE0; --bad:#B3261E; --ok:#1B7A4B;
   --page-display:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Arial Rounded MT Bold',system-ui,sans-serif;
   --page-text:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF;
-  --bezel:#07070C; --key:#262535; --keyfg:#CFCDE0; color-scheme:dark } }
+  --bezel:#07070C; --key:#262535; --keyfg:#CFCDE0; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark } }
 :root[data-theme="dark"]{
   --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF;
-  --bezel:#07070C; --key:#262535; --keyfg:#CFCDE0; color-scheme:dark }
+  --bezel:#07070C; --key:#262535; --keyfg:#CFCDE0; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark }
 
 html,body{background:var(--bg)}
+[hidden]{display:none!important}
 body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:28px 72px}
 .page{max-width:1480px;margin:0 auto;display:grid;gap:36px}
@@ -33,31 +34,28 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .hinge{position:absolute;left:60px;right:60px;top:558px;height:18px;border-radius:9px;background:rgba(255,255,255,.05)}
 .disp{font-family:var(--disp);font-weight:var(--dw);font-stretch:var(--ds);letter-spacing:var(--dl);text-transform:var(--dt)}
 
-/* top screen: the Stage. Each corner picks its own ink from what the backdrop is doing behind it. */
+/* top screen: the Stage. The left side and the two right corners each pick their own ink, and a veil only as strong as the backdrop needs. */
 #top{left:14px;top:14px;width:960px;height:540px;font-family:var(--ui);color:#fff;
-  --ink-tl:#fff;--ink-tr:#fff;--ink-bl:#fff;--ink-br:#fff;--sh-tl:#0b0a18;--sh-tr:#0b0a18;--sh-bl:#0b0a18;--sh-br:#0b0a18}
+  --ink-l:#fff;--ink-tr:#fff;--ink-br:#fff;--sh-l:rgba(11,10,24,.28);--sh-tr:rgba(11,10,24,.25);--sh-br:rgba(11,10,24,.25);--vx:65%}
 #bd{position:absolute;inset:0;background:#2F5FB3}
 .bdc{position:absolute;inset:0;width:100%;height:100%}
 .bdc.pixel{image-rendering:pixelated}
-.shade{position:absolute;inset:0;opacity:.7;background:
-  radial-gradient(56% 44% at 0% 0%,var(--sh-tl),transparent 72%),
-  radial-gradient(44% 44% at 100% 0%,var(--sh-tr),transparent 72%),
-  radial-gradient(52% 40% at 100% 100%,var(--sh-br),transparent 72%),
-  radial-gradient(110% 105% at 0% 100%,var(--sh-bl) 0%,transparent 64%)}
-.kick{position:absolute;left:44px;top:32px;font:700 22px/1.15 var(--ui);font-stretch:100%;color:var(--ink-tl);transition:color .4s}
+.shade{position:absolute;inset:0}
+.kick{position:absolute;left:44px;top:32px;font:700 22px/1.15 var(--ui);font-stretch:100%;color:var(--ink-l);transition:color .4s}
 .sys{position:absolute;right:44px;top:24px;display:flex;align-items:flex-end;gap:16px;color:var(--ink-tr);transition:color .4s}
 .batt{font:700 18px/1.15 var(--ui);opacity:.85;padding-bottom:6px}
 .clock{font-size:46px;line-height:1.15;font-variant-numeric:tabular-nums}
 .sl{display:inline-block;position:relative;overflow:hidden;height:1.15em;line-height:1.15em;vertical-align:bottom;white-space:pre}
 .sl .ch{display:inline-block}
 .sl .ch.gone{position:absolute;left:0;top:0}
-.word{position:absolute;left:40px;bottom:94px;width:680px;height:340px;line-height:.9;color:var(--ink-bl);transition:color .4s}
+.word{position:absolute;left:40px;bottom:120px;width:680px;height:340px;line-height:.9;color:var(--ink-l);transition:color .4s}
 .wl{position:absolute;left:0;bottom:0}
 .wl.ph{opacity:.34}
 .wl .w{display:inline-block;white-space:nowrap}
 .wl .ghost{display:inline-block;width:0;overflow:visible;white-space:pre}
 .wl .l{display:inline-block;will-change:transform,opacity}
-.meta{position:absolute;left:44px;bottom:38px;font:700 21px/1.15 var(--ui);font-variant-numeric:tabular-nums;color:var(--ink-bl);transition:color .4s}
+.meta{position:absolute;left:44px;bottom:66px;font:700 21px/1.15 var(--ui);font-variant-numeric:tabular-nums;color:var(--ink-l);transition:color .4s}
+.meta2{position:absolute;left:44px;bottom:38px;font:700 18px/1.15 var(--ui);font-variant-numeric:tabular-nums;color:var(--ink-l);opacity:.82;transition:color .4s}
 .hints{position:absolute;right:44px;bottom:36px;display:flex;gap:22px;font:700 19px/1 var(--ui);color:var(--ink-br);transition:color .4s}
 .hint{display:flex;align-items:center;gap:8px}
 .hint i{width:29px;height:29px;border:2.5px solid currentColor;border-radius:50%;display:grid;place-items:center;font:800 14px/1 var(--ui);font-style:normal}
@@ -171,6 +169,37 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .pad button:focus-visible{outline:2px solid #fff;outline-offset:2px}
 .pad .mid{background:var(--key);border-radius:0}
 
+/* ---------- stress sheet ---------- */
+.views{max-width:1480px;margin:0 auto 22px;display:flex;gap:6px}
+.views a{font:600 .9rem/1 var(--page-text);color:var(--mute);text-decoration:none;padding:.55rem .8rem;border-radius:8px;border:1.5px solid transparent}
+.views a[aria-current="page"]{color:var(--fg);border-color:var(--line)}
+.views a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.stress{max-width:1480px;margin:0 auto}
+.stress h1{font-size:clamp(2.6rem,6vw,4.4rem)}
+.stress .lede,.stress .sub{max-width:44rem}
+.sbar{display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;margin:1rem 0}
+.sbar fieldset{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0}
+.sbar legend{float:left;padding:0;margin-right:6px;font:600 .78rem/1 var(--page-text);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.sum{font-size:1.05rem;max-width:44rem;margin:.4rem 0 1.2rem}
+.sum b{font-weight:700}
+.sgrid,.lgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:22px 16px}
+.sc{margin:0;min-width:0}
+.mini,.lmini{position:relative;aspect-ratio:16/9;overflow:hidden;border-radius:6px;background:#0E0D16}
+.lmini{aspect-ratio:620/340}
+.stage,.lstage{--disp:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Arial Rounded MT Bold',sans-serif;--ui:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN',system-ui,sans-serif;--dw:900;--ds:100%;--dl:-.02em;--dt:none;
+  position:absolute;left:0;top:0;transform-origin:0 0;font-family:var(--ui);color:#fff}
+.stage{width:960px;height:540px;transform:scale(var(--k,.33));--ink-l:#fff;--ink-tr:#fff;--ink-br:#fff;--sh-l:rgba(11,10,24,.28);--sh-tr:rgba(11,10,24,.25);--sh-br:rgba(11,10,24,.25);--vx:65%}
+.lstage{width:620px;height:340px;transform:scale(var(--k,.5));--on:#fff;--chip:rgba(255,255,255,.17);--rc:#fff}
+.stage .case .sway{animation:none;transform:rotateY(24deg) rotateX(3deg)}
+.lstage .ring,.lstage .tile.f .in{animation:none}
+.nocover{position:absolute;inset:0;background:#3A3950;display:grid;place-items:center;padding:12%;text-align:center;font:700 22px/1.15 var(--ui);color:#fff}
+.case .front img,.tile .in img{width:100%;height:100%;object-fit:cover;display:block}
+.sc figcaption{margin-top:.5rem;font-size:.86rem;line-height:1.4;color:var(--mute);font-variant-numeric:tabular-nums}
+.sc figcaption b{display:block;color:var(--fg);font-weight:600}
+.sc .no{color:var(--bad);font-weight:700}
+.sc.fail .mini,.sc.fail .lmini{outline:3px solid var(--bad);outline-offset:2px}
+.pick{display:inline-flex;align-items:center}
+
 /* ---------- page chrome ---------- */
 .opts{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center;margin-top:18px}
 .opts fieldset{border:0;margin:0;padding:0;display:flex;align-items:center;gap:6px;min-width:0}
@@ -210,7 +239,8 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
 @media (prefers-reduced-motion: reduce){ .tile,.ring,.case,.layer,.scroll,.row,.sw i{transition:none} .tile.f .in,.ring,.case .sway{animation:none} }
 </style>
 
-<div class="page">
+<nav class="views" aria-label="Views"><a href="#mock" id="nav-mock" aria-current="page">The mock</a><a href="#stress" id="nav-stress">Stress sheet</a></nav>
+<div class="page" id="mockview">
   <div class="stagecol" id="stagecol">
     <div class="device" id="device">
       <div class="rig" id="rig">
@@ -222,6 +252,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
           <div class="case off" id="case"><div class="floor"></div><div class="kickr" id="kickr"><div class="sway"><div class="back"></div><div class="spine" id="spine"></div><div class="front" id="front"></div></div></div></div>
           <div class="word disp" id="word"></div>
           <div class="meta" id="meta"></div>
+          <div class="meta2" id="meta2"></div>
           <div class="hints" id="hints"></div>
           <div class="launch" id="launch"><div class="lw disp" id="lw"></div><div class="ls" id="ls"></div></div>
         </div>
@@ -266,7 +297,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
     <p class="eyebrow">EmuShelf · Handheld mode on the Thor · one direction, live</p>
     <h1>Big Type</h1>
     <p class="lede">Today's Handheld mode puts every name, number and hint inside a small frosted pill. This sketch takes the pills away. The name of whatever you are on fills the top screen, over that console's own backdrop, and nothing changes without moving.</p>
-    <p class="new"><b>New in round 3.</b> Colour and Round are locked, so the other grounds and typefaces are gone. A on an empty slot names a new folder, and the menu's Search finds games, both with the letters landing on the top screen as you type. Y on a home tile can pick it up and move it. Add to folder now works.</p>
+    <p class="new"><b>New in round 3.</b> Colour and Round are locked, so the other grounds and typefaces are gone. A on an empty slot names a new folder, and the menu's Search finds games, both with the letters landing on the top screen as you type. Y on a home tile can pick it up and move it. Add to folder now works. The Stress sheet tab above measures the top screen's text against all 53 approved backdrops.</p>
 
     <h2>What moves</h2>
     <p class="sub">Fifteen moves, numbered so you can say “keep 1, 3 and 6, drop 8”.</p>
@@ -277,7 +308,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <li><h3>A selector that stretches</h3><p>The ring reaches for the next tile before it lets go of the last one, then breathes at rest like the 3DS cursor. The tile under it lifts and its neighbours make room.</p><button class="btn" type="button" data-show="ring">Show</button></li>
       <li><h3>Numbers roll</h3><p>The clock, game counts, play time and achievements turn like a counter instead of swapping.</p><button class="btn" type="button" data-show="numbers">Show</button></li>
       <li><h3>Folders deal their games</h3><p>Home tiles fall away from the folder you opened, its name lands as a large heading, and the games are dealt in from the corner. Long folders slide a column at a time, with the next column peeking in.</p><button class="btn" type="button" data-show="folder">Show</button></li>
-      <li><h3>Launch through the hinge</h3><p>The cover leaves the bottom screen upwards, the case above catches it, and the console's colour takes the whole top screen with the title on it.</p><button class="btn" type="button" data-show="launch">Show</button></li>
+      <li><h3>A plays, through the hinge</h3><p>There is no page in between. The cover leaves the bottom screen upwards, the case above catches it, saves sync, and the console's colour takes the whole top screen with the title on it. A console set to ask which screen asks that one question first; discs are chosen from the Y menu.</p><button class="btn" type="button" data-show="launch">Show</button></li>
       <li><h3>Never quite still</h3><p>Leave it alone for a few seconds and a slow hop runs across the grid and through the letters. The case keeps swaying, as it does today.</p><button class="btn" type="button" data-show="idle">Show</button></li>
       <li><h3>Squarer, matte tiles</h3><p>Corners come down from today's phone-style squircle to something nearer a 3DS icon. No gloss, no gradient, no shadow. The monogram is sized to fill the tile.</p></li>
       <li><h3>Nothing in a pill</h3><p>Clock, battery, button hints, sort and counts are plain type set straight on the screen, in the four corners.</p></li>
@@ -337,7 +368,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <dl>
         <dt>Bottom screen</dt><dd>The focused console's colour, flat, edge to edge. Tiles are white at 17%; the focused one is solid white with the colour as its ink.</dd>
         <dt>Per console</dt><dd>One flat colour each, dark enough for white type.<div class="sw-list" id="swatches"></div></dd>
-        <dt>Top screen ink</dt><dd>White, or the console colour mixed 74% toward near-black, chosen per corner from the backdrop behind it.</dd>
+        <dt>Top screen ink</dt><dd>White, or the console colour mixed 74% toward near-black, chosen separately for the left side and each right corner. A veil of the opposite tone sits behind the text, as wide as the name and only as strong as that backdrop needs to reach 3.8 to 1. The stress sheet measures it.</dd>
         <dt>In game</dt><dd>The console colour mixed 64% toward near-black.</dd>
       </dl>
     </div>
@@ -345,12 +376,46 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
     <h2>Decided, and still open</h2>
     <ul class="picks">
       <li><b>Decided:</b> the bottom screen takes the console's colour, and the type is Round.</li>
+      <li><b>Decided:</b> A on a game plays. The old Title page's facts sit under the name on the top screen, the screen question appears only for a console set to ask, and the disc is a row in the Y menu.</li>
       <li><b>Open:</b> which of the fifteen moves stay, and anything that is too much.</li>
       <li><b>Open:</b> whether five blue-to-violet consoles (PS2, PSP, DS, GBA, GameCube) are far enough apart now that colour is the identity. I left the palette alone.</li>
     </ul>
 
     <p class="foot">Covers are drawn stand-ins with the title as text. The backdrops are the approved prototypes from the motion study. X (swap screens) is not drawn yet. Menu rows other than Play, Open, Add to folder, Move on home, Search, Settings and Sounds only close the menu. A folder you make lasts until the page reloads. Nothing here has been measured on the Thor.</p>
   </div>
+</div>
+
+<div class="stress" id="stressview" hidden>
+  <p class="eyebrow">Big Type · does it hold?</p>
+  <h1>Stress sheet</h1>
+  <p class="lede">Every approved backdrop, frozen at its hardest moment for the text on top of it, with the hardest content laid over it. The numbers are measured from the pixels, not judged by eye.</p>
+
+  <p class="new"><b>What the first run found.</b> 10 of the 53 backdrops failed, nearly all behind the big name: the soft shade did not reach the top of a three-line title, and it was the same strength whatever the backdrop was doing. The rule is now a veil as wide as the name and only as strong as each backdrop needs, with the ink chosen by which tone needs less of it. Every backdrop passes, and 50 of the 53 still sit at the lightest veil. Separately, white type on a Wii-coloured tile measured 2.9, so the Wii colour is one step darker.</p>
+  <p class="new"><b>What this does not prove.</b> The figures are for a settled frame; the rule re-checks about twice a second, so a backdrop that changes fast can be behind for a moment. The covers are stand-ins. And this is a desktop browser, not the Thor's panel.</p>
+
+  <h2>Text over every backdrop</h2>
+  <p class="sub">Each backdrop is rendered at eight moments. At each one the mock's own rule picks light or dark ink for the left side and for each right corner, and lays a veil behind the text only as strong as that backdrop needs. Then the contrast between the ink and the pixels behind each piece of text is measured against the least favourable tenth of those pixels. The frame shown is the worst of the eight, measured for the widest name. The bar to clear is 3 to 1, the usual minimum for large bold type.</p>
+  <div class="sbar">
+    <fieldset><legend>Content</legend>
+      <button class="btn" type="button" data-c="long" aria-pressed="true">Longest title</button>
+      <button class="btn" type="button" data-c="short" aria-pressed="false">Shortest title</button>
+      <button class="btn" type="button" data-c="folder" aria-pressed="false">Console folder</button>
+      <button class="btn" type="button" data-c="nocover" aria-pressed="false">No cover</button>
+      <button class="btn" type="button" data-c="missing" aria-pressed="false">File missing</button></fieldset>
+    <fieldset><legend>Show</legend>
+      <button class="btn" type="button" data-f="all" aria-pressed="true">All</button>
+      <button class="btn" type="button" data-f="fail" aria-pressed="false">Only failures</button></fieldset>
+  </div>
+  <p class="sum" id="ssum">Measuring…</p>
+  <div class="sgrid" id="sgrid"></div>
+
+  <h2>Busy covers on every colour</h2>
+  <p class="sub">There is no cover art on this Mac, because your library lives on the Thor. These covers are drawn to be as noisy as real box art: several hues, a logo band, outlined titles, speckle. Load your own to see the real thing.</p>
+  <div class="sbar">
+    <label class="btn pick">Use my own covers<input type="file" id="covers" accept="image/*" multiple hidden></label>
+    <span class="sub" id="cnote">They are read in this browser tab only. Nothing is uploaded or saved.</span>
+  </div>
+  <div class="lgrid" id="lgrid"></div>
 </div>
 
 <script>
@@ -371,19 +436,19 @@ const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
 const SYS={
  ps2:{m:'PS2',name:'PlayStation 2',c:'#2F5FB3',bd:'playstation2',emu:'PCSX2'},
  gc:{m:'GC',name:'GameCube',c:'#6A55C4',bd:'gamecube',emu:'Dolphin'},
- wii:{m:'Wii',name:'Wii',c:'#1F93AE',bd:'wii',emu:'Dolphin'},
+ wii:{m:'Wii',name:'Wii',c:'#198098',bd:'wii',emu:'Dolphin'},
  ps1:{m:'PS1',name:'PlayStation',c:'#666D8E',bd:'playstation',emu:'DuckStation'},
  ps3:{m:'PS3',name:'PlayStation 3',c:'#27307A',bd:'playstation3',emu:'RPCS3'},
  psp:{m:'PSP',name:'PSP',c:'#4A5FB0',bd:'psp',emu:'PPSSPP'},
- n3ds:{m:'3DS',name:'Nintendo 3DS',c:'#B8457F',bd:'3ds',emu:'Azahar'},
- nds:{m:'DS',name:'Nintendo DS',c:'#5F6CAD',bd:'nds',emu:'melonDS'},
+ n3ds:{m:'3DS',name:'Nintendo 3DS',c:'#B8457F',bd:'3ds',emu:'Azahar',ask:true},
+ nds:{m:'DS',name:'Nintendo DS',c:'#5F6CAD',bd:'nds',emu:'melonDS',ask:true},
  gba:{m:'GBA',name:'Game Boy Advance',c:'#5F5399',bd:'gba',emu:'mGBA'}};
-const lib=(sys,rows)=>rows.map(([t,h,a,at])=>({t,sys,h,a,at}));
+const lib=(sys,rows)=>rows.map(([t,h,a,at,d])=>({t,sys,h,a,at,d,disc:1}));
 const GAMES={
  ps2:lib('ps2',[['Okami',22.25,9,24],['Ico',6.5,4,12],['Shadow of the Colossus',11.75,16,30],['Katamari Damacy',8,7,20],['Gran Turismo 4',41.5,12,60],['Final Fantasy X',63,21,48],['Persona 4',88.25,30,52],['Jak and Daxter',9.5,10,28],['Burnout 3: Takedown',14,18,40],['Silent Hill 2',7.25,5,22],['Dragon Quest VIII',52,14,36],['Ratchet & Clank',10.75,11,30],['Kingdom Hearts',27.5,13,34],['God of War',12.25,17,36],["Devil May Cry 3",15,8,32],['We Love Katamari',6.75,5,18],['SSX Tricky',9,12,26]]),
- gc:lib('gc',[['Metroid Prime',12.67,14,50],['Animal Crossing',31,6,18],['Resident Evil 4',17.5,20,44],['The Wind Waker',26.25,19,40],['F-Zero GX',9,8,36],['Paper Mario: The Thousand-Year Door',28.5,22,60],['Super Mario Sunshine',15.75,31,70],["Luigi's Mansion",5.5,9,20],['Pikmin',7,5,16],['Super Smash Bros. Melee',44,27,58]]),
+ gc:lib('gc',[['Metroid Prime',12.67,14,50],['Animal Crossing',31,6,18],['Resident Evil 4',17.5,20,44,2],['The Wind Waker',26.25,19,40],['F-Zero GX',9,8,36],['Paper Mario: The Thousand-Year Door',28.5,22,60],['Super Mario Sunshine',15.75,31,70],["Luigi's Mansion",5.5,9,20],['Pikmin',7,5,16],['Super Smash Bros. Melee',44,27,58]]),
  wii:lib('wii',[['Super Mario Galaxy',19.5,38,60],['Xenoblade Chronicles',71,25,64],['Wii Sports',12,4,10],['Punch-Out!!',6.25,7,26],["Kirby's Epic Yarn",8.5,12,30],['Donkey Kong Country Returns',13,17,42]]),
- ps1:lib('ps1',[['Final Fantasy VII',48,18,40],['Metal Gear Solid',11.5,9,22],['Castlevania: Symphony of the Night',16,24,46],['Crash Bandicoot',7.75,13,32],['Vagrant Story',21,6,28],['Ridge Racer Type 4',5,10,18],['Silent Hill',6.5,4,14],['Tekken 3',9.25,15,30]]),
+ ps1:lib('ps1',[['Final Fantasy VII',48,18,40,3],['Metal Gear Solid',11.5,9,22,2],['Castlevania: Symphony of the Night',16,24,46],['Crash Bandicoot',7.75,13,32],['Vagrant Story',21,6,28],['Ridge Racer Type 4',5,10,18],['Silent Hill',6.5,4,14],['Tekken 3',9.25,15,30]]),
  ps3:lib('ps3',[["Demon's Souls",34.5,11,38],['Journey',3.25,8,14],['Uncharted 2',12,22,48],['Ni no Kuni',41,16,36],['LittleBigPlanet',10.5,9,30]]),
  psp:lib('psp',[['Lumines',14,6,20],['Patapon',11.25,12,28],['LocoRoco',6,10,24],['Daxter',8.5,7,22],['Crisis Core',19.75,13,34],['Monster Hunter Freedom Unite',96,20,50]]),
  n3ds:lib('n3ds',[['A Link Between Worlds',17,21,44],['Fire Emblem Awakening',38.5,15,40],['Animal Crossing: New Leaf',120,9,26],['Mario Kart 7',22,14,32],['Kid Icarus: Uprising',13.25,18,48],['Bravely Default',44,10,30],["Luigi's Mansion: Dark Moon",11,8,24]]),
@@ -419,7 +484,7 @@ const SET=[
  {name:'About',sub:'EmuShelf 1.8.9',rows:[{label:'Version',hint:'1.8.9'},{label:'Check for updates',hint:'Last checked today'},{label:'Licences',hint:'Third-party notices'}]}];
 const UCOL=['#A8503C','#3F6FB8','#96702A','#2A8766','#8A4A8F'];
 const START=[{label:'Search',act:'search',hint:'Find a game by name'},{label:'Add games',hint:'Point EmuShelf at a folder'},{label:'Achievements',hint:'Everything you have unlocked'},{label:'Settings',act:'settings',hint:'Emulators, library, display'},{label:'Sounds',toggle:false,live:'sound'},{label:'Desktop mode',hint:'Leave Handheld mode'}];
-const PICKS={nes:['nes-flow','nes-stars','nes-meta','nes-raster'],gba:['gba-corridor-v2','gba-iso'],gamecube:['gc-caustics','gc-cubes-v3','gc-fur','gc-lens'],nds:['ds-ripples','ds-ripplefloor-v2','ds-dots','ds-flip'],wii:['wii-pointer-v2','wii-tiles'],'3ds':['3ds-tiles','3ds-floorwave','3ds-tapwave'],playstation:['field','tide','frames','ps1-terrace-v2','ps1-pipe'],playstation2:['ps2-towers','ps2-trails-v3','ps2-sea','ps2-orbs-v3'],psp:['psp-field-v2'],playstation3:['ps3-sheet','ps3-wire','ps3-twin']};
+const PICKS={"nes":["nes-flow","nes-stars","nes-meta","nes-raster"],"snes":["runway","snes-mosaic-v2","snes-lake-v2","tiles"],"gbc":["gbc-attr","gbc-bands","gbc-sheen-v2","gbc-confetti-v2"],"gba":["gba-corridor-v2","gba-iso"],"gamecube":["gc-caustics","gc-cubes-v3","gc-fur","gc-lens"],"nds":["ds-ripples","ds-ripplefloor-v2","ds-dots","ds-flip"],"wii":["wii-pointer-v2","wii-tiles"],"3ds":["3ds-tiles","3ds-floorwave","3ds-tapwave"],"megadrive":["md-speed-v3","md-planes","md-pipe-v2"],"dreamcast":["dc-fog-v3","dc-sea-v2","dc-checker"],"playstation":["field","tide","frames","ps1-terrace-v2","ps1-pipe"],"playstation2":["ps2-towers","ps2-trails-v3","ps2-sea","ps2-orbs-v3"],"psp":["psp-field-v2"],"playstation3":["ps3-sheet","ps3-wire","ps3-twin"],"arcade":["arc-vector-v3","arc-bulbs-v2","arc-checker","arc-plating"],"steam":["steam-wall-v2","steam-mesh","steam-grid-v2"]};
 
 /* ---------- elements and state ---------- */
 const rig=$('rig'),dev=$('device'),top=$('top'),bot=$('bot'),ground=$('ground'),homeEl=$('home'),folderEl=$('folder'),fgrid=$('fgrid'),settingsEl=$('settings'),playEl=$('play'),sheetEl=$('sheet'),ring=$('ring'),bd=$('bd'),caseEl=$('case'),launchEl=$('launch');
@@ -475,7 +540,7 @@ function setWord(text,dir,W){
   setTimeout(()=>old.remove(),RM?70:320);}
  const el=document.createElement('div');el.className='wl';el._t=text;el._W=W;
  text.split(' ').forEach(w=>{const ws=document.createElement('span');ws.className='w';[...w].forEach(ch=>{const s=document.createElement('span');s.className='l';s.textContent=ch;ws.appendChild(s);});el.appendChild(ws);el.appendChild(document.createTextNode(' '));});
- $('word').appendChild(el);fitWord(el,W,340);wl=el;
+ $('word').appendChild(el);fitWord(el,W,340);wl=el;S.vx=vxOf(W);top.style.setProperty('--vx',S.vx*100+'%');
  if(RM)return;
  const ls=[...el.querySelectorAll('.l')],[nx,ny,rot]=ENTER[dir]||ENTER.init,per=Math.min(26,300/ls.length),n=ls.length;
  ls.forEach((l,i)=>l.animate([{transform:`translate(${nx}em,${ny}em) rotate(${rot}deg)`,opacity:0},{transform:'none',opacity:1}],{duration:540,delay:90+(dir==='L'?n-1-i:i)*per,easing:SPRING,fill:'backwards'}));}
@@ -495,8 +560,19 @@ function flood(g,x,y,quiet){if(g===S.gcol)return;S.gcol=g;bot.style.setProperty(
  w.animate([{clipPath:`circle(0px at ${x}px ${y}px)`},{clipPath:`circle(820px at ${x}px ${y}px)`}],{duration:640,easing:'cubic-bezier(.2,.6,.2,1)'}).onfinish=()=>{ground.style.background=g;w.remove();};}
 function setColour(c,x,y,quiet){S.fc=c;S.deep=mix(c,'#0B0A18',.74);bot.style.setProperty('--fc',c);bot.style.setProperty('--fl',mix(c,'#ffffff',.55));applyTone();
  if(S.view!=='play')flood(groundOf(c),x??310,y??270,quiet);}
-const TONE={tl:false,tr:false,bl:false,br:false},REG={tl:[0,0,7,3],tr:[9,0,7,3],bl:[0,3,10,6],br:[10,6,6,3]};
-function applyTone(){for(const k in TONE){top.style.setProperty('--ink-'+k,TONE[k]?S.deep:'#fff');top.style.setProperty('--sh-'+k,TONE[k]?'rgba(255,255,255,.92)':S.deep);}}
+// The legibility rule. Three zones: the left side (console name, the big name, the line under it) and the two right corners.
+// For each, measure how bright the brightest and darkest parts of the backdrop are, work out how strong a veil white ink
+// would need and how strong a veil dark ink would need, take whichever needs less, and lay only that much.
+const TONE={l:{light:false,a:.28},tr:{light:false,a:.25},br:{light:false,a:.25}},REG={l:[2,2,46,32],tr:[46,0,16,6],br:[40,30,22,4]};   // on a 64×36 sample
+let TARGET=3.8;const BASE={l:.28,tr:.25,br:.25};
+const SHADE=[{k:'tr',cx:1,cy:0,rx:.56,ry:.40,flat:.6},{k:'br',cx:1,cy:1,rx:.68,ry:.38,flat:.62},{k:'l',lin:true,fade:.24}];   // the left veil lies under the corner ones
+const FADE=.24,leftVeil=(t,x,vx)=>x<=vx?t.a:t.a*Math.max(0,1-(x-vx)/FADE);
+const shadeStyle=document.createElement('style');document.head.appendChild(shadeStyle);
+function writeShade(){shadeStyle.textContent=`.shade{background:${SHADE.map(g=>g.lin?`linear-gradient(to right,var(--sh-l) 0,var(--sh-l) var(--vx),transparent calc(var(--vx) + ${g.fade*100}%))`:`radial-gradient(${g.rx*100}% ${g.ry*100}% at ${g.cx*100}% ${g.cy*100}%,var(--sh-${g.k}) 0,var(--sh-${g.k}) ${g.flat*100}%,transparent 100%)`).join(',')}}`;}
+writeShade();
+const shCol=(t,deep,a=t.a)=>{const c=t.light?[255,255,255]:rgb(deep);return `rgba(${c[0]},${c[1]},${c[2]},${a.toFixed(3)})`;};
+const vxOf=W=>(40+W+16)/960;
+function applyTone(){for(const k in TONE){top.style.setProperty('--ink-'+k,TONE[k].light?S.deep:'#fff');top.style.setProperty('--sh-'+k,shCol(TONE[k],S.deep));}}
 const BD={layers:[],con:null,turn:{},vis:true};
 function setBackdrop(con,x){
  if(con===BD.con)return;BD.con=con;
@@ -510,12 +586,18 @@ function setBackdrop(con,x){
  const done=()=>{const i=BD.layers.indexOf(L);BD.layers.splice(0,i).forEach(o=>o.canvas.remove());};
  if(BD.layers.length===1||RM){done();return;}
  cv.animate([{clipPath:`circle(0px at ${x}px 560px)`},{clipPath:`circle(1150px at ${x}px 560px)`}],{duration:760,delay:110,easing:'cubic-bezier(.2,.6,.2,1)',fill:'backwards'}).onfinish=done;}
-const sc=document.createElement('canvas');sc.width=16;sc.height=9;const sx=sc.getContext('2d',{willReadFrequently:true});
-function sampleTone(){const L=BD.layers[BD.layers.length-1];if(!L)return;
- try{sx.drawImage(L.canvas,0,0,16,9);const d=sx.getImageData(0,0,16,9).data;let ch=false;
-  for(const k in REG){const [x0,y0,w,h]=REG[k];let s=0;for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){const i=(y*16+x)*4;s+=d[i]*.299+d[i+1]*.587+d[i+2]*.114;}s/=w*h;
-   const light=s>168?true:s<146?false:TONE[k];if(light!==TONE[k]){TONE[k]=light;ch=true;}}
-  if(ch)applyTone();}catch(e){}}
+const sc=document.createElement('canvas');sc.width=64;sc.height=36;const sx=sc.getContext('2d',{willReadFrequently:true});
+const GAM=l=>255*(l<=.0031308?12.92*l:1.055*Math.pow(l,1/2.4)-.055);
+function toneStep(canvas,tone,deep,vx){sx.drawImage(canvas,0,0,64,36);const d=sx.getImageData(0,0,64,36).data,dr=rgb(deep),yd=dr[0]*.299+dr[1]*.587+dr[2]*.114;
+ const YW=GAM(1.05/TARGET-.05),YD=GAM(TARGET*(lumHex(deep)+.05)-.05);let ch=false;   // the brightest a backdrop may be under white ink, the darkest under dark ink
+ for(const k in REG){const [x0,y0,w,h]=REG[k],ys=[],yl=tone.l.light?255:yd;   // the corners are judged with the left veil already over them
+  for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){const i=(y*64+x)*4,al=k==='l'?0:leftVeil(tone.l,(x+.5)/64,vx);ys.push((d[i]*.299+d[i+1]*.587+d[i+2]*.114)*(1-al)+yl*al);}ys.sort((p,q)=>p-q);
+  const hi=ys[Math.min(ys.length-1,Math.floor(ys.length*.96))],lo=ys[Math.floor(ys.length*.04)];
+  const aW=hi<=YW?0:Math.min(1,(hi-YW)/Math.max(1,hi-yd)),aD=lo>=YD?0:Math.min(1,(YD-lo)/Math.max(1,255-lo));
+  const t=tone[k],light=t.light?!(aW+.1<aD):(aD+.1<aW),want=Math.min(.94,Math.max(BASE[k],(light?aD:aW)*1.06+.02)),a=Math.abs(want-t.a)<.03?t.a:t.a+(want-t.a)*.6;
+  if(light!==t.light||a!==t.a){t.light=light;t.a=a;ch=true;}}
+ return ch;}
+function sampleTone(){const L=BD.layers[BD.layers.length-1];if(!L)return;try{if(toneStep(L.canvas,TONE,S.deep,S.vx||.65))applyTone();}catch(e){}}
 let last=0,painted=0;
 function frame(now){requestAnimationFrame(frame);const B=window.Backdrops;if(!B||document.hidden||!BD.vis||RM){last=0;return;}
  const dt=last?Math.min((now-last)/1000,.08):0;last=now;BD.layers.forEach(L=>L.time+=dt);
@@ -529,11 +611,14 @@ const G=()=>S.view==='home'?{key:'home',tiles:tilesH,items:HOME,i:S.hi,map:mapH,
 const curLayer=()=>({home:homeEl,folder:folderEl,settings:settingsEl,play:playEl,kb:$('kb')})[S.view];
 const idx=k=>HOME.findIndex(it=>it&&it.k===k);
 const games=n=>n===1?'1 game':`${n} games`;
+// what the Title page used to hold: the emulator, when it was last played, and the disc if there are several
+const WHEN=['today','yesterday','3 days ago','last week','2 weeks ago','in October'];
+const facts=gm=>`${SYS[gm.sys].emu}  ·  last played ${WHEN[hash(gm.t)%WHEN.length]}`+(gm.d?`  ·  disc ${gm.disc} of ${gm.d}`:'');
 function describe(it){
  if(!it)return{kicker:'Home',word:'Empty',meta:'A makes a folder here',hints:[['A','New folder'],['Y','More']]};
- if(it.kind==='game'){const gm=it.game,s=SYS[gm.sys];return{kicker:s.name,word:gm.t,meta:`${fmtH(gm.h)}  ·  ${gm.a} / ${gm.at} achievements`,hints:S.view==='folder'?[['A','Play'],['Y','More'],['B','Back']]:[['A','Play'],['Y','More']],c:s.c,bd:s.bd,game:gm};}
+ if(it.kind==='game'){const gm=it.game,s=SYS[gm.sys];return{kicker:s.name,word:gm.t,meta:`${fmtH(gm.h)}  ·  ${gm.a} / ${gm.at} achievements`,meta2:facts(gm),hints:S.view==='folder'?[['A','Play'],['Y','More'],['B','Back']]:[['A','Play'],['Y','More']],c:s.c,bd:s.bd,game:gm};}
  if(it.kind==='app')return{kicker:'System',word:it.word,meta:'Emulators  ·  Library  ·  Display',hints:[['A','Open']],c:it.c};
- return{kicker:it.name,word:it.word,meta:games(it.games.length),hints:[['A','Open'],['Y','More']],c:it.c,bd:it.bd};}
+ return{kicker:it.name,word:it.word,meta:games(it.games.length),meta2:it.games.length?`Last played: ${it.games[0].t}`:'',hints:[['A','Open'],['Y','More']],c:it.c,bd:it.bd};}
 const rectOf=t=>({left:t._x-S.sx[t._v]-13,top:t._y-13,width:t._sz+26,height:t._sz+26});
 const px=r=>({left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
 function moveRing(a,b,glide){Object.assign(ring.style,px(b));if(!glide||!a||RM)return;
@@ -546,6 +631,7 @@ function setHints(list){const key=list.map(h=>h.join()).join('|'),hb=$('hints');
 function setTop(d,dir){
  roll($('kick'),d.kicker);roll($('meta'),d.meta||'');setHints(d.hints);
  if(d.keep)return;
+ roll($('meta2'),d.meta2||'');
  setWord(d.word,dir,d.game?560:680);
  caseEl.classList.toggle('off',!d.game);
  if(d.game&&caseEl._g!==d.game){caseEl._g=d.game;$('front').innerHTML=coverHTML(d.game);$('spine').style.background=`hsl(${(hash(d.game.t)%360+28)%360} 46% 33%)`;
@@ -588,8 +674,8 @@ function doA(){pressHint('A');const V=G(),it=V.items[V.i],t=V.tiles[V.i];
  if(!RM)t.firstChild.animate([{transform:'scale(.9)'},{transform:'scale(1)'}],{duration:300,easing:SPRING});
  if(!it&&S.view==='home')openKb('folder');
  else if(it.kind==='folder'&&!it.games.length){bump();roll($('meta'),'Nothing here yet  ·  Y on a game adds one');}
- else if(it.kind==='folder'&&S.view==='home')openFolder();else if(it.kind==='game')launch(t,it.game);else if(it.kind==='app')openSettings();else bump();}
-function gameRows(gm){const s=SYS[gm.sys];return [{label:'Play',act:'play',hint:`Starts in ${s.emu}`},{label:'Achievements',value:`${gm.a} / ${gm.at}`,hint:'See what is left to unlock'},{label:'Add to folder…',act:'addto',hint:`It stays in ${s.name} too`},
+ else if(it.kind==='folder'&&S.view==='home')openFolder();else if(it.kind==='game')startGame(t,it.game);else if(it.kind==='app')openSettings();else bump();}
+function gameRows(gm){const s=SYS[gm.sys];return [{label:'Play',act:'play',hint:`Starts in ${s.emu}`},...(gm.d?[{label:'Disc',cycle:Array.from({length:gm.d},(_,i)=>`${i+1} of ${gm.d}`),v:gm.disc-1,bind:gm}]:[]),{label:'Achievements',value:`${gm.a} / ${gm.at}`,hint:'See what is left to unlock'},{label:'Add to folder…',act:'addto',hint:`It stays in ${s.name} too`},
  ...(S.view==='home'?[{label:'Move on home',act:'move',hint:'Pick it up and put it down'},{label:'Unpin from home',hint:'It stays in its folder'}]:[{label:'Pin to home',hint:'Puts it on the home grid'}]),{label:'Edit title',hint:'Change how the name is shown'},{label:'Set cover',hint:'Pick or search for artwork'},
  {label:'Remove from library',danger:true,hint:'Its files stay where they are'}];}
 function doY(){pressHint('Y');const V=G(),it=V.items[V.i];
@@ -615,28 +701,31 @@ async function closeFolder(){
  await sleep(130);setFocus(S.hi,'back');ring.style.opacity=1;S.busy=false;}
 
 /* ---------- menus: the Y sheet and the Start menu ---------- */
-async function openSheet(title,rows,kicker,game){
+async function openSheet(title,rows,kicker,game,tile){
  S.busy=true;sfx.open();
  if(S.sheet){S.sheet.els.forEach((e,i)=>e.animate([{},{transform:'translateX(-60px)',opacity:0}],{duration:150,delay:i*10,easing:EASEIN,fill:'forwards'}));await sleep(210);}
  else curLayer().classList.add('dim');
  sheetEl.hidden=false;setHead($('stitle'),title,40,480);lettersIn($('stitle'),.8);
- const els=buildList($('shrows'),rows,70,104,480,44,i=>tapRow(i));S.sheet={rows,els,i:0,kicker,game};slideIn(els,70);
+ const els=buildList($('shrows'),rows,70,104,480,44,i=>tapRow(i));S.sheet={rows,els,i:0,kicker,game,tile};slideIn(els,70);
  await sleep(200);focusSheet(0,'open');S.busy=false;}
 function focusSheet(i,dir){const sh=S.sheet,r=sh.rows[i];sh.i=i;sh.els.forEach((e,j)=>e.classList.toggle('f',j===i));
  land(sh.els[i]._rect,{keep:true,kicker:sh.kicker,meta:rowMeta(r)===rowValue(r)&&r.hint?r.hint:rowMeta(r),hints:[['A','Choose'],['B','Close']]},dir,{glide:GLIDE(dir),radius:16});}
 async function closeSheet(){const sh=S.sheet;if(!sh)return;S.busy=true;sfx.back();ring.style.opacity=0;
  sh.els.forEach((e,i)=>e.animate([{},{transform:'translateX(60px)',opacity:0}],{duration:160,delay:i*12,easing:EASEIN,fill:'forwards'}));
  await sleep(240);sheetEl.hidden=true;curLayer().classList.remove('dim');S.sheet=null;
- if(S.dock!=null)focusDock(S.dock,'back');else setFocus(G().i,'back');ring.style.opacity=1;S.busy=false;}
+ if(S.view==='kb'){if(S.kb.zone==='res')focusRes(S.kb.ri,'back');else focusKey(S.kb.r,S.kb.c,'back');}
+ else if(S.dock!=null)focusDock(S.dock,'back');else setFocus(G().i,'back');
+ ring.style.opacity=1;S.busy=false;}
 function actRow(r,el){
  if(r.toggle!==undefined){if(r.live==='sound'){soundOn=!soundOn;syncSound();}else if(r.live==='idle')S.idle=!S.idle;else r.toggle=!r.toggle;el.querySelector('.sw').classList.toggle('on',toggleState(r));pulse(el);sfx.move();return true;}
- if(r.cycle){if(r.cycle.length<2)return false;r.v=((r.v||0)+1)%r.cycle.length;
+ if(r.cycle){if(r.cycle.length<2)return false;r.v=((r.v||0)+1)%r.cycle.length;if(r.bind)r.bind.disc=r.v+1;
   roll(el.querySelector('.rv'),rowValue(r));pulse(el);sfx.move();return true;}
  return false;}
 async function sheetA(){const sh=S.sheet,r=sh.rows[sh.i],el=sh.els[sh.i];pressHint('A');
  if(actRow(r,el)){roll($('meta'),rowMeta(r));return;}
  pulse(el);
- if(r.act==='play'){await closeSheet();const V=G();launch(V.tiles[V.i],V.items[V.i].game);}
+ if(r.act==='play'){await closeSheet();const V=G();startGame(V.tiles[V.i],V.items[V.i].game);}
+ else if(r.act==='scr'){const t=sh.tile,gm=sh.game;if(r.always)SYS[gm.sys].ask=false;await closeSheet();launch(t,gm);}
  else if(r.act==='open'){await closeSheet();doA();}
  else if(r.act==='move'){await closeSheet();startMove();}
  else if(r.act==='search'){await closeSheet();openKb('search');}
@@ -704,7 +793,7 @@ function buildKeys(){const box=$('kbkeys');box.innerHTML='';const rows=KROWS.map
 // the word being typed stays one layer: only new letters drop in, and a deleted one falls off the end
 function typeWord(text,ph){const W=680;let el=wl;
  if(!el||!el._typed){if(el){const old=el;[...old.querySelectorAll('.l')].forEach((l,i)=>l.animate([{opacity:1},{transform:'translate(0,-.6em)',opacity:0}],{duration:RM?60:170,delay:RM?0:Math.min(i*10,110),easing:EASEIN,fill:'forwards'}));setTimeout(()=>old.remove(),RM?70:320);}
-  el=document.createElement('div');el.className='wl';el._typed=true;el._shown=null;el._t='\u0000';el._W=W;$('word').appendChild(el);wl=el;}
+  el=document.createElement('div');el.className='wl';el._typed=true;el._shown=null;el._t='\u0000';el._W=W;$('word').appendChild(el);wl=el;S.vx=vxOf(W);top.style.setProperty('--vx',S.vx*100+'%');}
  const show=text||ph,isPh=!text;if(el._shown===show&&el._ph===isPh)return;
  const prev=el._ph||el._shown==null?'':el._shown;let p=0;if(!isPh)while(p<prev.length&&p<show.length&&prev[p]===show[p])p++;
  const lost=!isPh&&prev.length>show.length?prev.slice(-1):'',size=parseFloat(el.style.fontSize)||0;
@@ -716,7 +805,7 @@ function typeWord(text,ph){const W=680;let el=wl;
  if(!isPh)fresh.forEach((l,i)=>l.animate([{transform:'translateY(-.55em) rotate(-8deg)',opacity:0},{transform:'none',opacity:1}],{duration:460,delay:i*30,easing:SPRING,fill:'backwards'}));
  if(lost.trim()&&lastW){const g=document.createElement('span');g.className='ghost';g.textContent=lost;lastW.appendChild(g);g.animate([{opacity:1},{transform:'translateY(.6em) rotate(14deg)',opacity:0}],{duration:260,easing:EASEIN,fill:'forwards'}).onfinish=()=>g.remove();}}
 function kbMeta(){const kb=S.kb,n=kb.res.length;return kb.mode==='folder'?`${kb.text.length} / 12 letters`:!kb.text?'Type part of a name':n?(n===5?'5 or more games':games(n)):'Nothing found';}
-function kbTop(){const kb=S.kb;roll($('kick'),kb.mode==='folder'?'New folder':'Search');roll($('meta'),kbMeta());setHints([['A','Type'],['B',kb.text?'Delete':'Cancel']]);caseEl.classList.add('off');caseEl._g=null;typeWord(kb.text,kb.mode==='folder'?'Name':'Search');}
+function kbTop(){const kb=S.kb;roll($('kick'),kb.mode==='folder'?'New folder':'Search');roll($('meta'),kbMeta());roll($('meta2'),'');setHints([['A','Type'],['B',kb.text?'Delete':'Cancel']]);caseEl.classList.add('off');caseEl._g=null;typeWord(kb.text,kb.mode==='folder'?'Name':'Search');}
 function focusKey(r,c,dir){const kb=S.kb,was=kb.zone;kb.zone='keys';kb.r=r;kb.c=c;const key=kb.rows[r][c];kb.rows.flat().forEach(k=>k.classList.toggle('f',k===key));kb.resEls.forEach(e=>e.classList.remove('f'));
  ring.style.borderRadius='17px';moveRing(S.ring,key._rect,GLIDE(dir));S.ring=key._rect;if(was==='res')kbTop();}
 function focusRes(i,dir){const kb=S.kb,el=kb.resEls[i];kb.zone='res';kb.ri=i;kb.rows.flat().forEach(k=>k.classList.remove('f'));kb.resEls.forEach((e,j)=>e.classList.toggle('f',j===i));
@@ -735,7 +824,7 @@ function kbKey(k){const kb=S.kb;
  if(kb.zone==='res'){
   if(k==='L'||k==='R'){const j=kb.ri+(k==='R'?1:-1);if(j<0||j>=kb.resEls.length)return bump(k);sfx.move();focusRes(j,k);}
   else if(k==='D'||k==='B'){sfx.move();focusKey(0,nearest(kb.rows[0],kb.resEls[kb.ri]._x+44,e=>e._cx),'D');}
-  else if(k==='A'){pressHint('A');launch(kb.resEls[kb.ri],kb.res[kb.ri]);}else bump(k);return;}
+  else if(k==='A'){pressHint('A');startGame(kb.resEls[kb.ri],kb.res[kb.ri]);}else bump(k);return;}
  const row=kb.rows[kb.r];
  if(k==='L'||k==='R'){const c=kb.c+(k==='R'?1:-1);if(c<0||c>=row.length)return bump(k);sfx.move();focusKey(kb.r,c,k);}
  else if(k==='U'||k==='D'){const r=kb.r+(k==='D'?1:-1),cx=row[kb.c]._cx;
@@ -745,7 +834,7 @@ function kbKey(k){const kb=S.kb;
  else if(k==='B'){pressHint('B');if(kb.text)kbInput('del');else closeKb(false);}
  else bump(k);}
 function tapKey(key){if(S.busy||S.sheet||S.view!=='kb')return;user();kbJump(key._val);pulse(key);kbInput(key._val);}
-function tapRes(i){if(S.busy||S.sheet||S.view!=='kb')return;user();const kb=S.kb;if(kb.zone==='res'&&kb.ri===i){launch(kb.resEls[i],kb.res[i]);return;}sfx.move();focusRes(i,'tap');}
+function tapRes(i){if(S.busy||S.sheet||S.view!=='kb')return;user();const kb=S.kb;if(kb.zone==='res'&&kb.ri===i){startGame(kb.resEls[i],kb.res[i]);return;}sfx.move();focusRes(i,'tap');}
 async function openKb(mode){
  S.busy=true;sfx.open();const under=curLayer();ring.style.opacity=0;under.classList.add('gone');
  const kb=S.kb={mode,from:S.view,under,text:'',r:0,c:0,zone:'keys',res:[],resEls:[],ri:0,slot:S.hi,key:''};S.view='kb';
@@ -763,6 +852,9 @@ async function closeKb(commit){const kb=S.kb;if(!kb)return;S.busy=true;commit?sf
 
 /* ---------- launch, and the in-game companion ---------- */
 const mmss=s=>`${s/60|0}:${String(s%60).padStart(2,'0')}`;
+function startGame(t,gm){const s=SYS[gm.sys];if(!s.ask){launch(t,gm);return;}
+ openSheet('Which screen?',[{label:'Top screen',act:'scr',hint:'The game fills the big screen'},{label:'Bottom screen',act:'scr',hint:'The game runs between the controls'},
+  {label:`Always the top for ${s.name}`,act:'scr',always:true,hint:'Stops asking for this console'}],'Play',gm,t);}
 async function launch(t,gm){
  const s=SYS[gm.sys],lay=curLayer();
  S.busy=true;sfx.launch();ring.style.opacity=0;
@@ -770,7 +862,8 @@ async function launch(t,gm){
  await sleep(270);
  if(!RM)caseEl.animate([{transform:'scale(1)'},{transform:'scale(1.16) translateY(-10px)'},{transform:'scale(1)'}],{duration:420,easing:'ease-out'});
  launchEl.style.background=s.c;const lw=$('lw');lw.innerHTML='';[...gm.t].forEach(ch=>{const sp=document.createElement('span');sp.textContent=ch;lw.appendChild(sp);});
- lw.style.fontSize=gm.t.length>22?'64px':gm.t.length>12?'80px':'112px';roll($('ls'),`Running in ${s.emu}`);
+ lw.style.fontSize=gm.t.length>22?'64px':gm.t.length>12?'80px':'112px';const run=(gm.d?`Disc ${gm.disc}  ·  `:'')+`Running in ${s.emu}`;
+ roll($('ls'),'Syncing saves…');setTimeout(()=>{if(S.play&&S.play.gm===gm&&S.play.a===gm.a)roll($('ls'),run);},1400);
  await sleep(160);
  S.la=launchEl.animate([{clipPath:'circle(0px at 742px 258px)'},{clipPath:'circle(1100px at 742px 258px)'}],{duration:640,easing:'cubic-bezier(.3,.6,.2,1)',fill:'forwards'});
  lettersIn(lw,.8);lay.classList.add('gone');
@@ -785,7 +878,7 @@ async function launch(t,gm){
  requestAnimationFrame(()=>{$('pfill').style.width=gm.a/gm.at*100+'%';});
  S.play.tick=setInterval(()=>{if(S.play)roll($('ptime'),mmss((Date.now()-S.play.t0)/1000|0));},1000);
  S.play.un=setTimeout(()=>{const p=S.play;if(!p||p.a>=gm.at)return;p.a++;sfx.open();roll($('pach'),`${p.a} / ${gm.at}`);$('pfill').style.width=p.a/gm.at*100+'%';
-  roll($('ls'),`Achievement unlocked  ·  ${p.a} / ${gm.at}`);p.un2=setTimeout(()=>roll($('ls'),`Running in ${s.emu}`),3200);},2800);
+  roll($('ls'),`Achievement unlocked  ·  ${p.a} / ${gm.at}`);p.un2=setTimeout(()=>roll($('ls'),run),3200);},2800);
  S.busy=false;}
 async function endPlay(){const p=S.play;if(!p)return;
  S.busy=true;sfx.back();clearInterval(p.tick);clearTimeout(p.un);clearTimeout(p.un2);
@@ -868,7 +961,7 @@ const SHOWS={
  ring:[['go','ps2'],[null,400],['R',420],['R',420],['D',420],['L',420],['L',420],['U',0]],
  numbers:[['go','ps2'],[null,400],['tick',500],['R',700],['tick',500],['L',0]],
  folder:[['go','ps2'],[null,500],['A',1600],['R',550],['R',550],['R',550],['R',700],['R',1200],['B',0]],
- launch:[['go','gc'],[null,500],['A',1200],['R',700],['A',0]],
+ launch:[['go','nds'],[null,500],['A',1300],['A',1700],['A',6800],['B',1500],['B',0]],
  idle:[['hop',0]],
  dock:[['go','ps2'],[null,400],['D',450],['D',450],['D',450],['D',800],['R',500],['R',500],['R',500],['R',800],['A',1400],['D',500],['D',900],['B',900],['U',0]],
  lists:[['go','gc'],[null,500],['A',1300],['Y',1300],['D',550],['D',550],['D',550],['D',900],['B',1000],['B',1300],['go','settings'],[null,600],['A',1500],['D',800],['D',800],['D',800],['R',700],['D',700],['A',900],['A',900],['B',700],['B',0]],
@@ -886,6 +979,89 @@ function fitRig(){const wide=matchMedia('(min-width:1180px)').matches;let k=$('s
  rig.style.transform=`scale(${k})`;dev.style.width=988*k+'px';dev.style.height=1134*k+'px';}
 addEventListener('resize',fitRig);
 
+/* ---------- stress sheet: every approved backdrop against the hardest content ---------- */
+const XC={nes:'#7C5F50',snes:'#7352AE',gbc:'#2F8A7A',megadrive:'#2E636B',dreamcast:'#BF5E2A',arcade:'#A53B31',steam:'#2A6F9C'};
+const conColour=con=>(Object.values(SYS).find(x=>x.bd===con)||{c:XC[con]||'#4A4A66'}).c;
+const LIN=Array.from({length:256},(_,v)=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);});
+const lumHex=h=>{const [r,g,b]=rgb(h);return .2126*LIN[r]+.7152*LIN[g]+.0722*LIN[b];};
+// where each piece of text sits, in tenths of the 960×540 mock, and which corner's ink it uses
+const BOX={kicker:[4,3,32,3,'l'],clock:[72,2,20,6,'tr'],name:[4,8,68,34,'l'],lines:[4,44,52,7,'l'],hints:[64,47,28,4,'br']};
+const PASS=3,MOMENTS=8;
+const ST={done:false,busy:false,res:[],mode:'long',filter:'all',covers:null,user:null};
+const mc=document.createElement('canvas');mc.width=96;mc.height=54;const mx=mc.getContext('2d',{willReadFrequently:true});
+function contrastOf(src,tone,deep,vx){mx.globalAlpha=1;mx.drawImage(src,0,0,96,54);
+ for(const g of [...SHADE].reverse()){const t=tone[g.k];let gr;   // CSS paints the last layer listed first
+  if(g.lin){gr=mx.createLinearGradient(0,0,96,0);gr.addColorStop(0,shCol(t,deep));gr.addColorStop(vx,shCol(t,deep));
+   if(vx+g.fade<=1)gr.addColorStop(vx+g.fade,shCol(t,deep,0));else gr.addColorStop(1,shCol(t,deep,leftVeil(t,1,vx)));mx.fillStyle=gr;mx.fillRect(0,0,96,54);}
+  else{mx.save();mx.translate(g.cx*96,g.cy*54);mx.scale(g.rx*96,g.ry*54);gr=mx.createRadialGradient(0,0,0,0,0,1);gr.addColorStop(0,shCol(t,deep));gr.addColorStop(g.flat,shCol(t,deep));gr.addColorStop(1,shCol(t,deep,0));mx.fillStyle=gr;mx.fillRect(-2,-2,4,4);mx.restore();}}
+ mx.globalAlpha=1;const d=mx.getImageData(0,0,96,54).data,ink=lumHex(deep),out={};
+ for(const name in BOX){const [x0,y0,w,h,k]=BOX[name],ls=[];for(let y=y0;y<y0+h;y++)for(let x=x0;x<x0+w;x++){const i=(y*96+x)*4;ls.push(.2126*LIN[d[i]]+.7152*LIN[d[i+1]]+.0722*LIN[d[i+2]]);}
+  ls.sort((a,b)=>a-b);out[name]=tone[k].light?(ls[Math.floor(ls.length*.1)]+.05)/(ink+.05):1.05/(ls[Math.floor(ls.length*.9)]+.05);}
+ return out;}
+function measure(v){const B=window.Backdrops,L=B.makeLayer(document.createElement('canvas'));B.prepare(L,v,0);
+ const deep=mix(conColour(v.con),'#0B0A18',.74),tone={l:{light:false,a:BASE.l},tr:{light:false,a:BASE.tr},br:{light:false,a:BASE.br}},cr={};let worst=null;
+ for(let m=0;m<MOMENTS;m++){L.time=2+m*5.3;B.render(L,1/30);L.time+=1/30;B.render(L,1/30);for(let q=0;q<6;q++)toneStep(L.canvas,tone,deep,vxOf(680));
+  const c=contrastOf(L.canvas,tone,deep,vxOf(680)),min=Math.min(...Object.values(c));for(const k in c)cr[k]=Math.min(cr[k]??99,c[k]);
+  if(!worst||min<worst.min){const f=worst?worst.frame:document.createElement('canvas');f.width=L.canvas.width;f.height=L.canvas.height;f.getContext('2d').drawImage(L.canvas,0,0);worst={min,frame:f,tone:JSON.parse(JSON.stringify(tone))};}}
+ return{v,cr,deep,min:Math.min(...Object.values(cr)),frame:worst.frame,tone:worst.tone};}
+async function runStress(){if(ST.busy)return;ST.busy=true;ST.done=false;ST.res=[];const B=window.Backdrops,list=Object.values(PICKS).flat().map(id=>B.VARIANTS.find(v=>v.id===id)).filter(Boolean);
+ for(let i=0;i<list.length;i++){try{ST.res.push(measure(list[i]));}catch(e){}$('ssum').textContent=`Measuring ${i+1} of ${list.length}…`;await new Promise(r=>setTimeout(r,0));}
+ ST.res.sort((a,b)=>a.min-b.min);ST.busy=false;ST.done=true;drawStress();}
+function busyCovers(){if(ST.covers)return ST.covers;const names=['TURBO DRIFT','STAR KNIGHT','MONSTER RUN','DEEP SIX','SKY ARENA','PUZZLE PARK','IRON LEGION','NEON CUP','LOST ISLE','PIXEL QUEST','RALLY NINE','GHOST TOWN'];
+ let sd=11;const R=()=>{sd=(Math.imul(sd,1664525)+1013904223)>>>0;return sd/4294967296;};
+ ST.covers=names.map((nm,i)=>{const c=document.createElement('canvas');c.width=240;c.height=i%3===0?240:336;const x=c.getContext('2d'),W=c.width,H=c.height,h0=R()*360;
+  const g=x.createLinearGradient(0,0,W,H);g.addColorStop(0,`hsl(${h0} 85% 55%)`);g.addColorStop(.5,`hsl(${(h0+70)%360} 90% 45%)`);g.addColorStop(1,`hsl(${(h0+200)%360} 80% 25%)`);x.fillStyle=g;x.fillRect(0,0,W,H);
+  for(let k=0;k<9;k++){x.save();x.translate(R()*W,R()*H);x.rotate(R()*6.3);x.fillStyle=`hsl(${R()*360} ${60+R()*40}% ${30+R()*50}%)`;const z=20+R()*90;
+   if(k%3===0){x.beginPath();x.arc(0,0,z/2,0,7);x.fill();}else if(k%3===1)x.fillRect(-z/2,-z/6,z,z/3);else{x.beginPath();x.moveTo(0,-z/2);x.lineTo(z/2,z/2);x.lineTo(-z/2,z/2);x.fill();}x.restore();}
+  x.fillStyle='rgba(255,236,200,.92)';x.beginPath();x.ellipse(W*.55,H*.6,W*.22,H*.2,-.3,0,7);x.fill();x.fillStyle='#14121c';x.beginPath();x.ellipse(W*.5,H*.55,W*.07,H*.03,0,0,7);x.fill();
+  for(let k=0;k<500;k++){x.fillStyle=`rgba(${R()*255|0},${R()*255|0},${R()*255|0},.35)`;x.fillRect(R()*W,R()*H,2,2);}
+  x.fillStyle=i%2?'#0d0d12':'#f4f4f4';x.fillRect(0,0,W,H*.11);x.fillStyle=i%2?'#f4f4f4':'#0d0d12';x.font='900 13px sans-serif';x.fillText('GAME SYSTEM',8,H*.11-8);
+  x.save();x.translate(W/2,H*.3);x.rotate((R()-.5)*.2);x.textAlign='center';x.font='900 34px Impact,"Arial Black",sans-serif';x.lineWidth=7;x.strokeStyle='#14121c';x.fillStyle=`hsl(${(h0+140)%360} 100% 70%)`;
+  nm.split(' ').forEach((w,j)=>{x.strokeText(w,0,j*36);x.fillText(w,0,j*36);});x.restore();
+  x.fillStyle='#fff';x.fillRect(8,H-44,28,36);x.fillStyle='#000';x.font='900 22px sans-serif';x.fillText('E',14,H-18);x.fillStyle='rgba(0,0,0,.7)';x.fillRect(W-86,H-26,78,18);
+  return c.toDataURL('image/jpeg',.8);});return ST.covers;}
+const coverSrc=i=>{const list=ST.user&&ST.user.length?ST.user:busyCovers();return list[i%list.length];};
+function drawStress(){const B=window.Backdrops,grid=$('sgrid'),n=ST.res.length;grid.innerHTML='';
+ const failed=ST.res.filter(r=>r.min<PASS),tally={};failed.forEach(r=>Object.keys(BOX).forEach(k=>{if(r.cr[k]<PASS)tally[k]=(tally[k]||0)+1;}));
+ $('ssum').innerHTML=`<b>${n-failed.length} of ${n}</b> backdrops keep every piece of text at ${PASS} to 1 or better at their hardest moment.`+(failed.length?` The ${failed.length} that do not are outlined and listed first. Where they fail: ${Object.entries(tally).sort((a,b)=>b[1]-a[1]).map(([k,c])=>`${k} ${c}`).join(', ')}.`:` The lowest figure on the sheet is ${ST.res[0].min.toFixed(1)}.`);
+ ST.res.forEach((r,i)=>{const bad=r.min<PASS;if(ST.filter==='fail'&&!bad)return;
+  const fig=document.createElement('figure');fig.className='sc'+(bad?' fail':'');fig._r=r;fig._i=i;
+  fig.innerHTML='<div class="mini"><div class="stage"><div class="shade"></div><div class="kick"></div><div class="sys"><span class="batt">76%</span><span class="clock disp">17:18</span></div><div class="case"><div class="floor"></div><div class="kickr"><div class="sway"><div class="back"></div><div class="spine"></div><div class="front"></div></div></div></div><div class="word disp"></div><div class="meta"></div><div class="meta2"></div><div class="hints"></div></div></div><figcaption><b></b><span></span></figcaption>';
+  const st=fig.querySelector('.stage');r.frame.className='bdc'+(r.v.pixel?' pixel':'');st.prepend(r.frame);
+  for(const k in r.tone){st.style.setProperty('--ink-'+k,r.tone[k].light?r.deep:'#fff');st.style.setProperty('--sh-'+k,shCol(r.tone[k],r.deep));}
+  fig.querySelector('figcaption b').textContent=`${B.CONSOLES[r.v.con].label} · ${r.v.name}`;
+  fig.querySelector('figcaption span').innerHTML=Object.keys(BOX).map(k=>`<span class="${r.cr[k]<PASS?'no':''}">${k} ${r.cr[k].toFixed(1)}</span>`).join(' · ');
+  grid.appendChild(fig);});
+ sizeStress();fillStress();}
+const SMODE={long:'Professor Layton and the Curious Village',short:'Ico',nocover:'Super Mario Sunshine',missing:'Okami'};
+function fillStress(){const B=window.Backdrops,m=ST.mode,game=m!=='folder';
+ document.querySelectorAll('#sgrid .sc').forEach(fig=>{const r=fig._r,con=B.CONSOLES[r.v.con],st=fig.querySelector('.stage'),text=game?SMODE[m]:con.label;
+  st.querySelector('.kick').textContent=con.name;st.style.setProperty('--vx',vxOf(game?560:680)*100+'%');
+  const w=st.querySelector('.word');w.innerHTML='';w.style.opacity=m==='missing'?.5:1;const l=document.createElement('div');l.className='wl';
+  text.split(' ').forEach(t=>{const sp=document.createElement('span');sp.className='w';sp.textContent=t;l.appendChild(sp);l.appendChild(document.createTextNode(' '));});w.appendChild(l);fitWord(l,game?560:680,340);
+  st.querySelector('.meta').textContent=m==='folder'?'14 games':m==='missing'?'File not found  ·  Y to locate it':'12 h 45 min  ·  9 / 20 achievements';
+  st.querySelector('.meta2').textContent=m==='folder'?'Last played: Okami':m==='missing'?'':'DuckStation  ·  last played 2 weeks ago  ·  disc 2 of 3';
+  st.querySelector('.hints').innerHTML=(m==='folder'?[['A','Open'],['Y','More']]:m==='missing'?[['Y','More'],['B','Back']]:[['A','Play'],['Y','More'],['B','Back']]).map(([k,t])=>`<span class="hint"><i>${k}</i>${t}</span>`).join('');
+  st.querySelector('.case').classList.toggle('off',!game);
+  if(game)st.querySelector('.front').innerHTML=m==='nocover'?`<div class="nocover">${esc(text)}</div>`:`<img alt="" src="${coverSrc(fig._i)}">`;});}
+function drawStrips(){const g=$('lgrid');g.innerHTML='';Object.values(SYS).forEach((y,si)=>{const cg=1.05/(lumHex(y.c)+.05),ct=1.05/(lumHex(mix(y.c,'#ffffff',.17))+.05);
+ let tiles='';for(let i=0;i<5;i++)tiles+=`<div class="tile${i===1?' f':''}" style="left:${81+i*118}px;top:100px;--sz:104px"><div class="in"><img alt="" src="${coverSrc(si*4+i)}"></div></div>`;
+ const fig=document.createElement('figure');fig.className='sc'+(Math.min(cg,ct)<PASS?' fail':'');
+ fig.innerHTML=`<div class="lmini"><div class="lstage" style="background:${y.c};--fc:${y.c}"><div class="fhead disp"><span class="fname" style="font-size:40px">${y.name}</span><span class="fcount" style="font-size:40px">14</span></div>${tiles}`+
+  `<div class="ring" style="left:186px;top:87px;width:130px;height:130px"></div>`+
+  `<div class="tile fold" style="left:81px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:33px">${y.m}</span></div></div><div class="tile fold f" style="left:199px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:33px">${y.m}</span></div></div></div></div>`+
+  `<figcaption><b>${y.name}</b><span class="${cg<PASS?'no':''}">white on the colour ${cg.toFixed(1)}</span> · <span class="${ct<PASS?'no':''}">white on a tile ${ct.toFixed(1)}</span></figcaption>`;g.appendChild(fig);});sizeStress();}
+function sizeStress(){const a=document.querySelector('#sgrid .mini');if(a&&a.clientWidth)$('sgrid').style.setProperty('--k',a.clientWidth/960);const b=document.querySelector('#lgrid .lmini');if(b&&b.clientWidth)$('lgrid').style.setProperty('--k',b.clientWidth/620);}
+document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{ST.mode=b.dataset.c;document.querySelectorAll('[data-c]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));fillStress();});
+document.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ST.filter=b.dataset.f;document.querySelectorAll('[data-f]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));if(ST.done)drawStress();});
+$('covers').onchange=e=>{const fs=[...e.target.files].filter(f=>f.type.startsWith('image/')).slice(0,80);if(!fs.length)return;(ST.user||[]).forEach(u=>URL.revokeObjectURL(u));ST.user=fs.map(f=>URL.createObjectURL(f));
+ $('cnote').textContent=`Showing ${fs.length} of your covers. They are read in this browser tab only.`;fillStress();drawStrips();};
+function showStress(tries=0){if(!window.Backdrops){if(tries<40)setTimeout(()=>showStress(tries+1),250);else $('ssum').textContent='The backdrops did not load, so there is nothing to measure.';return;}
+ drawStrips();if(ST.done)sizeStress();else runStress();}
+function route(){const st=location.hash==='#stress';$('mockview').hidden=st;$('stressview').hidden=!st;$('nav-stress').toggleAttribute('aria-current',st);$('nav-mock').toggleAttribute('aria-current',!st);
+ if(st){$('nav-stress').setAttribute('aria-current','page');stopDemo();showStress();}else{$('nav-mock').setAttribute('aria-current','page');fitRig();refit();}}
+addEventListener('hashchange',route);addEventListener('resize',sizeStress);
+
 /* ---------- boot ---------- */
 function start(){
  fitRig();buildHome();buildDock();
@@ -901,6 +1077,8 @@ function start(){
   s.onload=()=>{if(!window.Backdrops){load(srcs.slice(1));return;}const d=inGrid()?describe(G().items[G().i]):{};BD.con=null;setBackdrop(d.bd||'playstation2',480);};
   s.onerror=()=>load(srcs.slice(1));document.head.appendChild(s);})(['backdrops.js','../handheld-mode/backdrops-motion-study/backdrops.js']);
 }
-start();
+start();route();
+// handles for tuning from the console
+window.BigType={ST,TONE,BASE,runStress,set target(v){TARGET=v;}};
 })();
 </script>

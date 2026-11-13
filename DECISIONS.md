@@ -14209,3 +14209,31 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   values at Thor resolution.
 - **Before it ships:** M PLUS Rounded 1c is on Google Fonts under the SIL Open Font License; confirm the licence
   text, bundle it, and add it to `THIRD-PARTY-NOTICES.md`. None of the motion has been measured on the Thor.
+
+## 2026-11-13 — Handheld: A on a game plays (amends decision 13, for the Big Type look)
+
+- **Decided by the owner** while planning M47: in the Big Type look, A on a game starts it. There is no Title page
+  between the press and the launch. Decision 13 of `HANDHELD-MODE.md` ("A opens the Title page; Play is a second
+  press") stands for today's look until M47 replaces it.
+- **Nothing the page did is skipped.** The build route is the one the Y sheet's Play already uses: the page opens
+  with `playWhenReady`, so it still waits for details, still asks which screen when the console's setting is Prompt
+  (with "always use this screen"), still syncs saves and still plays the launch lead.
+- **Where the page's contents go:** the emulator, last played and the disc sit on a second line under the name on the
+  Stage; achievements stay in the line above it and in the Y sheet; the disc is a row in the Y sheet that cycles, and
+  A plays the disc last chosen.
+- **Drawn in the mock** (`docs/prototypes/handheld-big-type/index.html`): DS and 3DS ask which screen; three games
+  have several discs. Not built in the app.
+
+## 2026-11-13 — M47 (Big Type): three more owner decisions before the build
+
+- **The colour table is made by hand.** All sixteen consoles get a ground colour tuned in the mock (easy to tell
+  apart, white type readable) and reviewed there before the values go into the app; not derived from
+  `GameSystem.AccentColor` by a rule.
+- **M45's open look and feel exits are closed as superseded.** H2's hands-on check of the Launcher's look and H3's
+  feel check of the folder motion would have judged what M47 replaces. Both are marked in `ROADMAP.md`.
+- **Today's Handheld look is removed when Big Type is done** (M47 B10). It is the default behind a switch during
+  the build and is then deleted. Keeping both would mean making and checking every later Handheld change twice.
+- **How the build is run:** steps go to their own sessions on Opus, one at a time; the design session starts and
+  checks them and does not build.
+- **Found on the way:** the owner's Thor is set to 60 Hz (`peak_refresh_rate` and `min_refresh_rate` both 60), and
+  the owner chose to leave it there for the R1 spike. `HANDHELD-MODE.md` records both panels at 120 Hz.

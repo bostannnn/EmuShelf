@@ -2549,10 +2549,11 @@ Played. Pad input already reaches one dispatcher from both displays
           because the Screen-2 Presentation's Avalonia top level was never disposed with its window; it is now.
           `DECISIONS.md` 2026-11-08 "M45 H7c: a recreated activity no longer kills Handheld mode".)
 - [ ] **Open exits hiding inside items above** (collected 2026-11-08 so they are not lost; tick
-      each where it lives, then this one): H3's Thor feel check of the revised folder motion; H7a's
+      each where it lives, then this one): H3's Thor feel check of the revised folder motion (closed as superseded by
+      M47, owner 2026-11-13); H7a's
       battery drain over 30 minutes unplugged (the rest of its suite was measured 2026-11-13); H7b's owner
       judgement of the rotation (its measurements were taken 2026-11-13); H2's
-      Launcher-side look, which awaits the owner's hands-on check;
+      Launcher-side look, which awaited the owner's hands-on check (closed as superseded by M47, owner 2026-11-13);
       H6d's real fresh install on the Thor (cleared data or a second device: the pre-boot steps, then Handheld mode, the
       wizard and a playable home, end to end; the device check faked "fresh" in the owner's settings), its empty library on
       the device (checked headlessly only), and the owner's ear on the five sounds (character and level).
@@ -2651,3 +2652,125 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
 - **Later, not part of M46:** syncing sessions between devices (the device id makes rows mergeable;
       belongs beside M33); timing hand-off launchers on desktop by following the child process; export
       to CSV; play-time goals or reminders.
+
+## M47 — Handheld: the Big Type look (planned; nothing built)
+
+Handheld mode restyled to the direction the owner chose on 2026-11-13 (`DECISIONS.md`, "Handheld look: the Big
+Type direction"): the focused item's name fills the Stage over that console's backdrop, the Launcher takes the
+console's flat colour, the face is M PLUS Rounded 1c, nothing sits in a pill, and every change is animated. The
+visual contract is the drivable mock, [docs/prototypes/handheld-big-type/index.html](docs/prototypes/handheld-big-type/index.html):
+fifteen numbered moves, a table of type, shape, motion and colour values at Thor resolution, and a stress sheet
+(`#stress`) that measures the Stage's text against all 53 approved backdrops. It overturns decision 16 of
+`HANDHELD-MODE.md` and nothing else; the grid, the dock, the backdrops, the 3D medium and every feature stay.
+
+**What the code says about the size of this** (mapped 2026-11-13, before any build):
+
+- **There are no Handheld tokens.** About 330 colour literals, 110 font sizes and 100 corner radii are written
+  inline across the four views (`HandheldLauncherView.axaml` alone has 178, 52 and 56), with more brushes in
+  `HandheldConverters.cs` and `Color.Parse` calls in about ten other files. A restyle has to collect them first.
+- **A console's colour is parsed ad hoc** from `GameSystem.AccentColor` at seven call sites. Those accents were
+  tuned for the backdrops and several are too light for white type; the mock uses darker ones for nine consoles only.
+- **On the Thor both screens are drawn by native GL compositors that only draw pictures.** `StageCompositor` and
+  `LauncherCompositor` draw textured quads with rectangular scissor clipping. They have no text, no circular or
+  masked clip, and nothing reads the backdrop's brightness back. All text is a picture of an Avalonia control, and
+  each picture is a GPU round trip. The selector's three bands are hard-coded in `selector.frag.glsl`.
+- **Menus, sheets, Settings, naming, move mode and panels are not native.** The Avalonia Launcher takes the screen
+  back while one is open, so the hand-off between the two has to be invisible in the new look.
+- **Only `Exo2.ttf` is bundled.** Handheld views set no typeface and use the system font (decision 16's Nunito was
+  never added).
+- **Reduced motion covers the Stage only.** `HoldsStill` (battery saver, or Android's animator scale at 0) stops
+  the medium's sway, the idle drift and the backdrop; the Launcher compositor has no hook.
+- **Snapshot tests never compare frames.** 27 Handheld test files, five of them snapshot tests that write PNGs on
+  request and assert only visibility, size and view-model state. A full set that renders 84 states exists on
+  `claude/design-system-visual-refresh-f11cc2` (commit 6b49476, `HandheldDesignSnapshotTests.cs`), unmerged.
+- **A on a game opens the Title page as its own state** (`HandheldTitleState`). The mock plays straight away.
+  Launching directly would skip the screen chooser, the disc chooser, the save-sync panel and the launch lead; the Y
+  sheet's Play already runs the page with `playWhenReady`, which is the safe route to "A plays".
+- **M45 still has open exits a restyle replaces:** H2's hands-on check of the Launcher's look and H3's feel check of
+  the folder motion would be judging things this milestone changes.
+
+**How to work it.** As M45: one item per session, each leaves the app usable, each ends hands-on on the Thor
+(Screen-2 is `FLAG_SECURE`), each gets one `M47 <id>: …` commit. Build behind a look switch so today's Handheld
+mode stays the default until B10. Static before motion; Avalonia views before the native compositors, because the
+native side only pictures them.
+
+**Who builds.** The owner's instruction (2026-11-13): build steps run in their own sessions on Opus, one at a
+time, each from the previous step's branch. The design session that wrote this plan starts them, checks what they
+report against the exits below and against the mock, and does not build.
+
+### Before building: decide (owner)
+
+- [x] **D1 — A on a game plays.** ✅ (owner, 2026-11-13; `DECISIONS.md` "Handheld: A on a game plays".) Built by
+      opening the page with `playWhenReady`, so the screen chooser still appears for a console set to ask, save sync
+      still runs and nothing is skipped; the page's facts (emulator, last played, disc) sit under the name on the
+      Stage; the disc is a row in the Y sheet. Drawn in the mock. Amends decision 13.
+- [ ] **D2 — Which of the fifteen moves stay.** Anything dropped here is not built.
+- [ ] **D3 — The colour table.** Sixteen consoles need a ground colour dark enough for white type (4.5 to 1 on the
+      ground, 3 to 1 on a tile); the mock has nine, five of them between blue and violet. Either spread them by hand
+      or derive each from `AccentColor` by a rule and accept what comes out. **Owner, 2026-11-13: by hand, in the
+      mock, reviewed on the page before the values go into the app.**
+- [x] **D4 — M45's open look and feel exits (H2, H3) are closed as superseded.** ✅ (owner, 2026-11-13.) They
+      would have judged what this milestone replaces; both are marked where they live in M45.
+- [x] **D5 — Today's look is removed at B10.** ✅ (owner, 2026-11-13.) It stays the default behind the switch
+      during the build, then it is deleted; there is no setting to choose between the two.
+
+### Before building: find out
+
+- [ ] **R1 — The Thor spike** (running in its own session since 2026-11-13): per-letter motion of a fitted name,
+      the circular flood with two backdrops live, rolling digits; frame times on the device and the route letters
+      take to the compositor. **Kill criterion:** if a three-line name cannot roll in at the panel's rate during a
+      backdrop wipe, the name animates as whole lines or one picture, and move 2 is redrawn in the mock to match.
+- [ ] **R2 — The legibility rule without readback.** The mock samples the backdrop twice a second; the device
+      cannot read it back. Try the simplest route first: bake ink and veil strength per backdrop variant into
+      `BackdropCatalog` from the stress sheet's numbers (50 of 53 sit at the lightest veil with one fixed ink).
+      Fall back to a small GPU downsample and a read every half second only if a variant's brightness swings.
+- [ ] **R3 — The font on Android.** Confirm the licence text (SIL OFL on Google Fonts), measure the three weights'
+      size in the APK (the family has 8,546 glyphs including Japanese), decide between shipping whole and a Latin
+      subset with the system face as fallback, and check one Japanese title renders either way.
+- [ ] **R4 — Real covers and real panels.** Load the owner's covers into the stress sheet (it reads them in the
+      browser only), and look at the nine flat colours on the Thor's AMOLED panels at normal brightness.
+- [ ] **R5 — The bottom panel's rate.** `HANDHELD-MODE.md` records both displays at 120 Hz; reviews list the bottom
+      one at 60 Hz. Measure it, because the motion table's staggers are tuned by eye at 120.
+      Found 2026-11-13 by the R1 spike: the owner's Thor is set to 60 Hz (system `peak_refresh_rate` and
+      `min_refresh_rate` both 60), and the owner chose to leave it there. So 60 Hz is the rate to tune for; R1
+      reports render time against both the 16.7 ms and the 8.3 ms budget.
+
+### Before building: finish the design in the mock
+
+- [ ] **M1 — The screens not drawn yet,** in order of use (the screen chooser, the disc row and "Syncing saves…"
+      are drawn, 2026-11-13): the generic panel (one drawing covers Search results, the scraper,
+      cover search, achievements, Activity and Edit title, because they share `HandheldPanelView`); the companion's
+      Achievements and Photos tabs, badges and rest state; a message or toast; Settings in setup mode; the empty
+      library; a game whose file is missing; X swap.
+- [ ] **M2 — Freeze the numbers.** One table in the mock that the app's resource dictionary mirrors name for name.
+
+### Build
+
+- [ ] **B0 — A safety net.** Bring `HandheldDesignSnapshotTests.cs` over from 6b49476. Add a frame comparison that
+      fails on any pixel difference, used only by B1. Add the look switch (today's look, Big Type), off by default.
+      **Exit:** all 84 frames render on macOS and the comparison passes against itself.
+- [ ] **B1 — Tokens, with no visible change.** One Handheld resource dictionary for colour, type, radius and
+      spacing; every inline literal in the four views and every brush in code reads from it; one accessor for a
+      console's colour replaces the seven parse sites. **Exit:** every frame is pixel-identical to B0's.
+- [ ] **B2 — The font and the colour table.** Bundle the face per R3 with its notice in
+      `THIRD-PARTY-NOTICES.md`; add the ground colours per D3 with a unit test that holds each to its contrast floors.
+- [ ] **B3 — The Launcher, still.** Flat ground in the focused console's colour, matte squarer tiles, monograms
+      fitted to the tile, header, dock and counts as plain type, the ring as one white band (the shader's bands become
+      parameters). **Exit:** home and a folder look like the mock at rest on the Thor, and the hand-off to a sheet
+      and back shows no seam.
+- [ ] **B4 — The Stage, still.** The fitted name, the four corners, no plate and no pills, the veil and ink per R2.
+      **Exit:** the name is readable over every backdrop of every console in the owner's library, on the device.
+- [ ] **B5 — Motion that needs no new drawing.** The ring's stretch between tiles, dock and rows; the tile lift and
+      neighbours making room; rolling digits; the idle hop. Give the Launcher compositor the `HoldsStill` hook now.
+- [ ] **B6 — Letters, and the flood.** Per R1's route for letters. A circle term in the fragment shaders for the
+      Launcher's flood and the Stage's backdrop wipe from the hinge. **Exit:** frame times on the Thor at or under
+      R1's figures for a three-line name during a wipe.
+- [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
+      focused row as the Stage's name. Avalonia only.
+- [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
+      companion's session count and achievement roll.
+- [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.
+- [ ] **B10 — Make it the look.** A reduced-motion setting beside the system one; the owner's ear on the sounds
+      with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
+      motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the
+      old look.
