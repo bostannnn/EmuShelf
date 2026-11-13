@@ -14189,3 +14189,23 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
 - **Left as found:** seven empty folders named "New folder" on the owner's home (one on page 1, six on page 2),
   apparently made by another session's scripted press loop on the same Thor earlier today. Not deleted: they are the
   owner's to keep or remove.
+
+## 2026-11-13 — Handheld look: the "Big Type" direction, with Colour and Round locked (prototype only)
+
+- **Owner's brief:** Handheld mode looked bland and unfinished; the target is a minimal 3DS / Cocoon feel with
+  motion on every change and very large type, starting from today's layout. Earlier catalogues of static,
+  one-layer-at-a-time options were rejected as generic.
+- **Direction chosen (owner, after a drivable mock):** "Big Type",
+  `docs/prototypes/handheld-big-type/index.html`. The focused item's name fills the Stage over that console's
+  approved backdrop; frosted pills, the name plate, gloss, gradients and tile shadows go; status, hints and counts
+  are plain type in the four corners; one selector ring serves tiles, dock apps, menu rows and keys.
+- **Locked (owner):** the Launcher's ground is the focused console's flat colour ("Colour"), and the face is
+  M PLUS Rounded 1c ("Round"). The dark and light grounds and the condensed and wide faces were dropped from the mock.
+- **Kept from the standing decisions:** the per-console backdrops, the 3D medium for a focused game, the 5×4 home
+  grid with empty slots, folders that scroll sideways three rows deep, the dock, monograms on console folders, and
+  today's Settings sections and menu actions.
+- **What this would overturn when built:** decision 16 of `HANDHELD-MODE.md` (light white-and-grey on indigo, Nunito
+  for names). Nothing is built; no app code changed. The mock's page carries the type, shape, motion and colour
+  values at Thor resolution.
+- **Before it ships:** M PLUS Rounded 1c is on Google Fonts under the SIL Open Font License; confirm the licence
+  text, bundle it, and add it to `THIRD-PARTY-NOTICES.md`. None of the motion has been measured on the Thor.
