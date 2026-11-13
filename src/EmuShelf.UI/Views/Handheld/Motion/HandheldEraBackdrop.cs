@@ -39,7 +39,11 @@ public sealed class HandheldEraBackdrop : Decorator
     private readonly Grid _canvas = new() { Width = CanvasWidth, Height = CanvasHeight, ClipToBounds = true };
     private readonly List<Layer> _layers = [];
     private readonly DispatcherTimer _drift = new(DispatcherPriority.Background);
-    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    // The drift's clock, taken when the control is made. Only the Handheld design snapshots (M47 B0) change
+    // DriftClock, to one that stands still, so every frame they render draws the drift where it starts.
+    internal static TimeProvider DriftClock { get; set; } = TimeProvider.System;
+    private readonly TimeProvider _clock = DriftClock;
+    private readonly long _started = DriftClock.GetTimestamp();
     private IActivatableLifetime? _lifetime;
     private bool _backgrounded;
     private readonly DispatcherTimer _settle = new(DispatcherPriority.Background)
@@ -220,7 +224,7 @@ public sealed class HandheldEraBackdrop : Decorator
             _drift.Stop();
             return;
         }
-        var progress = (_clock.Elapsed.TotalMilliseconds / layer.LoopMilliseconds) % 1;
+        var progress = (_clock.GetElapsedTime(_started).TotalMilliseconds / layer.LoopMilliseconds) % 1;
         var x = Math.Round(layer.Travel.X * progress);
         var y = Math.Round(layer.Travel.Y * progress);
         if (layer.Shift.X != x)

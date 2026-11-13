@@ -156,6 +156,7 @@ public partial class MainViewModel
                 LaunchLead = HandheldMotion.LaunchLead,
                 SoundPlayer = _handheldSoundPlayer ?? SilentHandheldSoundPlayer.Instance,
                 SoundsEnabled = _settingsService?.Load().HandheldSounds ?? true,
+                Look = _settingsService?.Load().HandheldLook ?? HandheldLook.Classic,
                 SaveSounds = SaveHandheldSounds,
             };
             Handheld = handheld;

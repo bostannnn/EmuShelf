@@ -14,6 +14,7 @@ using EmuShelf.Core.Metadata;
 using EmuShelf.Core.Metadata.ScreenScraper;
 using EmuShelf.Core.SaveSync;
 using EmuShelf.Core.Settings;
+using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Shell;
 using EmuShelf.Core.Systems;
 using EmuShelf.Infrastructure.Importing;
@@ -5578,5 +5579,20 @@ public class MainViewModelTests : IDisposable
         Assert.True(vm.DispatchGamepadAction(GamepadAction.ResetRotation));
 
         Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
+    }
+
+    // M47 B0: Handheld mode starts in the look the settings hold, today's unless Big Type was saved.
+    [AvaloniaTheory]
+    [InlineData(null, HandheldLook.Classic)]
+    [InlineData(HandheldLook.BigType, HandheldLook.BigType)]
+    public void HandheldMode_StartsInTheSavedLook(HandheldLook? saved, HandheldLook expected)
+    {
+        var settings = new StubSettingsService();
+        if (saved is { } look)
+            settings.Save(settings.Load() with { HandheldLook = look });
+
+        var vm = CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
+
+        Assert.Equal(expected, Assert.IsType<HandheldShellViewModel>(vm.Handheld).Look);
     }
 }

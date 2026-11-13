@@ -14250,3 +14250,32 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   get one look on the Thor at B4, where `ps2-sea`'s button-hint ink (the one zone that changes) is also chosen.
 - **With this, every owner decision in M47 is made** (A plays, the colour table, M45's exits, the old look removed,
   the moves). What remains before B2 is R3 (the font) and R4 (the owner's covers and the colours on the panel).
+
+## 2026-11-13 — M47 B0: how two Handheld renders are made identical, and the look switch
+
+- **Frames are compared exactly.** `FrameComparison` counts any channel difference in any pixel; there is no
+  tolerance and no threshold, because B1 must show its frames identical, not close. Everything that made two renders
+  differ is pinned in the design harness instead.
+- **What was pinned, and why.** Two renders of the set brought over from 6b49476 differed in 118 of 144 frames.
+  The wall clock (status time, "played an hour ago", dates) is a fixed `TimeProvider` that keeps real timestamps and
+  timers: freezing timestamps too would have held the folder-open Stage hold forever. The culture is en-GB. The
+  backdrop's drift ran on a private `Stopwatch` and never rests, so `HandheldEraBackdrop` now reads an internal
+  static `DriftClock` that only the harness changes, to one that stands still. The launch bar is an indeterminate
+  `ProgressBar`, a loop with no rest, so the harness draws every such bar determinate at 40%.
+- **Wait for rest, then draw the tree.** Headless Avalonia feeds its render timer real `Stopwatch` time, so there is no
+  virtual clock to pin for transitions, springs and compositor animations. Each frame is written only after both
+  screens have stopped changing for 600 ms (failing after 20 s). Even at rest the compositor's own frames differed by
+  a few edge pixels on tiles the selector had passed, while every bound, transform and shadow bitmap in the visual
+  tree was identical, so frames are drawn afresh with `RenderTargetBitmap.Render(window)` rather than taken from the
+  compositor. At rest the composition animations agree with the controls by design, and the frames show the same
+  ring, glow and backdrops. A render dropped from about 5 minutes to about 2½.
+- **One app change that draws.** The selector applies a new corner radius only when it moves more than a quarter
+  pixel, so its resting radius depended on how the frames fell. It now takes the exact radius once its spring has
+  settled: a sub-pixel difference at rest, the same on every run.
+- **The sample home places Activity itself.** Activity (M46 P4) postdates 6b49476; reconciliation put it in slot 14,
+  which made the "empty slot" frame show Activity. The sample layout now puts it there on purpose, with its own frame,
+  and the empty slot moves to 15.
+- **The look switch is `HandheldLook { Classic, BigType }`** in `EmuShelf.Core.Handheld`, saved as
+  `AppSettings.HandheldLook` (a string in settings.json, Classic when absent) and set on
+  `HandheldShellViewModel.Look` when Handheld mode starts, as `HandheldSounds` is. There is no save path and no
+  Settings row yet; B10 removes Classic (D5).

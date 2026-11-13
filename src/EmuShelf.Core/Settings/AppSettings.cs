@@ -1,3 +1,5 @@
+using EmuShelf.Core.Handheld;
+
 namespace EmuShelf.Core.Settings;
 
 /// <summary>Portable user settings, persisted as JSON in Settings/.</summary>
@@ -36,6 +38,12 @@ public sealed record AppSettings
     /// the Start menu's Sounds row or Settings → Display.
     /// </summary>
     public bool HandheldSounds { get; init; } = true;
+
+    /// <summary>
+    /// Handheld mode (M47): which look it draws, today's or Big Type while the restyle is built behind the switch. Not in
+    /// Settings yet; today's look unless the file says otherwise.
+    /// </summary>
+    public HandheldLook HandheldLook { get; init; } = HandheldLook.Classic;
 
     /// <summary>
     /// Android only: when true, EmuShelf force-stops the launched emulator's process the moment EmuShelf

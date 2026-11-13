@@ -611,7 +611,9 @@ internal sealed class HandheldLauncherMotion
         if (Math.Abs(_selector.Height - height) > 0.05 || double.IsNaN(_selector.Height))
             _selector.Height = height;
         var r = Math.Max(0, _radius.Value);
-        if (Math.Abs(_ring.CornerRadius.TopLeft - r) > 0.25)
+        // Changes under a quarter pixel wait while the ring travels; once it settles it takes the exact radius, so it
+        // always rests the same however the frames fell (M47 B0: two renders were a fraction of a pixel apart).
+        if (Math.Abs(_ring.CornerRadius.TopLeft - r) > 0.25 || (_radius.IsSettled && _ring.CornerRadius.TopLeft != r))
         {
             _ring.CornerRadius = new CornerRadius(r);
             ((Border)_ring.Child!).CornerRadius = new CornerRadius(Math.Max(0, r - 4));
