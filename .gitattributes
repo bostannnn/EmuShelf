@@ -8,6 +8,7 @@
 *.ico binary
 *.pdf binary
 *.docx binary
+*.ttf binary
 *.chd binary
 *.iso binary
 *.bin binary
