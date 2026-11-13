@@ -188,4 +188,50 @@ public class HandheldHomeArrangingTests
         Assert.Equal(HandheldSlot.Recent, result.SlotAt(3));
         Assert.Equal(["a"], result.Folders.Select(folder => folder.Id));
     }
+
+    // ---- Activity (M46 P4) ----
+
+    [Fact]
+    public void Reconcile_AHomeSavedBeforeActivity_GetsItAfterTheLastTile()
+    {
+        var layout = Home(HandheldSlot.Recent, HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Settings);
+
+        var result = Reconcile(layout, ["ps2"], [], out var changed);
+
+        Assert.True(changed);
+        Assert.Equal(HandheldSlot.Activity, result.SlotAt(3));
+        Assert.Single(result.AllSlots(), slot => slot.IsActivity);
+    }
+
+    [Fact]
+    public void Reconcile_KeepsActivityWhereYouPutIt_AndDropsASecondCopy()
+    {
+        var layout = Home(HandheldSlot.Activity, HandheldSlot.Recent, HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Settings,
+            HandheldSlot.Activity);
+
+        var result = Reconcile(layout, ["ps2"], [], out var changed);
+
+        Assert.True(changed);
+        Assert.Equal(HandheldSlot.Activity, result.SlotAt(0));
+        Assert.True(result.SlotAt(4).IsEmpty);
+    }
+
+    [Fact]
+    public void Reconcile_AnEmptyLibrary_IsNotGivenActivity()
+    {
+        var layout = HandheldHomeLayout.CreateDefault([]);
+
+        var result = Reconcile(layout, [], [], out var changed);
+
+        Assert.False(changed);
+        Assert.DoesNotContain(result.AllSlots(), slot => slot.IsActivity);
+    }
+
+    [Fact]
+    public void Activity_DroppedOnYourFolder_TakesTheSlot_InsteadOfGoingIn()
+    {
+        // Only Settings folds (decision 18); Activity lives on home (M46 P4).
+        Assert.Equal(HandheldDropKind.Place, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.UserFolder("a")));
+        Assert.Equal(HandheldDropKind.Place, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.Game(1)));
+    }
 }

@@ -217,6 +217,8 @@ public sealed partial class HandheldShellViewModel
             return _pins.TryGetValue(slot.GameId, out var game) ? GameSheet(game, folder: null) : null;
         if (slot.IsSettings)
             return SettingsSheet(inFolder: null);
+        if (slot.IsActivity)
+            return ActivitySheet();
         if (FolderSourceFor(slot) is not { } source)
             return null;
         var items = new List<HandheldSheetItemViewModel>
@@ -273,6 +275,8 @@ public sealed partial class HandheldShellViewModel
         if (folder is null && title is null)
             items.Add(new("Move", "Drop on a game to make a folder", StartMove));
         items.AddRange(PlaceItems(game, folder?.Source));
+        // The game's page of the play log (M46 P4), as Gamepad mode's Y sheet has it.
+        items.Add(new("Play history", HandheldText.PlayHistoryDetail(game), () => _ = OpenActivityAsync(game.Id)));
         items.Add(new("Edit title", null, () => OpenTitleEdit(game)));
         items.Add(new("Set cover", null, () => OpenCoverSearch(game)));
         items.Add(new("Scrape with ScreenScraper", null, () => OpenScraper(game)));
@@ -866,6 +870,11 @@ public sealed partial class HandheldShellViewModel
         if (move.Carried.IsSettings)
         {
             ShowSettingsTileStage(line);
+            return;
+        }
+        if (move.Carried.IsActivity)
+        {
+            ShowActivityTileStage(line);
             return;
         }
         if (move.Carried.Kind == HandheldSlotKind.Game && _pins.TryGetValue(move.Carried.GameId, out var carried))

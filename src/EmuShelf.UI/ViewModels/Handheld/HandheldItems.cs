@@ -47,7 +47,9 @@ public sealed record HandheldGameEntry(
 
 /// <summary>
 /// What the Title page shows beyond the folder's facts, read when it opens: the emulator that will run the
-/// game, its discs, and where it will run (<see cref="LaunchScreenPlanner"/>'s answer).
+/// game, its discs, where it will run (<see cref="LaunchScreenPlanner"/>'s answer), and from the play log when it was
+/// first played (M46 P4): <see cref="FirstPlayedAt"/>, or <see cref="PlayedBeforeLog"/> when its first play predates the
+/// log.
 /// </summary>
 public sealed record HandheldTitleDetails(
     string? EmulatorName,
@@ -55,7 +57,9 @@ public sealed record HandheldTitleDetails(
     int SelectedDiscNumber,
     LaunchScreenDecision Screen,
     bool HasSecondScreen,
-    bool IsDualScreenSystem)
+    bool IsDualScreenSystem,
+    DateTimeOffset? FirstPlayedAt = null,
+    bool PlayedBeforeLog = false)
 {
     public bool IsMultiDisc => DiscNumbers.Count > 1;
 
@@ -177,6 +181,15 @@ public interface IHandheldLibrary
 
     /// <summary>Whether the game has an achievements screen (a RetroAchievements set, or Steam achievements).</summary>
     bool HasAchievementDetails(HandheldGameEntry game) => !string.IsNullOrEmpty(game.AchievementText);
+
+    /// <summary>
+    /// The play log (M46 P4), not yet loading: the same view model Gamepad mode's Activity overlay and the Desktop window
+    /// show. Null when the head has none.
+    /// </summary>
+    ActivityViewModel? CreateActivity() => null;
+
+    /// <summary>The play log closed: when a session was edited or deleted, every surface reads the new totals.</summary>
+    Task CloseActivityAsync(ActivityViewModel activity) => Task.CompletedTask;
 
     /// <summary>Gamepad mode's full-screen achievements for the game, cache first (it refreshes itself when stale).</summary>
     Task<AchievementDetailsViewModel?> CreateAchievementsAsync(HandheldGameEntry game) =>
@@ -366,10 +379,14 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
     /// <summary>The Settings tile: a glyph on the indigo accent, an app on the grid (decision 18).</summary>
     public bool IsSettings => Slot.IsSettings;
+
+    /// <summary>The Activity tile (M46 P4): the play log, a glyph on its own teal beside Settings.</summary>
+    public bool IsActivity => Slot.IsActivity;
     public bool HasCover => Cover is not null;
     public bool IsUnavailable => Game is { IsAvailable: false };
     public bool IsNew => Slot.IsNew;
-    public string Name => Folder?.Name ?? Game?.Title ?? (IsSettings ? HandheldSettingsText.Name : string.Empty);
+    public string Name => Folder?.Name ?? Game?.Title ??
+        (IsSettings ? HandheldSettingsText.Name : IsActivity ? HandheldActivityText.Name : string.Empty);
     public string Monogram => Folder?.Monogram ?? string.Empty;
 
     /// <summary>Your folders and Recent show a glyph on the flap instead of a platform's short name (decision 7).</summary>
@@ -655,6 +672,9 @@ public enum HandheldStageKind
     /// <summary>Settings is open: what the focused row (or section, or choice) is, its value and its description.</summary>
     Setting,
 
+    /// <summary>The Activity tile is focused (M46 P4): its glyph on its teal, with a plate.</summary>
+    ActivityTile,
+
     /// <summary>A panel is open (M45 H6c: the scraper, cover search, achievements, Search, Edit title): its card.</summary>
     Panel,
 }
@@ -676,6 +696,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     [NotifyPropertyChangedFor(nameof(IsSettingsTile))]
+    [NotifyPropertyChangedFor(nameof(IsActivityTile))]
     [NotifyPropertyChangedFor(nameof(IsSetting))]
     [NotifyPropertyChangedFor(nameof(IsPanel))]
     public partial HandheldStageKind Kind { get; set; }
@@ -819,6 +840,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool IsGame => Kind is HandheldStageKind.Game || IsHeroFallback;
     public bool IsApp => Kind == HandheldStageKind.App;
     public bool IsSettingsTile => Kind == HandheldStageKind.SettingsTile;
+    public bool IsActivityTile => Kind == HandheldStageKind.ActivityTile;
     public bool IsSetting => Kind == HandheldStageKind.Setting;
     public bool IsPanel => Kind == HandheldStageKind.Panel;
 
@@ -899,6 +921,9 @@ public enum HandheldGlyph
     /// <summary>The Settings tile (decision 18).</summary>
     Settings,
 
+    /// <summary>The Activity tile and the play log's card (M46 P4).</summary>
+    Activity,
+
     // The panels, the Search folder and the toasts (M45 H6c).
     Search,
     Scrape,
@@ -940,6 +965,13 @@ internal static class HandheldSettingsText
 {
     public const string Name = "Settings";
     public const string Subtitle = "Library, emulators, saves and more";
+}
+
+/// <summary>The words the Activity tile uses wherever it appears (M46 P4).</summary>
+internal static class HandheldActivityText
+{
+    public const string Name = "Activity";
+    public const string Subtitle = "What you played, and for how long";
 }
 
 internal static partial class HandheldText

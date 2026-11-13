@@ -14,7 +14,7 @@ public enum HandheldSlotKind
     /// <summary>A game pinned straight to home (by game id). A pin is a reference, never a move (decision 12).</summary>
     Game,
 
-    /// <summary>A tile EmuShelf provides (by <see cref="HandheldSystemTile"/>): the Recent folder, or Settings.</summary>
+    /// <summary>A tile EmuShelf provides (by <see cref="HandheldSystemTile"/>): the Recent folder, Settings, or Activity.</summary>
     System,
 }
 
@@ -29,6 +29,12 @@ public enum HandheldSystemTile
     /// so there is always a way in.
     /// </summary>
     Settings,
+
+    /// <summary>
+    /// The play log (M46 P4, amending decision 18): an app on the grid beside Settings, movable on home but never folded
+    /// or removed, so there is always a way to see what you played.
+    /// </summary>
+    Activity,
 }
 
 /// <summary>
@@ -56,10 +62,15 @@ public sealed record HandheldSlot(
 
     public static HandheldSlot Settings { get; } = new(HandheldSlotKind.System, SystemTile: HandheldSystemTile.Settings);
 
+    public static HandheldSlot Activity { get; } = new(HandheldSlotKind.System, SystemTile: HandheldSystemTile.Activity);
+
     public bool IsEmpty => Kind == HandheldSlotKind.Empty;
 
     /// <summary>The Settings tile (decision 18).</summary>
     public bool IsSettings => Kind == HandheldSlotKind.System && SystemTile == HandheldSystemTile.Settings;
+
+    /// <summary>The Activity tile (M46 P4).</summary>
+    public bool IsActivity => Kind == HandheldSlotKind.System && SystemTile == HandheldSystemTile.Activity;
 
     /// <summary>Whether the slot opens as a folder (platform, yours, or Recent).</summary>
     public bool IsFolder => Kind is HandheldSlotKind.PlatformFolder or HandheldSlotKind.UserFolder ||
@@ -187,8 +198,9 @@ public sealed class HandheldHomeLayout
 
     /// <summary>
     /// The layout a new user starts with: the Recent folder, then one platform folder per platform that has
-    /// games, in the order given (the navigation order), then Settings (decision 18), filling each page row by
-    /// row, then empty slots to the end of the last page. An empty library gets Settings alone.
+    /// games, in the order given (the navigation order), then Settings (decision 18) and Activity beside it (M46 P4),
+    /// filling each page row by row, then empty slots to the end of the last page. An empty library gets Settings alone:
+    /// with nothing played there is no log to show, and the first empty slot is where games are added.
     /// </summary>
     public static HandheldHomeLayout CreateDefault(IEnumerable<string> systemIds)
     {
@@ -196,8 +208,9 @@ public sealed class HandheldHomeLayout
             .Distinct(StringComparer.Ordinal)
             .Select(id => HandheldSlot.PlatformFolder(id))
             .ToList();
-        IEnumerable<HandheldSlot> slots = folders.Count == 0 ? [] : folders.Prepend(HandheldSlot.Recent);
-        return FromSlots(slots.Append(HandheldSlot.Settings));
+        if (folders.Count == 0)
+            return FromSlots([HandheldSlot.Settings]);
+        return FromSlots(folders.Prepend(HandheldSlot.Recent).Append(HandheldSlot.Settings).Append(HandheldSlot.Activity));
     }
 
     /// <summary>The folder of yours the Settings tile is in, or null when it is on home.</summary>

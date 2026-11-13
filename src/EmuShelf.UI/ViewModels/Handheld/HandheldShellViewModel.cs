@@ -67,6 +67,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync));
         MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync));
         MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()));
         _soundsMenuItem = new HandheldMenuItemViewModel("Sounds", () =>
         {
             ToggleSounds();
@@ -697,6 +698,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _ = OpenSettingsAsync();
             return;
         }
+        if (slot.IsActivity)
+        {
+            _ = OpenActivityAsync();
+            return;
+        }
         switch (slot.Kind)
         {
             case HandheldSlotKind.Empty when IsLibraryEmpty:
@@ -1314,6 +1320,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             ShowSettingsTileStage();
             return;
         }
+        if (slot.IsActivity)
+        {
+            ShowActivityTileStage();
+            return;
+        }
         if (slot.Kind == HandheldSlotKind.Game)
         {
             if (_pins.TryGetValue(slot.GameId, out var pinned))
@@ -1381,6 +1392,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldStageKind.EmptySlot => IsLibraryEmpty ? HandheldGlyph.Add : HandheldGlyph.Plus,
             HandheldStageKind.Header => OpenFolder?.IsSortFocused == true ? HandheldGlyph.Sort : HandheldGlyph.Back,
             HandheldStageKind.SettingsTile => HandheldGlyph.Settings,
+            HandheldStageKind.ActivityTile => HandheldGlyph.Activity,
             _ => HandheldGlyph.None,
         };
     }

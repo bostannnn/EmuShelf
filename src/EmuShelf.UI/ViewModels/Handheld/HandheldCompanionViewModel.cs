@@ -93,7 +93,12 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     private const int PhotoDecodeHeight = 576;
 
     private readonly Func<HandheldGameEntry, CancellationToken, Task<Bitmap?>>? _loadCover;
+    private readonly TimeProvider _clock;
     private DispatcherTimer? _restTimer;
+    private DispatcherTimer? _sessionTimer;
+    private string _nowPlayingPlatform = string.Empty;
+    private TimeSpan _playtimeBefore;
+    private DateTimeOffset? _sessionStartedAt;
     private CancellationTokenSource? _coverLoad;
     private CancellationTokenSource? _photoLoad;
     private long _photoGeneration;
@@ -101,10 +106,12 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     private bool _disposed;
 
     public HandheldCompanionViewModel(SecondScreenViewModel model,
-        Func<HandheldGameEntry, CancellationToken, Task<Bitmap?>>? loadCover = null)
+        Func<HandheldGameEntry, CancellationToken, Task<Bitmap?>>? loadCover = null,
+        TimeProvider? clock = null)
     {
         Model = model;
         _loadCover = loadCover;
+        _clock = clock ?? TimeProvider.System;
         DockItems.Add(new HandheldCompanionDockItemViewModel(0, null));
         foreach (var slot in model.Dock)
             DockItems.Add(new HandheldCompanionDockItemViewModel(DockItems.Count, slot));
@@ -227,12 +234,24 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     [ObservableProperty]
     public partial bool IsResting { get; private set; }
 
+    // The session's minutes count only while someone can see them: resting stops the tick, waking catches the line up.
+    partial void OnIsRestingChanged(bool value)
+    {
+        if (value)
+            StopSessionTimer();
+        else if (_sessionStartedAt is not null)
+            TickSession();
+    }
+
     // ---- Now playing ----
 
     [ObservableProperty]
     public partial string NowPlayingTitle { get; private set; } = string.Empty;
 
-    /// <summary>"PlayStation 2 · 12 h 30 min played".</summary>
+    /// <summary>
+    /// "PlayStation 2 · 12 h 30 min played" before the game runs; while it runs, the session so far and the total with it
+    /// (M46 P4): "PlayStation 2 · 25 min this session · 13 h in all".
+    /// </summary>
     [ObservableProperty]
     public partial string NowPlayingLine { get; private set; } = string.Empty;
 
@@ -255,9 +274,9 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     public void SetNowPlaying(HandheldGameEntry entry, string platformName)
     {
         NowPlayingTitle = entry.Title;
-        NowPlayingLine = entry.Playtime.TotalMinutes >= 1
-            ? $"{platformName} · {HandheldText.Duration(entry.Playtime)} played"
-            : $"{platformName} · first time playing";
+        _nowPlayingPlatform = platformName;
+        _playtimeBefore = entry.Playtime;
+        UpdateNowPlayingLine();
         _nowPlayingHasAchievements = !string.IsNullOrEmpty(entry.AchievementText);
         _coverLoad?.Cancel();
         _coverLoad?.Dispose();
@@ -268,6 +287,53 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         var load = _coverLoad = new CancellationTokenSource();
         _ = LoadNowPlayingCoverAsync(entry, load);
     }
+
+    /// <summary>When the running game started, as the Now playing row counts it; null while none runs.</summary>
+    internal DateTimeOffset? SessionStartedAt => _sessionStartedAt;
+
+    private void UpdateNowPlayingLine()
+    {
+        if (_sessionStartedAt is not { } started)
+        {
+            NowPlayingLine = _playtimeBefore.TotalMinutes >= 1
+                ? $"{_nowPlayingPlatform} · {HandheldText.Duration(_playtimeBefore)} played"
+                : $"{_nowPlayingPlatform} · first time playing";
+            return;
+        }
+        var session = _clock.GetUtcNow() - started;
+        if (session < TimeSpan.Zero)
+            session = TimeSpan.Zero;
+        var now = session.TotalMinutes >= 1 ? $"{HandheldText.Duration(session)} this session" : "just started";
+        NowPlayingLine = _playtimeBefore.TotalMinutes >= 1
+            ? $"{_nowPlayingPlatform} · {now} · {HandheldText.Duration(_playtimeBefore + session)} in all"
+            : $"{_nowPlayingPlatform} · {now}";
+    }
+
+    /// <summary>Brings the line up to date and waits for the next whole minute of the session to change it again.</summary>
+    internal void TickSession()
+    {
+        UpdateNowPlayingLine();
+        if (_disposed || _sessionStartedAt is not { } started || IsResting)
+        {
+            StopSessionTimer();
+            return;
+        }
+        var into = (_clock.GetUtcNow() - started).Ticks % TimeSpan.TicksPerMinute;
+        var wait = TimeSpan.FromTicks(TimeSpan.TicksPerMinute - Math.Max(0, into)) + TimeSpan.FromMilliseconds(50);
+        if (_sessionTimer is null)
+        {
+            _sessionTimer = new DispatcherTimer();
+            _sessionTimer.Tick += (_, _) => TickSession();
+        }
+        _sessionTimer.Stop();
+        _sessionTimer.Interval = wait;
+        _sessionTimer.Start();
+    }
+
+    private void StopSessionTimer() => _sessionTimer?.Stop();
+
+    /// <summary>Whether the session's minute tick is waiting (tests read it; the timer itself is the dispatcher's).</summary>
+    internal bool IsSessionTickPending => _sessionTimer?.IsEnabled == true;
 
     private async Task LoadNowPlayingCoverAsync(HandheldGameEntry entry, CancellationTokenSource load)
     {
@@ -515,6 +581,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     // A game started: the companion comes up on its panel, on the default tab, lit.
     private void Begin()
     {
+        _sessionStartedAt = _clock.GetUtcNow();
         IsGridOpen = false;
         Zone = HandheldCompanionZone.Panel;
         DockIndex = 1;
@@ -525,6 +592,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         RebuildPhotoDots();
         _ = LoadPanelPhotoAsync();
         Wake();
+        TickSession();
         UpdateFocus();
     }
 
@@ -532,6 +600,8 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     private void End()
     {
         StopRestTimer();
+        StopSessionTimer();
+        _sessionStartedAt = null;
         IsResting = false;
         IsGridOpen = false;
         ++_photoGeneration;
@@ -1102,6 +1172,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         Model.PropertyChanged -= OnModelChanged;
         Model.Apps.CollectionChanged -= OnAppsChanged;
         StopRestTimer();
+        StopSessionTimer();
         _coverLoad?.Cancel();
         _photoLoad?.Cancel();
         NowPlayingCover = null;

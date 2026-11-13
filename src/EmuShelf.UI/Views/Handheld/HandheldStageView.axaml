@@ -305,6 +305,18 @@
           <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="176" Height="176" Foreground="White" />
         </Border>
 
+        <!-- The Activity tile (M46 P4): its glyph on its teal, as the Settings tile shows on the accent. -->
+        <Border IsVisible="{Binding Stage.IsActivityTile}" Width="384" Height="384" CornerRadius="96"
+                BoxShadow="0 24 56 0 #4026918A">
+          <Border.Background>
+            <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+              <GradientStop Offset="0" Color="#33AE9F" />
+              <GradientStop Offset="1" Color="#26918A" />
+            </LinearGradientBrush>
+          </Border.Background>
+          <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="176" Height="176" Foreground="White" />
+        </Border>
+
         <!--
           Settings open (M45 H6a): the detail half of its master-detail. Where the focused row sits, what it is, its value,
           its description, and the section's status line (a scan's progress, an account) when there is one.

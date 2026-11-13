@@ -127,8 +127,8 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Actions);
 
-        Assert.Equal(["Play", "Achievements", "Add to folder…", "Pin to home", "Edit title", "Set cover", "Scrape with ScreenScraper",
-            "Remove from library"], shell.Sheet!.Items.Select(item => item.Label));
+        Assert.Equal(["Play", "Achievements", "Add to folder…", "Pin to home", "Play history", "Edit title", "Set cover",
+            "Scrape with ScreenScraper", "Remove from library"], shell.Sheet!.Items.Select(item => item.Label));
         Assert.True(shell.Sheet.Items[^1].IsDestructive);
         Assert.Equal("Its files stay where they are", shell.Sheet.Items[^1].Note);
         Assert.Equal("4/10", shell.Sheet.Items[1].Note);

@@ -182,10 +182,12 @@ public partial class HandheldShellViewModelTests
 
         var page = Assert.IsType<HandheldHomePageViewModel>(shell.CurrentPage);
         Assert.Equal(20, page.Slots.Count);
-        // The saved home has the two platforms; reconciliation puts the missing Recent folder after them, then Settings.
+        // The saved home has the two platforms; reconciliation puts the missing Recent folder after them, then Settings and
+        // Activity (M46 P4).
         Assert.Equal(["PS2 System", "GC System", "Recent"], page.Slots.Where(slot => slot.IsFolder).Select(slot => slot.Name));
         Assert.True(page.Slots[3].IsSettings);
-        Assert.Equal(16, page.Slots.Count(slot => slot.IsEmpty));
+        Assert.True(page.Slots[4].IsActivity);
+        Assert.Equal(15, page.Slots.Count(slot => slot.IsEmpty));
         Assert.True(page.Slots[0].IsFocused);
         Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);
         Assert.Equal("PS2 System", shell.Stage.Title);
@@ -199,14 +201,14 @@ public partial class HandheldShellViewModelTests
     {
         var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3));
 
-        // ps2, then Recent, then Settings, then the first empty slot.
-        Press(shell, GamepadAction.NavigateRight, 3);
-        Assert.True(shell.CurrentPage!.Slots[3].IsFocused);
+        // ps2, then Recent, then Settings and Activity, then the first empty slot.
+        Press(shell, GamepadAction.NavigateRight, 4);
+        Assert.True(shell.CurrentPage!.Slots[4].IsFocused);
         Assert.Equal(HandheldStageKind.EmptySlot, shell.Stage.Kind);
 
         Press(shell, GamepadAction.Confirm);
 
-        Assert.Equal(3, shell.HomePosition.Slot);
+        Assert.Equal(4, shell.HomePosition.Slot);
         Assert.False(shell.IsFolderOpen);
         Assert.True(shell.IsNaming);
         Assert.Equal(HandheldStageKind.Folder, shell.Stage.Kind);
@@ -394,9 +396,9 @@ public partial class HandheldShellViewModelTests
 
         Press(shell, GamepadAction.Menu);
         Assert.True(shell.IsMenuOpen);
-        // Search, Add games, Settings, Sounds (M45 H6d), then the switch.
-        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[4].Label);
-        Press(shell, GamepadAction.NavigateDown, 4);
+        // Search, Add games, Settings, Activity (M46 P4), Sounds (M45 H6d), then the switch.
+        Assert.Equal("Switch to Gamepad mode", shell.MenuItems[5].Label);
+        Press(shell, GamepadAction.NavigateDown, 5);
         Press(shell, GamepadAction.Confirm);
 
         Assert.False(shell.IsMenuOpen);
@@ -652,7 +654,7 @@ public partial class HandheldShellViewModelTests
         // M45 H6c: the Launcher's game sheet, the same one Y opens on the tile, with the page's own rows first.
         Assert.True(shell.IsSheetOpen);
         Assert.True(page.IsButtons);
-        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Add to folder…", "Pin to home", "Edit title", "Set cover",
+        Assert.Equal(["Play", "Play on another screen…", "Choose disc…", "Add to folder…", "Pin to home", "Play history", "Edit title", "Set cover",
             "Scrape with ScreenScraper", "Remove from library"], shell.Sheet!.Items.Select(item => item.Label));
 
         // "Play on another screen…" asks even though the platform is pinned to the bottom screen.

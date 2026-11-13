@@ -96,6 +96,7 @@ public sealed partial class HandheldTitlePageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ScreenText))]
     [NotifyPropertyChangedFor(nameof(DiscText))]
     [NotifyPropertyChangedFor(nameof(HasDiscs))]
+    [NotifyPropertyChangedFor(nameof(FirstPlayedText))]
     public partial HandheldTitleDetails? Details { get; set; }
 
     public string PlatformLine => Details?.EmulatorName is { Length: > 0 } emulator
@@ -107,6 +108,25 @@ public sealed partial class HandheldTitlePageViewModel : ObservableObject
     public string PlaytimeText => Entry.Playtime.TotalMinutes >= 1
         ? HandheldText.Duration(Entry.Playtime)
         : Entry.PlayCount > 0 ? "Under a minute" : "None yet";
+
+    /// <summary>The game has been played: the first-played and per-session facts show.</summary>
+    public bool HasPlayed => Entry.PlayCount > 0;
+
+    /// <summary>The play log's first session (M46 P4); empty until the details read lands.</summary>
+    public string FirstPlayedText => Details switch
+    {
+        null => string.Empty,
+        { FirstPlayedAt: { } first } => HandheldText.Date(first),
+        { PlayedBeforeLog: true } => "Before the play log",
+        _ => HandheldText.LastPlayed(Entry.LastPlayedAt, _now),
+    };
+
+    /// <summary>The average length of a play: the play time over the times played, as Activity counts it.</summary>
+    public string AverageSessionText => Entry.PlayCount == 0
+        ? string.Empty
+        : Entry.Playtime.TotalSeconds / Entry.PlayCount >= 60
+            ? HandheldText.Duration(Entry.Playtime / Entry.PlayCount)
+            : "Under a minute";
 
     public string ScreenText => Details is { } details ? HandheldText.RunsOn(details) : string.Empty;
 
@@ -223,6 +243,13 @@ internal static partial class HandheldText
     public static string Duration(TimeSpan playtime) => playtime.TotalHours >= 1
         ? $"{(int)playtime.TotalHours} h {playtime.Minutes} min"
         : $"{Math.Max(1, (int)playtime.TotalMinutes)} min";
+
+    /// <summary>The Y sheet's Play history line: the game's total, or that it has not been played.</summary>
+    public static string PlayHistoryDetail(HandheldGameEntry game) =>
+        game.PlayCount == 0 && game.Playtime == TimeSpan.Zero ? "Not played yet" : $"{Duration(game.Playtime)} played";
+
+    /// <summary>A day as the Title page writes dates: "3 Nov 2026".</summary>
+    public static string Date(DateTimeOffset moment) => moment.ToLocalTime().ToString("d MMM yyyy", CultureInfo.CurrentCulture);
 
     /// <summary>"Today", "Yesterday", "3 days ago", or the date; "Not yet" for a game never played.</summary>
     public static string LastPlayed(DateTimeOffset? lastPlayed, DateTimeOffset now)

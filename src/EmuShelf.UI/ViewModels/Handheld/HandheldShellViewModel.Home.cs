@@ -148,6 +148,10 @@ public sealed partial class HandheldShellViewModel
         {
             carriedTitle = HandheldSettingsText.Name;
         }
+        else if (look == HandheldMoveLook.DropTarget && _move is { Carried.IsActivity: true })
+        {
+            carriedTitle = HandheldActivityText.Name;
+        }
         return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look,
             carriedCover, carriedTitle, isAddGames: content.IsEmpty && index == _addGamesIndex);
     }

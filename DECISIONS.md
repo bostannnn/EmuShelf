@@ -13961,3 +13961,49 @@ corrected or deleted from the timeline or the game page.
   dismisses it in `OnPause`), which a recreation happens to clean up; and a swap injected over `adb shell input` is
   sometimes dropped, before and after a recreation alike. No unit test: the hazard needs two Android windows, and the
   headless platform's windows dispose their layout managers on close, which is exactly the fixed behaviour.
+
+## 2026-11-13 — M46 P4: the play log in Handheld mode
+
+- **Activity is a second app on the grid, amending M45 decision 18** (which allowed only Settings there). It is a new
+  `HandheldSystemTile.Activity` beside Recent and Settings, not a new slot kind, so the layout store writes it by name
+  as it already does the other two. Its face is three rising bars in white on a teal of its own (`#26918A`), so it reads
+  as EmuShelf's beside Settings' indigo and is neither a platform's colour nor a folder of yours.
+- **Movable on home, never folded, never removed.** Folding exists for Settings so a tidy home can hide it while it
+  stays reachable; the log is also on the Start menu and on every game's Y sheet, so a folder flag for a second tile
+  would be machinery for little gain. Dropped on one of your folders in move mode it just takes the slot. Its Y sheet is
+  Open and Move. Reconciliation keeps exactly one on home and appends it after the last tile to a home saved before it
+  existed (the owner's). The default home is Recent, the platform folders, Settings, then Activity; an **empty library
+  gets Settings alone**, as before: there is nothing to log, and H6d's first empty slot (Add games) stays where it was.
+- **Also reachable from the Start menu ("Activity", after Settings) and the game's Y sheet ("Play history",** with the
+  game's total as its note, before Edit title), as Gamepad mode has both. The roadmap asked only for the tile; leaving
+  out what Gamepad mode offers would break M45's rule that nothing a Gamepad-mode user can do is missing here.
+- **A panel, not a new kind of screen.** `HandheldActivityPanel` is an H6c panel over P3's `ActivityViewModel`: every
+  press goes to the view model, so paging weeks, the ranking's order, B's way back and the editor behave exactly as in
+  Gamepad mode, and the Launcher list and Stage card (natively pictured on the Thor) come for free. The view model only
+  gained a row/edit focus setter for taps, its time zone, and the ranking record behind a row.
+- **The Launcher lists sessions; the Stage shows the day.** The roadmap said "days and games on the Launcher, the focused
+  day's or game's stats on the Stage". Panel rows have no section headers, and a session is what Y edits, so each row is
+  one session (game, length, and "Yesterday · 21:04" under it), newest first; the Stage's card is that session's day:
+  its total and number of sessions large, then its games with their minutes (four named, then "and N more"), and the
+  focused session as the status line. On the ranking the card is the focused game's place and stats (total, times
+  played, average a session, last played); on a game's page it is the game's stats with first and last played, and
+  the focused session under them. Chips "Timeline" and "Ranking" (LB/RB or a tap) say which list it is; a game's page
+  keeps the chip it was opened from. Left and right (other weeks, the ranking's order) are said in the status line,
+  since the hint pill only has button glyphs.
+- **The editor is three rows** (Save with the length, Delete, Cancel) with the card showing the length large; left and
+  right change it a minute, LB and RB ten, as in Gamepad mode. Delete asks on the same row ("Press A again to delete")
+  and the card warns. When the log closes after an edit, the library refreshes as the Gamepad overlay does and home
+  reads its pins and Recent again.
+- **The Title page adds First played and Per session**, shown once a game has been played. First played comes from
+  the play log through `HandheldTitleDetails` (read off the UI thread with the rest of the details); a game whose first
+  play predates the log says "Before the play log", never an invented date. Per session is play time over times
+  played, the same average Activity shows.
+- **The companion's Now playing row counts the session**: "PlayStation 2 · 25 min this session · 13 h 5 min in all"
+  ("just started" for the first minute). It counts from when the companion saw the game start, wall-clock, which is
+  what the screen shows while you play; the recorded session's length is still P2's. The minute tick is a dispatcher
+  timer aligned to the session's minutes and **stops while the companion rests** (nothing redraws a dimmed row);
+  waking catches the line up at once.
+- **Verified on macOS only**: unit tests over a real SQLite play log drive the tile, the panel's pages, the editor,
+  taps, the Start menu and Play history; `HandheldActivitySnapshotTests` render the tile, the week, the ranking, a
+  game's page and the editor on both canvases, and the Title page's facts. Not yet on the Thor, and the Android head
+  was not compiled here (no usable Android SDK in this shell); it touches none of the changed APIs.

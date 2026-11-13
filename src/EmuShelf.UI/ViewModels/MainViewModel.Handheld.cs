@@ -518,13 +518,33 @@ public partial class MainViewModel
             cancellationToken.ThrowIfCancellationRequested();
             var emulator = await Task.Run(() => DescribeEmulator(game.SystemId), cancellationToken);
             var discs = viewModel?.Discs.Select(disc => disc.Number).ToList() ?? [1];
+            var (firstPlayed, beforeLog) = await Task.Run(() => FirstPlayed(viewModel?.Model), cancellationToken);
             return new HandheldTitleDetails(
                 emulator,
                 discs,
                 viewModel?.SelectedDiscNumber ?? 1,
                 screen,
                 owner._launchScreens.HasSecondScreen,
-                isDualScreen);
+                isDualScreen,
+                firstPlayed,
+                beforeLog);
+        }
+
+        // When the play log says the game was first played (M46 P4); "before the log" when earlier play is in its totals.
+        private (DateTimeOffset? FirstPlayedAt, bool BeforeLog) FirstPlayed(Game? game)
+        {
+            if (game is not { PlayCount: > 0 })
+                return (null, false);
+            try
+            {
+                var history = GamePlayHistory.From(game, owner._library.GetPlaySessions(game.Id));
+                return (history.FirstPlayedAt, history.FirstPlayedAt is null);
+            }
+            catch (Exception ex)
+            {
+                owner._logger.Warning($"Handheld: could not read the play log for {game.Title}.", ex);
+                return (null, false);
+            }
         }
 
         // The emulator that will run this system's games, by the name Settings shows: the saved choice, else
@@ -625,6 +645,17 @@ public partial class MainViewModel
             return await Task.Run<IReadOnlyList<long>>(() => GameDiscSetBuilder.Build(library.GetGames(systemId), library.GetDiscSelections())
                 .Select(set => set.DisplayGame.Id)
                 .ToList(), cancellationToken);
+        }
+
+        public ActivityViewModel CreateActivity() => new(owner._library, logger: owner._logger);
+
+        public async Task CloseActivityAsync(ActivityViewModel activity)
+        {
+            if (!activity.HasChanges)
+                return;
+            // An edit or a deletion changed play totals: the library's views, then home's pins and Recent, read them again.
+            await owner.RefreshAfterActivityAsync(activity);
+            owner.RefreshHandheldHome();
         }
 
         public bool HasAchievementDetails(HandheldGameEntry game) => game.ViewModel?.CanOpenAchievementDetails ?? false;

@@ -321,6 +321,15 @@
         </LinearGradientBrush>
       </Setter>
     </Style>
+    <!-- Activity (M46 P4): the play log's tile, on its own teal so it reads as EmuShelf's beside Settings. -->
+    <Style Selector="Border.activity-face">
+      <Setter Property="Background">
+        <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
+          <GradientStop Offset="0" Color="#33AE9F" />
+          <GradientStop Offset="1" Color="#26918A" />
+        </LinearGradientBrush>
+      </Setter>
+    </Style>
     <!-- The setup wizard keeps room under its steps for the Continue button (M45 H6d). -->
     <Style Selector="Panel#SettingsSectionHost">
       <Setter Property="Margin" Value="0,24,0,0" />
@@ -595,6 +604,13 @@
                             <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
                             <Border Classes="settings-face" CornerRadius="40">
                               <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="80" Height="80" Foreground="White" />
+                            </Border>
+                          </Panel>
+                          <!-- Activity (M46 P4): the play log, an app beside Settings with the same footprint. -->
+                          <Panel IsVisible="{Binding IsActivity}" Margin="-3,17,-3,0">
+                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border Classes="activity-face" CornerRadius="40">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="80" Height="80" Foreground="White" />
                             </Border>
                           </Panel>
                           <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out; in move mode it lights up. -->
@@ -896,15 +912,22 @@
                          TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
               <TextBlock Text="{Binding TitlePage.PlatformLine}" FontSize="28" Foreground="#5B6176"
                          TextTrimming="CharacterEllipsis" />
-              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,32,0,0">
+              <!-- The play facts (first played and per session from the play log, M46 P4), then how it runs. -->
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,32,0,0">
                 <TextBlock Classes="fact-label" Text="Last played" />
                 <TextBlock Classes="fact-value" Grid.Column="1" Text="{Binding TitlePage.LastPlayedText}" />
-                <TextBlock Classes="fact-label" Grid.Row="1" Text="Play time" />
-                <TextBlock Classes="fact-value" Grid.Row="1" Grid.Column="1" Text="{Binding TitlePage.PlaytimeText}" />
-                <TextBlock Classes="fact-label" Grid.Row="2" Text="Runs on" />
-                <TextBlock Classes="fact-value" Grid.Row="2" Grid.Column="1" Text="{Binding TitlePage.ScreenText}" />
-                <TextBlock Classes="fact-label" Grid.Row="3" Text="Discs" IsVisible="{Binding TitlePage.HasDiscs}" />
-                <TextBlock Classes="fact-value" Grid.Row="3" Grid.Column="1" Text="{Binding TitlePage.DiscText}"
+                <TextBlock Classes="fact-label" Grid.Row="1" Text="First played" IsVisible="{Binding TitlePage.HasPlayed}" />
+                <TextBlock Classes="fact-value" Grid.Row="1" Grid.Column="1" Text="{Binding TitlePage.FirstPlayedText}"
+                           IsVisible="{Binding TitlePage.HasPlayed}" />
+                <TextBlock Classes="fact-label" Grid.Row="2" Text="Play time" />
+                <TextBlock Classes="fact-value" Grid.Row="2" Grid.Column="1" Text="{Binding TitlePage.PlaytimeText}" />
+                <TextBlock Classes="fact-label" Grid.Row="3" Text="Per session" IsVisible="{Binding TitlePage.HasPlayed}" />
+                <TextBlock Classes="fact-value" Grid.Row="3" Grid.Column="1" Text="{Binding TitlePage.AverageSessionText}"
+                           IsVisible="{Binding TitlePage.HasPlayed}" />
+                <TextBlock Classes="fact-label" Grid.Row="4" Text="Runs on" />
+                <TextBlock Classes="fact-value" Grid.Row="4" Grid.Column="1" Text="{Binding TitlePage.ScreenText}" />
+                <TextBlock Classes="fact-label" Grid.Row="5" Text="Discs" IsVisible="{Binding TitlePage.HasDiscs}" />
+                <TextBlock Classes="fact-value" Grid.Row="5" Grid.Column="1" Text="{Binding TitlePage.DiscText}"
                            IsVisible="{Binding TitlePage.HasDiscs}" />
               </Grid>
               <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,16,0,0" IsVisible="{Binding TitlePage.HasAchievements}">

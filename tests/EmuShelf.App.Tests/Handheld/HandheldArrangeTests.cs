@@ -57,25 +57,26 @@ public partial class HandheldShellViewModelTests
         Press(shell, GamepadAction.Confirm);
         Press(shell, GamepadAction.NavigateDown);
         Press(shell, GamepadAction.Actions);
-        Assert.Equal(["Play", "Add to folder…", "Pin to home", "Edit title", "Set cover", "Scrape with ScreenScraper", "Remove from library"],
+        Assert.Equal(["Play", "Add to folder…", "Pin to home", "Play history", "Edit title", "Set cover", "Scrape with ScreenScraper",
+            "Remove from library"],
             shell.Sheet!.Items.Select(item => item.Label));
         RunSheetRow(shell, "Pin to home");
 
         Assert.Null(shell.Sheet);
         Assert.Equal("Pinned to home, page 1", shell.StatusMessage);
-        // ps2, Recent, Settings, then the pin; the game is still in its platform folder.
-        Assert.Equal(HandheldSlot.Game(game.Id), shell.Layout.SlotAt(3));
+        // ps2, Recent, Settings, Activity, then the pin; the game is still in its platform folder.
+        Assert.Equal(HandheldSlot.Game(game.Id), shell.Layout.SlotAt(4));
         Assert.Equal(3, shell.OpenFolder!.Items.Count);
 
         // Cold start: a new shell over the same saved file.
         var again = new HandheldShellViewModel(library, layoutStore: store);
         await again.InitializeAsync(TestContext.Current.CancellationToken);
-        var pin = again.CurrentPage!.Slots[3];
+        var pin = again.CurrentPage!.Slots[4];
         Assert.True(pin.IsGame);
         Assert.Equal(game.Title, pin.Name);
 
         // A on the pin opens its Title page.
-        FocusHome(again, 3);
+        FocusHome(again, 4);
         Assert.Equal(game.Title, again.Stage.Title);
         Press(again, GamepadAction.Confirm);
         Assert.Equal(game.Id, again.TitlePage!.Entry.Id);
@@ -173,9 +174,9 @@ public partial class HandheldShellViewModelTests
 
         var folder = Assert.Single(shell.Layout.Folders);
         Assert.Equal([game.Id], folder.GameIds);
-        // The folder lands in the first free slot on home (after ps2, Recent and Settings) while you stay in the
+        // The folder lands in the first free slot on home (after ps2, Recent, Settings and Activity) while you stay in the
         // platform folder.
-        Assert.Equal(HandheldSlot.UserFolder(folder.Id), shell.Layout.SlotAt(3));
+        Assert.Equal(HandheldSlot.UserFolder(folder.Id), shell.Layout.SlotAt(4));
         Assert.True(shell.IsFolderOpen);
 
         Press(shell, GamepadAction.Actions);
@@ -262,7 +263,7 @@ public partial class HandheldShellViewModelTests
         Assert.True(shell.CurrentPage!.Slots[0].IsCarried);
         Assert.Equal("PS2 System", shell.CurrentPage.Slots[1].Name);
         Assert.Equal("GC System", shell.CurrentPage.Slots[2].Name);
-        Assert.True(shell.CurrentPage.Slots[5].IsLandingPlace);
+        Assert.True(shell.CurrentPage.Slots[6].IsLandingPlace);
 
         Press(shell, GamepadAction.Cancel);
         Assert.False(shell.IsMoving);
@@ -407,18 +408,18 @@ public partial class HandheldShellViewModelTests
 
         await shell.InitializeAsync(TestContext.Current.CancellationToken);
 
-        // Appended after the last tile on home (ps2, Recent, Settings).
-        var slot = shell.CurrentPage!.Slots[3];
+        // Appended after the last tile on home (ps2, Recent, Settings, Activity).
+        var slot = shell.CurrentPage!.Slots[4];
         Assert.Equal("GBA System", slot.Name);
         Assert.True(slot.IsNew);
-        FocusHome(shell, 3);
+        FocusHome(shell, 4);
         Assert.StartsWith("New · ", shell.Stage.Subtitle);
 
         // Opened, the ribbon comes off as the folder closes (the page it zooms out of stays as it was).
         Press(shell, GamepadAction.Confirm);
         Press(shell, GamepadAction.Cancel);
-        Assert.False(store.Saved!.SlotAt(3).IsNew);
-        Assert.False(shell.CurrentPage!.Slots[3].IsNew);
+        Assert.False(store.Saved!.SlotAt(4).IsNew);
+        Assert.False(shell.CurrentPage!.Slots[4].IsNew);
     }
 
     [Fact]
@@ -430,8 +431,8 @@ public partial class HandheldShellViewModelTests
         store.Save(HandheldHomeLayout.FromSlots([HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Game(game)]));
         var shell = await CreateAsync(library, store);
         Assert.False(shell.CurrentPage!.Slots[1].IsUnavailable);
-        // ps2, the pin, then Recent and Settings put back by reconciliation; slot 4 is the first empty one.
-        FocusHome(shell, 4);
+        // ps2, the pin, then Recent, Settings and Activity put back by reconciliation; slot 5 is the first empty one.
+        FocusHome(shell, 5);
         Press(shell, GamepadAction.Confirm);
         shell.Naming!.Text = "Keep";
 
@@ -508,9 +509,10 @@ public partial class HandheldShellViewModelTests
         Assert.True(page.Slots[10].IsLandingPlace);
         Assert.Same(before[10], page.Slots[10]);
 
-        // Carried down a row: slot 0 empties and slot 5 shows the tile, two more slots and nothing else.
+        // Carried down a row: slot 0 empties, slot 5 shows the tile and Activity, in the way there, slides on to slot 6;
+        // nothing else is redrawn.
         Press(shell, GamepadAction.NavigateDown);
-        Assert.Equal(3, replaced);
+        Assert.Equal(4, replaced);
         Assert.Same(shell.CurrentPage, page);
 
         Press(shell, GamepadAction.Cancel);
@@ -556,7 +558,14 @@ public partial class HandheldShellViewModelTests
         Assert.Equal("PS2", shell.Sheet.SwatchText);
         Press(shell, GamepadAction.Cancel);
 
+        // Activity (M46 P4): its glyph on its own swatch; it can be opened and moved, nothing else.
         FocusHome(shell, 3);
+        Press(shell, GamepadAction.Actions);
+        Assert.Equal(HandheldGlyph.Activity, shell.Sheet!.SwatchGlyph);
+        Assert.Equal(["Open", "Move"], shell.Sheet.Items.Select(item => item.Label));
+        Press(shell, GamepadAction.Cancel);
+
+        FocusHome(shell, 4);
         Press(shell, GamepadAction.Actions);
         Assert.Equal(HandheldGlyph.Plus, shell.Sheet!.SwatchGlyph);
     }

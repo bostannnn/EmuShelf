@@ -72,7 +72,8 @@ public static class HandheldHomeArranging
 /// empty; games that left the library are dropped from every folder and pin. Missing files are not removed —
 /// the views dim them. The Recent folder is put back if it is gone. Settings is always somewhere, exactly once:
 /// on home or in one of your folders; when it is in neither (a layout saved before it existed, a hand-edited file,
-/// its folder gone) it is appended to home after the platform folders.
+/// its folder gone) it is appended to home after the platform folders. Activity (M46 P4) lives on home only, once; a library
+/// with games gets it back after Settings when it is missing (a layout saved before it existed).
 /// </summary>
 public static class HandheldHomeReconciler
 {
@@ -122,6 +123,8 @@ public static class HandheldHomeReconciler
             .Select(id => HandheldSlot.PlatformFolder(id, isNew: true)));
         if (!settingsOnHome && settingsHolder is null)
             additions.Add(HandheldSlot.Settings);
+        if (platforms.Count > 0 && !slots.Any(slot => slot.IsActivity))
+            additions.Add(HandheldSlot.Activity);
 
         // Appended after the last tile on home, so new folders never jump in among the ones you arranged.
         var next = slots.FindLastIndex(slot => !slot.IsEmpty) + 1;

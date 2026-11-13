@@ -42,9 +42,10 @@ public partial class HandheldShellViewModelTests
         return model;
     }
 
-    private static HandheldCompanionViewModel StartGame(SecondScreenViewModel model, HandheldGameEntry? entry = null)
+    private static HandheldCompanionViewModel StartGame(SecondScreenViewModel model, HandheldGameEntry? entry = null,
+        TimeProvider? clock = null)
     {
-        var companion = new HandheldCompanionViewModel(model);
+        var companion = new HandheldCompanionViewModel(model, clock: clock);
         companion.SetNowPlaying(entry ?? new HandheldGameEntry(1, "Ico", "ps2", "ps2", null, 3, TimeSpan.FromMinutes(95), true,
             AchievementText: "8 / 20"), "PlayStation 2");
         model.IsGameRunning = true;
@@ -66,13 +67,46 @@ public partial class HandheldShellViewModelTests
         Assert.False(companion.IsResting);
         Assert.True(companion.IsRestPending);
         Assert.Equal("Ico", companion.NowPlayingTitle);
-        Assert.Equal("PlayStation 2 · 1 h 35 min played", companion.NowPlayingLine);
+        // While it runs, the row counts the session (M46 P4) and the total with it.
+        Assert.Equal("PlayStation 2 · just started · 1 h 35 min in all", companion.NowPlayingLine);
         // The panel: the ring's numbers, and the three most recent unlocks newest first.
         Assert.Equal("8 / 20", companion.ProgressCount);
         Assert.Equal("40%", companion.ProgressPercent);
         Assert.Equal(string.Format(System.Globalization.CultureInfo.CurrentCulture, "{0:N0} of {1:N0} points", 180, 1050), companion.ProgressPoints);
         Assert.Equal(["8", "7", "6"], companion.RecentUnlocks.Select(row => row.AchievementId));
         Assert.Equal("See all", companion.PanelHint);
+    }
+
+    [Fact]
+    public void NowPlaying_CountsTheRunningSession_WhileTheCompanionIsLit()
+    {
+        var clock = new ManualClock();
+        var model = CompanionModel();
+        var companion = new HandheldCompanionViewModel(model, clock: clock);
+        companion.SetNowPlaying(new HandheldGameEntry(1, "Ico", "ps2", "ps2", null, 3, TimeSpan.FromMinutes(95), true), "PlayStation 2");
+        // Before the game runs, the row has the game's total.
+        Assert.Equal("PlayStation 2 · 1 h 35 min played", companion.NowPlayingLine);
+
+        model.IsGameRunning = true;
+        Assert.Equal(clock.GetUtcNow(), companion.SessionStartedAt);
+        Assert.True(companion.IsSessionTickPending);
+        clock.Advance(TimeSpan.FromMinutes(25));
+        companion.TickSession();
+        Assert.Equal("PlayStation 2 · 25 min this session · 2 h 0 min in all", companion.NowPlayingLine);
+
+        // Resting stops the tick (nothing redraws a dimmed row); waking catches the line up at once.
+        companion.Rest();
+        Assert.False(companion.IsSessionTickPending);
+        clock.Advance(TimeSpan.FromMinutes(40));
+        Assert.Contains("25 min this session", companion.NowPlayingLine, StringComparison.Ordinal);
+        companion.Wake();
+        Assert.Equal("PlayStation 2 · 1 h 5 min this session · 2 h 40 min in all", companion.NowPlayingLine);
+        Assert.True(companion.IsSessionTickPending);
+
+        // The game ended: nothing ticks.
+        model.IsGameRunning = false;
+        Assert.Null(companion.SessionStartedAt);
+        Assert.False(companion.IsSessionTickPending);
     }
 
     [Fact]
@@ -83,7 +117,7 @@ public partial class HandheldShellViewModelTests
         var companion = StartGame(model, new HandheldGameEntry(1, "Ico", "ps2", "ps2", null, 0, TimeSpan.Zero, true));
 
         Assert.Equal(HandheldCompanionTab.Photos, companion.Tab);
-        Assert.Equal("PlayStation 2 · first time playing", companion.NowPlayingLine);
+        Assert.Equal("PlayStation 2 · just started", companion.NowPlayingLine);
         Assert.Equal(4, companion.PhotoDots.Count);
         Assert.Equal("Screenshot · 1 of 4", companion.PhotoCaption);
         // The Achievements tab says why it is empty.

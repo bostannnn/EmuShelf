@@ -2614,7 +2614,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       the Desktop toolbar, and a game's actions. Reads are paged and off the UI thread; a large log
       must not hitch the grid. **Exit:** a week of real play on the Thor reads correctly in the timeline,
       and an edit or delete updates the totals everywhere.
-- [ ] **P4 — Handheld mode.** An Activity system tile on home beside Settings (amends M45 decision 18,
+- [x] **P4 — Handheld mode.** ✅ (2026-11-13; built and tested on macOS, every screen rendered headlessly on both
+      canvases by `HandheldActivitySnapshotTests`. Not yet on the Thor: the exit below waits for the device testing
+      together with P2 and P3, and the Android head was not compiled in that session. Also on the Start menu and as
+      "Play history" on a game's Y sheet, as in Gamepad mode. Choices in `DECISIONS.md` 2026-11-13 "M46 P4".) An Activity system tile on home beside Settings (amends M45 decision 18,
       which allowed only Settings; record the amendment when built), opening the timeline as
       master-detail across the screens: days and games on the Launcher, the focused day's or game's
       stats on the Stage. The Title page adds first played and average per session. The in-game

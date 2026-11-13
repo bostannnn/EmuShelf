@@ -44,6 +44,9 @@ public static class HandheldIcons
         "F1 M3 5.2h18v1.6H3zM8 3a3 3 0 1 1 0 6a3 3 0 1 1 0-6zM3 11.2h18v1.6H3zM16 9a3 3 0 1 1 0 6a3 3 0 1 1 0-6z" +
         "M3 17.2h18v1.6H3zM10 15a3 3 0 1 1 0 6a3 3 0 1 1 0-6z");
 
+    /// <summary>Activity (M46 P4): three bars rising, a week of play at a glance.</summary>
+    public static readonly Geometry Activity = Geometry.Parse("M4 13h4v7H4zM10 8h4v12h-4zM16 4h4v16h-4z");
+
     public static readonly Geometry ChevronLeft = Geometry.Parse("M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z");
 
     public static readonly Geometry ChevronRight = Geometry.Parse("M8.59 16.59L10 18l6-6-6-6-1.41 1.41L13.17 12z");
@@ -106,6 +109,7 @@ public static class HandheldViewConverters
             HandheldGlyph.Back => HandheldIcons.Back,
             HandheldGlyph.Sort => HandheldIcons.Sort,
             HandheldGlyph.Settings => HandheldIcons.Settings,
+            HandheldGlyph.Activity => HandheldIcons.Activity,
             HandheldGlyph.Search => HandheldIcons.Search,
             HandheldGlyph.Scrape => HandheldIcons.Scrape,
             HandheldGlyph.Cover => HandheldIcons.Cover,

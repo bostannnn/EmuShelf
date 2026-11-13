@@ -54,6 +54,9 @@ public sealed partial class ActivityViewModel : ViewModelBase
     /// <summary>Raised when the Desktop window should close.</summary>
     public event Action? CloseRequested;
 
+    /// <summary>The time zone days and dates are read in.</summary>
+    public TimeZoneInfo Zone => _zone;
+
     /// <summary>A session was edited or deleted, so the library's play totals changed.</summary>
     public bool HasChanges { get; private set; }
 
@@ -306,6 +309,21 @@ public sealed partial class ActivityViewModel : ViewModelBase
 
     [RelayCommand]
     private void CancelEdit() => CancelEditCore();
+
+    /// <summary>Puts the ring on one row of the current page (a tap on Handheld mode's list, M46 P4).</summary>
+    public void FocusRow(int index)
+    {
+        var rows = FocusRows;
+        if (!IsEditing && rows.Count > 0)
+            SetFocus(Math.Clamp(index, 0, rows.Count - 1));
+    }
+
+    /// <summary>Puts the editor's focus on Save (0), Delete (1) or Cancel (2).</summary>
+    public void FocusEdit(int index)
+    {
+        if (IsEditing)
+            EditFocus = Math.Clamp(index, 0, 2);
+    }
 
     /// <summary>The Gamepad input for the screen. False only for B with nothing to back out of.</summary>
     public bool Dispatch(GamepadAction action)
@@ -634,6 +652,7 @@ public sealed partial class ActivityRankItemViewModel : ObservableObject, IActiv
     public ActivityRankItemViewModel(int place, PlayRanking ranking, PlayRankingMetric metric)
     {
         Place = place;
+        Ranking = ranking;
         GameId = ranking.Game.Id;
         Title = ranking.Game.Title;
         var plays = ranking.Plays == 1 ? "1 play" : $"{ranking.Plays} plays";
@@ -652,6 +671,10 @@ public sealed partial class ActivityRankItemViewModel : ObservableObject, IActiv
     }
 
     public int Place { get; }
+
+    /// <summary>The game's totals behind the row (Handheld mode's Stage card shows them all, M46 P4).</summary>
+    public PlayRanking Ranking { get; }
+
     public long GameId { get; }
     public string Title { get; }
     public string ValueText { get; }
