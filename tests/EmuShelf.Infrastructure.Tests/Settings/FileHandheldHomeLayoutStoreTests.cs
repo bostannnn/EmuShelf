@@ -75,6 +75,23 @@ public sealed class FileHandheldHomeLayoutStoreTests : IDisposable
     }
 
     [Fact]
+    public void Activity_RoundTrips_OnHomeAndInAFolder()
+    {
+        // M46 P4: by name on home, and as a flag on the folder it is in.
+        var onHome = HandheldHomeLayout.FromSlots([HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Activity, HandheldSlot.UserFolder("u-a")],
+            [new HandheldUserFolder("u-a", "A", "#3BBD79", [5])]);
+        new FileHandheldHomeLayoutStore(FilePath).Save(onHome);
+        Assert.Equal(1, new FileHandheldHomeLayoutStore(FilePath).Load()!.IndexOf(HandheldSlot.Activity));
+        Assert.Contains("\"tile\": \"activity\"", File.ReadAllText(FilePath), StringComparison.Ordinal);
+
+        new FileHandheldHomeLayoutStore(FilePath).Save(onHome.WithActivityIn("u-a"));
+        var loaded = new FileHandheldHomeLayoutStore(FilePath).Load()!;
+        Assert.Equal(-1, loaded.IndexOf(HandheldSlot.Activity));
+        Assert.True(loaded.FindFolder("u-a")!.HoldsActivity);
+        Assert.False(loaded.FindFolder("u-a")!.HoldsSettings);
+    }
+
+    [Fact]
     public void ReinstallStyleRestore_ACopiedSettingsFolder_GivesBackTheSameHome()
     {
         new FileHandheldHomeLayoutStore(FilePath).Save(Arranged());

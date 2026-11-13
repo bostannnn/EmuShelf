@@ -771,6 +771,10 @@
                 <Border Classes="settings-face" CornerRadius="56" IsVisible="{Binding IsSettings}">
                   <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="104" Height="104" Foreground="White" />
                 </Border>
+                <!-- Activity, put in one of your folders (M46 P4): the same face as on home. -->
+                <Border Classes="activity-face" CornerRadius="56" IsVisible="{Binding IsActivity}">
+                  <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="104" Height="104" Foreground="White" />
+                </Border>
                 <!-- Covers crop from the top, where a box's title and art usually are. -->
                 <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4" IsVisible="{Binding IsGame}"
                         Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">

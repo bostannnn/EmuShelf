@@ -687,6 +687,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             // (put in this folder) opens Settings.
             if (folder.SelectedTile is { IsSettings: true })
                 _ = OpenSettingsAsync();
+            else if (folder.SelectedTile is { IsActivity: true })
+                _ = OpenActivityAsync();
             else if (folder.SelectedTile is { } tile)
                 OpenTitle(tile.Entry);
             return;
@@ -880,11 +882,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             game => game.Title,
             game => game.LastPlayedAt,
             game => game.PlayCount);
-        // Settings, when it is in one of your folders, comes first whatever the sort (decision 18).
-        var settingsTile = folder.Source.HoldsSettings ? 1 : 0;
-        folder.Items = Enumerable.Range(0, settingsTile)
-            .Select(_ => new HandheldGameTileViewModel(0, HandheldGameTileViewModel.SettingsEntry, isSettings: true))
-            .Concat(sorted.Select((entry, index) => new HandheldGameTileViewModel(index + settingsTile, entry)))
+        // Settings, then Activity, when they are in one of your folders, come first whatever the sort (decision 18, M46 P4).
+        var apps = new List<HandheldGameTileViewModel>();
+        if (folder.Source.HoldsSettings)
+            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.SettingsEntry, isSettings: true));
+        if (folder.Source.HoldsActivity)
+            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.ActivityEntry, isActivity: true));
+        var appCount = apps.Count;
+        folder.Items = apps
+            .Concat(sorted.Select((entry, index) => new HandheldGameTileViewModel(index + appCount, entry)))
             .ToList();
         // Your folders remember the sort chip they were left on.
         if (folder.Source is { IsUser: true, FolderId: { } folderId } && folder.Sort != sort &&
@@ -1299,6 +1305,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 ShowSettingsTileStage();
                 return;
             }
+            if (folder.SelectedTile is { IsActivity: true })
+            {
+                ShowActivityTileStage();
+                return;
+            }
             if (folder.SelectedTile is { } tile)
             {
                 ShowGameStage(tile.Entry, tile.Cover);
@@ -1661,7 +1672,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         {
             if (folder.SelectedTile is { } selected)
             {
-                _nextHints.Add(new HandheldHint("A", selected.IsSettings ? "Open" : "Play"));
+                _nextHints.Add(new HandheldHint("A", selected.IsApp ? "Open" : "Play"));
                 _nextHints.Add(new HandheldHint("Y", "More"));
             }
             _nextHints.Add(new HandheldHint("B", "Back"));

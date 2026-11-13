@@ -2617,7 +2617,10 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
 - [x] **P4 — Handheld mode.** ✅ (2026-11-13; built and tested on macOS, every screen rendered headlessly on both
       canvases by `HandheldActivitySnapshotTests`. Not yet on the Thor: the exit below waits for the device testing
       together with P2 and P3, and the Android head was not compiled in that session. Also on the Start menu and as
-      "Play history" on a game's Y sheet, as in Gamepad mode. Choices in `DECISIONS.md` 2026-11-13 "M46 P4".) An Activity system tile on home beside Settings (amends M45 decision 18,
+      "Play history" on a game's Y sheet, as in Gamepad mode; foldable into your folders like Settings. Checked on the
+      Thor: tile, week, ranking, game page, folding in and out, the editor (cancelled) and the Title page's new facts;
+      the companion's session line is left for a real play session. Choices in `DECISIONS.md` 2026-11-13 "M46 P4" and
+      its follow-ups.) An Activity system tile on home beside Settings (amends M45 decision 18,
       which allowed only Settings; record the amendment when built), opening the timeline as
       master-detail across the screens: days and games on the Launcher, the focused day's or game's
       stats on the Stage. The Title page adds first played and average per session. The in-game

@@ -333,4 +333,132 @@ public partial class HandheldShellViewModelTests
         Assert.False(shell.TitlePage!.HasPlayed);
         Assert.Equal(string.Empty, shell.TitlePage.AverageSessionText);
     }
+
+    // ---- Activity in your folders, like Settings ----
+
+    [Fact]
+    public async Task TheActivityTile_FoldsIntoYourFolder_OpensFromThere_AndGoesBackToHome()
+    {
+        using var log = new PlayLog();
+        var library = new FakeLibrary().WithPlatform("ps2", 3);
+        library.ActivityFactory = log.Create;
+        var store = new InMemoryHandheldHomeLayoutStore();
+        var game = library.Games["ps2"][0].Id;
+        store.Save(HandheldHomeLayout.FromSlots(
+            [HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Recent, HandheldSlot.Settings, HandheldSlot.Activity, HandheldSlot.UserFolder("mine")],
+            [new HandheldUserFolder("mine", "Weekend", "#3BBD79", [game])]));
+        var shell = await CreateAsync(library, store);
+
+        // Y on the tile offers Add to folder… now that there is a folder of yours.
+        FocusHome(shell, 3);
+        Press(shell, GamepadAction.Actions);
+        Assert.Equal(["Open", "Move", "Add to folder…"], shell.Sheet!.Items.Select(item => item.Label));
+        Press(shell, GamepadAction.Cancel);
+
+        // Dropped on your folder in move mode, it goes in.
+        Press(shell, GamepadAction.Actions);
+        RunSheetRow(shell, "Move");
+        Press(shell, GamepadAction.NavigateRight);
+        Assert.True(shell.CurrentPage!.Slots[4].IsDropTarget);
+        Assert.Equal("Activity", shell.CurrentPage.Slots[4].CarriedTitle);
+        Press(shell, GamepadAction.Confirm);
+        Assert.Equal(-1, shell.Layout.IndexOf(HandheldSlot.Activity));
+        Assert.True(shell.Layout.FindFolder("mine")!.HoldsActivity);
+        Assert.Equal("Activity is in Weekend", shell.StatusMessage);
+        Assert.True(store.Saved!.FindFolder("mine")!.HoldsActivity);
+
+        // Inside, it comes first, is not counted as a game, and A opens the log.
+        FocusHome(shell, 4);
+        Assert.Equal("Your folder · 1 game and Activity", shell.Stage.Subtitle);
+        Press(shell, GamepadAction.Confirm);
+        var folder = Assert.IsType<HandheldFolderViewModel>(shell.OpenFolder);
+        await Task.Yield();
+        Assert.True(folder.Items[0].IsActivity);
+        Assert.False(folder.Items[0].IsGame);
+        Assert.Equal("1 game", folder.CountText);
+        Assert.Equal(HandheldStageKind.ActivityTile, shell.Stage.Kind);
+        Assert.Contains(shell.Hints, hint => hint is { Button: "A", Label: "Open" });
+        Press(shell, GamepadAction.Confirm);
+        var panel = Assert.IsType<HandheldActivityPanel>(shell.Panel);
+        await WaitUntil(() => !panel.Activity.IsLoading);
+        Press(shell, GamepadAction.Cancel);
+        Assert.Same(folder, shell.OpenFolder);
+
+        // Y in the folder: Move to home (no Remove); it lands on home's first empty slot.
+        Press(shell, GamepadAction.Actions);
+        Assert.Equal(["Open", "Move to home"], shell.Sheet!.Items.Select(item => item.Label));
+        Assert.Equal("In Weekend", shell.Sheet.Subtitle);
+        RunSheetRow(shell, "Move to home");
+        Assert.Equal(3, shell.Layout.IndexOf(HandheldSlot.Activity));
+        Assert.False(shell.Layout.FindFolder("mine")!.HoldsActivity);
+        Assert.Equal("Activity is on home, page 1", shell.StatusMessage);
+        await Task.Yield();
+        Assert.DoesNotContain(shell.OpenFolder!.Items, tile => tile.IsActivity);
+    }
+
+    [Fact]
+    public async Task AddToFolder_PutsActivityIn_AfterSettings_AndAColdStartKeepsIt()
+    {
+        var library = new FakeLibrary().WithPlatform("ps2", 2);
+        var store = new InMemoryHandheldHomeLayoutStore();
+        store.Save(HandheldHomeLayout.FromSlots(
+            [HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Recent, HandheldSlot.Activity, HandheldSlot.UserFolder("mine")],
+            [new HandheldUserFolder("mine", "Apps", "#3BBD79", [], HoldsSettings: true)]));
+        var shell = await CreateAsync(library, store);
+
+        FocusHome(shell, 2);
+        Press(shell, GamepadAction.Actions);
+        RunSheetRow(shell, "Add to folder…");
+        Assert.Equal(HandheldGlyph.Activity, shell.Sheet!.SwatchGlyph);
+        RunSheetRow(shell, "Apps");
+
+        // Settings first, then Activity; neither is a game, and reconciliation does not put another Activity on home.
+        var again = new HandheldShellViewModel(library, layoutStore: store);
+        await again.InitializeAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(-1, again.Layout.IndexOf(HandheldSlot.Activity));
+        FocusHome(again, 3);
+        Assert.Equal("Your folder · Settings and Activity", again.Stage.Subtitle);
+        Press(again, GamepadAction.Confirm);
+        await Task.Yield();
+        Assert.Equal([true, false], again.OpenFolder!.Items.Select(tile => tile.IsSettings));
+        Assert.Equal([false, true], again.OpenFolder.Items.Select(tile => tile.IsActivity));
+        Assert.Equal("0 games", again.OpenFolder.CountText);
+    }
+
+    [Fact]
+    public async Task DeletingAFolderWithBothApps_PutsBothBackOnHome()
+    {
+        var library = new FakeLibrary().WithPlatform("ps2", 2);
+        var store = new InMemoryHandheldHomeLayoutStore();
+        store.Save(HandheldHomeLayout.FromSlots([HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Recent, HandheldSlot.UserFolder("mine")],
+            [new HandheldUserFolder("mine", "Apps", "#3BBD79", [], HoldsSettings: true, HoldsActivity: true)]));
+        var shell = await CreateAsync(library, store);
+
+        FocusHome(shell, 2);
+        Press(shell, GamepadAction.Actions);
+        RunSheetRow(shell, "Delete folder");
+        Assert.Equal("Settings and Activity go back on home, where the folder was", shell.Sheet!.Subtitle);
+        RunSheetRow(shell, "Delete folder");
+
+        Assert.Equal(2, shell.Layout.IndexOf(HandheldSlot.Settings));
+        Assert.Equal(3, shell.Layout.IndexOf(HandheldSlot.Activity));
+        Assert.Equal("Deleted \"Apps\". Settings and Activity are back on home.", shell.StatusMessage);
+    }
+
+    [Fact]
+    public async Task ADayOfUnknownLengths_SaysSo_InsteadOfADash()
+    {
+        // Seen on the Thor: a session never closed showed "— · 1 session" and "? · length unknown".
+        using var log = new PlayLog();
+        log.Library.RecordLaunchStarted(log.Metroid, PlayLog.Now.AddDays(-3)); // Monday, never closed
+        var (_, shell, panel) = await OpenActivityAsync(log);
+
+        Press(shell, GamepadAction.NavigateDown, panel.Rows.Count - 1);
+
+        var card = shell.Stage.PanelCard!;
+        Assert.Equal("1 session, length unknown", card.Value);
+        Assert.Equal("Metroid", card.Description);
+        Assert.EndsWith("· length unknown", card.Status, StringComparison.Ordinal);
+        Assert.DoesNotContain("?", card.Status, StringComparison.Ordinal);
+    }
 }

@@ -512,6 +512,11 @@ internal sealed class HandheldLauncherMotion
     private void OnFrame(TimeSpan now)
     {
         _ticking = false;
+        // A frame asked for while this view had the screen can land after the native Launcher took it back: it must
+        // not put the page shift back on the track, or what the feed pictures meanwhile is placed a page off (found
+        // on the Thor: an app moved home from a folder on page 2 drew nowhere on page 1).
+        if (!_onScreen)
+            return;
         var dt = _lastFrame is { } last ? (now - last).TotalSeconds : 1d / 60d;
         _lastFrame = now;
         _now = now;

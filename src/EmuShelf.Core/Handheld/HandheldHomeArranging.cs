@@ -28,8 +28,9 @@ public static class HandheldHomeArranging
     {
         (HandheldSlotKind.Game, HandheldSlotKind.Game) when carried.GameId != target.GameId => HandheldDropKind.MakeFolder,
         (HandheldSlotKind.Game, HandheldSlotKind.UserFolder) => HandheldDropKind.AddToFolder,
-        // Settings is foldable like a game (decision 18), but two of it never make a folder: on a game it just lands.
-        (HandheldSlotKind.System, HandheldSlotKind.UserFolder) when carried.IsSettings => HandheldDropKind.AddToFolder,
+        // Settings and Activity are foldable like a game (decision 18, M46 P4), but never make a folder: on a game they
+        // just land.
+        (HandheldSlotKind.System, HandheldSlotKind.UserFolder) when carried.IsFoldableApp => HandheldDropKind.AddToFolder,
         _ => HandheldDropKind.Place,
     };
 
@@ -72,8 +73,8 @@ public static class HandheldHomeArranging
 /// empty; games that left the library are dropped from every folder and pin. Missing files are not removed —
 /// the views dim them. The Recent folder is put back if it is gone. Settings is always somewhere, exactly once:
 /// on home or in one of your folders; when it is in neither (a layout saved before it existed, a hand-edited file,
-/// its folder gone) it is appended to home after the platform folders. Activity (M46 P4) lives on home only, once; a library
-/// with games gets it back after Settings when it is missing (a layout saved before it existed).
+/// its folder gone) it is appended to home after the platform folders. Activity (M46 P4) is kept the same way, except that
+/// only a library with games gets it back when it is in neither (a layout saved before it existed).
 /// </summary>
 public static class HandheldHomeReconciler
 {
@@ -114,6 +115,9 @@ public static class HandheldHomeReconciler
         var settingsOnHome = slots.Any(slot => slot.IsSettings);
         var settingsHolder = settingsOnHome ? null : folders.FirstOrDefault(folder => folder.HoldsSettings)?.Id;
         folders = folders.Select(folder => folder.HoldsSettings && folder.Id != settingsHolder ? folder with { HoldsSettings = false } : folder).ToList();
+        var activityOnHome = slots.Any(slot => slot.IsActivity);
+        var activityHolder = activityOnHome ? null : folders.FirstOrDefault(folder => folder.HoldsActivity)?.Id;
+        folders = folders.Select(folder => folder.HoldsActivity && folder.Id != activityHolder ? folder with { HoldsActivity = false } : folder).ToList();
 
         var additions = new List<HandheldSlot>();
         if (platforms.Count > 0 && !slots.Any(slot => slot.Kind == HandheldSlotKind.System && slot.SystemTile == HandheldSystemTile.Recent))
@@ -123,7 +127,7 @@ public static class HandheldHomeReconciler
             .Select(id => HandheldSlot.PlatformFolder(id, isNew: true)));
         if (!settingsOnHome && settingsHolder is null)
             additions.Add(HandheldSlot.Settings);
-        if (platforms.Count > 0 && !slots.Any(slot => slot.IsActivity))
+        if (platforms.Count > 0 && !activityOnHome && activityHolder is null)
             additions.Add(HandheldSlot.Activity);
 
         // Appended after the last tile on home, so new folders never jump in among the ones you arranged.

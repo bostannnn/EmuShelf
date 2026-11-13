@@ -14007,3 +14007,53 @@ corrected or deleted from the timeline or the game page.
   taps, the Start menu and Play history; `HandheldActivitySnapshotTests` render the tile, the week, the ranking, a
   game's page and the editor on both canvases, and the Title page's facts. Not yet on the Thor, and the Android head
   was not compiled here (no usable Android SDK in this shell); it touches none of the changed APIs.
+
+## 2026-11-13 — M46 P4 follow-up: Activity folds like Settings; first look on the Thor
+
+- **Activity now goes in your folders, as Settings does** (the owner's call, reversing "never folded" above). Same
+  mechanism: a flag on your folder (`HandheldUserFolder.HoldsActivity`, saved as `"activity": true`), not general app
+  contents; `Holds`/`WithHolding`/`WithAppIn`/`WithAppOnHome` serve both apps. In by move mode (dropped on your folder;
+  on a game it just lands) or Y → Add to folder…; out with Y → Move to home. Inside, the apps come first, Settings then
+  Activity, and neither counts as a game ("Your folder · 1 game and Activity"; "1 game, Settings and Activity" with
+  both). Reconciliation keeps exactly one, as for Settings (home wins, the first folder wins), and does not add a second
+  to home when it is in a folder. Deleting a folder that holds both puts Settings where the folder was and Activity in
+  the first empty slot.
+- **Checked on the Thor (Release AOT, owner's library, swapped screens; both screens read back with `screencap -d`):**
+  the owner's saved home gained the tile after Settings on first start; A opened the week with the real sessions
+  (including one of unknown length), the Stage's day card, RB the ranking (a game with only pre-log play reads "11h 22m
+  in all · played 2 times"), A its page, B and B back to home. The device's culture starts the week on Sunday, and the
+  week followed it. The first press after the Stage has rested only wakes it, as designed, so a scripted check must
+  wake it first.
+- **Fixed from what the Thor showed:** a day of only unknown-length sessions read "— · 1 session" with "? · length
+  unknown"; it now reads "1 session, length unknown", and a session's line never shows "?" beside its note. "First
+  played Before the play log" is now lower case mid-sentence.
+- **Not yet checked on the device:** folding Activity in and out, the editor on a real session, the Title page's new
+  facts and the companion's session time. Another session was driving the same Thor with a scripted press loop and
+  reinstalled its own build mid-check (its build drops the unknown tile, which is why Activity vanished from the
+  owner's home for a while); the check stopped there rather than fight it. Installing this build again puts Activity
+  back on home by reconciliation.
+
+## 2026-11-13 — M46 P4: folding checked on the Thor; a stale frame placed Launcher pictures a page off
+
+- **Checked on the Thor (Release AOT, owner's library):** Y → Add to folder… put Activity in one of the owner's folders
+  ("Activity is in New folder"); the folder's Stage read "Your folder · Activity", inside it Activity came first with
+  its own Stage, A opened the log and B came back into the folder; Y there offered Open and Move to home, which put it
+  on home's first empty slot ("Activity is on home, page 1") — slot 17, after Settings, where it was before. The
+  session editor opened on a real session (Save, Delete session, Cancel; the Stage's card explains left/right and
+  LB/RB) and was cancelled, the log unchanged. A game's Title page read "First played Before the play log", "Play time
+  3 min", "Per session 1 min". The companion's session line was not checked: it needs a game launched, which would add
+  a real session to the owner's log.
+- **Fixed: a stale animation frame of the Avalonia Launcher put the page shift back on the track after the native
+  Launcher took the screen back.** `HandheldLauncherMotion` zeroes the track's shift when the view goes off screen, but
+  a frame requested while it was on screen (a sheet or a folder) could still land and set the shift again. Whatever
+  the native feed pictured then was placed a page off: on the Thor, Activity moved home from a folder while page 2 was
+  in view drew nowhere on page 1 until a restart (its picture was sent at x = −1120 instead of 800), and a slot it left
+  on page 2 drew blank with no selector. A frame now does nothing while the view is off screen. Not specific to
+  Activity: Settings, pins and anything else a sheet changes on a page other than 0 were exposed the same way.
+  `AnAppFoldedAndBack_IsRepicturedOnTheNativeLauncher` (Activity and Settings, both canvases, the app on page 2)
+  checks each new picture's place; it fails without the fix (pictures 1,920 px off).
+- **Ruled out on the way:** the slot being re-pictured before its face was laid out (the feed logged none unsettled)
+  and a blank picture (the re-sent tile was as opaque as at start-up); only its position was wrong.
+- **Left as found:** seven empty folders named "New folder" on the owner's home (one on page 1, six on page 2),
+  apparently made by another session's scripted press loop on the same Thor earlier today. Not deleted: they are the
+  owner's to keep or remove.

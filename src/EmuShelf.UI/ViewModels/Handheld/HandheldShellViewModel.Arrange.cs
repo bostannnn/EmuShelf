@@ -141,6 +141,8 @@ public sealed partial class HandheldShellViewModel
         {
             if (folder.SelectedTile is { IsSettings: true })
                 ShowSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
+            else if (folder.SelectedTile is { IsActivity: true })
+                ShowSheet(ActivitySheet(_layout.FindFolder(folder.Source.FolderId)));
             else if (folder.SelectedTile is { } tile)
                 ShowSheet(GameSheet(tile.Entry, folder));
             return;
@@ -218,7 +220,7 @@ public sealed partial class HandheldShellViewModel
         if (slot.IsSettings)
             return SettingsSheet(inFolder: null);
         if (slot.IsActivity)
-            return ActivitySheet();
+            return ActivitySheet(inFolder: null);
         if (FolderSourceFor(slot) is not { } source)
             return null;
         var items = new List<HandheldSheetItemViewModel>
@@ -325,10 +327,11 @@ public sealed partial class HandheldShellViewModel
         if (_layout.FindFolder(folderId) is not { } folder)
             return;
         ShowSheet(new HandheldSheetViewModel($"Delete \"{folder.Name}\"?",
-            folder.HoldsSettings
+            AppsIn(folder) is { } apps
                 ? folder.GameIds.Count == 0
-                    ? "Settings goes back on home, where the folder was"
-                    : $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library, and Settings goes back on home"
+                    ? $"{apps} {(folder.HoldsSettings && folder.HoldsActivity ? "go" : "goes")} back on home, where the folder was"
+                    : $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library, and {apps} " +
+                      $"{(folder.HoldsSettings && folder.HoldsActivity ? "go" : "goes")} back on home"
                 : $"Its {HandheldText.GameCount(folder.GameIds.Count)} stay in the library and in their platform folders",
             [
                 new HandheldSheetItemViewModel("Delete folder", null, () => DeleteFolder(folderId)),
@@ -408,10 +411,19 @@ public sealed partial class HandheldShellViewModel
             CloseFolder();
         InvalidatePeek("u:" + folderId);
         ApplyLayout(_layout.WithoutFolder(folderId));
-        ShowNotice(folder.HoldsSettings
-            ? $"Deleted \"{folder.Name}\". Settings is back on home where it was."
+        ShowNotice(AppsIn(folder) is { } apps
+            ? $"Deleted \"{folder.Name}\". {apps} {(folder.HoldsSettings && folder.HoldsActivity ? "are" : "is")} back on home."
             : $"Deleted \"{folder.Name}\". The games are still in the library.");
     }
+
+    // The apps in one of your folders, as a sheet or a notice names them; null when it holds none.
+    private static string? AppsIn(HandheldUserFolder folder) => (folder.HoldsSettings, folder.HoldsActivity) switch
+    {
+        (true, true) => "Settings and Activity",
+        (true, false) => HandheldSettingsText.Name,
+        (false, true) => HandheldActivityText.Name,
+        _ => null,
+    };
 
     /// <summary>An open folder of yours shows its new contents (a game added or removed from inside it).</summary>
     private void RefreshOpenUserFolder(string folderId)
@@ -530,12 +542,13 @@ public sealed partial class HandheldShellViewModel
         var target = move.Lifted[move.Target];
         switch (move.Drop)
         {
-            case HandheldDropKind.AddToFolder when move.Carried.IsSettings && target.FolderId is { } settingsFolderId &&
-                _layout.FindFolder(settingsFolderId) is { } settingsFolder:
-                // Settings goes into the folder (decision 18); home keeps the rest as it was before the lift.
+            case HandheldDropKind.AddToFolder when move.Carried.IsFoldableApp && target.FolderId is { } appFolderId &&
+                _layout.FindFolder(appFolderId) is { } appFolder:
+                // Settings or Activity goes into the folder (decision 18, M46 P4); home keeps the rest as it was before the lift.
+                InvalidatePeek("u:" + appFolderId);
                 _home = PositionOf(move.Target);
-                ApplyLayout(_layout.WithSlots(move.Lifted).WithSettingsIn(settingsFolderId));
-                ShowNotice($"Settings is in {settingsFolder.Name}");
+                ApplyLayout(_layout.WithSlots(move.Lifted).WithAppIn(move.Carried.SystemTile, appFolderId));
+                ShowNotice($"{(move.Carried.IsActivity ? HandheldActivityText.Name : HandheldSettingsText.Name)} is in {appFolder.Name}");
                 return;
             case HandheldDropKind.AddToFolder when target.FolderId is { } folderId && _layout.FindFolder(folderId) is { } folder:
                 InvalidatePeek("u:" + folderId);

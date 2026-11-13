@@ -285,17 +285,29 @@ public sealed record HandheldFolderSource(
     string? FolderId = null,
     IReadOnlyList<long>? GameIds = null,
     HandheldFolderSort Sort = HandheldFolderSort.Manual,
-    bool HoldsSettings = false)
+    bool HoldsSettings = false,
+    bool HoldsActivity = false)
 {
     public bool IsUser => Kind == HandheldFolderKind.User;
+
+    // The apps put in it (decision 18, M46 P4), as the Stage's line names them: "Settings", "Settings and Activity".
+    private string? Apps => (HoldsSettings, HoldsActivity) switch
+    {
+        (true, true) => "Settings and Activity",
+        (true, false) => HandheldSettingsText.Name,
+        (false, true) => HandheldActivityText.Name,
+        _ => null,
+    };
     public bool IsRecent => Kind == HandheldFolderKind.Recent;
     public bool IsSearch => Kind == HandheldFolderKind.Search;
 
     /// <summary>The Stage's line under the folder's name.</summary>
     public string Description => Kind switch
     {
-        HandheldFolderKind.User when HoldsSettings =>
-            $"Your folder · {(GameCount == 0 ? "Settings" : $"{HandheldText.GameCount(GameCount)} and Settings")}",
+        HandheldFolderKind.User when Apps is { } apps =>
+            $"Your folder · {(GameCount == 0 ? apps : HoldsSettings && HoldsActivity
+                ? $"{HandheldText.GameCount(GameCount)}, {apps}"
+                : $"{HandheldText.GameCount(GameCount)} and {apps}")}",
         HandheldFolderKind.User => $"Your folder · {(GameCount == 0 ? "empty" : HandheldText.GameCount(GameCount))}",
         HandheldFolderKind.Recent => GameCount == 0 ? "Made for you · games you play appear here" : $"Made for you · {HandheldText.GameCount(GameCount)}",
         HandheldFolderKind.Search => $"Search · {HandheldText.GameCount(GameCount)}",
@@ -308,7 +320,8 @@ public sealed record HandheldFolderSource(
 
     public static HandheldFolderSource ForUser(HandheldUserFolder folder) =>
         new(HandheldFolderKind.User, "u:" + folder.Id, folder.Name, folder.Color, string.Empty, folder.GameIds.Count,
-            FolderId: folder.Id, GameIds: folder.GameIds, Sort: folder.Sort, HoldsSettings: folder.HoldsSettings);
+            FolderId: folder.Id, GameIds: folder.GameIds, Sort: folder.Sort, HoldsSettings: folder.HoldsSettings,
+            HoldsActivity: folder.HoldsActivity);
 
     public static HandheldFolderSource ForRecent(IReadOnlyList<long> gameIds) =>
         new(HandheldFolderKind.Recent, "r:recent", "Recent", HandheldHomeLayout.RecentColor, string.Empty, gameIds.Count,
@@ -467,19 +480,28 @@ public sealed partial class HandheldPageDotViewModel(int index) : ObservableObje
 }
 
 /// <summary>
-/// A tile inside an open folder: a game, or the Settings tile when it was put in one of your folders (decision 18), which
-/// comes first. A game's tile owns its decoded cover while it is in the visible window.
+/// A tile inside an open folder: a game, or the Settings or Activity tile when it was put in one of your folders
+/// (decision 18, M46 P4), which come first. A game's tile owns its decoded cover while it is in the visible window.
 /// </summary>
-public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEntry entry, bool isSettings = false) : ObservableObject
+public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEntry entry, bool isSettings = false, bool isActivity = false)
+    : ObservableObject
 {
     /// <summary>What the Settings tile stands on inside a folder: not a game (its id is never a game's).</summary>
     public static HandheldGameEntry SettingsEntry { get; } =
         new(-1, HandheldSettingsText.Name, string.Empty, string.Empty, null, 0, TimeSpan.Zero, IsAvailable: true);
 
+    /// <summary>What the Activity tile stands on inside a folder: not a game either.</summary>
+    public static HandheldGameEntry ActivityEntry { get; } =
+        new(-2, HandheldActivityText.Name, string.Empty, string.Empty, null, 0, TimeSpan.Zero, IsAvailable: true);
+
     public int Index { get; } = index;
     public HandheldGameEntry Entry { get; } = entry;
     public bool IsSettings { get; } = isSettings;
-    public bool IsGame => !IsSettings;
+    public bool IsActivity { get; } = isActivity;
+
+    /// <summary>Settings or Activity: an app, not a game.</summary>
+    public bool IsApp => IsSettings || IsActivity;
+    public bool IsGame => !IsApp;
     public string Title => Entry.Title;
     public bool IsUnavailable => !Entry.IsAvailable;
     public int Column => Index / HandheldFolderNavigation.Rows;
@@ -578,7 +600,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     public partial bool IsLoaded { get; set; }
 
     // The Settings tile, when it is in the folder, is not a game.
-    public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count(tile => !tile.IsSettings)) : string.Empty;
+    public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count(tile => tile.IsGame)) : string.Empty;
     public bool IsEmpty => IsLoaded && Items.Count == 0;
     public bool HasGames => Items.Count > 0;
 

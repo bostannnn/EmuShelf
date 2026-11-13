@@ -253,11 +253,18 @@ public sealed class HandheldActivityPanel : HandheldPanelViewModel
             .Select(group => (Title: group.Key, Total: TimeSpan.FromSeconds(group.Sum(entry => entry.Session.Duration?.TotalSeconds ?? 0))))
             .OrderByDescending(game => game.Total)
             .ToList();
-        var named = games.Take(DayCardGames).Select(game => $"{game.Title} {ActivityText.Duration(game.Total, zeroText: "?")}");
+        // A game whose sessions all have an unknown length is named without a time (checked on the Thor: "Castlevania ?").
+        var named = games.Take(DayCardGames).Select(game => game.Total > TimeSpan.Zero
+            ? $"{game.Title} {ActivityText.Duration(game.Total)}"
+            : game.Title);
         var description = string.Join(" · ", named) + (games.Count > DayCardGames ? $" · and {games.Count - DayCardGames} more" : string.Empty);
         var plays = day.Sessions.Count == 1 ? "1 session" : $"{day.Sessions.Count} sessions";
-        var status = $"{session.GameTitle} at {session.WhenText} · {session.LengthText}" + (session.HasNote ? $" · {session.NoteText}" : string.Empty);
-        return new HandheldPanelCard(eyebrow, day.Label, $"{day.TotalText} · {plays}", description, status, Glyph: HandheldGlyph.Activity);
+        var status = $"{session.GameTitle} at {session.WhenText} · {SessionLength(session)}";
+        // A day of only unknown lengths has no total to show: "1 session, length unknown", not "— · 1 session".
+        var value = day.Sessions.Any(entry => entry.Session.Duration is not null)
+            ? $"{day.TotalText} · {plays}"
+            : $"{plays}, length unknown";
+        return new HandheldPanelCard(eyebrow, day.Label, value, description, status, Glyph: HandheldGlyph.Activity);
     }
 
     // The focused game's place and stats.
@@ -283,15 +290,24 @@ public sealed class HandheldActivityPanel : HandheldPanelViewModel
     {
         var average = Activity.GameAverageText == RetroAchievementsDisplay.Dash ? null : $" · {Activity.GameAverageText} a session";
         var description = $"Played {Activity.GamePlaysText}{average}\n" +
-            $"First played {Activity.GameFirstPlayedText} · last played {Activity.GameLastPlayedText}";
+            $"First played {Lower(Activity.GameFirstPlayedText)} · last played {Activity.GameLastPlayedText}";
         if (Activity.HasGameEarlierPlay)
             description += $"\n{Activity.GameEarlierText}";
         var status = Activity.FocusedRow is ActivitySessionViewModel session
-            ? $"{session.FullWhenText} · {session.LengthText}" + (session.HasNote ? $" · {session.NoteText}" : string.Empty)
+            ? $"{session.FullWhenText} · {SessionLength(session)}"
             : null;
         return new HandheldPanelCard(HandheldActivityText.Name, Activity.GameTitle, Activity.GameTotalText, description, status,
             Glyph: HandheldGlyph.Activity);
     }
+
+    // A session's length for a sentence: "25m", "about 25m", "25m · edited", or "length unknown" (never "? · length unknown").
+    private static string SessionLength(ActivitySessionViewModel session) => session.Session.Duration is null
+        ? "length unknown"
+        : session.HasNote ? $"{session.LengthText} · {session.NoteText}" : session.LengthText;
+
+    // "Before the play log" reads mid-sentence as "First played before the play log"; a date stays as it is.
+    private static string Lower(string text) =>
+        text.StartsWith("Before ", StringComparison.Ordinal) ? "b" + text[1..] : text;
 
     public override IEnumerable<HandheldHint> Hints
     {

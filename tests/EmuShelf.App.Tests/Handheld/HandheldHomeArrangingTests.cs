@@ -228,10 +228,53 @@ public class HandheldHomeArrangingTests
     }
 
     [Fact]
-    public void Activity_DroppedOnYourFolder_TakesTheSlot_InsteadOfGoingIn()
+    public void Activity_DroppedOnYourFolder_GoesIn_LikeSettings_ButNeverMakesAFolderOnAGame()
     {
-        // Only Settings folds (decision 18); Activity lives on home (M46 P4).
-        Assert.Equal(HandheldDropKind.Place, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.UserFolder("a")));
+        Assert.Equal(HandheldDropKind.AddToFolder, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.UserFolder("a")));
         Assert.Equal(HandheldDropKind.Place, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.Game(1)));
+        Assert.Equal(HandheldDropKind.Place, HandheldHomeArranging.Classify(HandheldSlot.Activity, HandheldSlot.Settings));
+    }
+
+    [Fact]
+    public void Reconcile_ActivityInYourFolder_IsNotAddedAgain_AndOnlyOneFolderKeepsIt()
+    {
+        var layout = HandheldHomeLayout.FromSlots(
+            [HandheldSlot.Recent, HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Settings, HandheldSlot.UserFolder("a"), HandheldSlot.UserFolder("b")],
+            [new HandheldUserFolder("a", "A", "#3BBD79", [], HoldsActivity: true), new HandheldUserFolder("b", "B", "#3BBD79", [], HoldsActivity: true)]);
+
+        var result = Reconcile(layout, ["ps2"], [], out var changed);
+
+        Assert.True(changed);
+        Assert.Equal(-1, result.IndexOf(HandheldSlot.Activity));
+        Assert.Equal("a", result.ActivityFolder!.Id);
+        Assert.False(result.FindFolder("b")!.HoldsActivity);
+
+        // On home wins over a folder.
+        var both = result.WithSlot(6, HandheldSlot.Activity);
+        Assert.Null(Reconcile(both, ["ps2"], [], out _).ActivityFolder);
+    }
+
+    [Fact]
+    public void ActivityInAndOutOfAFolder_AndDeletingAFolderWithBothApps_PutsBothBack()
+    {
+        var home = HandheldHomeLayout.FromSlots(
+            [HandheldSlot.PlatformFolder("ps2"), HandheldSlot.Settings, HandheldSlot.Activity, HandheldSlot.UserFolder("a")],
+            [new HandheldUserFolder("a", "A", "#3BBD79", [])]);
+
+        var folded = home.WithActivityIn("a").WithSettingsIn("a");
+        Assert.Equal(-1, folded.IndexOf(HandheldSlot.Activity));
+        Assert.Equal(-1, folded.IndexOf(HandheldSlot.Settings));
+        Assert.Same(folded.FindFolder("a"), folded.ActivityFolder);
+
+        var back = folded.WithActivityOnHome(-1, out var placed);
+        Assert.Equal(1, placed);
+        Assert.Null(back.ActivityFolder);
+        Assert.True(back.SettingsFolder is not null);
+
+        // Deleting a folder with both: Settings where the folder was, Activity in the first empty slot.
+        var deleted = folded.WithoutFolder("a");
+        Assert.Equal(3, deleted.IndexOf(HandheldSlot.Settings));
+        Assert.Equal(1, deleted.IndexOf(HandheldSlot.Activity));
+        Assert.Empty(deleted.Folders);
     }
 }
