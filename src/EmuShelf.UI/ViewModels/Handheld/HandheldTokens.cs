@@ -2,6 +2,7 @@
 #pragma warning disable CS8618 // Every token is assigned by UseClassicValues(), which the static constructor runs.
 
 using Avalonia;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 using EmuShelf.Core.Handheld;
@@ -30,22 +31,57 @@ public static partial class HandheldTokens
 
     /// <summary>
     /// Gives every token its value for <paramref name="look"/>. Called when Handheld mode starts, before its views exist.
-    /// Today's values are the base; Big Type has no values of its own yet (M47 B3 onward assign the ones that differ here).
+    /// Today's values are the base; Big Type then assigns only the ones that differ (<see cref="UseBigTypeValues"/>).
     /// </summary>
     public static void Use(HandheldLook look)
     {
         Look = look;
         UseClassicValues();
+        if (look == HandheldLook.BigType)
+            UseBigTypeValues();
     }
 
-    /// <summary>A console's or a folder's colour from its stored text (<c>GameSystem.AccentColor</c>, a folder's colour).</summary>
-    /// <returns>The colour, or null when there is none or it does not parse.</returns>
-    public static Color? ConsoleColour(string? accent) => Color.TryParse(accent, out var colour) ? colour : null;
+    // ===== A console's colour =====
 
     /// <summary>
-    /// <see cref="ConsoleColour"/> as a brush, grey when there is no colour (as every Handheld view drew a missing one).
+    /// A console's colour in the look the tokens hold: today's look takes its accent (<c>GameSystem.AccentColor</c>); Big
+    /// Type takes its approved ground (<c>GameSystem.GroundColor</c>), or, for a system the table does not cover, its
+    /// accent darkened until white type holds the floors (<see cref="HandheldGround.Derive"/>).
     /// </summary>
-    public static IBrush ConsoleBrush(string? accent) => ConsoleColour(accent) is { } colour ? new SolidColorBrush(colour) : Brushes.Gray;
+    /// <returns>The colour, or null for no platform or a colour that does not parse.</returns>
+    public static Color? ConsoleColour(HandheldPlatform? platform) => ConsoleColour(platform, Look);
+
+    /// <summary><see cref="ConsoleColour(HandheldPlatform?)"/> for a given look (tests ask without switching the tokens).</summary>
+    internal static Color? ConsoleColour(HandheldPlatform? platform, HandheldLook look) => platform is null ? null
+        : look == HandheldLook.BigType ? Ground(platform.GroundColor, platform.AccentColor)
+        : ColourOf(platform.AccentColor);
+
+    /// <summary><see cref="ConsoleColour(HandheldPlatform?)"/> as a brush, grey when there is no colour (as every Handheld view drew a missing one).</summary>
+    public static IBrush ConsoleBrush(HandheldPlatform? platform) => BrushOf(ConsoleColour(platform));
+
+    /// <summary>A folder's colour: a platform's is its console's (<see cref="ConsoleColour(HandheldPlatform?)"/>); yours, Recent's and Search's are their own.</summary>
+    public static Color? FolderColour(HandheldFolderSource? source) =>
+        source?.Platform is { } platform ? ConsoleColour(platform) : ColourOf(source?.AccentColor);
+
+    /// <summary><see cref="FolderColour"/> as a brush, grey when there is no colour.</summary>
+    public static IBrush FolderBrush(HandheldFolderSource? source) => BrushOf(FolderColour(source));
+
+    /// <summary>A colour from its stored text (one of your folders' colours); the same in either look.</summary>
+    /// <returns>The colour, or null when there is none or it does not parse.</returns>
+    public static Color? ColourOf(string? text) => Color.TryParse(text, out var colour) ? colour : null;
+
+    /// <summary><see cref="ColourOf"/> as a brush, grey when there is no colour.</summary>
+    public static IBrush BrushOf(string? text) => BrushOf(ColourOf(text));
+
+    private static IBrush BrushOf(Color? colour) => colour is { } c ? new SolidColorBrush(c) : Brushes.Gray;
+
+    /// <summary>Big Type's ground: the approved colour, else the accent darkened until it holds the floors, else null.</summary>
+    internal static Color? Ground(string? ground, string? accent)
+    {
+        if (HandheldGround.TryParse(ground, out var approved))
+            return Color.FromUInt32(approved);
+        return ColourOf(accent) is { } colour ? Color.FromUInt32(HandheldGround.Derive(colour.ToUInt32() | 0xFF000000)) : null;
+    }
 
     private static IBrush Brush(string colour) => new ImmutableSolidColorBrush(Color.Parse(colour));
 
@@ -1376,8 +1412,49 @@ public static partial class HandheldTokens
     public static FontWeight CompanionStrongWeight { get; private set; }
 
     /// <summary>Today's look: every token's value as Handheld mode has drawn it since M45.</summary>
+    // ===== The face =====
+    // Today's look sets no typeface and takes the system's (and keeps taking it: Face is null and nothing is applied). Big
+    // Type sets M PLUS Rounded 1c on every Handheld view's root, where every text inherits it, with three weights
+    // (tokens.js face: WeightText 500, WeightStrong 700, WeightDisplay 900). Each role's weight token above takes one of them.
+
+    /// <summary>
+    /// Where the Handheld face is: App.axaml's <c>EmuHandheldFontFamily</c> (M47 R3). The name after <c>#</c> is the one inside
+    /// the files; Google Fonts' display name does not resolve. A test holds the two declarations equal.
+    /// </summary>
+    public const string FaceSource = "avares://EmuShelf.UI/Assets/Fonts/MPLUSRounded1c#Rounded Mplus 1c";
+
+    /// <summary>The Handheld typeface, or null to set none (today's look: the system's face, as before M47).</summary>
+    public static FontFamily? Face { get; private set; }
+
+    /// <summary>Text with no role of its own (tokens.js <c>face.WeightText</c>); what a view's root sets with <see cref="Face"/>.</summary>
+    public static FontWeight WeightText { get; private set; }
+
+    /// <summary>Labels, lines, rows and hints (tokens.js <c>face.WeightStrong</c>).</summary>
+    public static FontWeight WeightStrong { get; private set; }
+
+    /// <summary>Names, headings, monograms and figures (tokens.js <c>face.WeightDisplay</c>).</summary>
+    public static FontWeight WeightDisplay { get; private set; }
+
+    /// <summary>
+    /// Sets the look's face on a Handheld view's root, so every text under it inherits it: <see cref="Face"/> at
+    /// <see cref="WeightText"/>. In today's look there is no face and the root is left exactly as it was.
+    /// </summary>
+    public static void ApplyFace(TemplatedControl root)
+    {
+        if (Face is not { } face)
+            return;
+        root.FontFamily = face;
+        root.FontWeight = WeightText;
+    }
+
     private static void UseClassicValues()
     {
+        // The face: none (the system's), and the weights only Big Type's roots use.
+        Face = null;
+        WeightText = FontWeight.Medium;
+        WeightStrong = FontWeight.Bold;
+        WeightDisplay = FontWeight.Black;
+
         // Launcher: ground and type
         ClassicGroundTop = Color.Parse("#FAFBFD");
         ClassicGroundBottom = Color.Parse("#E4E8EF");
@@ -1801,5 +1878,30 @@ public static partial class HandheldTokens
         CompanionPhotoDotCurrentWidth = 40;
         CompanionWeight = FontWeight.SemiBold;
         CompanionStrongWeight = FontWeight.Bold;
+    }
+
+    /// <summary>
+    /// The Big Type values that differ from today's (M47 B2 onward), assigned after <see cref="UseClassicValues"/>.
+    /// B2: the face and its weights (a console's colour comes from <see cref="ConsoleColour(HandheldPlatform?)"/>, which reads
+    /// <see cref="Look"/>). Layouts, sizes and the other colours keep today's values until B3 and B4 give them theirs.
+    /// </summary>
+    private static void UseBigTypeValues()
+    {
+        // The face (tokens.js face), and each role's weight from tokens.js type.
+        Face = new FontFamily(FaceSource);
+        HeadingWeight = WeightDisplay;          // Heading, SheetTitle
+        RowWeight = WeightStrong;               // Row, RowValue, RailRow, Key
+        TileTitleWeight = WeightStrong;
+        RibbonWeight = WeightStrong;
+        SwatchMonogramWeight = WeightDisplay;   // Monogram
+        HintGlyphWeight = WeightStrong;         // Hint
+        KeyboardHintGlyphWeight = WeightStrong;
+        MonogramWeight = WeightDisplay;         // Monogram
+        StageCornerWeight = WeightStrong;       // Label, Line, Facts, Battery
+        DisplayNameWeight = WeightDisplay;      // DisplayName
+        HeroWeight = WeightStrong;
+        CardWeight = WeightStrong;
+        CompanionWeight = WeightStrong;         // InGameLabel
+        CompanionStrongWeight = WeightDisplay;  // SessionTimer, InGameFigure, InGameStat
     }
 }

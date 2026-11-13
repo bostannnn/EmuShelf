@@ -156,7 +156,7 @@ public partial class MainViewModel
                 LaunchLead = HandheldMotion.LaunchLead,
                 SoundPlayer = _handheldSoundPlayer ?? SilentHandheldSoundPlayer.Instance,
                 SoundsEnabled = _settingsService?.Load().HandheldSounds ?? true,
-                Look = _settingsService?.Load().HandheldLook ?? HandheldLook.Classic,
+                Look = HandheldLookChoice.Resolve(_settingsService?.Load().HandheldLook ?? HandheldLook.Classic),
                 SaveSounds = SaveHandheldSounds,
             };
             // The tokens take the look's values once, before the Handheld views that read them are built (M47 B1).
@@ -351,7 +351,8 @@ public partial class MainViewModel
                 return systems
                     .Where(system => counts.ContainsKey(system.Id))
                     .Select(system => new HandheldPlatform(
-                        system.Id, system.Name, system.ShortName, system.AccentColor, counts[system.Id], system.Era, system.Backdrops))
+                        system.Id, system.Name, system.ShortName, system.AccentColor, counts[system.Id], system.Era, system.Backdrops,
+                        system.GroundColor))
                     .ToList();
             }, cancellationToken);
         }

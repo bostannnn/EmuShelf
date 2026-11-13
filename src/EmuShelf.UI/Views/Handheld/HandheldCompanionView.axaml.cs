@@ -31,6 +31,8 @@ public partial class HandheldCompanionView : UserControl
     {
         IsWide = wide;
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
         var width = wide ? HandheldShellViewModel.WideCanvasWidth : HandheldShellViewModel.NarrowCanvasWidth;
         this.FindControl<Grid>("Canvas")!.Width = width;
         this.FindControl<Panel>("RestCanvas")!.Width = width;

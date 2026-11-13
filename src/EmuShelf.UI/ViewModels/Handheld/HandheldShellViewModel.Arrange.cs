@@ -240,7 +240,7 @@ public sealed partial class HandheldShellViewModel
             HandheldFolderKind.Recent => $"Made for you · the last {HandheldText.GameCount(source.GameCount)} you played",
             _ => source.Description,
         };
-        return new HandheldSheetViewModel(source.Name, subtitle, items) { Swatch = BrushOf(source.AccentColor), SwatchText = source.Monogram,
+        return new HandheldSheetViewModel(source.Name, subtitle, items) { Swatch = HandheldTokens.FolderBrush(source), SwatchText = source.Monogram,
             SwatchGlyph = source.Kind switch
             {
                 HandheldFolderKind.User => HandheldGlyph.Star,
@@ -319,7 +319,7 @@ public sealed partial class HandheldShellViewModel
         ?? OpenFolder?.Items.FirstOrDefault(tile => tile.Entry.Id == gameId)?.Cover
         ?? (TitlePage?.Entry.Id == gameId ? TitlePage.Cover : null);
 
-    private static Avalonia.Media.IBrush BrushOf(string color) => HandheldTokens.ConsoleBrush(color);
+    private static Avalonia.Media.IBrush BrushOf(string color) => HandheldTokens.BrushOf(color);
 
     private void ConfirmDelete(string folderId)
     {

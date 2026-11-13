@@ -1421,7 +1421,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldFolderKind.Search => HandheldGlyph.Search,
             _ => HandheldGlyph.None,
         };
-        Stage.AccentBrush = HandheldTokens.ConsoleBrush(source.AccentColor);
+        Stage.AccentBrush = HandheldTokens.FolderBrush(source);
         ApplyPeek(source, Stage);
     }
 
@@ -1429,12 +1429,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The backdrop behind your folders and Recent: the tile grid, in the folder's colour (as in the mockup).</summary>
     internal static HandheldBackdrop? FolderBackdrop(string color) =>
-        HandheldTokens.ConsoleColour(color) is { } parsed ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
+        HandheldTokens.ColourOf(color) is { } parsed ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
 
     /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
-        platform is not null && HandheldTokens.ConsoleColour(platform.AccentColor) is { } color
-            ? new HandheldBackdrop(color, platform.Era, platform.Backdrops)
+        HandheldTokens.ConsoleColour(platform) is { } color
+            ? new HandheldBackdrop(color, platform!.Era, platform.Backdrops)
             : null;
 
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
@@ -1447,7 +1447,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        if (HandheldTokens.ConsoleColour(platform?.AccentColor) is { } accent)
+        if (HandheldTokens.ConsoleColour(platform) is { } accent)
         {
             Stage.MediumAccent = accent;
         }
