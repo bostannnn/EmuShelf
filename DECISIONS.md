@@ -14237,3 +14237,16 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   checks them and does not build.
 - **Found on the way:** the owner's Thor is set to 60 Hz (`peak_refresh_rate` and `min_refresh_rate` both 60), and
   the owner chose to leave it there for the R1 spike. `HANDHELD-MODE.md` records both panels at 120 Hz.
+
+## 2026-11-13 — M47 (Big Type): all fifteen moves stay; the numbers are frozen
+
+- **The owner keeps all fifteen numbered moves** of the mock. The Thor spike (M47 R1) had shown each of the three
+  costly ones fits a frame with room to spare, so nothing was dropped for cost.
+- **The reference for every value is `docs/prototypes/handheld-big-type/tokens.js`** (about 140 named values at Thor
+  resolution). The app's Handheld resource dictionary mirrors it name for name; a number changes there first.
+- **The legibility rule is a table, not a live reading.** `legibility.json` beside the mock holds ink and veil per
+  backdrop for the three text zones. 52 of 53 backdrops keep one ink in every zone at all eight moments measured, so
+  the device does not need to read the backdrop back. It was baked from the JavaScript prototypes; the GLSL ports
+  get one look on the Thor at B4, where `ps2-sea`'s button-hint ink (the one zone that changes) is also chosen.
+- **With this, every owner decision in M47 is made** (A plays, the colour table, M45's exits, the old look removed,
+  the moves). What remains before B2 is R3 (the font) and R4 (the owner's covers and the colours on the panel).

@@ -2704,7 +2704,7 @@ report against the exits below and against the mock, and does not build.
       opening the page with `playWhenReady`, so the screen chooser still appears for a console set to ask, save sync
       still runs and nothing is skipped; the page's facts (emulator, last played, disc) sit under the name on the
       Stage; the disc is a row in the Y sheet. Drawn in the mock. Amends decision 13.
-- [ ] **D2 — Which of the fifteen moves stay.** Anything dropped here is not built.
+- [x] **D2 — All fifteen moves stay.** ✅ (owner, 2026-11-13, after R1 showed each one fits a frame on the Thor.)
 - [x] **D3 — The colour table.** ✅ (owner approved the sixteen colours 2026-11-13; the values are `SYS` and `XC` in
       the mock's script and are listed on its Stress sheet tab.) Sixteen consoles need a ground colour dark enough for white type (4.5 to 1 on the
       ground, 3 to 1 on a tile); the mock has nine, five of them between blue and violet. Either spread them by hand
@@ -2719,14 +2719,25 @@ report against the exits below and against the mock, and does not build.
 
 ### Before building: find out
 
-- [ ] **R1 — The Thor spike** (running in its own session since 2026-11-13): per-letter motion of a fitted name,
-      the circular flood with two backdrops live, rolling digits; frame times on the device and the route letters
-      take to the compositor. **Kill criterion:** if a three-line name cannot roll in at the panel's rate during a
-      backdrop wipe, the name animates as whole lines or one picture, and move 2 is redrawn in the mock to match.
+- [x] **R1 — The Thor spike.** ✅ (2026-11-13; branch `claude/elegant-lederberg-05c307`, commits 354de31 and
+      984b487; the full tables are in that branch's `DECISIONS.md`.) Built behind `debug.emushelf.bigtype` and measured
+      on the Thor at 60 Hz, as the owner runs it. **The kill criterion did not trigger: move 2 stays as drawn.** Every
+      steady frame of the three motions, on either display, costs under 5.2 ms of CPU and under 2.4 ms of GPU, so
+      they fit a 120 Hz frame (8.3 ms) as well as a 60 Hz one. The worst case, a 35-letter three-line name arriving
+      during a backdrop wipe with the clock rolling, is 0.9 ms typical and 5.2 ms worst on the CPU. **How letters
+      reach the Stage:** one atlas per name. The UI thread fits the name and rasterises each distinct letter once
+      into one bitmap (3.5 to 14.4 ms there); the Stage uploads one texture and draws one quad per letter. The flood
+      and the wipe are a circle uniform added to two fragment shaders.
+      **What does not fit, and is not new:** the first frame of a console change on the top display takes 9 to 36 ms
+      (the new backdrop starting and its two full-screen fallback layers uploading). Today's look pays it more often
+      (14 frames over 8.3 ms in 20 presses, against 4 to 10 with the spike). B6 should take it off that frame.
 - [ ] **R2 — The legibility rule without readback.** The mock samples the backdrop twice a second; the device
-      cannot read it back. Try the simplest route first: bake ink and veil strength per backdrop variant into
-      `BackdropCatalog` from the stress sheet's numbers (50 of 53 sit at the lightest veil with one fixed ink).
-      Fall back to a small GPU downsample and a read every half second only if a variant's brightness swings.
+      cannot read it back. **Baked 2026-11-13:** `docs/prototypes/handheld-big-type/legibility.json` has ink and veil
+      per backdrop for the three zones. 52 of the 53 keep one ink in every zone at all eight moments measured, and
+      only four need more than the resting veil (`gc-caustics`, `gc-fur`, `md-pipe-v2`, `ps2-sea`), so a table in
+      `BackdropCatalog` is enough and no readback is needed. One zone could not be baked: `ps2-sea`'s button hints
+      change ink over time. **Still to do, with B4:** the table comes from the JavaScript prototypes, not the GLSL
+      ports, so look at each console's backdrops on the Thor once, and choose `ps2-sea`'s hint ink there.
 - [ ] **R3 — The font on Android.** Confirm the licence text (SIL OFL on Google Fonts), measure the three weights'
       size in the APK (the family has 8,546 glyphs including Japanese), decide between shipping whole and a Latin
       subset with the system face as fallback, and check one Japanese title renders either way.
@@ -2736,7 +2747,9 @@ report against the exits below and against the mock, and does not build.
       one at 60 Hz. Measure it, because the motion table's staggers are tuned by eye at 120.
       Found 2026-11-13 by the R1 spike: the owner's Thor is set to 60 Hz (system `peak_refresh_rate` and
       `min_refresh_rate` both 60), and the owner chose to leave it there. So 60 Hz is the rate to tune for; R1
-      reports render time against both the 16.7 ms and the 8.3 ms budget.
+      reports render time against both the 16.7 ms and the 8.3 ms budget. The spike also read the displays: both the top panel and
+      the bottom one list 60 and 120 Hz modes and are active at 60 under the cap. Whether the bottom one really
+      reaches 120 with the cap lifted (M45 H0 saw it stay at 60) was not tested.
 
 ### Before building: finish the design in the mock
 
@@ -2748,7 +2761,10 @@ report against the exits below and against the mock, and does not build.
       library and setup as three questions and a climbing count; X swap. Not wired separately because they reuse the
       panel drawing: the scraper, Edit title and the batch scraper. Not drawn: the companion's badges layer and photo
       viewer, and the All apps drawer.
-- [ ] **M2 — Freeze the numbers.** One table in the mock that the app's resource dictionary mirrors name for name.
+- [x] **M2 — Freeze the numbers.** ✅ (2026-11-13.) `docs/prototypes/handheld-big-type/tokens.js`: about 140 named
+      values at Thor resolution for face, type, the Stage's and the Launcher's layout, shape, colour, motion and
+      legibility. The mock reads its console colours and legibility rule from it and prints all of it under "Frozen
+      numbers"; the app's resource dictionary mirrors it name for name.
 
 ### Build
 
@@ -2768,8 +2784,10 @@ report against the exits below and against the mock, and does not build.
       **Exit:** the name is readable over every backdrop of every console in the owner's library, on the device.
 - [ ] **B5 — Motion that needs no new drawing.** The ring's stretch between tiles, dock and rows; the tile lift and
       neighbours making room; rolling digits; the idle hop. Give the Launcher compositor the `HoldsStill` hook now.
-- [ ] **B6 — Letters, and the flood.** Per R1's route for letters. A circle term in the fragment shaders for the
-      Launcher's flood and the Stage's backdrop wipe from the hinge. **Exit:** frame times on the Thor at or under
+- [ ] **B6 — Letters, and the flood.** Start from the spike's code on `claude/elegant-lederberg-05c307`
+      (`BigTypeLayout`, `BigTypeScene`, `BigTypeStageLayer`, the `uClip` circle in `stage.frag` and
+      `backdrop-output.frag`, `NativeFrameProbe`, `GpuFrameTimer`) and turn it from a flagged spike into the real
+      thing. Also move the backdrop's start-up cost off the first frame of a console change (R1). **Exit:** frame times on the Thor at or under
       R1's figures for a three-line name during a wipe.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.

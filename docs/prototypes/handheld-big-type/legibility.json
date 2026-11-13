@@ -1,0 +1,912 @@
+{
+ "about": "Big Type's legibility rule, answered once per approved backdrop. Baked from the mock's stress sheet (index.html#stress, BigType.bake() in the console) on 2026-11-13: each backdrop at eight moments, with the rule in tokens.js. 'ink' is the Stage's text colour in that zone: white, or dark (the console colour mixed 74% toward #0B0A18). 'veil' is the opacity of the veil behind the text, in the opposite tone, at the strongest it needed; 0.28 on the left and 0.25 in a corner are the resting values. 'changes' means the rule picked different inks at different moments, so that zone cannot be baked and needs either a fixed choice checked on the device or a live reading.",
+ "caveat": "These come from the JavaScript prototypes of the backdrops, not the GLSL shaders on the device. A port that is brighter or darker than its prototype needs its row checked.",
+ "zones": {
+  "left": "the console name, the big name and the two lines under it",
+  "topRight": "the clock and battery",
+  "bottomRight": "the button hints"
+ },
+ "backdrops": [
+  {
+   "id": "3ds-floorwave",
+   "console": "3ds",
+   "lowestContrast": 12.25,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "3ds-tapwave",
+   "console": "3ds",
+   "lowestContrast": 10.42,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "3ds-tiles",
+   "console": "3ds",
+   "lowestContrast": 9.76,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-bulbs-v2",
+   "console": "arcade",
+   "lowestContrast": 10.73,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-checker",
+   "console": "arcade",
+   "lowestContrast": 3.35,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-plating",
+   "console": "arcade",
+   "lowestContrast": 12.46,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-vector-v3",
+   "console": "arcade",
+   "lowestContrast": 11.77,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "dc-checker",
+   "console": "dreamcast",
+   "lowestContrast": 5.94,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "dc-fog-v3",
+   "console": "dreamcast",
+   "lowestContrast": 5.22,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "dc-sea-v2",
+   "console": "dreamcast",
+   "lowestContrast": 5.8,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gc-caustics",
+   "console": "gamecube",
+   "lowestContrast": 3.76,
+   "left": {
+    "ink": "dark",
+    "veil": 0.39
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gc-cubes-v3",
+   "console": "gamecube",
+   "lowestContrast": 5.13,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gc-fur",
+   "console": "gamecube",
+   "lowestContrast": 4.97,
+   "left": {
+    "ink": "white",
+    "veil": 0.38
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.29
+   }
+  },
+  {
+   "id": "gc-lens",
+   "console": "gamecube",
+   "lowestContrast": 5.23,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gba-corridor-v2",
+   "console": "gba",
+   "lowestContrast": 6.3,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gba-iso",
+   "console": "gba",
+   "lowestContrast": 7.09,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gbc-attr",
+   "console": "gbc",
+   "lowestContrast": 4.97,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gbc-bands",
+   "console": "gbc",
+   "lowestContrast": 7.56,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gbc-confetti-v2",
+   "console": "gbc",
+   "lowestContrast": 9.85,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gbc-sheen-v2",
+   "console": "gbc",
+   "lowestContrast": 8.36,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "md-pipe-v2",
+   "console": "megadrive",
+   "lowestContrast": 4.09,
+   "left": {
+    "ink": "dark",
+    "veil": 0.41
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.35
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "md-planes",
+   "console": "megadrive",
+   "lowestContrast": 5.73,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "md-speed-v3",
+   "console": "megadrive",
+   "lowestContrast": 3.68,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ds-dots",
+   "console": "nds",
+   "lowestContrast": 11.1,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ds-flip",
+   "console": "nds",
+   "lowestContrast": 12.38,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ds-ripplefloor-v2",
+   "console": "nds",
+   "lowestContrast": 9.52,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ds-ripples",
+   "console": "nds",
+   "lowestContrast": 12.65,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "nes-flow",
+   "console": "nes",
+   "lowestContrast": 7.43,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "nes-meta",
+   "console": "nes",
+   "lowestContrast": 6.6,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "nes-raster",
+   "console": "nes",
+   "lowestContrast": 7.43,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "nes-stars",
+   "console": "nes",
+   "lowestContrast": 9.63,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "field",
+   "console": "playstation",
+   "lowestContrast": 6.93,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "frames",
+   "console": "playstation",
+   "lowestContrast": 5.4,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps1-pipe",
+   "console": "playstation",
+   "lowestContrast": 4.25,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps1-terrace-v2",
+   "console": "playstation",
+   "lowestContrast": 5.62,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "tide",
+   "console": "playstation",
+   "lowestContrast": 5.66,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps2-orbs-v3",
+   "console": "playstation2",
+   "lowestContrast": 7.56,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps2-sea",
+   "console": "playstation2",
+   "lowestContrast": 3.28,
+   "left": {
+    "ink": "dark",
+    "veil": 0.3
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "changes",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps2-towers",
+   "console": "playstation2",
+   "lowestContrast": 4.08,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps2-trails-v3",
+   "console": "playstation2",
+   "lowestContrast": 11.1,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps3-sheet",
+   "console": "playstation3",
+   "lowestContrast": 15.94,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps3-twin",
+   "console": "playstation3",
+   "lowestContrast": 13.53,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps3-wire",
+   "console": "playstation3",
+   "lowestContrast": 12.54,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "psp-field-v2",
+   "console": "psp",
+   "lowestContrast": 10.15,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "runway",
+   "console": "snes",
+   "lowestContrast": 9.48,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "snes-lake-v2",
+   "console": "snes",
+   "lowestContrast": 8.62,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "snes-mosaic-v2",
+   "console": "snes",
+   "lowestContrast": 9.37,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "tiles",
+   "console": "snes",
+   "lowestContrast": 8.77,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "steam-grid-v2",
+   "console": "steam",
+   "lowestContrast": 4.91,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "steam-mesh",
+   "console": "steam",
+   "lowestContrast": 8.64,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "steam-wall-v2",
+   "console": "steam",
+   "lowestContrast": 6.9,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "wii-pointer-v2",
+   "console": "wii",
+   "lowestContrast": 12.48,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "wii-tiles",
+   "console": "wii",
+   "lowestContrast": 12.17,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  }
+ ]
+}

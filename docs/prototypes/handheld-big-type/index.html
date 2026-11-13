@@ -424,6 +424,10 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       </dl>
     </div>
 
+    <h2>Frozen numbers</h2>
+    <p class="sub">Every value above and more, by name, from <code>tokens.js</code> beside this page. That file is the reference: the app's Handheld resource dictionary mirrors it name for name, and this list is printed from it.</p>
+    <div class="spec" id="frozen"></div>
+
     <h2>Decided, and still open</h2>
     <ul class="picks">
       <li><b>Decided:</b> the bottom screen takes the console's colour, and the type is Round.</li>
@@ -470,6 +474,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
   <div class="lgrid" id="lgrid"></div>
 </div>
 
+<script src="tokens.js"></script>
 <script>
 (()=>{
 'use strict';
@@ -495,6 +500,9 @@ const SYS={
  n3ds:{m:'3DS',name:'Nintendo 3DS',c:'#C0446E',bd:'3ds',emu:'Azahar',ask:true},
  nds:{m:'DS',name:'Nintendo DS',c:'#6272B8',bd:'nds',emu:'melonDS',ask:true},
  gba:{m:'GBA',name:'Game Boy Advance',c:'#7648A8',bd:'gba',emu:'mGBA'}};
+// the frozen numbers, when tokens.js is beside the page: the console colours and the legibility rule come from it
+const TK=window.BT_TOKENS||null;
+if(TK)for(const y of Object.values(SYS))if(TK.colour.consoles[y.bd])y.c=TK.colour.consoles[y.bd];
 const lib=(sys,rows)=>rows.map(([t,h,a,at,d])=>({t,sys,h,a,at,d,disc:1}));
 const GAMES={
  ps2:lib('ps2',[['Okami',22.25,9,24],['Ico',6.5,4,12],['Shadow of the Colossus',11.75,16,30],['Katamari Damacy',8,7,20],['Gran Turismo 4',41.5,12,60],['Final Fantasy X',63,21,48],['Persona 4',88.25,30,52],['Jak and Daxter',9.5,10,28],['Burnout 3: Takedown',14,18,40],['Silent Hill 2',7.25,5,22],['Dragon Quest VIII',52,14,36],['Ratchet & Clank',10.75,11,30],['Kingdom Hearts',27.5,13,34],['God of War',12.25,17,36],["Devil May Cry 3",15,8,32],['We Love Katamari',6.75,5,18],['SSX Tricky',9,12,26]]),
@@ -617,9 +625,10 @@ function setColour(c,x,y,quiet){S.fc=c;S.deep=mix(c,'#0B0A18',.74);bot.style.set
 // For each, measure how bright the brightest and darkest parts of the backdrop are, work out how strong a veil white ink
 // would need and how strong a veil dark ink would need, take whichever needs less, and lay only that much.
 const TONE={l:{light:false,a:.28},tr:{light:false,a:.25},br:{light:false,a:.25}},REG={l:[2,2,46,32],tr:[46,0,16,6],br:[40,30,22,4]};   // on a 64×36 sample
-let TARGET=3.8;const BASE={l:.28,tr:.25,br:.25};
-const SHADE=[{k:'tr',cx:1,cy:0,rx:.56,ry:.40,flat:.6},{k:'br',cx:1,cy:1,rx:.68,ry:.38,flat:.62},{k:'l',lin:true,fade:.24}];   // the left veil lies under the corner ones
-const FADE=.24,leftVeil=(t,x,vx)=>x<=vx?t.a:t.a*Math.max(0,1-(x-vx)/FADE);
+let TARGET=TK?TK.legibility.Target:3.8;const BASE=TK?{l:TK.legibility.BaseVeilLeft,tr:TK.legibility.BaseVeilCorner,br:TK.legibility.BaseVeilCorner}:{l:.28,tr:.25,br:.25};
+const FADE=TK?TK.legibility.LeftVeilFade:.24;
+const SHADE=[{k:'tr',cx:1,cy:0,rx:.56,ry:.40,flat:.6},{k:'br',cx:1,cy:1,rx:.68,ry:.38,flat:.62},{k:'l',lin:true,fade:FADE}];   // the left veil lies under the corner ones
+const leftVeil=(t,x,vx)=>x<=vx?t.a:t.a*Math.max(0,1-(x-vx)/FADE);
 const shadeStyle=document.createElement('style');document.head.appendChild(shadeStyle);
 function writeShade(){shadeStyle.textContent=`.shade{background:${SHADE.map(g=>g.lin?`linear-gradient(to right,var(--sh-l) 0,var(--sh-l) var(--vx),transparent calc(var(--vx) + ${g.fade*100}%))`:`radial-gradient(${g.rx*100}% ${g.ry*100}% at ${g.cx*100}% ${g.cy*100}%,var(--sh-${g.k}) 0,var(--sh-${g.k}) ${g.flat*100}%,transparent 100%)`).join(',')}}`;}
 writeShade();
@@ -1125,6 +1134,12 @@ document.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{stopDemo();co
 function refit(){fitMonos();if(wl&&!wl._typed)fitWord(wl,wl._W,340);}
 $('snd').onclick=()=>{soundOn=!soundOn;syncSound();if(soundOn)sfx.open();};
 
+/* ---------- the frozen numbers, printed from tokens.js ---------- */
+function renderFrozen(){const box=$('frozen');if(!TK){box.textContent='tokens.js is not beside this page, so the list cannot be shown here.';return;}
+ const names={face:'Face',type:'Type',stage:'The Stage, 1920 × 1080',launcher:'The Launcher, 1240 × 1080',shape:'Shape',colour:'Colour',motion:'Motion',legibility:'Legibility'};
+ const fmt=v=>Array.isArray(v)?v.join(v.length===2&&typeof v[0]==='number'?' × ':', '):v&&typeof v==='object'?Object.entries(v).map(([k,x])=>`${k} ${fmt(x)}`).join(' · '):String(v);
+ box.innerHTML=Object.keys(names).filter(g=>TK[g]).map(g=>`<h3>${names[g]}</h3><dl>${Object.entries(TK[g]).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(fmt(v))}</dd>`).join('')}</dl>`).join('');}
+
 /* ---------- size the device to the column ---------- */
 function fitRig(){const wide=matchMedia('(min-width:1180px)').matches;let k=$('stagecol').clientWidth/988;if(wide)k=Math.min(k,(innerHeight-150)/1134);k=Math.max(.2,Math.min(k,1.1));
  rig.style.transform=`scale(${k})`;dev.style.width=988*k+'px';dev.style.height=1134*k+'px';}
@@ -1133,6 +1148,7 @@ addEventListener('resize',fitRig);
 /* ---------- stress sheet: every approved backdrop against the hardest content ---------- */
 // the seven consoles the sample library does not have: colour, monogram, name
 const XC={nes:'#7C5F50',snes:'#91408C',gbc:'#2A7D52',megadrive:'#175A4F',dreamcast:'#B8521E',arcade:'#A8372E',steam:'#30587F'};
+if(TK)for(const k in XC)if(TK.colour.consoles[k])XC[k]=TK.colour.consoles[k];
 const XN={nes:['NES','NES'],snes:['SNES','Super Nintendo'],gbc:['GBC','Game Boy Color'],megadrive:['MD','Mega Drive'],dreamcast:['DC','Dreamcast'],arcade:['ARC','Arcade'],steam:['Steam','Steam']};
 const ORDER=['nes','snes','gbc','gba','gamecube','nds','wii','3ds','megadrive','dreamcast','playstation','playstation2','psp','playstation3','arcade','steam'];
 const ALLSYS=()=>ORDER.map(con=>{const y=Object.values(SYS).find(x=>x.bd===con);return y?{m:y.m,name:y.name,c:y.c}:{m:XN[con][0],name:XN[con][1],c:XC[con]};});
@@ -1156,11 +1172,11 @@ function contrastOf(src,tone,deep,vx){mx.globalAlpha=1;mx.drawImage(src,0,0,96,5
   ls.sort((a,b)=>a-b);out[name]=tone[k].light?(ls[Math.floor(ls.length*.1)]+.05)/(ink+.05):1.05/(ls[Math.floor(ls.length*.9)]+.05);}
  return out;}
 function measure(v){const B=window.Backdrops,L=B.makeLayer(document.createElement('canvas'));B.prepare(L,v,0);
- const deep=mix(conColour(v.con),'#0B0A18',.74),tone={l:{light:false,a:BASE.l},tr:{light:false,a:BASE.tr},br:{light:false,a:BASE.br}},cr={};let worst=null;
- for(let m=0;m<MOMENTS;m++){L.time=2+m*5.3;B.render(L,1/30);L.time+=1/30;B.render(L,1/30);for(let q=0;q<6;q++)toneStep(L.canvas,tone,deep,vxOf(680));
+ const deep=mix(conColour(v.con),'#0B0A18',.74),tone={l:{light:false,a:BASE.l},tr:{light:false,a:BASE.tr},br:{light:false,a:BASE.br}},cr={},hist=[];let worst=null;
+ for(let m=0;m<MOMENTS;m++){L.time=2+m*5.3;B.render(L,1/30);L.time+=1/30;B.render(L,1/30);for(let q=0;q<6;q++)toneStep(L.canvas,tone,deep,vxOf(680));hist.push(JSON.parse(JSON.stringify(tone)));
   const c=contrastOf(L.canvas,tone,deep,vxOf(680)),min=Math.min(...Object.values(c));for(const k in c)cr[k]=Math.min(cr[k]??99,c[k]);
   if(!worst||min<worst.min){const f=worst?worst.frame:document.createElement('canvas');f.width=L.canvas.width;f.height=L.canvas.height;f.getContext('2d').drawImage(L.canvas,0,0);worst={min,frame:f,tone:JSON.parse(JSON.stringify(tone))};}}
- return{v,cr,deep,min:Math.min(...Object.values(cr)),frame:worst.frame,tone:worst.tone};}
+ return{v,cr,deep,hist,min:Math.min(...Object.values(cr)),frame:worst.frame,tone:worst.tone};}
 async function runStress(){if(ST.busy)return;ST.busy=true;ST.done=false;ST.res=[];const B=window.Backdrops,list=Object.values(PICKS).flat().map(id=>B.VARIANTS.find(v=>v.id===id)).filter(Boolean);
  for(let i=0;i<list.length;i++){try{ST.res.push(measure(list[i]));}catch(e){}$('ssum').textContent=`Measuring ${i+1} of ${list.length}…`;await new Promise(r=>setTimeout(r,0));}
  ST.res.sort((a,b)=>a.min-b.min);ST.busy=false;ST.done=true;drawStress();}
@@ -1225,6 +1241,7 @@ addEventListener('hashchange',route);addEventListener('resize',sizeStress);
 /* ---------- boot ---------- */
 function start(){
  fitRig();buildHome();buildDock();
+ renderFrozen();
  $('swatches').innerHTML=ALLSYS().map(y=>`<span style="background:${y.c}">${y.m}</span>`).join('');
  flood(groundOf(S.fc),310,270,true);
  fitMonos();tick();setFocus(S.hi,'init');ring.style.opacity=1;
@@ -1239,6 +1256,9 @@ function start(){
 }
 start();route();
 // handles for tuning from the console
-window.BigType={ST,TONE,BASE,runStress,set target(v){TARGET=v;}};
+// the per-backdrop answer of the legibility rule, for baking into the app (M47 R2)
+function bake(){const z=(r,k)=>{const inks=new Set(r.hist.map(h=>h[k].light)),vs=r.hist.map(h=>h[k].a);return{ink:inks.size>1?'changes':r.hist[0][k].light?'dark':'white',veilMin:+Math.min(...vs).toFixed(2),veilMax:+Math.max(...vs).toFixed(2)};};
+ return ST.res.map(r=>({id:r.v.id,console:r.v.con,name:r.v.name,lowestContrast:+r.min.toFixed(2),left:z(r,'l'),topRight:z(r,'tr'),bottomRight:z(r,'br')})).sort((a,b)=>a.console.localeCompare(b.console)||a.id.localeCompare(b.id));}
+window.BigType={ST,TONE,BASE,runStress,bake,set target(v){TARGET=v;}};
 })();
 </script>
