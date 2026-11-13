@@ -2746,9 +2746,25 @@ report against the exits below and against the mock, and does not build.
 
 ### Build
 
-- [ ] **B0 — A safety net.** Bring `HandheldDesignSnapshotTests.cs` over from 6b49476. Add a frame comparison that
+- [x] **B0 — A safety net.** ✅ (2026-11-13; macOS only, the Thor was busy with R1. Choices in `DECISIONS.md`
+      2026-11-13 "M47 B0".) Bring `HandheldDesignSnapshotTests.cs` over from 6b49476. Add a frame comparison that
       fails on any pixel difference, used only by B1. Add the look switch (today's look, Big Type), off by default.
       **Exit:** all 84 frames render on macOS and the comparison passes against itself.
+      Built: the design set renders **158 frames** (77 top/bottom pairs and four companion frames; 81 at 1240×1080,
+      77 at 1920×1080), up from 144 at 6b49476 because the Activity tile now sits in its own slot of the sample home
+      and the play log has six new pairs. `HandheldDesignFrameComparisonTests` compares two directories pixel for pixel
+      with no tolerance, failing with each frame's name and count of differing pixels and writing a diff image per frame
+      into `_diff`; its logic (`FrameComparison`) has unit tests that render nothing. Two renders were made identical
+      by pinning, never by loosening: a fixed wall clock, the culture, the backdrop's drift, indeterminate progress bars,
+      a wait until both screens stop changing, a fresh draw of the visual tree instead of the compositor's frame, and
+      the selector ring's resting radius (the one app change that draws: under a quarter pixel). Three renders on macOS,
+      one beside a full `dotnet test`, matched on all 158 frames; a render takes about 2½ minutes. The look switch is
+      `HandheldLook` (Classic, BigType) in `EmuShelf.Core`, saved as `AppSettings.HandheldLook`, set on
+      `HandheldShellViewModel.Look` when Handheld mode starts; nothing reads it yet. Render into a fresh directory, then
+      compare:
+      `EMUSHELF_DESIGN_SNAPSHOT_DIR=/tmp/b0 dotnet test tests/EmuShelf.App.Tests --filter "FullyQualifiedName~DesignSnapshot"`
+      and `EMUSHELF_DESIGN_BASELINE_DIR=/tmp/b0 EMUSHELF_DESIGN_SNAPSHOT_DIR=/tmp/b1 dotnet test tests/EmuShelf.App.Tests
+      --filter "FullyQualifiedName~DesignFrames_MatchBaseline"`. A normal `dotnet test` runs neither.
 - [ ] **B1 — Tokens, with no visible change.** One Handheld resource dictionary for colour, type, radius and
       spacing; every inline literal in the four views and every brush in code reads from it; one accessor for a
       console's colour replaces the seven parse sites. **Exit:** every frame is pixel-identical to B0's.
