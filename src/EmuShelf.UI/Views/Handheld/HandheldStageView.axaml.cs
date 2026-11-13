@@ -34,6 +34,8 @@ public partial class HandheldStageView : UserControl
     {
         PinnedNarrow = pinnedNarrow;
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
         _canvas = this.FindControl<Grid>("StageCanvas")!;
         // View wiring only: a GPU path that cannot start tells the Stage to keep flat covers.
         if (this.FindControl<Media3DControl>("Medium") is { } medium)

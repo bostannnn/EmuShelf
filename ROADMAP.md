@@ -2815,8 +2815,33 @@ report against the exits below and against the mock, and does not build.
       colours (#29465088, #5B58D9) and clear colour (0.96, 0.97, 0.98), `StageCompositor`'s clear colour (0.94, 0.95,
       0.96) and `LauncherMotion.LiftScale` 1.13. **Result:** the design set rendered before and after the refactor
       matched on all 158 frames with no tolerance (byte-identical PNGs), twice, the second after the last edit.
-- [ ] **B2 — The font and the colour table.** Bundle the face per R3 with its notice in
-      `THIRD-PARTY-NOTICES.md`; add the ground colours per D3 with a unit test that holds each to its contrast floors.
+- [x] **B2 — The font and the colour table.** ✅ (2026-11-13; choices in `DECISIONS.md` 2026-11-13 "M47 B2".) Bundle the
+      face per R3 with its notice in `THIRD-PARTY-NOTICES.md`; add the ground colours per D3 with a unit test that holds
+      each to its contrast floors.
+      Built: the face was bundled by R3; under Big Type, `HandheldTokens.ApplyFace` sets `Face` (App.axaml's
+      `EmuHandheldFontFamily`, held equal by a test) at `WeightText` 500 on the roots of the Launcher, Stage, Companion and
+      Panel views, where every text inherits it, and Big Type gives the 14 role weights tokens.js's 700 or 900. Under
+      Classic `Face` is null and nothing is set, so the system face stays. The sixteen approved grounds are
+      `GameSystem.GroundColor`, authored in `KnownSystems` beside `Era` and `Backdrops`, and reach Handheld mode on
+      `HandheldPlatform.GroundColor`. `HandheldTokens.ConsoleColour(HandheldPlatform?)` replaces the accent-string accessor:
+      Classic gives `AccentColor` exactly as before, Big Type the ground, or for a system without one its accent darkened
+      until the floors hold (`HandheldGround.Derive` in Core). `FolderColour(source)` sends a platform folder to it and keeps
+      your folders' own colours; `ColourOf`/`BrushOf` read stored text. **Derived colours: none.** All sixteen systems the
+      app knows are in the table. `HandheldGroundColourTests` holds the table to tokens.js and the floors (white 4.5 to 1 on
+      the ground, 3 to 1 on a tile of white at 17% over it; closest pair snes/gba at 18.6 by CIE76, floor 18) and every
+      accent's derived colour to the first two. On Android the Handheld views are built with the first MainView, before
+      Handheld mode starts, so `SingleViewShell.Show` now gives the tokens the look first (without it a saved Big Type look
+      would have drawn the views in Classic values). The volatile `debug.emushelf.look` property (`bigtype` or `classic`)
+      overrides the saved look for one run and is never saved. **Render either look** into its own fresh directory:
+      `EMUSHELF_DESIGN_SNAPSHOT_DIR=/tmp/classic dotnet test tests/EmuShelf.App.Tests --filter "FullyQualifiedName~DesignSnapshot"`
+      (today's look, the default) and the same with `EMUSHELF_DESIGN_LOOK=BigType` and another directory.
+      **Result:** Classic rendered before and after: 158 of 158 frames identical by the comparison, and byte-identical
+      PNGs. Big Type: all 158 frames render, no errors, no missing-glyph boxes; 157 differ from Classic (the one that does
+      not, an empty home page, has no text). Thor (Release AOT, `adb install -r`, uid and data kept): Classic starts clean;
+      with the property set, Big Type draws M PLUS Rounded on both screens and the table's colours on the home folders, and
+      the owner's one Japanese-titled game (PSP, "ヱヴァンゲリヲン新劇場版-サウンドインパクト-", no cover) draws on the Stage
+      and on its tile with no missing-glyph box. Property cleared, app restarted in Classic; settings, layout and library
+      checksums and the 60 Hz refresh settings unchanged.
 - [ ] **B3 — The Launcher, still.** Flat ground in the focused console's colour, matte squarer tiles, monograms
       fitted to the tile, header, dock and counts as plain type, the ring as one white band (the shader's bands become
       parameters). **Exit:** home and a folder look like the mock at rest on the Thor, and the hand-off to a sheet

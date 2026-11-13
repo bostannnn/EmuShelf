@@ -15,8 +15,10 @@ using EmuShelf.Core.Systems;
 namespace EmuShelf.App.ViewModels;
 
 /// <summary>A platform that has games, as a home folder shows it.</summary>
+/// <remarks><paramref name="GroundColor"/> is the system's Big Type ground (<see cref="GameSystem.GroundColor"/>); its colour in
+/// either look is <see cref="HandheldTokens.ConsoleColour(HandheldPlatform?)"/>.</remarks>
 public sealed record HandheldPlatform(string SystemId, string Name, string ShortName, string AccentColor, int GameCount,
-    SystemEra Era = SystemEra.Disc, IReadOnlyList<string>? Backdrops = null);
+    SystemEra Era = SystemEra.Disc, IReadOnlyList<string>? Backdrops = null, string? GroundColor = null);
 
 /// <summary>
 /// The Stage's era backdrop: a pixel grid (cartridge) or scanlines (disc), in one colour. Value equality, so
@@ -365,7 +367,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
         Cover = cover;
         _isMoving = isMoving;
         MoveLook = moveLook;
-        AccentBrush = HandheldTokens.ConsoleBrush(folder?.AccentColor);
+        AccentBrush = HandheldTokens.FolderBrush(folder);
     }
 
     public int Index { get; }
@@ -537,7 +539,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     {
         Source = source;
         HomeSlot = homeSlot;
-        AccentBrush = HandheldTokens.ConsoleBrush(source.AccentColor);
+        AccentBrush = HandheldTokens.FolderBrush(source);
     }
 
     /// <summary>Where the folder's games come from (a platform, one of your folders, Recent).</summary>

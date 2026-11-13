@@ -41,7 +41,10 @@ namespace EmuShelf.App.Tests.Handheld;
 //
 // Every test returns at once unless EMUSHELF_DESIGN_SNAPSHOT_DIR is set, so a normal `dotnet test` stays fast. Run with
 //   EMUSHELF_DESIGN_SNAPSHOT_DIR=/some/dir dotnet test tests/EmuShelf.App.Tests --filter "FullyQualifiedName~DesignSnapshot"
-// into a fresh directory each time. It is a part of HandheldShellViewModelTests so it can reuse that class's fake library
+// into a fresh directory each time. The frames are in today's look; EMUSHELF_DESIGN_LOOK=BigType renders the same states in
+// the Big Type look (M47 B2) instead, into a directory of its own:
+//   EMUSHELF_DESIGN_LOOK=BigType EMUSHELF_DESIGN_SNAPSHOT_DIR=/other/dir dotnet test tests/EmuShelf.App.Tests --filter "FullyQualifiedName~DesignSnapshot"
+// It is a part of HandheldShellViewModelTests so it can reuse that class's fake library
 // and pad helpers.
 //
 // M47 B0: two renders on one machine are pixel-identical, so B1 can prove its token move changed nothing
@@ -55,6 +58,12 @@ public partial class HandheldShellViewModelTests
 {
     private static string? DesignOutput =>
         Environment.GetEnvironmentVariable("EMUSHELF_DESIGN_SNAPSHOT_DIR") is { Length: > 0 } directory ? directory : null;
+
+    /// <summary>The look the frames are rendered in: today's, unless EMUSHELF_DESIGN_LOOK names another (M47 B2).</summary>
+    private static HandheldLook DesignLook =>
+        Environment.GetEnvironmentVariable("EMUSHELF_DESIGN_LOOK") is { Length: > 0 } name
+            ? Enum.Parse<HandheldLook>(name, ignoreCase: true)
+            : HandheldLook.Classic;
 
     // ---- The sample library ----
 
@@ -266,7 +275,7 @@ public partial class HandheldShellViewModelTests
                 var (systemId, emulator, shelf) = DesignShelf[p];
                 var system = KnownSystems.All.Single(candidate => candidate.Id == systemId);
                 library.Platforms.Add(new HandheldPlatform(system.Id, system.Name, system.ShortName, system.AccentColor, shelf.Length,
-                    system.Era, system.Backdrops));
+                    system.Era, system.Backdrops, system.GroundColor));
                 library.Games[system.Id] = shelf.Select((title, i) =>
                 {
                     var id = ((p + 1) * 100) + i + 1;
@@ -653,7 +662,8 @@ public partial class HandheldShellViewModelTests
 
     /// <summary>
     /// What a design render pins while it runs (M47 B0), put back afterwards: the culture the status time and dates are
-    /// written in, and the backdrop's drift clock (read by every backdrop made from now on).
+    /// written in, the backdrop's drift clock (read by every backdrop made from now on), and the look the tokens hold
+    /// (<see cref="DesignLook"/>, taken before the views that read them are built, M47 B2; today's look afterwards).
     /// </summary>
     private sealed class DesignPins : IDisposable
     {
@@ -671,10 +681,12 @@ public partial class HandheldShellViewModelTests
             CultureInfo.DefaultThreadCurrentCulture = CultureInfo.DefaultThreadCurrentUICulture = Culture;
             Thread.CurrentThread.CurrentCulture = Thread.CurrentThread.CurrentUICulture = Culture;
             HandheldEraBackdrop.DriftClock = new DesignStillClock();
+            HandheldTokens.Use(DesignLook);
         }
 
         public void Dispose()
         {
+            HandheldTokens.Use(HandheldLook.Classic);
             HandheldEraBackdrop.DriftClock = _driftClock;
             CultureInfo.DefaultThreadCurrentCulture = _defaultCulture;
             CultureInfo.DefaultThreadCurrentUICulture = _defaultUiCulture;
@@ -690,6 +702,7 @@ public partial class HandheldShellViewModelTests
         var shell = new HandheldShellViewModel(data.Library, new DesignDeviceStatus(), DesignClock.Instance, data.Store, screensSwapped: swapped)
         {
             SearchDebounce = TimeSpan.Zero,
+            Look = DesignLook,
         };
         if (companion)
             shell.Companion = data.Companion;

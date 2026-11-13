@@ -14358,3 +14358,47 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   transition's duration and easing: motion is B5's, and moving layout would only rename numbers the restyle redraws.
   The backdrops' own drawing in `HandheldEraBackdrop` (only its plain gradient moved), the cover tint read from the
   artwork, and `EmuShelf.Rendering` with its shaders are untouched.
+
+## 2026-11-13 — M47 B2: the Handheld face and the console ground colours, behind the look switch
+
+- **The table lives on `GameSystem.GroundColor`**, authored in `KnownSystems` (Integrations) beside `Era` and `Backdrops`,
+  which are already per-system values that exist only for Handheld mode's look. A new system is then added in one place
+  with everything it needs, and `EmuShelf.Core` stays free of Avalonia (colours are `#RRGGBB` text there). The arithmetic,
+  with no dependencies, is `HandheldGround` in `EmuShelf.Core.Handheld` (WCAG contrast, the tile composited as a browser
+  does in sRGB, CIE76 in Lab with a D65 white, and `Derive`). Chosen over a second table beside `HandheldTokens`, which
+  would have split a system's definition across two projects. The mock's tokens.js stays the reference: a test reads its
+  `colour.consoles` and holds every `KnownSystems` entry to it.
+- **The accessor takes the platform, not a string.** `HandheldTokens.ConsoleColour(HandheldPlatform?)` gives the accent
+  under Classic and the ground under Big Type. `FolderColour(HandheldFolderSource?)` sends a platform's folder to it and
+  reads the stored colour of your folders, Recent and Search, which keep today's colours in both looks for now (tokens.js
+  `Recent`, `Settings` and `userFolders` are B3's). `ColourOf`/`BrushOf` read stored text and replace the string accessor,
+  so a console's accent can no longer be passed where its look colour is meant. Classic's results are the same values
+  through the same parse, which the frames confirm. Under Big Type the colour flows everywhere a console's colour did:
+  folder tiles, the folder header's dot, the Title page, the medium's accent and the Stage's era motif (only its hue is
+  read; the native animated backdrops take ids, not a colour). B4 may want the backdrop's fallback kept on the accent.
+- **A system without a ground gets its accent darkened**, all three channels scaled together in steps of one percent until
+  white holds 4.5 to 1 on it and 3 to 1 on a tile, so the hue is kept. Today none is derived: the sixteen systems the app
+  knows are the sixteen in the table. Measured with this arithmetic the approved table's closest pair is SNES and GBA at
+  18.6 (the mock's stress sheet rounds to 19), above the floor of 18.
+- **The face is set on four roots, only under Big Type.** `HandheldTokens.ApplyFace(root)` sets `FontFamily` and
+  `FontWeight` (WeightText, 500) on the Launcher, Stage, Companion and Panel views, from their constructors (view wiring),
+  and every text inherits it, sheets and menus included (they are drawn inside these views; there are no popups). Under Classic `Face` is null and the method returns without touching the
+  root, because today's views set no typeface and inherit whatever the window gives them; setting any value there, even
+  the default family, could have changed that. The 14 role weights take tokens.js's values under Big Type (headings,
+  names, monograms and the companion's figures 900; rows, labels, hints, cards and the hero's lines 700), so every text is
+  drawn from one of the three bundled files rather than relying on Avalonia's nearest-weight fallback. `FaceSource`
+  repeats App.axaml's URI; a test holds the two equal.
+- **On Android the tokens take the look before the views are built.** `HandheldScreenHost` builds the Handheld views with
+  the first `MainView`, long before Handheld mode starts and before `MainViewModel` calls `HandheldTokens.Use`. So a saved
+  Big Type look would have drawn Classic values from XAML and Big Type values from code. `SingleViewShell.Show` now calls
+  `Use` with the resolved look first; `MainViewModel` calls it again with the same look.
+- **A one-run override for the device:** `HandheldLookChoice.Override`, set on Android from the system property
+  `debug.emushelf.look` (`bigtype` or `classic`), read once in `SingleViewShell`'s constructor, before the view model can
+  start Handheld mode. It is never written to settings, and debug properties do not survive a reboot. Clear it with
+  `adb shell setprop debug.emushelf.look ""`.
+- **The design render takes a look:** `EMUSHELF_DESIGN_LOOK=BigType` (the harness's `DesignPins` calls
+  `HandheldTokens.Use` before the views are built and puts Classic back afterwards). Classic stays the default, so B0's
+  commands are unchanged. Frames go wherever `EMUSHELF_DESIGN_SNAPSHOT_DIR` says; each look needs its own directory.
+- **Found on the way:** M PLUS Rounded's ellipsis (U+2026) is three dots at mid-height, Japanese style, so a trimmed row
+  reads "Nintendo Entertainme···". B3 and B7 may want trimming that does not show it. Over adb on the Thor the first press
+  after 15 s idle only wakes the Launcher, so a wake press and the real one go in the same `adb shell` call.

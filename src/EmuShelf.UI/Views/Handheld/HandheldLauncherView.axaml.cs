@@ -57,6 +57,8 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     {
         PinnedWide = pinnedWide;
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
         _homeLayer = this.FindControl<Control>("HomeLayer")!;
         _canvas = this.FindControl<Control>("Canvas")!;
         _selectorLayer = this.FindControl<Control>("SelectorLayer")!;
