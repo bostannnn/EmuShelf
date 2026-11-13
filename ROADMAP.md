@@ -2705,10 +2705,13 @@ report against the exits below and against the mock, and does not build.
       still runs and nothing is skipped; the page's facts (emulator, last played, disc) sit under the name on the
       Stage; the disc is a row in the Y sheet. Drawn in the mock. Amends decision 13.
 - [ ] **D2 — Which of the fifteen moves stay.** Anything dropped here is not built.
-- [ ] **D3 — The colour table.** Sixteen consoles need a ground colour dark enough for white type (4.5 to 1 on the
+- [x] **D3 — The colour table.** ✅ (owner approved the sixteen colours 2026-11-13; the values are `SYS` and `XC` in
+      the mock's script and are listed on its Stress sheet tab.) Sixteen consoles need a ground colour dark enough for white type (4.5 to 1 on the
       ground, 3 to 1 on a tile); the mock has nine, five of them between blue and violet. Either spread them by hand
       or derive each from `AccentColor` by a rule and accept what comes out. **Owner, 2026-11-13: by hand, in the
-      mock, reviewed on the page before the values go into the app.**
+      mock, reviewed on the page before the values go into the app.** Drawn 2026-11-13 (the Stress sheet tab lists all
+      sixteen with their contrast and how far apart they are; closest pair 19, where PS2 and PSP were 5); approved by the
+      owner the same day.
 - [x] **D4 — M45's open look and feel exits (H2, H3) are closed as superseded.** ✅ (owner, 2026-11-13.) They
       would have judged what this milestone replaces; both are marked where they live in M45.
 - [x] **D5 — Today's look is removed at B10.** ✅ (owner, 2026-11-13.) It stays the default behind the switch
@@ -2737,11 +2740,14 @@ report against the exits below and against the mock, and does not build.
 
 ### Before building: finish the design in the mock
 
-- [ ] **M1 — The screens not drawn yet,** in order of use (the screen chooser, the disc row and "Syncing saves…"
-      are drawn, 2026-11-13): the generic panel (one drawing covers Search results, the scraper,
-      cover search, achievements, Activity and Edit title, because they share `HandheldPanelView`); the companion's
-      Achievements and Photos tabs, badges and rest state; a message or toast; Settings in setup mode; the empty
-      library; a game whose file is missing; X swap.
+- [x] **M1 — The screens not drawn yet.** ✅ (2026-11-13, in the mock under "More screens".) The screen chooser, the
+      disc row and "Syncing saves…"; the generic panel as one drawing (rows below, the focused row as the Stage's name),
+      shown for a game's achievements and for Activity, with cover search as a grid of candidates worn by the case;
+      messages as the line under the name (progress counting in place, errors held longer with one shake); a game
+      whose file is missing; the companion's Session, Achievements and Photos tabs and its rest state; the empty
+      library and setup as three questions and a climbing count; X swap. Not wired separately because they reuse the
+      panel drawing: the scraper, Edit title and the batch scraper. Not drawn: the companion's badges layer and photo
+      viewer, and the All apps drawer.
 - [ ] **M2 — Freeze the numbers.** One table in the mock that the app's resource dictionary mirrors name for name.
 
 ### Build

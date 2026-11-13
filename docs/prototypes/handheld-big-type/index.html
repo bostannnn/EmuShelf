@@ -30,14 +30,21 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .rig{position:absolute;left:0;top:0;width:988px;height:1134px;transform-origin:0 0;background:var(--bezel);border-radius:26px;
   --disp:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Arial Rounded MT Bold',sans-serif;--ui:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN',system-ui,sans-serif;
   --dw:900;--ds:100%;--dl:-.02em;--dt:none;-webkit-user-select:none;user-select:none}
-.scr{position:absolute;overflow:hidden;border-radius:8px;background:#0E0D16}
+.scr{position:absolute;overflow:hidden;border-radius:8px;background:#0E0D16;transform-origin:0 0;
+  transition:left .65s cubic-bezier(.3,1.15,.4,1),top .65s cubic-bezier(.3,1.15,.4,1),transform .65s cubic-bezier(.3,1.15,.4,1)}
+/* X swaps the screens: the Stage shrinks onto the small one, the Launcher sits centred on the big one */
+.pane{position:absolute;border-radius:8px}
+.pane.pt{left:14px;top:14px;width:960px;height:540px;background:var(--gcol,#0E0D16);transition:background-color .5s}
+.pane.pb{left:184px;top:580px;width:620px;height:540px;background:#06060A}
+.rig.swapped #top{left:184px;top:676px;transform:scale(.6458)}
+.rig.swapped #bot{left:184px;top:14px}
 .hinge{position:absolute;left:60px;right:60px;top:558px;height:18px;border-radius:9px;background:rgba(255,255,255,.05)}
 .disp{font-family:var(--disp);font-weight:var(--dw);font-stretch:var(--ds);letter-spacing:var(--dl);text-transform:var(--dt)}
 
 /* top screen: the Stage. The left side and the two right corners each pick their own ink, and a veil only as strong as the backdrop needs. */
 #top{left:14px;top:14px;width:960px;height:540px;font-family:var(--ui);color:#fff;
   --ink-l:#fff;--ink-tr:#fff;--ink-br:#fff;--sh-l:rgba(11,10,24,.28);--sh-tr:rgba(11,10,24,.25);--sh-br:rgba(11,10,24,.25);--vx:65%}
-#bd{position:absolute;inset:0;background:#2F5FB3}
+#bd{position:absolute;inset:0;background:#2B5BC7}
 .bdc{position:absolute;inset:0;width:100%;height:100%}
 .bdc.pixel{image-rendering:pixelated}
 .shade{position:absolute;inset:0}
@@ -48,7 +55,7 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .sl{display:inline-block;position:relative;overflow:hidden;height:1.15em;line-height:1.15em;vertical-align:bottom;white-space:pre}
 .sl .ch{display:inline-block}
 .sl .ch.gone{position:absolute;left:0;top:0}
-.word{position:absolute;left:40px;bottom:120px;width:680px;height:340px;line-height:.9;color:var(--ink-l);transition:color .4s}
+.word{position:absolute;left:40px;bottom:120px;width:680px;height:340px;line-height:.9;color:var(--ink-l);transition:color .4s,opacity .3s}
 .wl{position:absolute;left:0;bottom:0}
 .wl.ph{opacity:.34}
 .wl .w{display:inline-block;white-space:nowrap}
@@ -74,9 +81,9 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .launch .ls{font:700 22px/1.15 var(--ui);opacity:.9;font-variant-numeric:tabular-nums}
 
 /* bottom screen: the Launcher */
-#bot{left:184px;top:580px;width:620px;height:540px;font-family:var(--ui);--fc:#2F5FB3;--fl:#97AFD9;--g:#2F5FB3;--on:#fff;--chip:rgba(255,255,255,.17);--rc:#fff;--danger:#FFC9BD;color:var(--on)}
+#bot{left:184px;top:580px;width:620px;height:540px;font-family:var(--ui);--fc:#2B5BC7;--fl:#97AFD9;--g:#2B5BC7;--on:#fff;--chip:rgba(255,255,255,.17);--rc:#fff;--danger:#FFC9BD;color:var(--on)}
 .rig #bot.playing{--on:#fff;--chip:rgba(255,255,255,.14);--rc:#fff}
-.ground{position:absolute;inset:0;background:#2F5FB3}
+.ground{position:absolute;inset:0;background:#2B5BC7}
 .wave{position:absolute;inset:0}
 .layer{position:absolute;inset:0;transition:opacity .28s,transform .4s cubic-bezier(.2,1.2,.3,1)}
 .layer.dim{opacity:.12;transform:scale(.95)}
@@ -138,7 +145,30 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
   transition:background-color .2s,color .2s,transform .3s cubic-bezier(.2,1.5,.35,1)}
 .key.f{background:#fff;color:var(--fc);transform:scale(1.08)}
 /* the in-game companion */
-#play{color:#fff}
+#play{color:#fff;transition:opacity 1.2s,transform .4s}
+#play.rest{opacity:.28}
+.ptabs{right:40px;top:30px;display:flex;gap:18px;font:700 17px/1.15 var(--ui)}
+.ptabs span{opacity:.45;transition:opacity .25s}
+.ptabs span.on{opacity:1}
+.ptab{inset:0}
+.ptab>*{position:absolute}
+.pbig{left:36px;top:132px;font-size:112px;line-height:1.15;white-space:nowrap;font-variant-numeric:tabular-nums}
+.prec{left:40px;right:40px;display:flex;justify-content:space-between;align-items:baseline;font:700 19px/1.15 var(--ui)}
+.prec span{opacity:.7;font-size:16px}
+.shot{width:164px;height:100px;border-radius:10px;overflow:hidden}
+.shot i{position:absolute;right:-20%;bottom:-60%;width:70%;aspect-ratio:1;border-radius:50%}
+/* panels: a list (or a grid of covers) below, its detail as the big name above */
+.pclip{position:absolute;left:0;right:0;top:100px;height:372px;overflow:hidden}
+.scrolly{position:absolute;inset:0;transition:transform .45s cubic-bezier(.2,1.15,.3,1)}
+#phead{left:40px;right:40px}
+#pcount{font-size:34px;padding-bottom:6px}
+.fcount{white-space:nowrap}
+.row.locked{opacity:.34}
+.row.locked.f{opacity:.8}
+.tile.missing .in{opacity:.45}
+.tile.missing::after{content:"!";position:absolute;right:-6px;top:-6px;width:24px;height:24px;border-radius:7px;background:#fff;color:var(--fc);display:grid;place-items:center;font:900 15px/1 var(--ui)}
+.word.dimmed{opacity:.5}
+.cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
 #play>*{position:absolute}
 .pk{left:40px;top:30px;font:700 18px/1.15 var(--ui);opacity:.75}
 .pt{left:40px;top:54px;font-size:40px;line-height:1.15;white-space:nowrap}
@@ -224,6 +254,11 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
 .moves h3{margin:0;font:700 1.05rem/1.25 var(--page-text)}
 .moves p{grid-column:2;margin:.2rem 0 0;color:var(--mute);font-size:.95rem}
 .moves .btn{grid-column:3;grid-row:1/3;align-self:center}
+.more{list-style:none;margin:0;padding:0}
+.more li{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:.9rem;align-items:center;padding:.8rem 0;border-top:1px solid var(--line)}
+.more h3{margin:0;font:700 1rem/1.25 var(--page-text)}
+.more p{margin:.15rem 0 0;color:var(--mute);font-size:.93rem}
+.more .btn{grid-column:2;grid-row:1/3}
 .cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(15rem,1fr));gap:8px 32px}
 .cols h3,.spec h3{font:700 .95rem/1.3 var(--page-text);margin:.9rem 0 .3rem}
 .cols ul,.picks{margin:0;padding-left:1.1rem;color:var(--mute);font-size:.95rem}
@@ -244,6 +279,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
   <div class="stagecol" id="stagecol">
     <div class="device" id="device">
       <div class="rig" id="rig">
+        <div class="pane pt"></div><div class="pane pb"></div>
         <div class="scr" id="top">
           <div id="bd"></div>
           <div class="shade"></div>
@@ -266,6 +302,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
           </div>
           <div class="layer" id="settings" hidden><div class="bigh disp" id="shead"></div><div id="rail"></div><div id="srows"></div></div>
           <div class="layer" id="kb" hidden><div class="bigh disp" id="kbhead"></div><div class="kbnote" id="kbnote"></div><div id="kbres"></div><div id="kbkeys"></div></div>
+          <div class="layer" id="panel" hidden><div class="fhead disp" id="phead"><span class="fname" id="pname"></span><span class="fcount" id="pcount"></span></div><div class="pclip"><div class="scrolly" id="prows"></div></div><div id="pgrid"></div></div>
           <div class="layer" id="play" hidden></div>
           <div class="layer" id="sheet" hidden><div class="bigh disp" id="stitle"></div><div id="shrows"></div></div>
           <div class="ring" id="ring"></div>
@@ -286,6 +323,8 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       </div>
     </div>
     <div class="opts">
+      <fieldset><legend>States</legend>
+        <button class="btn" type="button" id="st-empty" aria-pressed="false">Empty library</button></fieldset>
       <fieldset><legend>Extras</legend>
         <button class="btn" type="button" id="demo" aria-pressed="true">Demo</button>
         <button class="btn" type="button" id="snd" aria-pressed="false">Sound</button></fieldset>
@@ -297,7 +336,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
     <p class="eyebrow">EmuShelf · Handheld mode on the Thor · one direction, live</p>
     <h1>Big Type</h1>
     <p class="lede">Today's Handheld mode puts every name, number and hint inside a small frosted pill. This sketch takes the pills away. The name of whatever you are on fills the top screen, over that console's own backdrop, and nothing changes without moving.</p>
-    <p class="new"><b>New in round 3.</b> Colour and Round are locked, so the other grounds and typefaces are gone. A on an empty slot names a new folder, and the menu's Search finds games, both with the letters landing on the top screen as you type. Y on a home tile can pick it up and move it. Add to folder now works. The Stress sheet tab above measures the top screen's text against all 53 approved backdrops.</p>
+    <p class="new"><b>New in round 4.</b> A on a game plays, with the screen question and the disc only where they are needed. All sixteen consoles have a colour. The screens that were missing are drawn: list-and-detail panels, messages, a game whose file is missing, the in-game tabs and rest state, the empty library with setup, and X to swap the screens. They are listed under “More screens” below.</p>
 
     <h2>What moves</h2>
     <p class="sub">Fifteen moves, numbered so you can say “keep 1, 3 and 6, drop 8”.</p>
@@ -318,6 +357,18 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <li><h3>Typing fills the top screen</h3><p>Name a folder or search, and each letter drops onto the top screen at full size while the word resizes to make room. A deleted letter falls off the end. Search deals matching games in above the keys as you type.</p><button class="btn" type="button" data-show="type">Show</button></li>
       <li><h3>Pick up and put down</h3><p>A tile you are moving lifts and wobbles in your hand. It trades places with whatever it passes, across pages too, and B puts everything back where it was.</p><button class="btn" type="button" data-show="move">Show</button></li>
     </ol>
+
+    <h2>More screens</h2>
+    <p class="sub">The rest of the daily loop in the same language. Each one plays in the mock.</p>
+    <ul class="more">
+      <li><h3>A list with its detail</h3><p>Achievements, Activity, the scraper and search results share one drawing: rows of plain type below, and the row you are on as the big name above. Activity puts the day's play time up there as the big figure.</p><button class="btn" type="button" data-show="panel">Show</button></li>
+      <li><h3>Choosing a cover</h3><p>Candidates are a grid on the bottom screen; the case above wears the one you are on. A uses it, and a line of type says so.</p><button class="btn" type="button" data-show="cover">Show</button></li>
+      <li><h3>Messages are a line of type</h3><p>No toast card. The line under the name rolls to the message and back. Progress counts up in place. An error holds longer and the line shakes once.</p><button class="btn" type="button" data-show="message">Show</button></li>
+      <li><h3>A game whose file is missing</h3><p>Its tile is faded and marked, its name is dimmed, and A says what is wrong instead of launching. The Y menu offers Locate file.</p><button class="btn" type="button" data-show="missing">Show</button></li>
+      <li><h3>In-game tabs, and rest</h3><p>Left and right move between Session, Achievements and Photos. Left alone for nine seconds, the bottom screen dims until the next press.</p><button class="btn" type="button" data-show="tabs">Show</button></li>
+      <li><h3>An empty library, and setup</h3><p>With no games the top screen says so and A starts setup: three questions asked in big type, then the count of games climbing as they are found.</p><button class="btn" type="button" data-show="setup">Show</button></li>
+      <li><h3>X swaps the screens</h3><p>The two screens trade places through the hinge. In the mock the Stage is simply scaled onto the small screen; the app lays it out again for that size.</p><button class="btn" type="button" data-show="swap">Show</button></li>
+    </ul>
 
     <h2>What it keeps, what it drops</h2>
     <div class="cols">
@@ -367,7 +418,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <h3>Colour</h3>
       <dl>
         <dt>Bottom screen</dt><dd>The focused console's colour, flat, edge to edge. Tiles are white at 17%; the focused one is solid white with the colour as its ink.</dd>
-        <dt>Per console</dt><dd>One flat colour each, dark enough for white type.<div class="sw-list" id="swatches"></div></dd>
+        <dt>Per console</dt><dd>One flat colour each for sixteen consoles, tuned by hand: white type at 4.5 to 1 or better on the colour and 3 to 1 or better on a tile, and no two closer than 19.<div class="sw-list" id="swatches"></div></dd>
         <dt>Top screen ink</dt><dd>White, or the console colour mixed 74% toward near-black, chosen separately for the left side and each right corner. A veil of the opposite tone sits behind the text, as wide as the name and only as strong as that backdrop needs to reach 3.8 to 1. The stress sheet measures it.</dd>
         <dt>In game</dt><dd>The console colour mixed 64% toward near-black.</dd>
       </dl>
@@ -378,10 +429,10 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <li><b>Decided:</b> the bottom screen takes the console's colour, and the type is Round.</li>
       <li><b>Decided:</b> A on a game plays. The old Title page's facts sit under the name on the top screen, the screen question appears only for a console set to ask, and the disc is a row in the Y menu.</li>
       <li><b>Open:</b> which of the fifteen moves stay, and anything that is too much.</li>
-      <li><b>Open:</b> whether five blue-to-violet consoles (PS2, PSP, DS, GBA, GameCube) are far enough apart now that colour is the identity. I left the palette alone.</li>
+      <li><b>For you to look at:</b> the sixteen console colours, tuned by hand so no two are close. They are at the bottom of the Stress sheet tab. The sample library here has nine of them.</li>
     </ul>
 
-    <p class="foot">Covers are drawn stand-ins with the title as text. The backdrops are the approved prototypes from the motion study. X (swap screens) is not drawn yet. Menu rows other than Play, Open, Add to folder, Move on home, Search, Settings and Sounds only close the menu. A folder you make lasts until the page reloads. Nothing here has been measured on the Thor.</p>
+    <p class="foot">Covers are drawn stand-ins with the title as text. The backdrops are the approved prototypes from the motion study. Menu rows that only close the menu: Sort, Hide from home, Pin, Unpin, Edit title, Remove, the Start menu's Achievements and Desktop mode. The scraper and Edit title use the list drawing shown for Achievements and are not wired separately. A folder you make lasts until the page reloads. Nothing here has been measured on the Thor.</p>
   </div>
 </div>
 
@@ -409,12 +460,13 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
   <p class="sum" id="ssum">Measuring…</p>
   <div class="sgrid" id="sgrid"></div>
 
-  <h2>Busy covers on every colour</h2>
+  <h2>Sixteen colours, with busy covers on each</h2>
   <p class="sub">There is no cover art on this Mac, because your library lives on the Thor. These covers are drawn to be as noisy as real box art: several hues, a logo band, outlined titles, speckle. Load your own to see the real thing.</p>
   <div class="sbar">
     <label class="btn pick">Use my own covers<input type="file" id="covers" accept="image/*" multiple hidden></label>
     <span class="sub" id="cnote">They are read in this browser tab only. Nothing is uploaded or saved.</span>
   </div>
+  <p class="sum" id="csum"></p>
   <div class="lgrid" id="lgrid"></div>
 </div>
 
@@ -434,15 +486,15 @@ const store={get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
 
 /* ---------- sample library ---------- */
 const SYS={
- ps2:{m:'PS2',name:'PlayStation 2',c:'#2F5FB3',bd:'playstation2',emu:'PCSX2'},
- gc:{m:'GC',name:'GameCube',c:'#6A55C4',bd:'gamecube',emu:'Dolphin'},
+ ps2:{m:'PS2',name:'PlayStation 2',c:'#2B5BC7',bd:'playstation2',emu:'PCSX2'},
+ gc:{m:'GC',name:'GameCube',c:'#5548C8',bd:'gamecube',emu:'Dolphin'},
  wii:{m:'Wii',name:'Wii',c:'#198098',bd:'wii',emu:'Dolphin'},
- ps1:{m:'PS1',name:'PlayStation',c:'#666D8E',bd:'playstation',emu:'DuckStation'},
- ps3:{m:'PS3',name:'PlayStation 3',c:'#27307A',bd:'playstation3',emu:'RPCS3'},
- psp:{m:'PSP',name:'PSP',c:'#4A5FB0',bd:'psp',emu:'PPSSPP'},
- n3ds:{m:'3DS',name:'Nintendo 3DS',c:'#B8457F',bd:'3ds',emu:'Azahar',ask:true},
- nds:{m:'DS',name:'Nintendo DS',c:'#5F6CAD',bd:'nds',emu:'melonDS',ask:true},
- gba:{m:'GBA',name:'Game Boy Advance',c:'#5F5399',bd:'gba',emu:'mGBA'}};
+ ps1:{m:'PS1',name:'PlayStation',c:'#6B6F7E',bd:'playstation',emu:'DuckStation'},
+ ps3:{m:'PS3',name:'PlayStation 3',c:'#262E7A',bd:'playstation3',emu:'RPCS3'},
+ psp:{m:'PSP',name:'PSP',c:'#3D3D48',bd:'psp',emu:'PPSSPP'},
+ n3ds:{m:'3DS',name:'Nintendo 3DS',c:'#C0446E',bd:'3ds',emu:'Azahar',ask:true},
+ nds:{m:'DS',name:'Nintendo DS',c:'#6272B8',bd:'nds',emu:'melonDS',ask:true},
+ gba:{m:'GBA',name:'Game Boy Advance',c:'#7648A8',bd:'gba',emu:'mGBA'}};
 const lib=(sys,rows)=>rows.map(([t,h,a,at,d])=>({t,sys,h,a,at,d,disc:1}));
 const GAMES={
  ps2:lib('ps2',[['Okami',22.25,9,24],['Ico',6.5,4,12],['Shadow of the Colossus',11.75,16,30],['Katamari Damacy',8,7,20],['Gran Turismo 4',41.5,12,60],['Final Fantasy X',63,21,48],['Persona 4',88.25,30,52],['Jak and Daxter',9.5,10,28],['Burnout 3: Takedown',14,18,40],['Silent Hill 2',7.25,5,22],['Dragon Quest VIII',52,14,36],['Ratchet & Clank',10.75,11,30],['Kingdom Hearts',27.5,13,34],['God of War',12.25,17,36],["Devil May Cry 3",15,8,32],['We Love Katamari',6.75,5,18],['SSX Tricky',9,12,26]]),
@@ -454,6 +506,7 @@ const GAMES={
  n3ds:lib('n3ds',[['A Link Between Worlds',17,21,44],['Fire Emblem Awakening',38.5,15,40],['Animal Crossing: New Leaf',120,9,26],['Mario Kart 7',22,14,32],['Kid Icarus: Uprising',13.25,18,48],['Bravely Default',44,10,30],["Luigi's Mansion: Dark Moon",11,8,24]]),
  nds:lib('nds',[['Mario Kart DS',27,16,34],['The World Ends with You',23.5,12,40],['Phoenix Wright: Ace Attorney',15,5,12],['Professor Layton and the Curious Village',12.75,9,20],['Nintendogs',8,3,10],['Advance Wars: Dual Strike',19,14,36]]),
  gba:lib('gba',[['Metroid Fusion',6.75,11,24],['Advance Wars',21,13,30],['Golden Sun',24.5,10,28],['WarioWare, Inc.',4.5,15,26],['Mother 3',26,7,22],['The Minish Cap',13,17,38]])};
+GAMES.ps2[7].missing=true;
 const fold=k=>({kind:'folder',k,word:SYS[k].m,name:SYS[k].name,head:SYS[k].name,c:SYS[k].c,bd:SYS[k].bd,games:GAMES[k]});
 const pin=(k,i)=>({kind:'game',game:GAMES[k][i]});
 const SETC='#4A43B8';
@@ -477,28 +530,28 @@ const DOCK=[
  {word:'Browser',meta:'Pinned app',l:'B',c:'#2D6CC0'},{word:'Music',meta:'Pinned app',l:'M',c:'#B8414B'},{word:'Video',meta:'Pinned app',l:'V',c:'#A8452E'},{word:'Files',meta:'Pinned app',l:'F',c:'#96702A'},
  {word:'Menu',meta:'Search, add games, switch mode',menu:true,icon:'<svg viewBox="0 0 20 20"><rect x="2" y="3.5" width="16" height="2.6" rx="1.3"/><rect x="2" y="8.7" width="16" height="2.6" rx="1.3"/><rect x="2" y="13.9" width="16" height="2.6" rx="1.3"/></svg>'}];
 const SET=[
- {name:'Library',sub:'What shows on the shelf',rows:[{label:'Show empty platforms',toggle:false},{label:'Covers',cycle:['Box art','Square','Fan art'],v:0},{label:'Rescan all consoles',hint:'Looks for new games'}]},
+ {name:'Library',sub:'What shows on the shelf',rows:[{label:'Show empty platforms',toggle:false},{label:'Covers',cycle:['Box art','Square','Fan art'],v:0},{label:'Rescan all consoles',scan:true,hint:'Looks for new games'}]},
  {name:'Emulators',sub:'Which app runs each console',rows:[{label:'GameCube',cycle:['Dolphin','RetroArch · Dolphin'],v:0},{label:'Wii',cycle:['Dolphin'],v:0},{label:'PlayStation 2',cycle:['PCSX2','RetroArch · Play!'],v:0},{label:'PlayStation',cycle:['DuckStation','RetroArch · SwanStation'],v:0},{label:'Nintendo DS',cycle:['melonDS','RetroArch · DeSmuME'],v:0},{label:'Game Boy Advance',cycle:['mGBA','RetroArch · mGBA'],v:0}]},
  {name:'Achievements',sub:'RetroAchievements',rows:[{label:'Account',hint:'Not connected'},{label:'Hardcore mode',toggle:false},{label:'Progress on top screen',toggle:true}]},
  {name:'Display',sub:'How Handheld mode looks',rows:[{label:'Backdrops',cycle:['Rotate','One per console'],v:0},{label:'Idle motion',toggle:true,live:'idle'},{label:'CRT filter',toggle:true},{label:'Sounds',toggle:false,live:'sound'}]},
  {name:'About',sub:'EmuShelf 1.8.9',rows:[{label:'Version',hint:'1.8.9'},{label:'Check for updates',hint:'Last checked today'},{label:'Licences',hint:'Third-party notices'}]}];
 const UCOL=['#A8503C','#3F6FB8','#96702A','#2A8766','#8A4A8F'];
-const START=[{label:'Search',act:'search',hint:'Find a game by name'},{label:'Add games',hint:'Point EmuShelf at a folder'},{label:'Achievements',hint:'Everything you have unlocked'},{label:'Settings',act:'settings',hint:'Emulators, library, display'},{label:'Sounds',toggle:false,live:'sound'},{label:'Desktop mode',hint:'Leave Handheld mode'}];
+const START=[{label:'Search',act:'search',hint:'Find a game by name'},{label:'Add games',act:'setup',hint:'Point EmuShelf at a folder'},{label:'Achievements',hint:'Everything you have unlocked'},{label:'Activity',act:'activity',hint:'What you played, day by day'},{label:'Settings',act:'settings',hint:'Emulators, library, display'},{label:'Sounds',toggle:false,live:'sound'},{label:'Desktop mode',hint:'Leave Handheld mode'}];
 const PICKS={"nes":["nes-flow","nes-stars","nes-meta","nes-raster"],"snes":["runway","snes-mosaic-v2","snes-lake-v2","tiles"],"gbc":["gbc-attr","gbc-bands","gbc-sheen-v2","gbc-confetti-v2"],"gba":["gba-corridor-v2","gba-iso"],"gamecube":["gc-caustics","gc-cubes-v3","gc-fur","gc-lens"],"nds":["ds-ripples","ds-ripplefloor-v2","ds-dots","ds-flip"],"wii":["wii-pointer-v2","wii-tiles"],"3ds":["3ds-tiles","3ds-floorwave","3ds-tapwave"],"megadrive":["md-speed-v3","md-planes","md-pipe-v2"],"dreamcast":["dc-fog-v3","dc-sea-v2","dc-checker"],"playstation":["field","tide","frames","ps1-terrace-v2","ps1-pipe"],"playstation2":["ps2-towers","ps2-trails-v3","ps2-sea","ps2-orbs-v3"],"psp":["psp-field-v2"],"playstation3":["ps3-sheet","ps3-wire","ps3-twin"],"arcade":["arc-vector-v3","arc-bulbs-v2","arc-checker","arc-plating"],"steam":["steam-wall-v2","steam-mesh","steam-grid-v2"]};
 
 /* ---------- elements and state ---------- */
 const rig=$('rig'),dev=$('device'),top=$('top'),bot=$('bot'),ground=$('ground'),homeEl=$('home'),folderEl=$('folder'),fgrid=$('fgrid'),settingsEl=$('settings'),playEl=$('play'),sheetEl=$('sheet'),ring=$('ring'),bd=$('bd'),caseEl=$('case'),launchEl=$('launch');
-const S={view:'home',hi:1,gi:0,dock:null,sheet:null,set:null,play:null,busy:false,move:null,kb:null,idle:true,gcol:null,fc:'#2F5FB3',deep:'#0f1a36',sx:{home:0,folder:0,kb:0},ring:null,clockOff:0};
+const S={view:'home',hi:1,gi:0,dock:null,sheet:null,set:null,play:null,busy:false,move:null,kb:null,idle:true,gcol:null,fc:'#2B5BC7',deep:'#0f1a36',sx:{home:0,folder:0,kb:0},ring:null,clockOff:0};
 let tilesH=[],tilesF=[],itemsF=[],dockEls=[],wl=null,soundOn=false;
 const mapH=new Map(),mapF=new Map();
 
 const fmtH=h=>{const H=Math.floor(h),M=Math.round((h-H)*60);return M?`${H} h ${M} min`:`${H} h`;};
-function coverHTML(gm){const h=hash(gm.t),hue=h%360;return `<div class="cover s${(h>>8)%4}" style="--a:hsl(${hue} 40% 47%);--b:hsl(${(hue+28)%360} 46% 33%)"><i></i><b>${esc(gm.t)}</b></div>`;}
+function coverHTML(gm){if(gm.cover)return `<div class="cover"><img alt="" src="${gm.cover}"></div>`;const h=hash(gm.t),hue=h%360;return `<div class="cover s${(h>>8)%4}" style="--a:hsl(${hue} 40% 47%);--b:hsl(${(hue+28)%360} 46% 33%)"><i></i><b>${esc(gm.t)}</b></div>`;}
 function mkTile(it,x,y,sz,c,r,v){
  const el=document.createElement('div');el.className='tile';el.style.cssText=`left:${x}px;top:${y}px;--sz:${sz}px`;Object.assign(el,{_x:x,_y:y,_sz:sz,_c:c,_r:r,_v:v});
  const inn=document.createElement('div');inn.className='in';el.appendChild(inn);
  if(!it)el.classList.add('empty');
- else if(it.kind==='game')inn.innerHTML=coverHTML(it.game);
+ else if(it.kind==='game'){inn.innerHTML=coverHTML(it.game);if(it.game.missing)el.classList.add('missing');}
  else{el.classList.add('fold');el.style.setProperty('--tc',it.c);el.style.setProperty('--tl',mix(it.c,'#ffffff',.55));inn.innerHTML=it.glyph?GLYPH[it.glyph]:`<span class="mono disp">${it.word}</span>`;}
  return el;}
 function fitMonos(){document.querySelectorAll('.tile .mono').forEach(m=>{const sz=m.closest('.tile')._sz,was=m.style.fontSize;m.style.fontSize='60px';const w=m.offsetWidth;if(!w){m.style.fontSize=was;return;}m.style.fontSize=Math.min(sz*.56,60*sz*.76/w)+'px';});}
@@ -510,7 +563,7 @@ function buildFolder(it){fgrid.innerHTML='';mapF.clear();S.sx.folder=0;fgrid.sty
  tilesF=itemsF.map((g,i)=>{const c=i/3|0,r=i%3,el=mkTile(g,81+c*118,104+r*118,104,c,r,'folder');mapF.set(c+','+r,i);el.onclick=()=>tap('folder',i);fgrid.appendChild(el);return el;});
  setHead($('fname'),it.head,50,360);}
 function buildDock(){const d=$('dock');d.innerHTML='';dockEls=DOCK.map((a,i)=>{const s=document.createElement('span');s.innerHTML=a.icon||a.l;s.onclick=()=>tapDock(i);d.appendChild(s);return s;});}
-function buildList(box,rows,x,y,w,pitch,onTap){box.innerHTML='';return rows.map((r,i)=>{const d=document.createElement('div');d.className='row'+(r.danger?' danger':'');
+function buildList(box,rows,x,y,w,pitch,onTap){box.innerHTML='';return rows.map((r,i)=>{const d=document.createElement('div');d.className='row'+(r.danger?' danger':'')+(r.locked?' locked':'');
  d.style.cssText=`left:${x}px;top:${y+i*pitch}px;width:${w}px;height:${pitch-8}px`;d._rect={left:x-14,top:y+i*pitch-6,width:w+28,height:pitch+4};
  d.innerHTML=`<span class="rl">${esc(r.label)}</span>`+(r.toggle!==undefined?`<span class="sw${toggleState(r)?' on':''}"><i></i></span>`:'<span class="rv"></span>');
  if(r.toggle===undefined)roll(d.querySelector('.rv'),rowValue(r));d.onclick=()=>onTap(i);box.appendChild(d);return d;});}
@@ -554,7 +607,7 @@ function popIn(tiles,ft){if(RM)return;tiles.forEach(el=>{const dist=Math.hypot(e
 
 /* ---------- colour and backdrop ---------- */
 const groundOf=c=>c;
-function flood(g,x,y,quiet){if(g===S.gcol)return;S.gcol=g;bot.style.setProperty('--g',g);
+function flood(g,x,y,quiet){if(g===S.gcol)return;S.gcol=g;bot.style.setProperty('--g',g);rig.style.setProperty('--gcol',g);
  if(quiet||RM){ground.querySelectorAll('.wave').forEach(w=>w.remove());ground.style.background=g;return;}
  const w=document.createElement('div');w.className='wave';w.style.background=g;ground.appendChild(w);
  w.animate([{clipPath:`circle(0px at ${x}px ${y}px)`},{clipPath:`circle(820px at ${x}px ${y}px)`}],{duration:640,easing:'cubic-bezier(.2,.6,.2,1)'}).onfinish=()=>{ground.style.background=g;w.remove();};}
@@ -608,14 +661,15 @@ if('IntersectionObserver' in window)new IntersectionObserver(e=>{BD.vis=e[0].isI
 /* ---------- focus: one ring, wherever it lands ---------- */
 const inGrid=()=>S.view==='home'||S.view==='folder';
 const G=()=>S.view==='home'?{key:'home',tiles:tilesH,items:HOME,i:S.hi,map:mapH,scroll:$('hscroll'),rows:4}:{key:'folder',tiles:tilesF,items:itemsF,i:S.gi,map:mapF,scroll:fgrid,rows:3};
-const curLayer=()=>({home:homeEl,folder:folderEl,settings:settingsEl,play:playEl,kb:$('kb')})[S.view];
+const curLayer=()=>({home:homeEl,folder:folderEl,settings:settingsEl,play:playEl,kb:$('kb'),panel:$('panel')})[S.view];
 const idx=k=>HOME.findIndex(it=>it&&it.k===k);
 const games=n=>n===1?'1 game':`${n} games`;
 // what the Title page used to hold: the emulator, when it was last played, and the disc if there are several
 const WHEN=['today','yesterday','3 days ago','last week','2 weeks ago','in October'];
 const facts=gm=>`${SYS[gm.sys].emu}  ·  last played ${WHEN[hash(gm.t)%WHEN.length]}`+(gm.d?`  ·  disc ${gm.disc} of ${gm.d}`:'');
 function describe(it){
- if(!it)return{kicker:'Home',word:'Empty',meta:'A makes a folder here',hints:[['A','New folder'],['Y','More']]};
+ if(!it)return LIB?{kicker:'Welcome',word:'No games yet',meta:'A starts setup',meta2:'Or open the menu and choose Add games',hints:[['A','Set up']]}:{kicker:'Home',word:'Empty',meta:'A makes a folder here',hints:[['A','New folder'],['Y','More']]};
+ if(it.kind==='game'&&it.game.missing){const gm=it.game,s=SYS[gm.sys];return{kicker:s.name,word:gm.t,meta:'File not found',meta2:`It was in Games/${s.m}  ·  Y to locate it`,hints:[['Y','More'],['B','Back']],c:s.c,bd:s.bd,game:gm,missing:true};}
  if(it.kind==='game'){const gm=it.game,s=SYS[gm.sys];return{kicker:s.name,word:gm.t,meta:`${fmtH(gm.h)}  ·  ${gm.a} / ${gm.at} achievements`,meta2:facts(gm),hints:S.view==='folder'?[['A','Play'],['Y','More'],['B','Back']]:[['A','Play'],['Y','More']],c:s.c,bd:s.bd,game:gm};}
  if(it.kind==='app')return{kicker:'System',word:it.word,meta:'Emulators  ·  Library  ·  Display',hints:[['A','Open']],c:it.c};
  return{kicker:it.name,word:it.word,meta:games(it.games.length),meta2:it.games.length?`Last played: ${it.games[0].t}`:'',hints:[['A','Open'],['Y','More']],c:it.c,bd:it.bd};}
@@ -630,8 +684,8 @@ function setHints(list){const key=list.map(h=>h.join()).join('|'),hb=$('hints');
  if(hb._k!==key){hb._k=key;hb.innerHTML=list.map(([k,l])=>`<span class="hint" data-k="${k}"><i>${k}</i>${l}</span>`).join('');if(!RM)[...hb.children].forEach((h,i)=>h.animate([{transform:'translateY(14px)',opacity:0},{transform:'none',opacity:1}],{duration:380,delay:i*50,easing:SPRING,fill:'backwards'}));}}
 function setTop(d,dir){
  roll($('kick'),d.kicker);roll($('meta'),d.meta||'');setHints(d.hints);
- if(d.keep)return;
- roll($('meta2'),d.meta2||'');
+ $('meta')._base=null;if(d.keep)return;
+ roll($('meta2'),d.meta2||'');$('word').classList.toggle('dimmed',!!d.missing);
  setWord(d.word,dir,d.game?560:680);
  caseEl.classList.toggle('off',!d.game);
  if(d.game&&caseEl._g!==d.game){caseEl._g=d.game;$('front').innerHTML=coverHTML(d.game);$('spine').style.background=`hsl(${(hash(d.game.t)%360+28)%360} 46% 33%)`;
@@ -672,11 +726,12 @@ function nav(d){const V=G(),t=V.tiles[V.i];let c=t._c,r=t._r;if(d==='L')c--;if(d
 function pressHint(k){const h=$('hints').querySelector(`[data-k="${k}"] i`);if(h&&!RM)h.animate([{transform:'scale(.72)'},{transform:'scale(1)'}],{duration:320,easing:SPRING});}
 function doA(){pressHint('A');const V=G(),it=V.items[V.i],t=V.tiles[V.i];
  if(!RM)t.firstChild.animate([{transform:'scale(.9)'},{transform:'scale(1)'}],{duration:300,easing:SPRING});
- if(!it&&S.view==='home')openKb('folder');
+ if(!it&&S.view==='home'){if(LIB)openPanel('wiz');else openKb('folder');}
  else if(it.kind==='folder'&&!it.games.length){bump();roll($('meta'),'Nothing here yet  ·  Y on a game adds one');}
  else if(it.kind==='folder'&&S.view==='home')openFolder();else if(it.kind==='game')startGame(t,it.game);else if(it.kind==='app')openSettings();else bump();}
-function gameRows(gm){const s=SYS[gm.sys];return [{label:'Play',act:'play',hint:`Starts in ${s.emu}`},...(gm.d?[{label:'Disc',cycle:Array.from({length:gm.d},(_,i)=>`${i+1} of ${gm.d}`),v:gm.disc-1,bind:gm}]:[]),{label:'Achievements',value:`${gm.a} / ${gm.at}`,hint:'See what is left to unlock'},{label:'Add to folder…',act:'addto',hint:`It stays in ${s.name} too`},
- ...(S.view==='home'?[{label:'Move on home',act:'move',hint:'Pick it up and put it down'},{label:'Unpin from home',hint:'It stays in its folder'}]:[{label:'Pin to home',hint:'Puts it on the home grid'}]),{label:'Edit title',hint:'Change how the name is shown'},{label:'Set cover',hint:'Pick or search for artwork'},
+function gameRows(gm){const s=SYS[gm.sys];if(gm.missing)return [{label:'Locate file…',act:'locate',hint:'Point EmuShelf at where it moved'},{label:'Remove from library',danger:true,hint:'Only removes it from EmuShelf'}];
+ return [{label:'Play',act:'play',hint:`Starts in ${s.emu}`},...(gm.d?[{label:'Disc',cycle:Array.from({length:gm.d},(_,i)=>`${i+1} of ${gm.d}`),v:gm.disc-1,bind:gm}]:[]),{label:'Achievements',act:'ach',value:`${gm.a} / ${gm.at}`,hint:'See what is left to unlock'},{label:'Add to folder…',act:'addto',hint:`It stays in ${s.name} too`},
+ ...(S.view==='home'?[{label:'Move on home',act:'move',hint:'Pick it up and put it down'},{label:'Unpin from home',hint:'It stays in its folder'}]:[{label:'Pin to home',hint:'Puts it on the home grid'}]),{label:'Edit title',hint:'Change how the name is shown'},{label:'Set cover',act:'cover',hint:'Pick or search for artwork'},
  {label:'Remove from library',danger:true,hint:'Its files stay where they are'}];}
 function doY(){pressHint('Y');const V=G(),it=V.items[V.i];
  if(it&&it.kind==='game')openSheet(it.game.t,gameRows(it.game),'More',it.game);
@@ -730,8 +785,11 @@ async function sheetA(){const sh=S.sheet,r=sh.rows[sh.i],el=sh.els[sh.i];pressHi
  else if(r.act==='move'){await closeSheet();startMove();}
  else if(r.act==='search'){await closeSheet();openKb('search');}
  else if(r.act==='addto'){const gm=sh.game;openSheet('Add to folder',HOME.filter(it=>it&&it.user).map(f=>({label:f.head,value:f.games.includes(gm)?'Already here':games(f.games.length),act:'put',folder:f,hint:'It stays in its console folder too'})),'Add to folder',gm);}
- else if(r.act==='put'){const f=r.folder,had=f.games.includes(sh.game);if(!had)f.games.push(sh.game);await closeSheet();roll($('meta'),had?`Already in ${f.head}`:`Added to ${f.head}`);}
+ else if(r.act==='put'){const f=r.folder,had=f.games.includes(sh.game);if(!had)f.games.push(sh.game);await closeSheet();toast(had?`Already in ${f.head}`:`Added to ${f.head}`);}
  else if(r.act==='settings'){await closeSheet();await goHome('settings');await sleep(260);openSettings();}
+ else if(r.act==='ach'||r.act==='cover'){const gm=sh.game;await closeSheet();openPanel(r.act,gm);}
+ else if(r.act==='activity'||r.act==='setup'){await closeSheet();openPanel(r.act==='setup'?'wiz':'activity');}
+ else if(r.act==='locate'){const gm=sh.game;gm.missing=false;refreshTiles(gm);await closeSheet();toast('Found it');}
  else{await sleep(170);closeSheet();}}
 function sheetKey(k){const sh=S.sheet;
  if(k==='U'||k==='D'){const j=sh.i+(k==='D'?1:-1);if(j<0||j>=sh.rows.length)return bump(k);sfx.move();focusSheet(j,k);}
@@ -753,7 +811,7 @@ function focusSet(zone,i,dir){const st=S.set,changed=zone==='rail'&&i!==st.sec;i
  S.rowEls.forEach((e,j)=>e.classList.toggle('f',zone==='rows'&&j===i));
  if(zone==='rail')land(S.railEls[i]._rect,{kicker:'Settings',word:sec.name,meta:sec.sub,hints:[['A','Open'],['B','Close']],c:SETC},dir,{glide:GLIDE(dir),radius:16});
  else{const r=sec.rows[i];land(S.rowEls[i]._rect,{kicker:`Settings  ·  ${sec.name}`,word:r.label,meta:rowMeta(r),hints:[['A',r.toggle!==undefined?'Switch':r.cycle?'Change':'Open'],['B','Back']]},dir,{glide:GLIDE(dir),radius:16});}}
-function setA(){const st=S.set,r=SET[st.sec].rows[st.row];pressHint('A');if(actRow(r,S.rowEls[st.row]))roll($('meta'),rowMeta(r));else{pulse(S.rowEls[st.row]);bump();}}
+function setA(){const st=S.set,r=SET[st.sec].rows[st.row];pressHint('A');if(actRow(r,S.rowEls[st.row]))roll($('meta'),rowMeta(r));else if(r.scan){pulse(S.rowEls[st.row]);scan();}else{pulse(S.rowEls[st.row]);bump();}}
 function setKey(k){const st=S.set,sec=SET[st.sec];
  if(st.zone==='rail'){
   if(k==='U'||k==='D'){const j=st.sec+(k==='D'?1:-1);if(j<0||j>=SET.length)return bump(k);sfx.move();focusSet('rail',j,k);}
@@ -850,9 +908,86 @@ async function closeKb(commit){const kb=S.kb;if(!kb)return;S.busy=true;commit?sf
   if(!RM)el.animate([{transform:'scale(0) rotate(-25deg)',opacity:0},{opacity:1}],{duration:600,easing:SPRING,fill:'backwards'});}
  if(S.dock!=null)focusDock(S.dock,'back');else setFocus(G().i,'back');ring.style.opacity=1;S.busy=false;}
 
+/* ---------- messages: the line under the name rolls to the message and back ---------- */
+let toastT=0;
+function toast(text,o={}){const m=$('meta');clearTimeout(toastT);m._base=m._base??m._t??'';roll(m,text);
+ if(o.error&&!RM)m.animate([{translate:'0'},{translate:'-11px'},{translate:'9px'},{translate:'-6px'},{translate:'0'}],{duration:380});
+ if(o.sound!==false)(o.error?sfx.bump:sfx.open)();
+ if(!o.hold)toastT=setTimeout(()=>{if(m._t===text&&m._base!=null)roll(m,m._base);m._base=null;},o.error?4200:2800);}
+async function scan(){for(let i=1;i<=9;i++){toast(`Scanning  ·  ${i} of 9 consoles`,{hold:true,sound:false});await sleep(300);}toast('Found 2 new games');}
+function refreshTiles(gm){[...tilesH,...tilesF].forEach(el=>{const it=el._v==='home'?HOME[el._i]:itemsF[tilesF.indexOf(el)];if(it&&it.game===gm){el.classList.toggle('missing',!!gm.missing);el.firstChild.innerHTML=coverHTML(gm);}});}
+function swap(){rig.classList.toggle('swapped');sfx.open();pressHint('X');}
+
+/* ---------- an empty library ---------- */
+let LIB=null;
+function setLibrary(empty){
+ if(empty&&!LIB){LIB=HOME.slice();const st=LIB.find(it=>it&&it.k==='settings');HOME.fill(null);HOME[0]=st;}
+ else if(!empty&&LIB){LIB.forEach((it,i)=>HOME[i]=it);LIB=null;}
+ $('st-empty').setAttribute('aria-pressed',String(!!LIB));S.sx.home=0;$('hscroll').style.transform='translateX(0px)';buildHome();fitMonos();}
+$('st-empty').onclick=async()=>{stopDemo();runId++;await goHome('settings');setLibrary(!LIB);popIn(tilesH,tilesH[0]);setFocus(LIB?1:idx('ps2'),'back');};
+
+/* ---------- panels: achievements, Activity, cover search and setup share one drawing ---------- */
+const ACH=['First Steps','Collector','Speed Run','Untouchable','Explorer','Deep Pockets','Night Owl','Perfectionist','Secret Room','Marathon','Sharpshooter','Good Neighbour','Hoarder','The Long Way','Full House','Clean Sweep'];
+const DAYS=[['Today','1 h 05 min','Okami'],['Yesterday','2 h 40 min','Okami, Metroid Prime, Ico'],['Wednesday','35 min','Lumines'],['Tuesday','No play','Nothing that day'],['Monday','3 h 10 min','Persona 4, Mario Kart 7'],['Sunday','1 h 50 min','The Wind Waker'],['Saturday','4 h 20 min','Final Fantasy X, Okami, Wii Sports']];
+const WIZ=[{q:'Where are your games?',rows:[['Internal storage','Games'],['SD card','ROMs'],['Choose a folder…','']]},
+ {q:'Emulators',rows:[['Dolphin','Found'],['PCSX2','Found'],['DuckStation','Found'],['melonDS','Not installed']]},
+ {q:'Achievements?',rows:[['Connect RetroAchievements','Sign in'],['Skip for now','You can connect later']]}];
+function panelSpec(kind,gm,step){
+ if(kind==='ach'){const n=Math.min(gm.at,ACH.length),got=Math.round(gm.a/gm.at*n);
+  return{title:'Achievements',count:`${gm.a} / ${gm.at}`,rows:ACH.slice(0,n).map((name,i)=>({label:name,value:i<got?'Unlocked':'Locked',locked:i>=got})),
+   desc:(r,i)=>({kicker:`${gm.t}  ·  Achievements`,word:r.label,meta:i<got?`Unlocked ${WHEN[(i+hash(gm.t))%WHEN.length]}`:'Not unlocked yet',meta2:`${gm.a} of ${gm.at} unlocked  ·  ${(i+1)*5} points`,hints:[['B','Back']]})};}
+ if(kind==='activity')return{title:'Activity',count:'7 days',rows:DAYS.map(d=>({label:d[0],value:d[1]})),
+  desc:(r,i)=>({kicker:`Activity  ·  ${DAYS[i][0]}`,word:DAYS[i][1],meta:DAYS[i][2],meta2:'This week: 13 h 40 min',hints:[['B','Back']]})};
+ const w=WIZ[step];return{title:'Setup',count:`${step+1} / 4`,rows:w.rows.map(([l,v])=>({label:l,value:v})),
+  desc:r=>({kicker:`Setup  ·  ${step+1} of 4`,word:w.q,meta:r.label,meta2:r.value,hints:[['A','Next'],['B','Back']]})};}
+function panelRows(dx){const P=S.panel,sp=P.sp;setHead($('pname'),sp.title,50,340);roll($('pcount'),sp.count);P.scroll=0;$('prows').style.transform='translateY(0px)';
+ P.els=buildList($('prows'),sp.rows,40,8,540,46,i=>tapPanel(i));slideIn(P.els,dx);}
+async function openPanel(kind,gm){
+ S.busy=true;sfx.open();const under=curLayer();ring.style.opacity=0;under.classList.add('gone');
+ const P=S.panel={kind,gm,from:S.view,under,i:0,scroll:0,step:0,els:[]};S.view='panel';$('panel').hidden=false;$('prows').innerHTML='';$('pgrid').innerHTML='';roll($('dr'),'');
+ if(kind==='cover'){setHead($('pname'),'Set cover',50,340);roll($('pcount'),'8');P.srcs=Array.from({length:8},(_,i)=>coverSrc(i+hash(gm.t)%5));
+  P.els=P.srcs.map((src,i)=>{const el=mkTile(null,81+(i%4)*118,112+(i/4|0)*118,104,i%4,i/4|0,'kb');el.classList.remove('empty');el.firstChild.innerHTML=`<img alt="" src="${src}">`;el.onclick=()=>tapPanel(i);$('pgrid').appendChild(el);return el;});
+  if(!RM)P.els.forEach(el=>el.animate([{transform:'translateY(60px) scale(.6)',opacity:0},{opacity:1}],{duration:460,delay:(el._c+el._r)*45,easing:SPRING,fill:'backwards'}));}
+ else{P.sp=panelSpec(kind,gm,0);panelRows(70);}
+ lettersIn($('pname'),.9);
+ await sleep(250);focusPanel(0,'open');ring.style.opacity=1;S.busy=false;}
+function focusPanel(i,dir){const P=S.panel;P.i=i;P.els.forEach((e,j)=>e.classList.toggle('f',j===i));
+ if(P.kind==='cover'){const el=P.els[i],gm=P.gm,y=SYS[gm.sys];
+  land(rectOf(el),{kicker:y.name,word:gm.t,meta:`Candidate ${i+1} of 8`,meta2:'From ScreenScraper',hints:[['A','Use this'],['B','Back']],c:y.c,bd:y.bd,game:gm},dir,{glide:GLIDE(dir),radius:25,cx:el._x+52,cy:el._y+52});
+  $('front').innerHTML=`<img alt="" src="${P.srcs[i]}">`;return;}
+ if(i<P.scroll)P.scroll=i;if(i>P.scroll+6)P.scroll=i-6;$('prows').style.transform=`translateY(${-P.scroll*46}px)`;
+ const r0=P.els[i]._rect;land({left:r0.left,top:100+r0.top-P.scroll*46,width:r0.width,height:r0.height},P.sp.desc(P.sp.rows[i],i),dir,{glide:GLIDE(dir),radius:16});}
+function wizStep(n,dir){const P=S.panel;P.step=n;P.sp=panelSpec('wiz',null,n);panelRows(dir==='L'?-70:70);focusPanel(0,dir);}
+async function wizScan(){const P=S.panel;S.busy=true;ring.style.opacity=0;$('prows').innerHTML='';P.els=[];roll($('pcount'),'4 / 4');
+ roll($('kick'),'Setup  ·  4 of 4');roll($('meta'),'Looking through Games');roll($('meta2'),'');setHints([]);
+ for(const n of [3,9,17,28,41,55,66,71]){typeWord(`${n} games`,'');sfx.move();await sleep(260);}
+ roll($('meta'),'All set');sfx.open();await sleep(1100);S.busy=false;
+ if(LIB){$('panel').hidden=true;P.under.classList.remove('gone');S.view='home';S.panel=null;setLibrary(false);popIn(tilesH,tilesH[1]);setFocus(idx('ps2'),'back');ring.style.opacity=1;}
+ else closePanel('Found 2 new games');}
+function panelKey(k){const P=S.panel,n=P.els.length;
+ if(P.kind==='cover'){let c=P.i%4,r=P.i/4|0;
+  if(k==='A'){pressHint('A');P.gm.cover=P.srcs[P.i];refreshTiles(P.gm);closePanel('Cover set');return;}
+  if(k==='B'){pressHint('B');closePanel();return;}
+  if(k==='L')c--;else if(k==='R')c++;else if(k==='U')r--;else if(k==='D')r++;else return bump(k);
+  if(c<0||c>3||r<0||r>1)return bump(k);sfx.move();focusPanel(r*4+c,k);return;}
+ if(P.kind==='wiz'&&(k==='A'||k==='B')){pressHint(k);sfx.move();if(k==='A'){if(P.step<2)wizStep(P.step+1,'R');else wizScan();}else if(P.step>0)wizStep(P.step-1,'L');else closePanel();return;}
+ if(k==='U'||k==='D'){const j=P.i+(k==='D'?1:-1);if(j<0||j>=n)return bump(k);sfx.move();focusPanel(j,k);}
+ else if(k==='B'){pressHint('B');closePanel();}else bump(k);}
+function tapPanel(i){if(S.busy||S.sheet||S.view!=='panel')return;user();if(i===S.panel.i){key('A');return;}sfx.move();focusPanel(i,'tap');}
+async function closePanel(msg){const P=S.panel;if(!P)return;S.busy=true;sfx.back();ring.style.opacity=0;
+ P.els.forEach((e,i)=>e.animate([{},{transform:'translateY(40px)',opacity:0}],{duration:170,delay:Math.min(i,8)*10,easing:EASEIN,fill:'forwards'}));
+ await sleep(280);$('panel').hidden=true;$('prows').innerHTML='';$('pgrid').innerHTML='';P.under.classList.remove('gone');S.view=P.from;S.panel=null;caseEl._g=null;
+ if(S.dock!=null)focusDock(S.dock,'back');else setFocus(G().i,'back');ring.style.opacity=1;S.busy=false;if(msg)toast(msg);}
+
+/* ---------- in-game: tabs, and resting ---------- */
+function playTab(d){const p=S.play,t=p.tab||0,n=t+d;if(n<0||n>2)return bump(d>0?'R':'L');sfx.move();p.tab=n;
+ [...$('ptabs').children].forEach((e,i)=>e.classList.toggle('on',i===n));$('ptab'+t).hidden=true;const b=$('ptab'+n);b.hidden=false;
+ if(!RM)b.animate([{transform:`translateX(${d*60}px)`,opacity:0},{}],{duration:420,easing:SPRING});}
+function playWake(){const p=S.play;if(!p)return;playEl.classList.remove('rest');clearTimeout(p.rest);p.rest=setTimeout(()=>{if(S.play===p)playEl.classList.add('rest');},9000);}
+
 /* ---------- launch, and the in-game companion ---------- */
 const mmss=s=>`${s/60|0}:${String(s%60).padStart(2,'0')}`;
-function startGame(t,gm){const s=SYS[gm.sys];if(!s.ask){launch(t,gm);return;}
+function startGame(t,gm){const s=SYS[gm.sys];if(gm.missing){toast('Could not find the file  ·  Y to locate it',{error:true});return;}if(!s.ask){launch(t,gm);return;}
  openSheet('Which screen?',[{label:'Top screen',act:'scr',hint:'The game fills the big screen'},{label:'Bottom screen',act:'scr',hint:'The game runs between the controls'},
   {label:`Always the top for ${s.name}`,act:'scr',always:true,hint:'Stops asking for this console'}],'Play',gm,t);}
 async function launch(t,gm){
@@ -870,18 +1005,21 @@ async function launch(t,gm){
  const from=S.view;S.view='play';S.play={gm,from,a:gm.a,t0:Date.now()};
  flood(mix(s.c,'#0B0A18',.64),t._x-S.sx[t._v]+t._sz/2,t._y+t._sz/2);bot.classList.add('playing');
  await sleep(280);lay.hidden=true;lay.classList.remove('gone');fly.cancel();
- playEl.innerHTML='<div class="pk">Now playing</div><div class="pt disp" id="ptitle"></div><div class="ptime disp" id="ptime"></div><div class="pl">this session</div>'+
-  '<div class="pstats"><div><b class="disp" id="ptotal"></b><span>in total</span></div><div><b class="disp" id="pach"></b><span>achievements</span></div></div><div class="pbar"><i id="pfill"></i></div>';
+ playEl.innerHTML='<div class="pk">Now playing</div><div class="pt disp" id="ptitle"></div><div class="ptabs" id="ptabs"><span class="on">Session</span><span>Achievements</span><span>Photos</span></div>'+
+  '<div class="ptab" id="ptab0"><div class="ptime disp" id="ptime"></div><div class="pl">this session</div><div class="pstats"><div><b class="disp" id="ptotal"></b><span>in total</span></div><div><b class="disp" id="pach"></b><span>achievements</span></div></div></div>'+
+  '<div class="ptab" id="ptab1" hidden><div class="pbig disp" id="pach2"></div><div class="pl" style="top:272px">unlocked</div>'+[0,1,2].map(i=>`<div class="prec" style="top:${338+i*30}px"><b>${ACH[(hash(gm.t)+i)%ACH.length]}</b><span>Earned ${WHEN[(i+1)%WHEN.length]}</span></div>`).join('')+'</div>'+
+  '<div class="ptab" id="ptab2" hidden>'+[0,1,2,3,4,5].map(i=>`<div class="shot" style="left:${40+(i%3)*188}px;top:${128+(i/3|0)*116}px;background:hsl(${(hash(gm.t)+i*47)%360} 45% ${38+i*4}%)"><i style="background:hsl(${(hash(gm.t)+i*47+40)%360} 55% 28%)"></i></div>`).join('')+'<div class="pl" style="top:372px">6 photos from this game</div></div>'+
+  '<div class="pbar"><i id="pfill"></i></div>';
  playEl.hidden=false;const pt=$('ptitle');pt.textContent=gm.t;pt.style.fontSize='40px';const w=pt.offsetWidth;if(w>540)pt.style.fontSize=40*540/w+'px';
- roll($('ptime'),'0:00');roll($('ptotal'),fmtH(gm.h));roll($('pach'),`${gm.a} / ${gm.at}`);roll($('dr'),'B to shelf');
+ roll($('ptime'),'0:00');roll($('ptotal'),fmtH(gm.h));roll($('pach'),`${gm.a} / ${gm.at}`);roll($('pach2'),`${gm.a} / ${gm.at}`);roll($('dr'),'B to shelf');
  if(!RM)[...playEl.children].forEach((e,i)=>e.animate([{transform:'translateY(40px)',opacity:0},{}],{duration:460,delay:i*55,easing:SPRING,fill:'backwards'}));
- requestAnimationFrame(()=>{$('pfill').style.width=gm.a/gm.at*100+'%';});
+ requestAnimationFrame(()=>{const f=$('pfill');if(f)f.style.width=gm.a/gm.at*100+'%';});
  S.play.tick=setInterval(()=>{if(S.play)roll($('ptime'),mmss((Date.now()-S.play.t0)/1000|0));},1000);
- S.play.un=setTimeout(()=>{const p=S.play;if(!p||p.a>=gm.at)return;p.a++;sfx.open();roll($('pach'),`${p.a} / ${gm.at}`);$('pfill').style.width=p.a/gm.at*100+'%';
+ S.play.un=setTimeout(()=>{const p=S.play;if(!p||p.a>=gm.at)return;p.a++;sfx.open();roll($('pach'),`${p.a} / ${gm.at}`);roll($('pach2'),`${p.a} / ${gm.at}`);$('pfill').style.width=p.a/gm.at*100+'%';
   roll($('ls'),`Achievement unlocked  ·  ${p.a} / ${gm.at}`);p.un2=setTimeout(()=>roll($('ls'),run),3200);},2800);
- S.busy=false;}
+ playWake();S.busy=false;}
 async function endPlay(){const p=S.play;if(!p)return;
- S.busy=true;sfx.back();clearInterval(p.tick);clearTimeout(p.un);clearTimeout(p.un2);
+ S.busy=true;sfx.back();clearInterval(p.tick);clearTimeout(p.un);clearTimeout(p.un2);clearTimeout(p.rest);playEl.classList.remove('rest');
  [...playEl.children].forEach((e,i)=>e.animate([{},{transform:'translateY(30px)',opacity:0}],{duration:200,delay:i*18,easing:EASEIN,fill:'forwards'}));
  const out=launchEl.animate([{opacity:1},{opacity:0}],{duration:320,fill:'forwards'});
  await sleep(340);if(S.la)S.la.cancel();out.cancel();playEl.hidden=true;playEl.innerHTML='';bot.classList.remove('playing');
@@ -904,10 +1042,12 @@ setInterval(tick,1000);
 /* ---------- input ---------- */
 function key(k){
  if(S.busy)return;
+ if(k==='X'){swap();return;}
  if(S.sheet)return sheetKey(k);
  if(S.move)return moveKey(k);
  if(S.view==='kb')return kbKey(k);
- if(S.view==='play'){if(k==='B'){pressHint('B');endPlay();}else bump(k);return;}
+ if(S.view==='panel')return panelKey(k);
+ if(S.view==='play'){playWake();if(k==='B'){pressHint('B');endPlay();}else if(k==='L'||k==='R')playTab(k==='R'?1:-1);else bump(k);return;}
  if(S.view==='settings')return setKey(k);
  if(S.dock!=null){
   if(k==='L'||k==='R'){const j=S.dock+(k==='R'?1:-1);if(j<0||j>5)return bump(k);sfx.move();focusDock(j,k);}
@@ -941,12 +1081,16 @@ rig.querySelectorAll('.pad button').forEach(b=>b.onclick=()=>{user();key(b.datas
 /* ---------- demo and the Show buttons ---------- */
 let demoOn=false,runId=0;
 const waitFree=async()=>{while(S.busy)await sleep(120);};
-async function goHome(k){await waitFree();if(S.sheet)await closeSheet();if(S.move)endMove(true);if(S.view==='play')await endPlay();if(S.view==='kb')await closeKb(false);if(S.view==='settings')await closeSettings();if(S.view==='folder')await closeFolder();
+async function goHome(k){await waitFree();if(S.sheet)await closeSheet();if(S.move)endMove(true);if(S.view==='play')await endPlay();if(S.view==='kb')await closeKb(false);if(S.view==='panel')await closePanel();if(S.view==='settings')await closeSettings();if(S.view==='folder')await closeFolder();
+ if(LIB&&k!=='empty'&&k!=='settings'){setLibrary(false);popIn(tilesH,tilesH[1]);}
  const i=k==='empty'?HOME.findIndex(it=>!it):idx(k);if(i>=0&&(S.dock!=null||S.hi!==i))setFocus(i,'tap');}
 async function play(seq,id){for(const [k,ms] of seq){if(id!==runId)return false;await waitFree();if(id!==runId)return false;
  if(k==='hop')hop();else if(k==='tick'){S.clockOff++;tick();}else if(k==='go')await goHome(ms);
  else if(k==='type'){for(const ch of ms){if(id!==runId||S.view!=='kb')return false;kbJump(ch);kbInput(ch);await sleep(300);}}
- else if(k==='done'){if(S.view==='kb'){kbJump('done');kbInput('done');}}else if(k)key(k);
+ else if(k==='done'){if(S.view==='kb'){kbJump('done');kbInput('done');}}
+ else if(k==='miss'){GAMES.ps2[7].missing=true;refreshTiles(GAMES.ps2[7]);}
+ else if(k==='empty'){await goHome('settings');if(!LIB){setLibrary(true);popIn(tilesH,tilesH[0]);setFocus(1,'back');}}
+ else if(k)key(k);
  if(typeof ms==='number')await sleep(ms);}return true;}
 const LOOP=[['R',900],['R',900],['D',900],['L',900],['U',1000],['L',1100],['A',1500],['R',600],['R',600],['R',600],['R',800],['D',900],['Y',1300],['D',600],['D',900],['B',900],['A',6600],['B',1500],['B',1400],
  ['D',800],['D',900],['A',1500],['D',900],['D',900],['U',700],['U',800],['R',800],['A',1000],['A',1000],['B',700],['B',1400],['U',800],[null,400],['hop',1900],['U',1100]];
@@ -967,6 +1111,13 @@ const SHOWS={
  lists:[['go','gc'],[null,500],['A',1300],['Y',1300],['D',550],['D',550],['D',550],['D',900],['B',1000],['B',1300],['go','settings'],[null,600],['A',1500],['D',800],['D',800],['D',800],['R',700],['D',700],['A',900],['A',900],['B',700],['B',0]],
  play:[['go','gc'],[null,500],['A',1200],['A',7200],['B',0]],
  type:[['go','empty'],[null,600],['A',1100],['type','RACING'],[null,500],['done',2600],['go','ps2'],[null,500],['D',350],['D',350],['D',350],['D',600],['R',300],['R',300],['R',300],['R',300],['R',600],['A',1200],['A',1100],['type','MARIO'],[null,1600],['U',1800],['D',700],['done',0]],
+ panel:[['go','gc'],[null,500],['A',1300],['Y',1200],['D',450],['A',1500],['D',500],['D',500],['D',500],['D',500],['D',900],['B',1300],['B',1300],['go','ps2'],[null,400],['D',350],['D',350],['D',350],['D',600],['R',300],['R',300],['R',300],['R',300],['R',600],['A',1200],['D',350],['D',350],['D',600],['A',1500],['D',900],['D',900],['D',900],['D',1200],['B',1100],['U',0]],
+ cover:[['go','gc'],[null,500],['A',1300],['Y',1200],['D',300],['D',300],['D',300],['D',300],['D',600],['A',1500],['R',700],['R',700],['D',900],['A',2600],['B',0]],
+ message:[['go','settings'],[null,500],['A',1500],['R',600],['D',450],['D',700],['A',4600],['B',700],['B',0]],
+ missing:[['go','ps2'],[null,400],['miss',200],['A',1500],['R',450],['R',450],['D',1200],['A',2600],['Y',1300],['A',2600],['B',0]],
+ tabs:[['go','gc'],[null,500],['A',1300],['A',3800],['R',1700],['R',1700],['L',900],['L',10500],['L',1400],['B',1400],['B',0]],
+ setup:[['empty',1500],['A',1500],['D',600],['A',1200],['A',1200],['D',600],['A',6200]],
+ swap:[['go','ps2'],[null,400],['X',1500],['R',700],['R',700],['D',1100],['X',1400],['L',0]],
  move:[['go','gc'],[null,500],['Y',1200],['D',400],['D',700],['A',1100],['R',520],['D',520],['L',520],['L',520],['D',900],['B',0]]};
 document.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{stopDemo();const id=++runId;if(!matchMedia('(min-width:1180px)').matches)dev.scrollIntoView({behavior:RM?'auto':'smooth',block:'center'});idleKick();play(SHOWS[b.dataset.show],id);});
 
@@ -980,7 +1131,13 @@ function fitRig(){const wide=matchMedia('(min-width:1180px)').matches;let k=$('s
 addEventListener('resize',fitRig);
 
 /* ---------- stress sheet: every approved backdrop against the hardest content ---------- */
-const XC={nes:'#7C5F50',snes:'#7352AE',gbc:'#2F8A7A',megadrive:'#2E636B',dreamcast:'#BF5E2A',arcade:'#A53B31',steam:'#2A6F9C'};
+// the seven consoles the sample library does not have: colour, monogram, name
+const XC={nes:'#7C5F50',snes:'#91408C',gbc:'#2A7D52',megadrive:'#175A4F',dreamcast:'#B8521E',arcade:'#A8372E',steam:'#30587F'};
+const XN={nes:['NES','NES'],snes:['SNES','Super Nintendo'],gbc:['GBC','Game Boy Color'],megadrive:['MD','Mega Drive'],dreamcast:['DC','Dreamcast'],arcade:['ARC','Arcade'],steam:['Steam','Steam']};
+const ORDER=['nes','snes','gbc','gba','gamecube','nds','wii','3ds','megadrive','dreamcast','playstation','playstation2','psp','playstation3','arcade','steam'];
+const ALLSYS=()=>ORDER.map(con=>{const y=Object.values(SYS).find(x=>x.bd===con);return y?{m:y.m,name:y.name,c:y.c}:{m:XN[con][0],name:XN[con][1],c:XC[con]};});
+function labOf(h){const [r,g,b]=rgb(h).map(v=>LIN[v]),f=t=>t>.008856?Math.cbrt(t):7.787*t+16/116,X=f((.4124*r+.3576*g+.1805*b)/.95047),Y=f(.2126*r+.7152*g+.0722*b),Z=f((.0193*r+.1192*g+.9505*b)/1.08883);return[116*Y-16,500*(X-Y),200*(Y-Z)];}
+const apart=(a,b)=>Math.hypot(...labOf(a).map((v,i)=>v-labOf(b)[i]));
 const conColour=con=>(Object.values(SYS).find(x=>x.bd===con)||{c:XC[con]||'#4A4A66'}).c;
 const LIN=Array.from({length:256},(_,v)=>{v/=255;return v<=.03928?v/12.92:Math.pow((v+.055)/1.055,2.4);});
 const lumHex=h=>{const [r,g,b]=rgb(h);return .2126*LIN[r]+.7152*LIN[g]+.0722*LIN[b];};
@@ -1044,12 +1201,15 @@ function fillStress(){const B=window.Backdrops,m=ST.mode,game=m!=='folder';
   st.querySelector('.hints').innerHTML=(m==='folder'?[['A','Open'],['Y','More']]:m==='missing'?[['Y','More'],['B','Back']]:[['A','Play'],['Y','More'],['B','Back']]).map(([k,t])=>`<span class="hint"><i>${k}</i>${t}</span>`).join('');
   st.querySelector('.case').classList.toggle('off',!game);
   if(game)st.querySelector('.front').innerHTML=m==='nocover'?`<div class="nocover">${esc(text)}</div>`:`<img alt="" src="${coverSrc(fig._i)}">`;});}
-function drawStrips(){const g=$('lgrid');g.innerHTML='';Object.values(SYS).forEach((y,si)=>{const cg=1.05/(lumHex(y.c)+.05),ct=1.05/(lumHex(mix(y.c,'#ffffff',.17))+.05);
+function drawStrips(){const g=$('lgrid'),all=ALLSYS(),pairs=[];g.innerHTML='';
+ all.forEach((a,i)=>all.slice(i+1).forEach(b=>pairs.push([apart(a.c,b.c),a.name,b.name])));pairs.sort((p,q)=>p[0]-q[0]);
+ $('csum').innerHTML=`<b>All sixteen consoles now have a colour, tuned by hand.</b> The two closest are ${pairs[0][1]} and ${pairs[0][2]}, ${pairs[0][0].toFixed(0)} apart on a scale where about 2 is the smallest difference an eye can see side by side. Before tuning, PlayStation 2 and PSP were 5 apart. Then come ${pairs.slice(1,4).map(p=>`${p[1]} and ${p[2]} (${p[0].toFixed(0)})`).join(', ')}.`;
+ all.forEach((y,si)=>{const cg=1.05/(lumHex(y.c)+.05),ct=1.05/(lumHex(mix(y.c,'#ffffff',.17))+.05);
  let tiles='';for(let i=0;i<5;i++)tiles+=`<div class="tile${i===1?' f':''}" style="left:${81+i*118}px;top:100px;--sz:104px"><div class="in"><img alt="" src="${coverSrc(si*4+i)}"></div></div>`;
  const fig=document.createElement('figure');fig.className='sc'+(Math.min(cg,ct)<PASS?' fail':'');
  fig.innerHTML=`<div class="lmini"><div class="lstage" style="background:${y.c};--fc:${y.c}"><div class="fhead disp"><span class="fname" style="font-size:40px">${y.name}</span><span class="fcount" style="font-size:40px">14</span></div>${tiles}`+
   `<div class="ring" style="left:186px;top:87px;width:130px;height:130px"></div>`+
-  `<div class="tile fold" style="left:81px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:33px">${y.m}</span></div></div><div class="tile fold f" style="left:199px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:33px">${y.m}</span></div></div></div></div>`+
+  `<div class="tile fold" style="left:81px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:${y.m.length>3?24:33}px">${y.m}</span></div></div><div class="tile fold f" style="left:199px;top:230px;--sz:88px;--tc:${y.c}"><div class="in"><span class="mono disp" style="font-size:${y.m.length>3?24:33}px">${y.m}</span></div></div></div></div>`+
   `<figcaption><b>${y.name}</b><span class="${cg<PASS?'no':''}">white on the colour ${cg.toFixed(1)}</span> · <span class="${ct<PASS?'no':''}">white on a tile ${ct.toFixed(1)}</span></figcaption>`;g.appendChild(fig);});sizeStress();}
 function sizeStress(){const a=document.querySelector('#sgrid .mini');if(a&&a.clientWidth)$('sgrid').style.setProperty('--k',a.clientWidth/960);const b=document.querySelector('#lgrid .lmini');if(b&&b.clientWidth)$('lgrid').style.setProperty('--k',b.clientWidth/620);}
 document.querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{ST.mode=b.dataset.c;document.querySelectorAll('[data-c]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));fillStress();});
@@ -1065,7 +1225,7 @@ addEventListener('hashchange',route);addEventListener('resize',sizeStress);
 /* ---------- boot ---------- */
 function start(){
  fitRig();buildHome();buildDock();
- $('swatches').innerHTML=Object.values(SYS).map(s=>`<span style="background:${s.c}">${s.m}</span>`).join('');
+ $('swatches').innerHTML=ALLSYS().map(y=>`<span style="background:${y.c}">${y.m}</span>`).join('');
  flood(groundOf(S.fc),310,270,true);
  fitMonos();tick();setFocus(S.hi,'init');ring.style.opacity=1;
  if(document.fonts){const face='"M PLUS Rounded 1c"';
