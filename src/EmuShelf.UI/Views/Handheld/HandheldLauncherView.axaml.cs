@@ -59,7 +59,10 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         InitializeComponent();
         // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
         HandheldTokens.ApplyFace(this);
+        // View wiring: the look's own styles (M47 B3) select on the root's class; today's look sets none.
+        this.FindControl<Panel>("Root")!.Classes.Set("bigtype", HandheldTokens.IsBigType);
         _homeLayer = this.FindControl<Control>("HomeLayer")!;
+        _pageCount = this.FindControl<Control>("BtPage")!;
         _canvas = this.FindControl<Control>("Canvas")!;
         _selectorLayer = this.FindControl<Control>("SelectorLayer")!;
         _settingsCanvas = this.FindControl<Control>("SettingsCanvas")!;
@@ -120,6 +123,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     public HandheldHomeScreenViewModel? Screen => _shell is not { } shell ? null : PinnedWide is { } wide ? shell.HomeFor(wide) : shell.Home;
 
     private readonly Control _homeLayer;
+    private readonly Control _pageCount;
     private readonly Control _canvas;
     private readonly Control _selectorLayer;
     private readonly Control _settingsCanvas;
@@ -223,6 +227,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             return;
         _screen = screen;
         _homeLayer.DataContext = screen;
+        _pageCount.DataContext = screen;
         var width = screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
         _canvas.Width = width;
         _selectorLayer.Width = width;
@@ -337,9 +342,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             return;
         }
         // The folder header's chips and the dock act on the first tap.
-        if (IsInside(source, "BackShot") || IsInside(source, "SortShot"))
+        // (Big Type, M47 B3: the folder's name is Back and the sort's value in the dock row's corner is the sort.)
+        var sortTapped = IsInside(source, "SortShot") || IsInside(source, "BtSortShot");
+        if (sortTapped || IsInside(source, "BackShot") || IsInside(source, "BtBackShot"))
         {
-            shell.TapHeader(IsInside(source, "SortShot") ? HandheldHeaderItem.Sort : HandheldHeaderItem.Back);
+            shell.TapHeader(sortTapped ? HandheldHeaderItem.Sort : HandheldHeaderItem.Back);
             e.Handled = true;
             return;
         }

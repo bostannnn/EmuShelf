@@ -2852,6 +2852,36 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       fitted to the tile, header, dock and counts as plain type, the ring as one white band (the shader's bands become
       parameters). **Exit:** home and a folder look like the mock at rest on the Thor, and the hand-off to a sheet
       and back shows no seam.
+      **Built 2026-11-14; awaiting the owner's look on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B3".) Under
+      Big Type the Launcher's ground is the focused item's flat colour (`HandheldShellViewModel.LauncherGround`, drawn by the
+      Avalonia view and cleared to by the native compositor through `LauncherGroundCommand`, both with a 200 ms crossfade);
+      tiles are 176 and 208 with radius 30, flat, monograms fitted to 76% of the width and at most 56% of the side, the
+      focused folder or app white with its colour as ink, covers cropped square, missing files at 0.45 with a white "!"
+      mark, the New ribbon a mark with a dot, empty slots a 0.30 dot and a plus when focused; the ring is one white 8 px
+      band 26 out from the resting tile, radius 50 (38 on the dock), no glow, tiles lifting 1.10 and dock buttons 1.14 with
+      no shadow; a folder's header is its name and count as 100 px type; the dock has no bar, "X Swap" at the bottom left
+      and the page ("1 / 2") or a folder's sort at the bottom right. `selector.frag`'s bands are uniforms
+      (`LauncherRingBands`), and a native sprite carries its own lift. Today's look is the default and unchanged. A
+      render-harness fix comes first: the Settings › About frames print fixed stand-ins for the build's commit and date
+      (`DesignHoldBuild`), so renders on different commits compare. **Verified on macOS:** Classic rendered before and
+      after, 158 of 158 frames identical by the comparison; the Big Type set renders (158 frames, kept as B4's baseline in
+      the build sessions' notes folder, `m47-b3-renders/bigtype`) and home and a folder were put beside the mock's bottom
+      screen part by part (ground, tiles, monograms, focused tile, ring, header, empty slot, missing-file tile, dock): the
+      differences left are listed in the decision (the dock row's spacing for seven buttons, the app's filled icons, the
+      no-cover tile, top-cropped covers). New tests hold the Big Type values to tokens.js, today's values after switching
+      back, the ground following the focus, and the native ring and lift defaults; `dotnet build` and `dotnet test` pass.
+      **Thor:** the Release build was installed with `adb install -r` (uid kept), then the device left USB before the app
+      was started; nothing else was done on it. The owner then said the Thor is not available and to use the emulator.
+      **Emulator check (not a Thor check):** a new arm64 AVD `emushelf-b3` from the installed android-35 image (nothing
+      downloaded), main display 1920×1080, a second display of 1240×1080 from the AVD's own `hw.display1.*` (a presentation
+      display), GLES 3.0 through gfxstream on the host GPU. The same Release APK: Classic starts cleanly into Handheld mode
+      (Stage on the main display, Launcher on the second), drawn by the native compositors (four `GLThread`s rendering, no
+      fallback logged). With `debug.emushelf.look bigtype` the native Launcher draws the flat ground (exactly PS2's #2B5BC7),
+      flat tiles, the focused folder white with its colour as ink, the plain header and one white ring, at the same pixels
+      as the macOS render (the focused tile's ring 136–395 × 182–441 in both); a sheet opens over the Avalonia Launcher in the
+      same place (its ring within 1 px) and, closed, leaves the native screen pixel-identical to before. Property cleared,
+      Classic again. Emulator artefact: its second display carries the system's navigation bar over the bottom 72 px, which
+      covers half of the dock row. B3's exit still needs the owner's eyes on the Thor.
 - [ ] **B4 — The Stage, still.** The fitted name, the four corners, no plate and no pills, the veil and ink per R2.
       **Exit:** the name is readable over every backdrop of every console in the owner's library, on the device.
 - [ ] **B5 — Motion that needs no new drawing.** The ring's stretch between tiles, dock and rows; the tile lift and

@@ -138,7 +138,7 @@ public class HandheldGroundColourTests
     public void TheLookOverride_ReadsOnlyALooksName(string? text, HandheldLook? expected) =>
         Assert.Equal(expected, HandheldLookChoice.Parse(text));
 
-    private static string RepositoryRoot()
+    internal static string RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "EmuShelf.slnx")))

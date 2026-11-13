@@ -1878,6 +1878,8 @@ public static partial class HandheldTokens
         CompanionPhotoDotCurrentWidth = 40;
         CompanionWeight = FontWeight.SemiBold;
         CompanionStrongWeight = FontWeight.Bold;
+
+        UseClassicLauncherValues();
     }
 
     /// <summary>
@@ -1903,5 +1905,8 @@ public static partial class HandheldTokens
         CardWeight = WeightStrong;
         CompanionWeight = WeightStrong;         // InGameLabel
         CompanionStrongWeight = WeightDisplay;  // SessionTimer, InGameFigure, InGameStat
+
+        // B3: the Launcher at rest.
+        UseBigTypeLauncherValues();
     }
 }

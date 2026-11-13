@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace EmuShelf.Rendering.Stage;
 
 /// <summary>Which part of the Launcher a sprite belongs to: what clips it, fades it and zooms it.</summary>
@@ -35,9 +37,9 @@ public enum LauncherTrack
 
 /// <summary>
 /// One pictured piece of the Launcher. <see cref="Image"/> is where it sits at rest (track offset zero),
-/// including the room around it for its shadow; a liftable sprite grows 1.13× about
-/// (<see cref="PivotX"/>, <see cref="PivotY"/>) while focused, with <see cref="LiftShadow"/> fading in
-/// under it.
+/// including the room around it for its shadow; a liftable sprite grows about (<see cref="PivotX"/>,
+/// <see cref="PivotY"/>) while focused, to <see cref="Lift"/> (0: today's 1.13, <see cref="LauncherMotion.LiftScale"/>),
+/// with <see cref="LiftShadow"/> fading in under it.
 /// </summary>
 public sealed record LauncherSprite(
     string Id,
@@ -49,7 +51,12 @@ public sealed record LauncherSprite(
     float PivotY,
     StageImage? LiftShadow = null,
     FolderArt? Folder = null,
-    int Z = 0);
+    int Z = 0,
+    float Lift = 0f)
+{
+    /// <summary>The scale this sprite lifts to while focused.</summary>
+    public float LiftTo => Lift > 0f ? Lift : LauncherMotion.LiftScale;
+}
 
 /// <summary>A home folder's flap: closed, peeking (focused) or open (its folder zooming open).</summary>
 public sealed record LauncherFolderStateCommand(string Id, FolderArtState State, bool Animate) : StageCommand
@@ -70,7 +77,35 @@ public sealed record LauncherSpriteCommand(string Id, LauncherSprite? Sprite) : 
 /// (the track's offset is added every frame, so the frame rides a sliding page), and the pre-rendered glow
 /// for that size.
 /// </summary>
-public sealed record LauncherSelectorTarget(float X, float Y, float Width, float Height, float Radius, LauncherTrack Track, StageImage? Glow);
+public sealed record LauncherSelectorTarget(float X, float Y, float Width, float Height, float Radius, LauncherTrack Track, StageImage? Glow,
+    LauncherRingBands? Bands = null);
+
+/// <summary>
+/// The selector's bands, from its outer edge in: the first band runs from the edge to <see cref="Inset1"/>, the second to
+/// <see cref="Inset2"/>, the third to <see cref="Inset3"/>, each in its colour (premultiplied RGBA). A band whose insets are
+/// equal is not drawn. Today's look is <see cref="Classic"/> (a white keyline, the violet frame, a white keyline); the Big
+/// Type look draws one white band (M47 B3).
+/// </summary>
+public sealed record LauncherRingBands(float Inset1, float Inset2, float Inset3, Vector4 Band1, Vector4 Band2, Vector4 Band3)
+{
+    /// <summary>4 px white, 14 px violet (91, 88, 217), 4 px white: the nested Borders today's Avalonia selector draws.</summary>
+    public static LauncherRingBands Classic { get; } = new(4f, 18f, 22f, Vector4.One,
+        new Vector4(91f / 255f, 88f / 255f, 217f / 255f, 1f), Vector4.One);
+
+    /// <summary>One band of <paramref name="stroke"/> pixels in an opaque colour (premultiplied: alpha 1).</summary>
+    public static LauncherRingBands One(float stroke, float r, float g, float b) =>
+        new(stroke, stroke, stroke, new Vector4(r, g, b, 1f), Vector4.Zero, Vector4.Zero);
+}
+
+/// <summary>
+/// The Launcher's ground (M47 B3, the Big Type look): the screen is cleared to this flat colour, crossfading from the last one
+/// over <paramref name="FadeMilliseconds"/> (0 lands it). Never sent in today's look, whose ground is a pictured gradient.
+/// </summary>
+public sealed record LauncherGroundCommand(float R, float G, float B, float FadeMilliseconds) : StageCommand
+{
+    public override string? RetainKey => "ground";
+    public override StageCommand ForReplay() => this with { FadeMilliseconds = 0f };
+}
 
 /// <summary>Which sprite holds the focus (it lifts) and where the selector goes; null hides the selector.</summary>
 public sealed record LauncherFocusCommand(string? SpriteId, LauncherSelectorTarget? Selector, bool Instant = false) : StageCommand

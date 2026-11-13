@@ -48,6 +48,13 @@ public sealed class LauncherCompositor : INativeScene
     private Vector2 _zoomOrigin;
     private string? _zoomTile;
 
+    // The Big Type look's ground (M47 B3): a flat colour, crossfading from the last; null clears to today's light grey,
+    // under the pictured gradient.
+    private Vector3? _groundFrom;
+    private Vector3? _groundTo;
+    private float _groundStart = float.NegativeInfinity;
+    private float _groundFade;
+
     private float _lastFrame = float.NaN;
     private StageRect? _progress;
     private float _progressStart;
@@ -179,8 +186,27 @@ public sealed class LauncherCompositor : INativeScene
                 _bump = new Vector2(bump.DirectionX, bump.DirectionY);
                 _bumpStart = now;
                 break;
+            case LauncherGroundCommand ground:
+                var to = new Vector3(ground.R, ground.G, ground.B);
+                _groundFrom = _groundTo is null || ground.FadeMilliseconds <= 0f ? to : Ground(now);
+                _groundTo = to;
+                _groundStart = now;
+                _groundFade = ground.FadeMilliseconds;
+                break;
         }
     }
+
+    /// <summary>The ground's colour now (the crossfade is linear: B5 brings the flood).</summary>
+    private Vector3 Ground(float now)
+    {
+        if (_groundTo is not { } to)
+            return new Vector3(0.96f, 0.97f, 0.98f);
+        var from = _groundFrom ?? to;
+        var t = _groundFade <= 0f ? 1f : Math.Clamp((now - _groundStart) / _groundFade, 0f, 1f);
+        return from + ((to - from) * t);
+    }
+
+    private bool GroundFading(float now) => _groundTo is not null && _groundFade > 0f && now - _groundStart < _groundFade;
 
     private void ApplySprite(LauncherSpriteCommand command, float now)
     {
@@ -200,7 +226,7 @@ public sealed class LauncherCompositor : INativeScene
                 sprite.LiftShadow is { } shadow ? SpriteTextures.Upload(_gl, shadow.Pixels, repeat: false) : 0);
             if (sprite.Id == _focused && sprite.Liftable)
             {
-                state.LiftFrom = state.LiftTo = LauncherMotion.LiftScale;
+                state.LiftFrom = state.LiftTo = sprite.LiftTo;
             }
             if (sprite.Folder is { } art)
                 state.Folder = new FolderArtState2D(_gl, art, state.PendingState);
@@ -224,6 +250,9 @@ public sealed class LauncherCompositor : INativeScene
                 _gl.DeleteTexture(existing.Shadow);
             existing.Shadow = sprite.LiftShadow is { } shadow ? SpriteTextures.Upload(_gl, shadow.Pixels, repeat: false) : 0;
         }
+        // Re-pictured while lifted (a Big Type tile turns white when focused): it keeps its lift, at its own scale.
+        if (sprite.Id == _focused && sprite.Liftable && existing.LiftTo > 1f && existing.LiftTo != sprite.LiftTo)
+            existing.LiftTo = sprite.LiftTo;
         existing.Sprite = sprite;
     }
 
@@ -231,8 +260,8 @@ public sealed class LauncherCompositor : INativeScene
     {
         if (focus.SpriteId != _focused)
         {
-            SetLift(_focused, 1f, now, focus.Instant);
-            SetLift(focus.SpriteId, LauncherMotion.LiftScale, now, focus.Instant);
+            SetLift(_focused, null, now, focus.Instant);
+            SetLift(focus.SpriteId, lifted: true, now, focus.Instant);
             _focused = focus.SpriteId;
             _focusTime = focus.Instant ? float.NegativeInfinity : now;
         }
@@ -261,10 +290,11 @@ public sealed class LauncherCompositor : INativeScene
         }
     }
 
-    private void SetLift(string? id, float to, float now, bool instant)
+    private void SetLift(string? id, bool? lifted, float now, bool instant)
     {
         if (id is null || !_live.TryGetValue(id, out var state) || !state.Sprite.Liftable)
             return;
+        var to = lifted == true ? state.Sprite.LiftTo : 1f;
         state.LiftFrom = instant ? to : state.Lift(now);
         state.LiftTo = to;
         state.LiftStart = instant ? float.NegativeInfinity : now;
@@ -307,7 +337,9 @@ public sealed class LauncherCompositor : INativeScene
         _gl.Disable(EnableCap.ScissorTest);
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
-        _gl.ClearColor(0.96f, 0.97f, 0.98f, 1f);
+        var ground = Ground(now);
+        animating |= GroundFading(now);
+        _gl.ClearColor(ground.X, ground.Y, ground.Z, 1f);
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
         _gl.BindVertexArray(_vao);
         _gl.ActiveTexture(TextureUnit.Texture0);
@@ -596,6 +628,11 @@ public sealed class LauncherCompositor : INativeScene
         _ring.Set("uSize", new Vector2(w, h));
         _ring.Set("uRadius", Math.Max(0f, (float)_r.Value));
         _ring.Set("uFill", Vector4.Zero);
+        var bands = _target.Bands ?? LauncherRingBands.Classic;
+        _ring.Set("uInsets", new Vector3(bands.Inset1, bands.Inset2, bands.Inset3));
+        _ring.Set("uBand1", bands.Band1);
+        _ring.Set("uBand2", bands.Band2);
+        _ring.Set("uBand3", bands.Band3);
         _ring.Set("uOpacity", opacity);
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
         _sprites.Use();

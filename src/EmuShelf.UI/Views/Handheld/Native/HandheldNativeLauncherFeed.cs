@@ -60,6 +60,13 @@ internal sealed class HandheldNativeLauncherFeed
     private readonly Control _launchCover;
     private readonly Control _launchText;
     private readonly Control _launchProgress;
+    // Big Type's parts (M47 B3): the folder's name and count, the dock row's corners.
+    private readonly Control _btBackShot;
+    private readonly Control _btFolderCount;
+    private readonly Control _btSortShot;
+    private readonly Control _btSwap;
+    private readonly Control _btPage;
+    private Avalonia.Media.Color? _groundSent;
     private HandheldTitlePageViewModel? _title;
     private bool _launchPending;
 
@@ -108,6 +115,11 @@ internal sealed class HandheldNativeLauncherFeed
         _launchCover = Find("LaunchCoverShot");
         _launchText = Find("LaunchText");
         _launchProgress = Find("LaunchProgress");
+        _btBackShot = Find("BtBackShot");
+        _btFolderCount = Find("BtFolderCount");
+        _btSortShot = Find("BtSortShot");
+        _btSwap = Find("BtSwap");
+        _btPage = Find("BtPage");
         view.LayoutUpdated += (_, _) => Schedule();
         view.PropertyChanged += (_, e) =>
         {
@@ -407,21 +419,31 @@ internal sealed class HandheldNativeLauncherFeed
         _anchors.Clear();
 
         SendLayout();
-        Static("bg", PageWidth.ToString(System.Globalization.CultureInfo.InvariantCulture), present, () => Background());
-        Static("dock-shadow", "1", present, () => Sprite("dock-shadow", HandheldStageShots.Shot(_dockShadow, _canvas), LauncherGroup.Dock));
-        Static("dock-pill", "1", present, () =>
+        if (HandheldTokens.IsClassic)
         {
-            // The pill without its buttons (they are sprites of their own).
-            _dockItems.IsVisible = false;
-            try
+            Static("bg", PageWidth.ToString(System.Globalization.CultureInfo.InvariantCulture), present, () => Background());
+            Static("dock-shadow", "1", present, () => Sprite("dock-shadow", HandheldStageShots.Shot(_dockShadow, _canvas), LauncherGroup.Dock));
+            Static("dock-pill", "1", present, () =>
             {
-                return Sprite("dock-pill", HandheldStageShots.Shot(_dockPill, _canvas), LauncherGroup.Dock);
-            }
-            finally
-            {
-                _dockItems.IsVisible = true;
-            }
-        });
+                // The pill without its buttons (they are sprites of their own).
+                _dockItems.IsVisible = false;
+                try
+                {
+                    return Sprite("dock-pill", HandheldStageShots.Shot(_dockPill, _canvas), LauncherGroup.Dock);
+                }
+                finally
+                {
+                    _dockItems.IsVisible = true;
+                }
+            });
+        }
+        else
+        {
+            SyncGround(shell, instant: repictured || _catchUpPending);
+            Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
+            if (screen.IsPageCountShown)
+                Static("bt-page", screen.PageCountText, present, () => Sprite("bt-page", HandheldStageShots.Shot(_btPage, _canvas), LauncherGroup.Dock));
+        }
 
         SyncHome(shell, screen, present);
         SyncDots(screen, present);
@@ -513,6 +535,29 @@ internal sealed class HandheldNativeLauncherFeed
     private static LauncherSprite? Sprite(string id, StageImage? image, LauncherGroup group, LauncherTrack track = LauncherTrack.None, int z = 0) =>
         image is null ? null : new LauncherSprite(id, image, group, track, Liftable: false, 0, 0, Z: z);
 
+    /// <summary>
+    /// Big Type's ground (M47 B3): the native Launcher clears to the shell's colour for what is focused, the same value the
+    /// Avalonia Launcher's ground draws, so the hand-off to a sheet and back shows no change. It crossfades as the view's does.
+    /// </summary>
+    private void SyncGround(HandheldShellViewModel shell, bool instant)
+    {
+        var colour = shell.LauncherGround;
+        if (_groundSent == colour && !instant)
+            return;
+        var fade = _groundSent is null || instant ? 0f : (float)HandheldTokens.GroundFade.TotalMilliseconds;
+        _groundSent = colour;
+        // The view's brush transition interpolates in sRGB; so does this (the compositor writes sRGB values straight out).
+        _host.Post(new LauncherGroundCommand(colour.R / 255f, colour.G / 255f, colour.B / 255f, fade));
+    }
+
+    /// <summary>The ring for the look: today's three bands, or Big Type's one white band of <c>shape.RingStroke</c>.</summary>
+    private static LauncherRingBands? RingBands()
+    {
+        if (HandheldTokens.IsClassic || HandheldTokens.RingBand is not Avalonia.Media.ISolidColorBrush { Color: var band })
+            return null;
+        return LauncherRingBands.One((float)HandheldTokens.RingStroke, band.R / 255f, band.G / 255f, band.B / 255f);
+    }
+
     private LauncherSprite Background()
     {
         var plain = new Border
@@ -532,7 +577,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     // A liftable piece: its wrapper is pictured; it lifts about its focusable panel's centre.
     private void Liftable(string id, string key, Control wrapper, LauncherGroup group, LauncherTrack track, float columnShift,
-        HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null, int z = 0)
+        HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null, int z = 0, float lift = 0f)
     {
         if (wrapper is not Decorator { Child: Control panel } || !wrapper.IsVisible)
             return;
@@ -581,7 +626,7 @@ internal sealed class HandheldNativeLauncherFeed
             : liftShadow with { X = (float)topLeft.X + columnShift - 32, Y = (float)topLeft.Y - 16 };
         _sent[id] = key;
         _host.Post(new LauncherSpriteCommand(id, new LauncherSprite(id, image, group, track, Liftable: true,
-            (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z)));
+            (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z, lift)));
     }
 
     // A piece that could not be pictured asks for another sync: a later layout pass usually brings one anyway, but
@@ -623,9 +668,13 @@ internal sealed class HandheldNativeLauncherFeed
                 if (SlotContainer(page.Index, slot.Index) is not { } wrapper)
                     continue;
                 var id = $"h:{page.Index}:{slot.Index}";
-                var art = slot.IsFolder ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
+                var art = slot.IsFolder && HandheldTokens.IsClassic ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
                 var key = $"{slot.PictureKey}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
-                Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art);
+                // Big Type's flat tiles and empty slots change with focus (white with the colour as ink; a plus): their
+                // picture does too. A game's cover does not.
+                if (HandheldTokens.IsBigType && (slot.IsFlatTile || slot.IsEmpty))
+                    key += $"|{slot.IsFocused}";
+                Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art, lift: LiftOf(HandheldTokens.FocusScale));
                 // No flap state for a tile the native side doesn't have yet (its picture waits for a retry): it would be
                 // dropped there, and this side would think it sent.
                 if (art is null || !_sent.ContainsKey(id))
@@ -644,8 +693,14 @@ internal sealed class HandheldNativeLauncherFeed
         }
     }
 
+    // Today's sprites take the compositor's own lift (0 = 1.13); Big Type's give theirs.
+    private static float LiftOf(double scale) => HandheldTokens.IsClassic ? 0f : (float)scale;
+
     private void SyncDots(HandheldHomeScreenViewModel shell, HashSet<string> present)
     {
+        // Big Type has no dots, edge hints or page name: the page is the dock row's "1 / 2".
+        if (HandheldTokens.IsBigType)
+            return;
         // The edge hints fade with home, like the dots.
         if (shell.CanPageLeft)
             Static("edge-l", "1", present, () => Sprite("edge-l", HandheldStageShots.Shot(_edgeLeft, _canvas), LauncherGroup.Dots));
@@ -665,15 +720,28 @@ internal sealed class HandheldNativeLauncherFeed
     {
         if (shell.OpenFolder is not { } folder || !_folderPage.IsVisible)
             return;
-        Liftable("f-back", "1", _backShot, LauncherGroup.Folder, LauncherTrack.None, 0, present);
-        Liftable("f-sort", folder.SortLabel, _sortShot, LauncherGroup.Folder, LauncherTrack.None, 0, present);
-        Static("f-title", $"{folder.Name}|{folder.CountText}", present,
-            () => Sprite("f-title", HandheldStageShots.Shot(_folderTitle, _canvas), LauncherGroup.Folder));
+        if (HandheldTokens.IsClassic)
+        {
+            Liftable("f-back", "1", _backShot, LauncherGroup.Folder, LauncherTrack.None, 0, present);
+            Liftable("f-sort", folder.SortLabel, _sortShot, LauncherGroup.Folder, LauncherTrack.None, 0, present);
+            Static("f-title", $"{folder.Name}|{folder.CountText}", present,
+                () => Sprite("f-title", HandheldStageShots.Shot(_folderTitle, _canvas), LauncherGroup.Folder));
+        }
+        else
+        {
+            // The name is Back's place and the sort's value sits in the dock row's corner: the ring frames them, nothing lifts.
+            Liftable("f-back", folder.Name, _btBackShot, LauncherGroup.Folder, LauncherTrack.None, 0, present, lift: 1f);
+            Static("f-count", folder.CountNumber, present,
+                () => Sprite("f-count", HandheldStageShots.Shot(_btFolderCount, _canvas), LauncherGroup.Folder));
+            if (folder.CanSort)
+                Liftable("f-sort", folder.SortLabel, _btSortShot, LauncherGroup.Dock, LauncherTrack.None, 0, present, lift: 1f);
+        }
         if (folder.IsEmpty)
             Static("f-empty", "1", present, () => Sprite("f-empty", HandheldStageShots.Shot(_folderEmpty, _canvas), LauncherGroup.Folder));
 
         var shift = folder.WindowFirstColumn * ColumnPitch;
-        _liftShadow ??= LiftShadow();
+        if (HandheldTokens.IsClassic)
+            _liftShadow ??= LiftShadow();
         for (var i = 0; i < folder.VisibleTiles.Count; i++)
         {
             var tile = folder.VisibleTiles[i];
@@ -681,7 +749,10 @@ internal sealed class HandheldNativeLauncherFeed
             if ((_folderTiles.ContainerFromIndex(i) as ContentPresenter)?.Child is not Control wrapper || wrapper.Bounds.Width <= 0)
                 continue;
             var key = $"{Ref(tile.Cover)}|{tile.Title}|{tile.IsUnavailable}|{tile.IsSettings}|{tile.IsActivity}";
-            Liftable($"f:{tile.Index}", key, wrapper, LauncherGroup.Folder, LauncherTrack.Column, shift, present, _liftShadow);
+            if (HandheldTokens.IsBigType && tile.IsApp)
+                key += $"|{tile.IsFocused}";
+            Liftable($"f:{tile.Index}", key, wrapper, LauncherGroup.Folder, LauncherTrack.Column, shift, present,
+                HandheldTokens.IsClassic ? _liftShadow : null, lift: LiftOf(HandheldTokens.FocusScale));
         }
     }
 
@@ -697,7 +768,13 @@ internal sealed class HandheldNativeLauncherFeed
             if ((_dockItems.ContainerFromIndex(i) as ContentPresenter)?.Child is not Control wrapper)
                 continue;
             var key = $"{item.Kind}|{Ref(item.Slot?.Icon)}|{item.Slot?.IsEmpty}";
-            Liftable($"d:{i}", key, wrapper, LauncherGroup.Dock, LauncherTrack.None, 0, present);
+            // Big Type's All apps and menu buttons turn white with the ground as ink while focused.
+            if (HandheldTokens.IsBigType && !item.IsApp)
+            {
+                var ink = item.IsFocused && item.Ground is Avalonia.Media.ISolidColorBrush solid ? solid.Color.ToString() : "-";
+                key += $"|{item.IsFocused}|{ink}";
+            }
+            Liftable($"d:{i}", key, wrapper, LauncherGroup.Dock, LauncherTrack.None, 0, present, lift: LiftOf(HandheldTokens.DockFocusScale));
         }
     }
 
@@ -835,7 +912,8 @@ internal sealed class HandheldNativeLauncherFeed
     {
         var ring = anchor.GetVisualChildren().OfType<Border>().FirstOrDefault(border => border.Classes.Contains("ring"));
         var local = ring?.Bounds ?? new Rect(anchor.Bounds.Size).Inflate(16);
-        var lift = anchor.Classes.Contains("focusable") ? 1.13 : 1;
+        // Today's ring grows with the lift; Big Type's stays at its outset from the resting tile (M47 B3).
+        var lift = anchor.Classes.Contains("focusable") ? HandheldTokens.RingLift : 1;
         var cx = anchor.Bounds.Width / 2;
         var cy = anchor.Bounds.Height / 2;
         var lifted = new Rect(cx + ((local.X - cx) * lift), cy + ((local.Y - cy) * lift), local.Width * lift, local.Height * lift);
@@ -843,7 +921,7 @@ internal sealed class HandheldNativeLauncherFeed
             return null;
         var radius = (ring?.CornerRadius.TopLeft ?? 32) * lift;
         return new LauncherSelectorTarget((float)at.X + columnShift, (float)at.Y, (float)lifted.Width, (float)lifted.Height,
-            (float)radius, track, Glow(lifted.Width, lifted.Height, radius));
+            (float)radius, track, HandheldTokens.IsClassic ? Glow(lifted.Width, lifted.Height, radius) : null, RingBands());
     }
 
     private StageImage Glow(double width, double height, double radius)
