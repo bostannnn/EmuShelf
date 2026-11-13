@@ -14057,3 +14057,39 @@ Soul in PPSSPP, launched from Handheld mode (top screen). Usage access was grant
   it brought it back. It is in ROADMAP under M45.
 - **The drift swallowed a launch press twice.** Anything slower than 15 s between presses meets the drift. That is by
   design (decision 14), and a person reading a menu won't hit it. A script will.
+
+## 2026-11-13 — M45: a folder tile is never sent without its art
+
+The bug: on the Thor a home folder tile (PSP) was blank while unfocused, with not even an empty-slot outline, and
+came back when focused.
+
+**The likely path.**
+- A folder tile goes to the native Launcher as two things: a picture of its wrapper taken with the art hidden, which
+  is fully transparent for a folder, and the art as gliding parts (`HandheldFolderArtShots.Capture`).
+- `Capture` returns null when the art is hidden or not laid out. `HandheldNativeLauncherFeed.Liftable` still sent
+  the tile, with `Folder = null`, and marked its key as sent.
+- The native side then draws an empty picture. Nothing pictures that tile again until its key changes, and focus
+  changes it, because the peek covers are part of the key. That is exactly what was seen.
+
+**Not reproduced.** None of these brought it back on the Thor, with temporary logging of every failed capture, every
+removed home sprite and every surface rebuild:
+- the original 30 s scroll and the folder sequence, replayed;
+- 80 randomized visits that open and close the Start menu between moves, page flips and folder trips;
+- three times leaving the app and coming back.
+
+No capture failed, and the Launcher's surface was never rebuilt (hiding it for the menu keeps its GL context). So
+this fixes the one path known to produce the symptom; if the bug comes back, the cause is elsewhere.
+
+**The fix.**
+- If the art can't be captured, the feed keeps what the native side already has (the old picture and art) and does
+  not mark the key as sent.
+- It asks for another sync 100 ms later. That allows up to ten tries in a row; after that, the next change of any
+  kind tries again. A sync that defers nothing resets the count.
+- The flap state is not sent for a tile the native side doesn't have yet. It would be dropped there, and the feed
+  would think it had been sent.
+- Rejected: removing the sprite until the art can be pictured, which is what a failed picture of the wrapper already
+  does. It shows the same blank slot meanwhile, and it relies on some later layout pass to bring it back.
+
+**Test:** `NativeLauncher_FolderArtThatCannotBePictured_KeepsTheOldArtAndTriesAgain` hides a folder's art, focuses
+the folder (its look changes), and checks that the native side keeps the art. It then shows the art and checks the
+tile is pictured again with the covers and its flap peeking. It fails on the old code.

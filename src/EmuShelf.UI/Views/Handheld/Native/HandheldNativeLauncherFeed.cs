@@ -386,6 +386,7 @@ internal sealed class HandheldNativeLauncherFeed
     private void Sync()
     {
         _syncPending = false;
+        _retryRequested = false;
         // Never picture a view that is between windows (a swap detaches it before attaching it to the other display):
         // its pieces would be pictured from stale or stand-alone layout. Attaching lays it out, which syncs again.
         if (!_active || _shell is not { } shell || _screen is not { } screen || IsPaused || !_view.IsAttachedToVisualTree())
@@ -462,6 +463,8 @@ internal sealed class HandheldNativeLauncherFeed
             _catchUpPending = false;
             CaughtUp?.Invoke();
         }
+        if (!_retryRequested)
+            _retries = 0;
     }
 
     private LauncherLayoutCommand? _layoutSent;
@@ -545,6 +548,14 @@ internal sealed class HandheldNativeLauncherFeed
         if (folderArt is not null)
         {
             parts = HandheldFolderArtShots.Capture(folderArt, _canvas);
+            if (parts is not { Parts.Count: > 0 })
+            {
+                // The art can't be pictured just now (hidden, or not laid out yet). The tile without it is an empty
+                // picture, and once its key is marked sent nothing pictures it again until the tile's look changes:
+                // it would sit blank on home until focused. Keep what the native side has and try again shortly.
+                RetrySoon();
+                return;
+            }
             folderArt.IsVisible = false;
             try
             {
@@ -573,6 +584,27 @@ internal sealed class HandheldNativeLauncherFeed
             (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z)));
     }
 
+    // A piece that could not be pictured asks for another sync: a later layout pass usually brings one anyway, but
+    // nothing guarantees it. A few tries a short while apart, then the next change of any kind tries again.
+    private const int MaxRetries = 10;
+    private int _retries;
+    private bool _retryPending;
+    private bool _retryRequested;
+
+    private void RetrySoon()
+    {
+        _retryRequested = true;
+        if (_retryPending || _retries >= MaxRetries)
+            return;
+        _retryPending = true;
+        _retries++;
+        DispatcherTimer.RunOnce(() =>
+        {
+            _retryPending = false;
+            Schedule();
+        }, TimeSpan.FromMilliseconds(100));
+    }
+
     private void SyncHome(HandheldShellViewModel shell, HandheldHomeScreenViewModel screen, HashSet<string> present)
     {
         // Slots replaced by an edit or a move-mode step are not watched any longer.
@@ -594,7 +626,9 @@ internal sealed class HandheldNativeLauncherFeed
                 var art = slot.IsFolder ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
                 var key = $"{slot.PictureKey}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
                 Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art);
-                if (art is null)
+                // No flap state for a tile the native side doesn't have yet (its picture waits for a retry): it would be
+                // dropped there, and this side would think it sent.
+                if (art is null || !_sent.ContainsKey(id))
                     continue;
                 // The flap peeks while the folder is focused and swings open with its folder.
                 var open = folderAt is { } at && at.Slot == slot.Index && at.Page == page.Index;

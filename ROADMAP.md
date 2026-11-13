@@ -2556,9 +2556,13 @@ Played. Pad input already reaches one dispatcher from both displays
       H6d's real fresh install on the Thor (cleared data or a second device: the pre-boot steps, then Handheld mode, the
       wizard and a playable home, end to end; the device check faked "fresh" in the owner's settings), its empty library on
       the device (checked headlessly only), and the owner's ear on the five sounds (character and level).
-- [ ] **A home tile goes undrawn until focused.** Found 2026-11-13 on the Thor: after a burst of scrolling that
-      flipped to page 2 and back, and the GameCube folder opened and closed, the PSP tile (row 1, column 6) was blank
-      while unfocused, not even an empty-slot outline; focusing it brought it back. Not reproduced or investigated yet.
+- [x] **A home tile goes undrawn until focused.** ✅ (2026-11-13; `DECISIONS.md` 2026-11-13 "M45: a folder tile is
+      never sent without its art".) Found on the Thor: after a burst of scrolling that flipped to page 2 and back, and
+      the GameCube folder opened and closed, the PSP tile (row 1, column 6) was blank while unfocused, not even an
+      empty-slot outline; focusing it brought it back. Not reproduced since (the scroll and folder sequence replayed,
+      80 randomized menu visits, three leave-and-return cycles). Fixed the one path that gives exactly this: a folder
+      tile pictured while its art could not be captured went to the native Launcher without it, marked sent. If it
+      comes back, the cause is elsewhere.
 - **Later, not part of M45:** square icon art; themes and widgets; grid-size options; a
       single-screen fallback; other dual-screen devices; whether the companion steps aside for
       DS/3DS emulators that draw their own second screen (check melonDS / Azahar on the Thor first).
