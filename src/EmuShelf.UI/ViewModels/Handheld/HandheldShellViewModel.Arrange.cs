@@ -319,8 +319,7 @@ public sealed partial class HandheldShellViewModel
         ?? OpenFolder?.Items.FirstOrDefault(tile => tile.Entry.Id == gameId)?.Cover
         ?? (TitlePage?.Entry.Id == gameId ? TitlePage.Cover : null);
 
-    private static Avalonia.Media.IBrush BrushOf(string color) =>
-        Avalonia.Media.Color.TryParse(color, out var parsed) ? new Avalonia.Media.SolidColorBrush(parsed) : Avalonia.Media.Brushes.Gray;
+    private static Avalonia.Media.IBrush BrushOf(string color) => HandheldTokens.ConsoleBrush(color);
 
     private void ConfirmDelete(string folderId)
     {

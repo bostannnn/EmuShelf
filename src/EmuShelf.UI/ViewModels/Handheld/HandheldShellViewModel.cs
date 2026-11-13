@@ -1421,7 +1421,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldFolderKind.Search => HandheldGlyph.Search,
             _ => HandheldGlyph.None,
         };
-        Stage.AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        Stage.AccentBrush = HandheldTokens.ConsoleBrush(source.AccentColor);
         ApplyPeek(source, Stage);
     }
 
@@ -1429,11 +1429,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The backdrop behind your folders and Recent: the tile grid, in the folder's colour (as in the mockup).</summary>
     internal static HandheldBackdrop? FolderBackdrop(string color) =>
-        Color.TryParse(color, out var parsed) ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
+        HandheldTokens.ConsoleColour(color) is { } parsed ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
 
     /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
-        platform is not null && Color.TryParse(platform.AccentColor, out var color) ? new HandheldBackdrop(color, platform.Era, platform.Backdrops) : null;
+        platform is not null && HandheldTokens.ConsoleColour(platform.AccentColor) is { } color
+            ? new HandheldBackdrop(color, platform.Era, platform.Backdrops)
+            : null;
 
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {
@@ -1445,7 +1447,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        if (platform is not null && Color.TryParse(platform.AccentColor, out var accent))
+        if (HandheldTokens.ConsoleColour(platform?.AccentColor) is { } accent)
         {
             Stage.MediumAccent = accent;
         }

@@ -26,10 +26,10 @@ namespace EmuShelf.App.Views.Handheld;
 /// </summary>
 internal sealed class HandheldNativeLauncherFeed
 {
-    private const float ColumnPitch = 264;
-    private const float DotPitch = 30;
-    private const float DotsShift = -17;
-    private const double GlowBlur = 28;
+    private static float ColumnPitch => (float)HandheldTokens.FolderPitch;
+    private static float DotPitch => (float)(HandheldTokens.PageDotWidth + HandheldTokens.PageDotGap);
+    private static float DotsShift => (float)(-(HandheldTokens.PageIndicatorWidth - HandheldTokens.PageDotWidth) / 2);
+    private static double GlowBlur => HandheldTokens.ClassicRingGlowBlur;
 
     private readonly Control _view;
     private readonly HandheldLauncherMotion _motion;
@@ -523,7 +523,7 @@ internal sealed class HandheldNativeLauncherFeed
             {
                 StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
                 EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.Parse("#FAFBFD"), 0), new GradientStop(Color.Parse("#E4E8EF"), 1) },
+                GradientStops = { new GradientStop(HandheldTokens.ClassicGroundTop, 0), new GradientStop(HandheldTokens.ClassicGroundBottom, 1) },
             },
         };
         return new LauncherSprite("bg", HandheldStageShots.Picture(plain, 0, 0, PageWidth, 1080), LauncherGroup.Background,
@@ -794,7 +794,7 @@ internal sealed class HandheldNativeLauncherFeed
             {
                 StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
                 EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.Parse("#FAFBFD"), 0), new GradientStop(Color.Parse("#E4E8EF"), 1) },
+                GradientStops = { new GradientStop(HandheldTokens.ClassicGroundTop, 0), new GradientStop(HandheldTokens.ClassicGroundBottom, 1) },
             },
         });
         // The platform's colour as a soft wash from the top, as the Title layer draws it.
@@ -806,7 +806,7 @@ internal sealed class HandheldNativeLauncherFeed
             {
                 StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
                 EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-                GradientStops = { new GradientStop(Color.Parse("#FF000000"), 0), new GradientStop(Color.Parse("#00000000"), 0.7) },
+                GradientStops = { new GradientStop(HandheldTokens.ClassicWashOpaque, 0), new GradientStop(HandheldTokens.ClassicWashClear, 0.7) },
             },
         });
         return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, PageWidth, 1080), LauncherGroup.Title,
@@ -854,7 +854,7 @@ internal sealed class HandheldNativeLauncherFeed
         var shadow = new HandheldShadow
         {
             Blur = GlowBlur,
-            Color = Color.Parse("#B05B58D9"),
+            Color = HandheldTokens.ClassicRingGlow,
             Radius = radius,
             Width = Math.Round(width) + (2 * GlowBlur),
             Height = Math.Round(height) + (2 * GlowBlur),
@@ -869,8 +869,13 @@ internal sealed class HandheldNativeLauncherFeed
     /// <summary>A game tile's deeper shadow while lifted (the XAML's `lift` shadow, which never shows here).</summary>
     private static StageImage LiftShadow()
     {
-        var shadow = new HandheldShadow { Radius = 56, Blur = 32, Color = Color.Parse("#33000000"), Width = 296, Height = 296, Filled = true };
-        return HandheldStageShots.Picture(shadow, 0, 0, 296, 296);
+        var side = HandheldTokens.TileFolder + (2 * HandheldTokens.ClassicLiftShadowBlur);
+        var shadow = new HandheldShadow
+        {
+            Radius = HandheldTokens.ClassicFolderTileShadowRadius, Blur = HandheldTokens.ClassicLiftShadowBlur,
+            Color = HandheldTokens.ClassicLiftShadow, Width = side, Height = side, Filled = true,
+        };
+        return HandheldStageShots.Picture(shadow, 0, 0, (float)side, (float)side);
     }
 
     private void Watch(INotifyPropertyChanged item)

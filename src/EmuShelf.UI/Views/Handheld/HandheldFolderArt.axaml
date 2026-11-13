@@ -38,9 +38,9 @@
     <Style Selector="Border.peek-cover">
       <Setter Property="Width" Value="148" />
       <Setter Property="Height" Value="208" />
-      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.PeekCoverRadius}" />
       <Setter Property="ClipToBounds" Value="True" />
-      <Setter Property="Background" Value="#D5D9E4" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.CoverPlaceholder}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Top" />
       <Setter Property="Margin" Value="0,24,0,0" />
@@ -76,10 +76,10 @@
   <!-- Not clipped: the shadow spills past the folder's own square. -->
   <Viewbox Stretch="Uniform" ClipToBounds="False">
     <Panel x:Name="ArtRoot" Width="416" Height="416" ClipToBounds="False">
-      <vh:HandheldShadow x:Name="ArtShadow" Radius="72" Blur="28" Margin="-16,26,-16,-36" Color="#33000000" Filled="True" />
+      <vh:HandheldShadow x:Name="ArtShadow" Radius="{x:Static vm:HandheldTokens.ClassicFolderShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicFolderShadowBlur}" Margin="-16,26,-16,-36" Color="{x:Static vm:HandheldTokens.ClassicFolderShadow}" Filled="True" />
       <!-- Back plate: the platform colour, darker. -->
-      <Border x:Name="ArtBack" Margin="12,54,12,16" CornerRadius="76" Background="{Binding AccentBrush}">
-        <Border CornerRadius="76" Background="#47141830" />
+      <Border x:Name="ArtBack" Margin="12,54,12,16" CornerRadius="{x:Static vm:HandheldTokens.FolderBackRadius}" Background="{Binding AccentBrush}">
+        <Border CornerRadius="{x:Static vm:HandheldTokens.FolderBackRadius}" Background="{x:Static vm:HandheldTokens.ClassicFolderBackShade}" />
       </Border>
       <!-- The covers inside (none drawn until they are decoded). -->
       <Panel x:Name="CoverPanel" Margin="34,16,34,0" Height="276" VerticalAlignment="Top">
@@ -94,24 +94,24 @@
         </Border>
       </Panel>
       <!-- Front flap: the folder's face, hinged at the bottom. -->
-      <Border x:Name="ArtFront" Classes="front" Margin="12,112,12,16" CornerRadius="72" Background="{Binding AccentBrush}">
+      <Border x:Name="ArtFront" Classes="front" Margin="12,112,12,16" CornerRadius="{x:Static vm:HandheldTokens.FolderFlapRadius}" Background="{Binding AccentBrush}">
         <Grid>
-          <Border CornerRadius="72">
+          <Border CornerRadius="{x:Static vm:HandheldTokens.FolderFlapRadius}">
             <Border.Background>
               <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-                <GradientStop Offset="0" Color="#5CFFFFFF" />
-                <GradientStop Offset="0.75" Color="#00FFFFFF" />
+                <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicFlapGlossTop}" />
+                <GradientStop Offset="0.75" Color="{x:Static vm:HandheldTokens.ClassicFlapGlossClear}" />
               </LinearGradientBrush>
             </Border.Background>
           </Border>
           <!-- The flap's top edge catches the light. -->
-          <Border CornerRadius="72" BorderBrush="#73FFFFFF" BorderThickness="0,3,0,0" />
+          <Border CornerRadius="{x:Static vm:HandheldTokens.FolderFlapRadius}" BorderBrush="{x:Static vm:HandheldTokens.ClassicFlapEdge}" BorderThickness="0,3,0,0" />
           <Viewbox Stretch="Uniform" StretchDirection="DownOnly" Margin="48,24">
-            <TextBlock Text="{Binding Monogram}" FontSize="112" FontWeight="SemiBold" Foreground="White" />
+            <TextBlock Text="{Binding Monogram}" FontSize="{x:Static vm:HandheldTokens.Monogram}" FontWeight="{x:Static vm:HandheldTokens.MonogramWeight}" Foreground="{x:Static vm:HandheldTokens.OnFolder}" />
           </Viewbox>
           <!-- Your folders and Recent: a glyph instead of a monogram, so they read as yours at a glance (decision 7). -->
           <PathIcon Data="{Binding FolderGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
-                    IsVisible="{Binding HasFolderGlyph}" Width="128" Height="128" Foreground="White" />
+                    IsVisible="{Binding HasFolderGlyph}" Width="128" Height="128" Foreground="{x:Static vm:HandheldTokens.OnFolder}" />
         </Grid>
       </Border>
     </Panel>

@@ -18,26 +18,26 @@
   <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
   <UserControl.Background>
     <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-      <GradientStop Offset="0" Color="#F5F6F9" />
-      <GradientStop Offset="1" Color="#E1E5EC" />
+      <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicStageGroundTop}" />
+      <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicStageGroundBottom}" />
     </LinearGradientBrush>
   </UserControl.Background>
 
   <UserControl.Styles>
     <!-- Corner pills: one height, one padding, one type size. -->
     <Style Selector="Border.pill">
-      <Setter Property="Background" Value="#E6FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicPillFill}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="32" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicPillRadius}" />
       <Setter Property="Height" Value="64" />
       <Setter Property="Padding" Value="24,0" />
-      <Setter Property="BoxShadow" Value="0 4 16 0 #14000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicPillShadow}" />
     </Style>
     <Style Selector="TextBlock.pill-text">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.StageCorner}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.StageCornerWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.StageInk}" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
@@ -137,47 +137,47 @@
       <Setter Property="Height" Value="240" />
     </Style>
     <Style Selector="TextBlock.panel-value">
-      <Setter Property="Foreground" Value="#5B58D9" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="TextBlock.panel-value.warning">
-      <Setter Property="Foreground" Value="#B4531A" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <!-- The app's messages (M45 H6c): the pill's look, two lines at most, marked by what kind of message it is. -->
     <Style Selector="Border.toast">
-      <Setter Property="Background" Value="#F2FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicToastFill}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="32" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicPillRadius}" />
       <Setter Property="MinHeight" Value="64" />
       <Setter Property="Padding" Value="24,12,32,12" />
-      <Setter Property="BoxShadow" Value="0 4 16 0 #14000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicPillShadow}" />
       <Setter Property="MaxWidth" Value="1240" />
     </Style>
     <Style Selector="Border.toast.error">
-      <Setter Property="Background" Value="#FFFFF4EC" />
-      <Setter Property="BorderBrush" Value="#59B4531A" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicToastErrorFill}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicToastErrorEdge}" />
     </Style>
     <Style Selector="Border.toast PathIcon">
-      <Setter Property="Foreground" Value="#5B58D9" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.toast.error PathIcon">
-      <Setter Property="Foreground" Value="#B4531A" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <Style Selector="Grid.narrow Border.toast">
       <Setter Property="MaxWidth" Value="1144" />
     </Style>
     <!-- In styles, not on the element: a value set on the element would beat the warning style. -->
     <Style Selector="TextBlock.setting-value">
-      <Setter Property="Foreground" Value="#5B58D9" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="TextBlock.setting-value.warning">
-      <Setter Property="Foreground" Value="#B4531A" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <Style Selector="Border.button-glyph">
-      <Setter Property="Width" Value="40" />
-      <Setter Property="Height" Value="40" />
-      <Setter Property="CornerRadius" Value="20" />
-      <Setter Property="Background" Value="#4B5274" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageHintGlyph}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageHintGlyph}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.StageHintGlyphRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.HintGlyphFill}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </UserControl.Styles>
@@ -196,17 +196,17 @@
     <Border>
       <Border.Background>
         <LinearGradientBrush StartPoint="0%,50%" EndPoint="100%,50%">
-          <GradientStop Offset="0" Color="#9E080A14" />
-          <GradientStop Offset="0.52" Color="#2E080A14" />
-          <GradientStop Offset="1" Color="#00080A14" />
+          <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicHeroVeilLeft}" />
+          <GradientStop Offset="0.52" Color="{x:Static vm:HandheldTokens.ClassicHeroVeilMid}" />
+          <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicHeroVeilClear}" />
         </LinearGradientBrush>
       </Border.Background>
     </Border>
     <Border>
       <Border.Background>
         <LinearGradientBrush StartPoint="50%,100%" EndPoint="50%,0%">
-          <GradientStop Offset="0" Color="#8C080A14" />
-          <GradientStop Offset="0.42" Color="#00080A14" />
+          <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicHeroVeilFoot}" />
+          <GradientStop Offset="0.42" Color="{x:Static vm:HandheldTokens.ClassicHeroVeilClear}" />
         </LinearGradientBrush>
       </Border.Background>
     </Border>
@@ -223,26 +223,26 @@
           <Image Source="{Binding Stage.Logo}" IsVisible="{Binding Stage.HasLogo}" Stretch="Uniform"
                  HorizontalAlignment="Left" VerticalAlignment="Center">
             <Image.Effect>
-              <DropShadowEffect OffsetX="0" OffsetY="10" BlurRadius="26" Color="#8C000000" />
+              <DropShadowEffect OffsetX="0" OffsetY="10" BlurRadius="{x:Static vm:HandheldTokens.ClassicHeroTextShadowBlur}" Color="{x:Static vm:HandheldTokens.ClassicHeroTextShadow}" />
             </Image.Effect>
           </Image>
-          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding !Stage.HasLogo}" FontSize="96" FontWeight="SemiBold"
-                     Foreground="White" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
+          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding !Stage.HasLogo}" FontSize="{x:Static vm:HandheldTokens.HeroTitle}" FontWeight="{x:Static vm:HandheldTokens.HeroWeight}"
+                     Foreground="{x:Static vm:HandheldTokens.OnHero}" TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis"
                      VerticalAlignment="Center" />
         </Panel>
         <StackPanel x:Name="HeroMeta" HorizontalAlignment="Left" VerticalAlignment="Bottom" Spacing="8">
           <!-- The idle drift (M45 H6d) says why this game is on screen. -->
-          <TextBlock Text="Recently played" IsVisible="{Binding Stage.IsDrift}" FontSize="30" FontWeight="SemiBold"
-                     Foreground="#D9FFFFFF" />
-          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding Stage.HasLogo}" FontSize="40" FontWeight="SemiBold"
-                     Foreground="White" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="Recently played" IsVisible="{Binding Stage.IsDrift}" FontSize="{x:Static vm:HandheldTokens.HeroEyebrow}" FontWeight="{x:Static vm:HandheldTokens.HeroWeight}"
+                     Foreground="{x:Static vm:HandheldTokens.OnHeroMuted}" />
+          <TextBlock Text="{Binding Stage.Title}" IsVisible="{Binding Stage.HasLogo}" FontSize="{x:Static vm:HandheldTokens.HeroLogoTitle}" FontWeight="{x:Static vm:HandheldTokens.HeroWeight}"
+                     Foreground="{x:Static vm:HandheldTokens.OnHero}" TextTrimming="CharacterEllipsis" />
           <StackPanel Orientation="Horizontal" Spacing="24">
             <StackPanel Orientation="Horizontal" Spacing="10" IsVisible="{Binding Stage.HasAchievements}">
-              <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="34" Height="34" Foreground="#F2AE2E" />
-              <TextBlock Text="{Binding Stage.AchievementText}" FontSize="32" FontWeight="SemiBold" Foreground="White"
+              <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="34" Height="34" Foreground="{x:Static vm:HandheldTokens.TrophyBright}" />
+              <TextBlock Text="{Binding Stage.AchievementText}" FontSize="{x:Static vm:HandheldTokens.HeroLine}" FontWeight="{x:Static vm:HandheldTokens.HeroWeight}" Foreground="{x:Static vm:HandheldTokens.OnHero}"
                          VerticalAlignment="Center" FontFeatures="+tnum" />
             </StackPanel>
-            <TextBlock Text="{Binding Stage.Subtitle}" FontSize="32" Foreground="#E6FFFFFF" VerticalAlignment="Center"
+            <TextBlock Text="{Binding Stage.Subtitle}" FontSize="{x:Static vm:HandheldTokens.HeroLine}" Foreground="{x:Static vm:HandheldTokens.OnHeroSoft}" VerticalAlignment="Center"
                        TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
           </StackPanel>
         </StackPanel>
@@ -273,14 +273,14 @@
                                    Yaw="{Binding Stage.MediumYaw}" Pitch="{Binding Stage.MediumPitch}" />
           <Border IsVisible="{Binding Stage.HasFlatCover}">
           <Panel>
-          <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="24" ClipToBounds="True"
-                  BoxShadow="0 28 64 0 #33000000" MaxHeight="640" MaxWidth="960">
+          <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageArtRadius}" ClipToBounds="True"
+                  BoxShadow="{x:Static vm:HandheldTokens.ClassicStageArtShadow}" MaxHeight="640" MaxWidth="960">
             <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
           </Border>
           <!-- No cover yet (or none at all): a finished-looking card with the title, not an empty hole. -->
-          <Border IsVisible="{Binding !Stage.HasArt}" Width="448" Height="608" CornerRadius="24"
-                  Background="#D5D9E4" BoxShadow="0 28 64 0 #29000000">
-            <TextBlock Text="{Binding Stage.Title}" FontSize="40" FontWeight="SemiBold" Foreground="#5B6176"
+          <Border IsVisible="{Binding !Stage.HasArt}" Width="448" Height="608" CornerRadius="{x:Static vm:HandheldTokens.StageArtRadius}"
+                  Background="{x:Static vm:HandheldTokens.CoverPlaceholder}" BoxShadow="{x:Static vm:HandheldTokens.ClassicStagePlaceholderShadow}">
+            <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.StageCoverTitle}" FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}"
                        TextWrapping="Wrap" TextAlignment="Center" Margin="40"
                        HorizontalAlignment="Center" VerticalAlignment="Center" />
           </Border>
@@ -288,60 +288,60 @@
           </Border>
         </Panel>
 
-        <Border IsVisible="{Binding Stage.IsApp}" Width="384" Height="384" CornerRadius="96" ClipToBounds="True"
-                Background="#FFFFFF" BoxShadow="0 24 56 0 #2E000000">
+        <Border IsVisible="{Binding Stage.IsApp}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}" ClipToBounds="True"
+                Background="{x:Static vm:HandheldTokens.ClassicSurface}" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageAppShadow}">
           <Image Source="{Binding Stage.AppIcon}" Stretch="Uniform" Margin="32" />
         </Border>
 
         <!-- The Settings tile (decision 18): its glyph on the indigo accent, the way a dock app shows its icon. -->
-        <Border IsVisible="{Binding Stage.IsSettingsTile}" Width="384" Height="384" CornerRadius="96"
-                BoxShadow="0 24 56 0 #405B58D9">
+        <Border IsVisible="{Binding Stage.IsSettingsTile}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}"
+                BoxShadow="{x:Static vm:HandheldTokens.ClassicStageSettingsShadow}">
           <Border.Background>
             <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-              <GradientStop Offset="0" Color="#6865DE" />
-              <GradientStop Offset="1" Color="#5450CF" />
+              <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicSettingsFaceTop}" />
+              <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicSettingsFaceBottom}" />
             </LinearGradientBrush>
           </Border.Background>
-          <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="176" Height="176" Foreground="White" />
+          <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="176" Height="176" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
         </Border>
 
         <!-- The Activity tile (M46 P4): its glyph on its teal, as the Settings tile shows on the accent. -->
-        <Border IsVisible="{Binding Stage.IsActivityTile}" Width="384" Height="384" CornerRadius="96"
-                BoxShadow="0 24 56 0 #4026918A">
+        <Border IsVisible="{Binding Stage.IsActivityTile}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}"
+                BoxShadow="{x:Static vm:HandheldTokens.ClassicStageActivityShadow}">
           <Border.Background>
             <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-              <GradientStop Offset="0" Color="#33AE9F" />
-              <GradientStop Offset="1" Color="#26918A" />
+              <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicActivityFaceTop}" />
+              <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicActivityFaceBottom}" />
             </LinearGradientBrush>
           </Border.Background>
-          <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="176" Height="176" Foreground="White" />
+          <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="176" Height="176" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
         </Border>
 
         <!--
           Settings open (M45 H6a): the detail half of its master-detail. Where the focused row sits, what it is, its value,
           its description, and the section's status line (a scan's progress, an account) when there is one.
         -->
-        <Border x:Name="SettingCard" IsVisible="{Binding Stage.IsSetting}" MinHeight="420" CornerRadius="56"
-                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 24 56 0 #1F000000"
+        <Border x:Name="SettingCard" IsVisible="{Binding Stage.IsSetting}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
+                Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageCardShadow}"
                 Padding="72,56">
           <StackPanel Spacing="18">
             <StackPanel Orientation="Horizontal" Spacing="16">
-              <Border Width="56" Height="56" CornerRadius="16" Background="#5B58D9" VerticalAlignment="Center">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="32" Height="32" Foreground="White" />
+              <Border Width="56" Height="56" CornerRadius="{x:Static vm:HandheldTokens.StageCardGlyphRadius}" Background="{x:Static vm:HandheldTokens.ClassicAccent}" VerticalAlignment="Center">
+                <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="32" Height="32" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
               </Border>
-              <TextBlock Text="{Binding Stage.SettingEyebrow}" FontSize="30" FontWeight="SemiBold" Foreground="#5B6176"
+              <TextBlock Text="{Binding Stage.SettingEyebrow}" FontSize="{x:Static vm:HandheldTokens.CardEyebrow}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}"
                          VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
             </StackPanel>
-            <TextBlock Text="{Binding Stage.Title}" FontSize="64" FontWeight="SemiBold" Foreground="#1C2033"
+            <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.CardTitle}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}" Foreground="{x:Static vm:HandheldTokens.StageInk}"
                        TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
             <TextBlock Classes="setting-value" Classes.warning="{Binding Stage.IsSettingWarning}" Text="{Binding Stage.SettingValue}"
-                       IsVisible="{Binding Stage.HasSettingValue}" FontSize="44" FontWeight="SemiBold"
+                       IsVisible="{Binding Stage.HasSettingValue}" FontSize="{x:Static vm:HandheldTokens.CardValue}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}"
                        TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
-            <TextBlock Text="{Binding Stage.SettingDescription}" IsVisible="{Binding Stage.HasSettingDescription}" FontSize="32"
-                       Foreground="#4B5274" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="44" />
-            <Border IsVisible="{Binding Stage.HasSettingStatus}" Background="#F2F4F8" CornerRadius="20" Padding="24,14"
+            <TextBlock Text="{Binding Stage.SettingDescription}" IsVisible="{Binding Stage.HasSettingDescription}" FontSize="{x:Static vm:HandheldTokens.CardDescription}"
+                       Foreground="{x:Static vm:HandheldTokens.StageInkSoft}" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="{x:Static vm:HandheldTokens.CardDescriptionLineHeight}" />
+            <Border IsVisible="{Binding Stage.HasSettingStatus}" Background="{x:Static vm:HandheldTokens.ClassicCardInsetFill}" CornerRadius="{x:Static vm:HandheldTokens.CardInsetRadius}" Padding="24,14"
                     Margin="0,6,0,0" HorizontalAlignment="Left">
-              <TextBlock Text="{Binding Stage.SettingStatus}" FontSize="26" Foreground="#4B5274" TextWrapping="Wrap" MaxLines="3"
+              <TextBlock Text="{Binding Stage.SettingStatus}" FontSize="{x:Static vm:HandheldTokens.CardStatus}" Foreground="{x:Static vm:HandheldTokens.StageInkSoft}" TextWrapping="Wrap" MaxLines="3"
                          TextTrimming="CharacterEllipsis" />
             </Border>
           </StackPanel>
@@ -351,12 +351,12 @@
           A panel open (M45 H6c): the scraper's field or preview, a cover found on the web, an achievement's badge, Search's
           matches fanned out, a title as typed. Where it is, what it is, its value large, a description, a status line.
         -->
-        <Border x:Name="PanelCard" IsVisible="{Binding Stage.IsPanel}" MinHeight="420" CornerRadius="56"
-                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 24 56 0 #1F000000"
+        <Border x:Name="PanelCard" IsVisible="{Binding Stage.IsPanel}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
+                Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageCardShadow}"
                 Padding="64,52">
           <Grid ColumnDefinitions="Auto,*" DataContext="{Binding Stage.PanelCard}" x:DataType="vm:HandheldPanelCard">
             <Border Classes="panel-picture" Classes.square="{Binding IsSquareImage}" IsVisible="{Binding HasImage}"
-                    CornerRadius="28" ClipToBounds="True" Background="#EEF0F5" Margin="0,0,56,0" VerticalAlignment="Center">
+                    CornerRadius="{x:Static vm:HandheldTokens.PanelPictureRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.ClassicPictureFill}" Margin="0,0,56,0" VerticalAlignment="Center">
               <Image Source="{Binding Image}" Stretch="Uniform" />
             </Border>
             <StackPanel Grid.Column="1" Spacing="18" VerticalAlignment="Center">
@@ -369,8 +369,8 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:HandheldFanCover">
-                    <Border Width="172" Height="236" CornerRadius="20" ClipToBounds="True" Background="#D5D9E4"
-                            BorderBrush="#FFFFFF" BorderThickness="6" BoxShadow="0 12 28 0 #2E000000"
+                    <Border Width="172" Height="236" CornerRadius="{x:Static vm:HandheldTokens.FanCoverRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}"
+                            BorderBrush="{x:Static vm:HandheldTokens.ClassicEdge}" BorderThickness="6" BoxShadow="{x:Static vm:HandheldTokens.ClassicFanCoverShadow}"
                             RenderTransform="{Binding Transform}">
                       <Image Source="{Binding Cover}" Stretch="UniformToFill" />
                     </Border>
@@ -378,29 +378,29 @@
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
               <StackPanel Orientation="Horizontal" Spacing="16">
-                <Border Width="56" Height="56" CornerRadius="16" Background="#5B58D9" VerticalAlignment="Center"
+                <Border Width="56" Height="56" CornerRadius="{x:Static vm:HandheldTokens.StageCardGlyphRadius}" Background="{x:Static vm:HandheldTokens.ClassicAccent}" VerticalAlignment="Center"
                         IsVisible="{Binding HasGlyph}">
                   <PathIcon Data="{Binding Glyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}" Width="32" Height="32"
-                            Foreground="White" />
+                            Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                 </Border>
-                <TextBlock Text="{Binding Eyebrow}" FontSize="30" FontWeight="SemiBold" Foreground="#5B6176"
+                <TextBlock Text="{Binding Eyebrow}" FontSize="{x:Static vm:HandheldTokens.CardEyebrow}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="1100" />
               </StackPanel>
-              <TextBlock Text="{Binding Title}" FontSize="60" FontWeight="SemiBold" Foreground="#1C2033"
+              <TextBlock Text="{Binding Title}" FontSize="{x:Static vm:HandheldTokens.PanelCardTitle}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}" Foreground="{x:Static vm:HandheldTokens.StageInk}"
                          TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" />
               <TextBlock Classes="panel-value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}"
-                         IsVisible="{Binding HasValue}" FontSize="44" FontWeight="SemiBold"
+                         IsVisible="{Binding HasValue}" FontSize="{x:Static vm:HandheldTokens.CardValue}" FontWeight="{x:Static vm:HandheldTokens.CardWeight}"
                          TextWrapping="Wrap" MaxLines="2" TextTrimming="CharacterEllipsis" FontFeatures="+tnum" />
-              <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}" FontSize="32"
-                         Foreground="#4B5274" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="44" />
+              <TextBlock Text="{Binding Description}" IsVisible="{Binding HasDescription}" FontSize="{x:Static vm:HandheldTokens.CardDescription}"
+                         Foreground="{x:Static vm:HandheldTokens.StageInkSoft}" TextWrapping="Wrap" MaxLines="5" TextTrimming="CharacterEllipsis" LineHeight="{x:Static vm:HandheldTokens.CardDescriptionLineHeight}" />
               <!-- A run's progress (the batch scraper): a static bar, pictured once per step. -->
-              <Border IsVisible="{Binding HasProgress}" Height="16" CornerRadius="8" Background="#E4E8EF" ClipToBounds="True">
+              <Border IsVisible="{Binding HasProgress}" Height="16" CornerRadius="{x:Static vm:HandheldTokens.CardProgressRadius}" Background="{x:Static vm:HandheldTokens.CardProgressTrack}" ClipToBounds="True">
                 <ProgressBar Minimum="0" Maximum="100" Value="{Binding ProgressPercent}" Height="16" MinHeight="16"
-                             CornerRadius="8" Background="Transparent" Foreground="#5B58D9" />
+                             CornerRadius="{x:Static vm:HandheldTokens.CardProgressRadius}" Background="Transparent" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}" />
               </Border>
-              <Border IsVisible="{Binding HasStatus}" Background="#F2F4F8" CornerRadius="20" Padding="24,14"
+              <Border IsVisible="{Binding HasStatus}" Background="{x:Static vm:HandheldTokens.ClassicCardInsetFill}" CornerRadius="{x:Static vm:HandheldTokens.CardInsetRadius}" Padding="24,14"
                       Margin="0,6,0,0" HorizontalAlignment="Left">
-                <TextBlock Text="{Binding Status}" FontSize="26" Foreground="#4B5274" TextWrapping="Wrap" MaxLines="3"
+                <TextBlock Text="{Binding Status}" FontSize="{x:Static vm:HandheldTokens.CardStatus}" Foreground="{x:Static vm:HandheldTokens.StageInkSoft}" TextWrapping="Wrap" MaxLines="3"
                            TextTrimming="CharacterEllipsis" />
               </Border>
             </StackPanel>
@@ -408,10 +408,10 @@
         </Border>
 
         <!-- All apps, the menu, an empty slot, the folder header: a quiet card with what it is. -->
-        <Border IsVisible="{Binding Stage.IsGlyph}" Width="384" Height="384" CornerRadius="96"
-                Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 16 40 0 #1F000000">
+        <Border IsVisible="{Binding Stage.IsGlyph}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}"
+                Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageGlyphCardShadow}">
           <PathIcon Data="{Binding Stage.Glyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
-                    Width="144" Height="144" Foreground="#5B6176" />
+                    Width="144" Height="144" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}" />
         </Border>
       </Panel>
       </Border>
@@ -421,12 +421,12 @@
       <Panel x:Name="PlateWrap">
       <Border x:Name="PlateShot" Padding="32" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,32">
       <Border x:Name="PlateBox" IsVisible="{Binding Stage.HasPlate}" HorizontalAlignment="Center" VerticalAlignment="Bottom"
-              MinWidth="560" Padding="48,20" CornerRadius="32"
-              Background="#F2FFFFFF" BorderBrush="#141C2033" BorderThickness="1" BoxShadow="0 6 24 0 #14000000">
+              MinWidth="560" Padding="48,20" CornerRadius="{x:Static vm:HandheldTokens.ClassicPlateRadius}"
+              Background="{x:Static vm:HandheldTokens.ClassicPlateFill}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicPlateShadow}">
         <StackPanel Spacing="4">
-          <TextBlock Text="{Binding Stage.Title}" FontSize="52" FontWeight="SemiBold" Foreground="#1C2033"
+          <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.DisplayName}" FontWeight="{x:Static vm:HandheldTokens.DisplayNameWeight}" Foreground="{x:Static vm:HandheldTokens.StageInk}"
                      TextAlignment="Center" TextTrimming="CharacterEllipsis" MaxLines="2" TextWrapping="Wrap" />
-          <TextBlock Text="{Binding Stage.Subtitle}" FontSize="28" Foreground="#5B6176" FontFeatures="+tnum"
+          <TextBlock Text="{Binding Stage.Subtitle}" FontSize="{x:Static vm:HandheldTokens.Line}" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}" FontFeatures="+tnum"
                      TextAlignment="Center" TextTrimming="CharacterEllipsis" />
         </StackPanel>
       </Border>
@@ -436,9 +436,9 @@
 
 
       <!-- Launch: the cover that lifted off the Launcher lands here, then zooms into the emulator. -->
-      <Border x:Name="LaunchFly" IsVisible="False" Width="448" Height="632" CornerRadius="28" ClipToBounds="True"
-              HorizontalAlignment="Center" VerticalAlignment="Center" Background="#D5D9E4"
-              BorderBrush="#D9FFFFFF" BorderThickness="8" IsHitTestVisible="False">
+      <Border x:Name="LaunchFly" IsVisible="False" Width="{x:Static vm:HandheldTokens.LaunchCardWidth}" Height="{x:Static vm:HandheldTokens.LaunchCardHeight}" CornerRadius="{x:Static vm:HandheldTokens.LaunchCardRadius}" ClipToBounds="True"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}"
+              BorderBrush="{x:Static vm:HandheldTokens.ClassicLaunchCardEdge}" BorderThickness="{x:Static vm:HandheldTokens.ClassicLaunchCardEdgeThickness}" IsHitTestVisible="False">
         <Image x:Name="LaunchFlyImage" Stretch="UniformToFill" />
       </Border>
 
@@ -451,7 +451,7 @@
         <StackPanel Orientation="Horizontal" Spacing="16">
           <PathIcon Data="{Binding StatusGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}" Width="30" Height="30"
                     VerticalAlignment="Center" IsVisible="{Binding HasStatusGlyph}" />
-          <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxLines="2" LineHeight="34"
+          <TextBlock Classes="pill-text" Text="{Binding StatusMessage}" TextWrapping="Wrap" MaxLines="2" LineHeight="{x:Static vm:HandheldTokens.StageCornerLineHeight}"
                      TextTrimming="CharacterEllipsis" MaxWidth="1080" />
         </StackPanel>
       </Border>
@@ -462,10 +462,10 @@
       <Border Classes="pill">
         <StackPanel Orientation="Horizontal" Spacing="20">
           <!-- Wi-Fi: solid when connected, faded when not. -->
-          <PathIcon Data="{x:Static vm:HandheldIcons.Wifi}" Width="32" Height="32" Foreground="#4B5274"
+          <PathIcon Data="{x:Static vm:HandheldIcons.Wifi}" Width="32" Height="32" Foreground="{x:Static vm:HandheldTokens.StageGlyph}"
                     IsVisible="{Binding HasWifiState}" Opacity="{Binding WifiOpacity}" />
           <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding HasBattery}">
-            <PathIcon Data="{x:Static vm:HandheldIcons.Charging}" Width="28" Height="28" Foreground="#4B5274"
+            <PathIcon Data="{x:Static vm:HandheldIcons.Charging}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.StageGlyph}"
                       IsVisible="{Binding IsCharging}" />
             <TextBlock Classes="pill-text" Text="{Binding BatteryText}" />
           </StackPanel>
@@ -478,7 +478,7 @@
       <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left">
       <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}">
         <StackPanel Orientation="Horizontal" Spacing="12">
-          <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
+          <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="{x:Static vm:HandheldTokens.Trophy}" />
           <TextBlock Classes="pill-text" Text="{Binding Stage.AchievementText}" />
         </StackPanel>
       </Border>
@@ -499,10 +499,10 @@
               <StackPanel Orientation="Horizontal" Spacing="12">
                 <Border Classes="button-glyph">
                   <Panel>
-                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.HintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.HintGlyphWeight}" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasIcon}" />
                     <PathIcon Data="{Binding Icon, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
-                              Width="24" Height="24" Foreground="White" IsVisible="{Binding HasIcon}" />
+                              Width="24" Height="24" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}" IsVisible="{Binding HasIcon}" />
                   </Panel>
                 </Border>
                 <TextBlock Classes="pill-text" Text="{Binding Label}" />

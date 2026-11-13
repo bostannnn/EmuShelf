@@ -31,10 +31,10 @@ internal sealed class HandheldLauncherMotion
     private HandheldHomeScreenViewModel? _screen;
 
     private bool IsWide => _screen?.IsWide == true;
-    private const double ColumnPitch = 264;
-    private const double DotPitch = 30;   // an 18 px dot plus 12 px spacing
-    private const double IndicatorWidth = 52;
-    private const double GlowBlur = 28;
+    private static double ColumnPitch => HandheldTokens.FolderPitch;
+    private static double DotPitch => HandheldTokens.PageDotWidth + HandheldTokens.PageDotGap;
+    private static double IndicatorWidth => HandheldTokens.PageIndicatorWidth;
+    private static double GlowBlur => HandheldTokens.ClassicRingGlowBlur;
 
     private readonly Control _view;
     private readonly Visual _canvas;
@@ -531,7 +531,7 @@ internal sealed class HandheldLauncherMotion
             }
             moving |= _page.Step(dt);
             _pageShift.X = _page.Value;
-            _indicatorShift.X = (-_page.Value / PageWidth * DotPitch) - ((IndicatorWidth - 18) / 2);
+            _indicatorShift.X = (-_page.Value / PageWidth * DotPitch) - ((IndicatorWidth - HandheldTokens.PageDotWidth) / 2);
         }
         moving |= _column.Step(dt);
         ApplyColumn();
@@ -616,8 +616,8 @@ internal sealed class HandheldLauncherMotion
         if (Math.Abs(_ring.CornerRadius.TopLeft - r) > 0.25 || (_radius.IsSettled && _ring.CornerRadius.TopLeft != r))
         {
             _ring.CornerRadius = new CornerRadius(r);
-            ((Border)_ring.Child!).CornerRadius = new CornerRadius(Math.Max(0, r - 4));
-            ((Border)((Border)_ring.Child!).Child!).CornerRadius = new CornerRadius(Math.Max(0, r - 18));
+            ((Border)_ring.Child!).CornerRadius = new CornerRadius(Math.Max(0, r - HandheldTokens.ClassicRingKeylineWidth));
+            ((Border)((Border)_ring.Child!).Child!).CornerRadius = new CornerRadius(Math.Max(0, r - (HandheldTokens.ClassicRingKeylineWidth + HandheldTokens.RingStroke)));
         }
         _selectorShift.X = _x.Value + bump.X;
         _selectorShift.Y = _y.Value + bump.Y;

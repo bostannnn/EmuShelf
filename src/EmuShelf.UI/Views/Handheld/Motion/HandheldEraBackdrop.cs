@@ -253,7 +253,7 @@ public sealed class HandheldEraBackdrop : Decorator
                 {
                     StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
                     EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-                    GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+                    GradientStops = { new GradientStop(HandheldTokens.ClassicStageGroundTop, 0), new GradientStop(HandheldTokens.ClassicStageGroundBottom, 1) },
                 },
             };
             return new StageBackdrop(HandheldStageShots.Picture(plain, 0, 0, (float)CanvasWidth, (float)CanvasHeight), null, null, null,
@@ -364,7 +364,7 @@ public sealed class HandheldEraBackdrop : Decorator
         {
             StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
             EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+            GradientStops = { new GradientStop(HandheldTokens.ClassicStageGroundTop, 0), new GradientStop(HandheldTokens.ClassicStageGroundBottom, 1) },
         }));
         // circle(80% at 92% 50%) on the 1920×1080 canvas: a radius of about 1246 px about (1766, 540).
         const double radius = 1246, centreX = 1766, centreY = 540;

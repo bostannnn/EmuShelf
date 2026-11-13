@@ -23,9 +23,7 @@ public sealed partial class HandheldShellViewModel
         CloseTitle();
         var page = new HandheldTitlePageViewModel(entry, OpenFolder?.Name ?? "Home", entry.SystemName, _clock.GetLocalNow())
         {
-            AccentBrush = _platforms.TryGetValue(entry.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent)
-                ? new SolidColorBrush(accent)
-                : Brushes.Gray,
+            AccentBrush = HandheldTokens.ConsoleBrush(_platforms.GetValueOrDefault(entry.SystemId)?.AccentColor),
             PlayWhenReady = playWhenReady,
         };
         BuildTitleButtons(page);

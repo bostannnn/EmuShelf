@@ -453,18 +453,20 @@ internal sealed class HandheldNativeStageFeed
     {
         if (!_active || IsPaused || page.Cover is not { } cover)
             return;
+        var width = (float)HandheldTokens.LaunchCardWidth;
+        var height = (float)HandheldTokens.LaunchCardHeight;
         var card = new Border
         {
-            Width = 448,
-            Height = 632,
-            CornerRadius = new CornerRadius(28),
+            Width = width,
+            Height = height,
+            CornerRadius = HandheldTokens.LaunchCardRadius,
             ClipToBounds = true,
-            Background = new SolidColorBrush(Color.Parse("#D5D9E4")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#D9FFFFFF")),
-            BorderThickness = new Thickness(8),
+            Background = HandheldTokens.CoverPlaceholder,
+            BorderBrush = HandheldTokens.ClassicLaunchCardEdge,
+            BorderThickness = HandheldTokens.ClassicLaunchCardEdgeThickness,
             Child = new Image { Source = cover, Stretch = Stretch.UniformToFill },
         };
-        _host.Post(new StageLaunchCommand(HandheldStageShots.Picture(card, (CanvasWidth - 448) / 2f, (1080 - 632) / 2f, 448, 632),
+        _host.Post(new StageLaunchCommand(HandheldStageShots.Picture(card, (CanvasWidth - width) / 2f, (1080 - height) / 2f, width, height),
             FromAbove: _isNarrow()));
     }
 

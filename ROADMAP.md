@@ -2797,9 +2797,24 @@ report against the exits below and against the mock, and does not build.
       `EMUSHELF_DESIGN_SNAPSHOT_DIR=/tmp/b0 dotnet test tests/EmuShelf.App.Tests --filter "FullyQualifiedName~DesignSnapshot"`
       and `EMUSHELF_DESIGN_BASELINE_DIR=/tmp/b0 EMUSHELF_DESIGN_SNAPSHOT_DIR=/tmp/b1 dotnet test tests/EmuShelf.App.Tests
       --filter "FullyQualifiedName~DesignFrames_MatchBaseline"`. A normal `dotnet test` runs neither.
-- [ ] **B1 — Tokens, with no visible change.** One Handheld resource dictionary for colour, type, radius and
+- [x] **B1 — Tokens, with no visible change.** ✅ (2026-11-13; choices in `DECISIONS.md` 2026-11-13 "M47 B1".) One
+      Handheld resource dictionary for colour, type, radius and
       spacing; every inline literal in the four views and every brush in code reads from it; one accessor for a
       console's colour replaces the seven parse sites. **Exit:** every frame is pixel-identical to B0's.
+      Built: the home is a static class, `HandheldTokens` (`EmuShelf.UI/ViewModels/Handheld`), read from XAML with
+      `x:Static` and from code directly: **434 tokens, 158 of them `Classic`** (108 brushes, 30 gradient and shadow
+      colours, 26 box shadows, 143 sizes, 87 corner radii plus 20 derived, 14 weights, 6 border widths). All 879 colour,
+      type, weight and radius literals in the five views (`HandheldLauncherView`, `HandheldStageView`,
+      `HandheldCompanionView`, `HandheldPanelView`, `HandheldFolderArt`) now read a token, as do the converters' brushes,
+      the native feeds' gradients, glow, lift shadow and launch card, the motion's pitches and selector widths, and the
+      shadow's default. `HandheldTokens.ConsoleColour` / `ConsoleBrush` replace the seven `AccentColor` parses with the
+      same fallbacks. `HandheldTokens.Use(look)` runs once when Handheld mode starts; Big Type has no values of its own
+      yet. Left inline: `Transparent`, one `BoxShadow="none"`, layout, non-selector border widths, opacities, transforms
+      and transitions (listed in the decision). Not touched: `EmuShelf.Rendering` and its shaders, whose own copies of
+      today's look are `selector.frag.glsl`'s bands (4 / 14 / 4 px, violet 91,88,217), `LauncherCompositor`'s launch bar
+      colours (#29465088, #5B58D9) and clear colour (0.96, 0.97, 0.98), `StageCompositor`'s clear colour (0.94, 0.95,
+      0.96) and `LauncherMotion.LiftScale` 1.13. **Result:** the design set rendered before and after the refactor
+      matched on all 158 frames with no tolerance (byte-identical PNGs), twice, the second after the last edit.
 - [ ] **B2 — The font and the colour table.** Bundle the face per R3 with its notice in
       `THIRD-PARTY-NOTICES.md`; add the ground colours per D3 with a unit test that holds each to its contrast floors.
 - [ ] **B3 — The Launcher, still.** Flat ground in the focused console's colour, matte squarer tiles, monograms
