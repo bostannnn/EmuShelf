@@ -355,7 +355,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 {
     public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldFolderSource? folder, HandheldGameEntry? game = null,
         Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None,
-        Bitmap? carriedCover = null, string? carriedTitle = null, bool isAddGames = false)
+        Bitmap? carriedCover = null, string? carriedTitle = null, bool isAddGames = false, IBrush? ground = null)
     {
         IsAddGames = isAddGames && slot.IsEmpty;
         CarriedCover = carriedCover;
@@ -368,6 +368,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
         _isMoving = isMoving;
         MoveLook = moveLook;
         AccentBrush = HandheldTokens.FolderBrush(folder);
+        GroundBrush = ground ?? HandheldTokens.GroundBrush(HandheldTokens.LauncherColour(folder));
     }
 
     public int Index { get; }
@@ -413,6 +414,29 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
     public bool HasFolderGlyph => FolderGlyph != HandheldGlyph.None;
     public IBrush AccentBrush { get; }
+
+    // ---- The Big Type face (M47 B3): a flat tile with its monogram or glyph, white with the colour as ink while focused ----
+
+    /// <summary>The colour this slot stands for on the Launcher: its folder's, its game's console's, or the apps' ground.</summary>
+    public IBrush GroundBrush { get; }
+
+    /// <summary>A folder or an app (or the way to add games): a flat tile carrying a monogram or a glyph.</summary>
+    public bool IsFlatTile => IsFolder || IsSettings || IsActivity || IsAddGames;
+
+    /// <summary>The glyph on a flat tile: an app's, your folders' star, Recent's clock, or the plus that adds games.</summary>
+    public HandheldGlyph FaceGlyph => IsSettings ? HandheldGlyph.Settings
+        : IsActivity ? HandheldGlyph.Activity
+        : IsAddGames ? HandheldGlyph.Add
+        : FolderGlyph;
+
+    public bool HasFaceGlyph => IsFlatTile && FaceGlyph != HandheldGlyph.None;
+    public bool HasFaceMonogram => IsFolder && !HasFolderGlyph;
+
+    /// <summary>An empty slot that is only a place (not the way to add games): a dot, a plus while focused.</summary>
+    public bool IsPlainEmpty => IsEmpty && !IsAddGames;
+
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? GroundBrush : HandheldTokens.OnColour;
     public string CountText => Folder is null ? string.Empty : HandheldText.GameCount(Folder.GameCount);
 
     private bool _isMoving;
@@ -446,6 +470,8 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     private static int RuntimeRef(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
 
     // The first three covers peeking out of a focused folder (owned by the shell's peek cache, shared with the Stage).
@@ -507,6 +533,15 @@ public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEnt
     public bool IsUnavailable => !Entry.IsAvailable;
     public int Column => Index / HandheldFolderNavigation.Rows;
 
+    /// <summary>The colour this tile stands for on the Launcher (its console's, or the apps' ground), M47 B3.</summary>
+    public IBrush GroundBrush { get; init; } = Brushes.Gray;
+
+    /// <summary>The Settings or Activity tile in the Big Type look: its glyph on a flat tile, white with the colour as ink while focused.</summary>
+    public HandheldGlyph AppGlyph => IsSettings ? HandheldGlyph.Settings : IsActivity ? HandheldGlyph.Activity : HandheldGlyph.None;
+
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? GroundBrush : HandheldTokens.OnColour;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCover))]
     public partial Bitmap? Cover { get; set; }
@@ -514,6 +549,8 @@ public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEnt
     public bool HasCover => Cover is not null;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
 
     internal CancellationTokenSource? CoverLoad { get; set; }
@@ -584,6 +621,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
             _items = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(CountText));
+            OnPropertyChanged(nameof(CountNumber));
             OnPropertyChanged(nameof(IsEmpty));
             OnPropertyChanged(nameof(HasGames));
         }
@@ -596,12 +634,19 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CountText))]
+    [NotifyPropertyChangedFor(nameof(CountNumber))]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     [NotifyPropertyChangedFor(nameof(HasGames))]
     public partial bool IsLoaded { get; set; }
 
     // The Settings tile, when it is in the folder, is not a game.
     public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count(tile => tile.IsGame)) : string.Empty;
+
+    /// <summary>The count beside the name in the Big Type header: the number alone (M47 B3).</summary>
+    public string CountNumber => IsLoaded ? Items.Count(tile => tile.IsGame).ToString(System.Globalization.CultureInfo.CurrentCulture) : string.Empty;
+
+    /// <summary>The colour this folder stands for on the Launcher (M47 B3).</summary>
+    public IBrush GroundBrush => HandheldTokens.GroundBrush(HandheldTokens.LauncherColour(Source));
     public bool IsEmpty => IsLoaded && Items.Count == 0;
     public bool HasGames => Items.Count > 0;
 
@@ -673,7 +718,18 @@ public sealed partial class HandheldDockItemViewModel(HandheldDockKind kind, Sec
     public bool IsMenu => Kind == HandheldDockKind.Menu;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
+
+    /// <summary>The Launcher's colour, the focused button's ink in the Big Type look (the shell keeps it current), M47 B3.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
+    public partial IBrush Ground { get; set; } = Brushes.Gray;
+
+    /// <summary>All apps and the menu in the Big Type look: a flat button with a white glyph, white with the colour as ink while focused.</summary>
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? Ground : HandheldTokens.OnColour;
 }
 
 public enum HandheldStageKind

@@ -152,8 +152,10 @@ public sealed partial class HandheldShellViewModel
         {
             carriedTitle = HandheldActivityText.Name;
         }
-        return new HandheldHomeSlotViewModel(slot, content, FolderSourceFor(content), game, cover, _move is not null, look,
-            carriedCover, carriedTitle, isAddGames: content.IsEmpty && index == _addGamesIndex);
+        var source = FolderSourceFor(content);
+        return new HandheldHomeSlotViewModel(slot, content, source, game, cover, _move is not null, look,
+            carriedCover, carriedTitle, isAddGames: content.IsEmpty && index == _addGamesIndex,
+            ground: HandheldTokens.GroundBrush(GroundOf(content, source, game)));
     }
 
     // ---- Games pinned to home ----

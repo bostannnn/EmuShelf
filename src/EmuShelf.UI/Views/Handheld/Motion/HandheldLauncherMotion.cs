@@ -685,7 +685,8 @@ internal sealed class HandheldLauncherMotion
                 continue;
             var ring = anchor.GetVisualChildren().OfType<Border>().FirstOrDefault(border => border.Classes.Contains("ring"));
             var local = ring?.Bounds ?? new Rect(anchor.Bounds.Size).Inflate(16);
-            var lift = anchor.Classes.Contains("focusable") ? HandheldMotion.LiftScale : 1;
+            // Today's ring grows with the lift; Big Type's stays at its outset from the resting tile (M47 B3).
+            var lift = anchor.Classes.Contains("focusable") ? HandheldTokens.RingLift : 1;
             var centre = new Point(anchor.Bounds.Width / 2, anchor.Bounds.Height / 2);
             var lifted = new Rect(
                 centre.X + ((local.X - centre.X) * lift),

@@ -14402,3 +14402,58 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
 - **Found on the way:** M PLUS Rounded's ellipsis (U+2026) is three dots at mid-height, Japanese style, so a trimmed row
   reads "Nintendo Entertainme···". B3 and B7 may want trimming that does not show it. Over adb on the Thor the first press
   after 15 s idle only wakes the Launcher, so a wake press and the real one go in the same `adb shell` call.
+
+## 2026-11-14 — M47 B3: the Launcher at rest in the Big Type look
+
+- **Selected by the look, beside today's.** Every Big Type value the Launcher needs is a token (`HandheldTokens.Launcher.cs`:
+  `UseClassicLauncherValues` holds today's, `UseBigTypeLauncherValues` the mock's), including the layout B1 had left inline
+  (home's and a folder's margins and alignment, the ring anchors' outsets, the dock bar). Where Big Type draws something today's
+  look does not (a flat tile, the corner mark, the plain header, the dock row's corners), the view has both parts and shows one
+  by `x:Static HandheldTokens.IsClassic` / `IsBigType`; the root carries a `bigtype` class for the look's styles (the one-band
+  ring, the 1.10 and 1.14 lifts). The only Classic selector touched is the lift shadow's (`>` became a descendant selector,
+  because its tile's Classic parts now sit in a wrapper). Proven by the frames: all 158 identical to the render made before B3.
+- **The ground is one value both Launchers draw.** `HandheldShellViewModel.LauncherGround` follows the focus (a console's
+  ground for its folder and its games, Recent's slate, Settings' indigo for Settings and Activity, your folder's own colour);
+  focus on something with no colour (an empty slot, the dock, the header) keeps the last. The Avalonia Launcher draws it as a
+  flat `Ground` border with a 200 ms brush transition; the native one clears to it (`LauncherGroundCommand`, retained, a linear
+  200 ms crossfade). So a sheet or menu that hands the screen back to Avalonia shows the same colour and the same tiles. B5's
+  flood replaces both crossfades.
+- **Your folders' colours are darkened, not remapped.** Today's six chip colours (pink, orange, green, blue, purple, yellow)
+  are mostly too light for white type; under Big Type the Launcher takes each darkened by `HandheldGround.Derive` until white
+  holds the floors (yellow becomes an ochre), so the folder keeps the hue you chose. tokens.js's `userFolders` is the palette
+  naming will offer when naming moves to Big Type (B9). The Stage keeps `FolderColour` (B4 decides its colours).
+- **What a tile pictures.** A flat tile (a folder, Settings, Activity, Add games) and an empty slot look different while focused
+  (white with the colour as ink; a plus), so in Big Type their picture key carries the focus and the native Launcher pictures
+  the two tiles a move touches again. A game's cover never changes with focus. The "!" and the new folder's dot are inked in the
+  tile's own colour (its console's), not the ground of the moment as in the mock, so a picture never depends on what else is
+  focused; on a folder's games the two are the same.
+- **The native ring and lift are parameters.** `selector.frag` takes three insets and three band colours (`LauncherRingBands`;
+  `Classic` is the old constants, a test holds them); Big Type sends one white band of `RingStroke` 8 and no glow. A sprite
+  carries its own lift (`LauncherSprite.Lift`, 0 meaning today's 1.13): tiles 1.10, dock buttons 1.14, the header's anchors 1
+  (they frame, they do not lift). The ring is not scaled with the lift in Big Type (`RingLift` 1): it sits `RingOutset` 26 from
+  the tile's resting edge, as the mock's `rectOf` places it. No lift shadow, no breathing glow.
+- **The header's Back and sort have no chips but are still reachable.** Up from the top row still goes to the header zone (no
+  change in the shell): the ring then frames the folder's name (Back; A closes the folder) or the sort's value in the dock row's
+  bottom-right corner (A cycles it). B7 moves the sort into the Y menu and can drop the zone. Taps on the name and on the value
+  do what the chips did.
+- **Where the mock and the app part, and why.**
+  - The app's dock has seven buttons (All apps, five apps, the menu) where the mock draws six, and an open folder's sort can be
+    "Most played", wider than the mock's only value "Manual". At the mock's `DockGap` 24 with its corners at the grid's edge
+    (108), "Swap" touches the dock and "Last played" runs under the menu button. Big Type uses `DockGap` 16 and puts the two
+    corners at the canvas's 48 px edge. The corners' type is the mock's `.dside` (30 px, 700, 0.8, a 44 px circle with a 4 px
+    stroke), not `type.HintGlyph`'s 58, which is the Stage's.
+  - Glyphs are the app's icons (`HandheldIcons`), filled, where the mock draws thin stroked outlines; they are sized to what the
+    mock's strokes cover (36% of the tile, 40 px on a dock button), not to the mock's 50% box.
+  - A game with no cover is a flat tile with its title at the top left, as the mock's stand-in covers carry theirs (the mock has
+    no coverless tile). Covers are cropped from the top, as today, where the mock centres its square stand-ins.
+  - The header's tracking is −0.64 px, what the mock actually draws (its −0.02em is resolved on the header box's 16 px, not on
+    the name's 100), and its type is raised 14 px: Avalonia sets a 115 px line lower in its box than a browser does.
+  - An empty dock slot (fewer than five pinned apps) is the empty slot's dot; the mock has none.
+  - Move mode's overlays (the carried tile, landing places, the merge badge) keep today's look until B9.
+- **Checked on the Android emulator, not the Thor** (the owner: the Thor is not available, use the emulator). A new AVD,
+  `emushelf-b3`, from the android-35 arm64 image already installed (avdmanager only read the SDK's repository listing;
+  nothing was downloaded). Its second display is the AVD's own (`hw.display1.width=1240`, `height=1080`, density 240), a
+  presentation display; the main display is 1920×1080. `overlay_display_devices` was tried first and removed, because the
+  AVD's display came up too and two would have competed. On it the native compositors ran (no fallback), and the hand-off to a
+  sheet and back left the native frame pixel-identical. What it does not prove: Adreno's behaviour, the Thor's panels and
+  timing, and the dock row under the emulator's own navigation bar, which that display shows and the Thor does not.

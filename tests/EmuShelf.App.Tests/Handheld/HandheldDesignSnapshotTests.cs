@@ -53,7 +53,8 @@ namespace EmuShelf.App.Tests.Handheld;
 // culture (en-GB), the backdrop's drift (HandheldEraBackdrop.DriftClock stands still, so the blocks and the bar sit where
 // their loop starts), indeterminate progress bars (held at 40%, DesignHoldProgress), every transition and spring on real
 // time (a frame is written only once both screens have stopped changing, DesignRestAsync), and the compositor's own
-// leftovers (each frame is drawn afresh from the visual tree, DesignCapture).
+// leftovers (each frame is drawn afresh from the visual tree, DesignCapture). M47 B3: the build's commit and its date
+// (Settings › About) are written as fixed text (DesignHoldBuild), so renders made on different commits compare too.
 public partial class HandheldShellViewModelTests
 {
     private static string? DesignOutput =>
@@ -759,7 +760,10 @@ public partial class HandheldShellViewModelTests
             while (true)
             {
                 foreach (var window in windows)
+                {
                     DesignHoldProgress(window);
+                    DesignHoldBuild(window);
+                }
                 await DesignSettleAsync(rounds: 1);
                 var changed = false;
                 for (var i = 0; i < windows.Count; i++)
@@ -801,6 +805,35 @@ public partial class HandheldShellViewModelTests
             bar.Minimum = 0;
             bar.Maximum = 100;
             bar.Value = 40;
+        }
+    }
+
+    // What the build stamps into the app (AppBuildInfo), and what a design render writes in its place.
+    private const string DesignCommit = "0000000";
+    private const string DesignCommitDate = "2026-01-01 00:00";
+
+    /// <summary>
+    /// Settings › About prints the commit the build came from and that commit's date (M47 B3), so a frame showing them
+    /// differed between renders made on two commits. Any text holding either is drawn with fixed stand-ins instead, as
+    /// the app formats them (EmulatorSettingsViewModel). The app is not changed: only the harness's frame is.
+    /// </summary>
+    private static void DesignHoldBuild(Window window)
+    {
+        var commit = EmuShelf.App.AppBuildInfo.CommitHash;
+        var date = EmuShelf.App.AppBuildInfo.CommitDate is { } stamped ? stamped.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : null;
+        if (string.IsNullOrEmpty(commit) && date is null)
+            return;
+        foreach (var text in window.GetVisualDescendants().OfType<TextBlock>())
+        {
+            if (text.Text is not { Length: > 0 } shown)
+                continue;
+            var pinned = shown;
+            if (!string.IsNullOrEmpty(commit))
+                pinned = pinned.Replace(commit, DesignCommit, StringComparison.Ordinal);
+            if (date is not null)
+                pinned = pinned.Replace(date, DesignCommitDate, StringComparison.Ordinal);
+            if (!ReferenceEquals(pinned, shown) && pinned != shown)
+                text.Text = pinned;
         }
     }
 

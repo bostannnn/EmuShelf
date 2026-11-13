@@ -37,6 +37,7 @@ public sealed partial class HandheldHomeScreenViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(PageLabel))]
+    [NotifyPropertyChangedFor(nameof(PageCountText))]
     [NotifyPropertyChangedFor(nameof(CanPageLeft))]
     [NotifyPropertyChangedFor(nameof(CanPageRight))]
     public partial HandheldHomePageViewModel? CurrentPage { get; internal set; }
@@ -44,6 +45,8 @@ public sealed partial class HandheldHomeScreenViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMultiplePages))]
     [NotifyPropertyChangedFor(nameof(PageLabel))]
+    [NotifyPropertyChangedFor(nameof(PageCountText))]
+    [NotifyPropertyChangedFor(nameof(IsPageCountShown))]
     [NotifyPropertyChangedFor(nameof(CanPageRight))]
     public partial int PageCount { get; internal set; }
 
@@ -51,7 +54,14 @@ public sealed partial class HandheldHomeScreenViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanPageLeft))]
     [NotifyPropertyChangedFor(nameof(CanPageRight))]
+    [NotifyPropertyChangedFor(nameof(IsPageCountShown))]
     public partial bool IsFolderOpen { get; internal set; }
+
+    /// <summary>The page in the Big Type look's bottom right corner, "1 / 2" (M47 B3).</summary>
+    public string PageCountText => string.Create(CultureInfo.CurrentCulture, $"{(CurrentPage?.Index ?? 0) + 1} / {Math.Max(1, PageCount)}");
+
+    /// <summary>The page count shows on home when there is more than one page (a folder shows its sort there instead).</summary>
+    public bool IsPageCountShown => HasMultiplePages && !IsFolderOpen;
 
     public bool HasMultiplePages => PageCount > 1;
 
