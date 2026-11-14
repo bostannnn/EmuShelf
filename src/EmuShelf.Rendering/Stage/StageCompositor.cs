@@ -20,7 +20,7 @@ namespace EmuShelf.Rendering.Stage;
 /// Not thread-safe: the host applies commands and draws on its render thread. <paramref name="requestRender"/>
 /// may be called from any thread (a shell finished loading).
 /// </remarks>
-public sealed class StageCompositor : INativeScene
+public sealed class StageCompositor : INativeScene, IProbedScene
 {
     /// <summary>The Stage's canvas on the 16:9 screen; the backdrops are drawn at this size.</summary>
     public const float WideCanvasWidth = 1920f;
@@ -117,6 +117,31 @@ public sealed class StageCompositor : INativeScene
 
     /// <inheritdoc />
     public string? ProbeTag => _probeTag;
+
+    // The probe's breakdown of a frame (IProbedScene): the time each part took, only while the host asks for it.
+    private System.Text.StringBuilder? _sections;
+    private long _sectionMark;
+    private int _sectionQuads;
+
+    /// <inheritdoc />
+    public bool ProbeSections { get; set; }
+
+    /// <inheritdoc />
+    public string? LastSections { get; private set; }
+
+    private void Section(string name)
+    {
+        if (_sections is null)
+            return;
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        _sections.Append(name).Append('=')
+            .Append(((now - _sectionMark) * 1000.0 / System.Diagnostics.Stopwatch.Frequency).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture));
+        if (_sectionQuads > 0)
+            _sections.Append('/').Append(_sectionQuads).Append('q');
+        _sections.Append(' ');
+        _sectionMark = now;
+        _sectionQuads = 0;
+    }
 
     private StageMedium? _medium;
     private MediaShellRenderer? _renderer;
@@ -555,10 +580,20 @@ public sealed class StageCompositor : INativeScene
     /// <summary>Draws one frame into the bound default framebuffer. Returns whether something is still animating.</summary>
     public bool Draw(float now, int surfaceWidth, int surfaceHeight)
     {
+        if (ProbeSections)
+        {
+            (_sections ??= new System.Text.StringBuilder()).Clear();
+            _sectionMark = System.Diagnostics.Stopwatch.GetTimestamp();
+        }
+        else
+        {
+            _sections = null;
+        }
         var fit = FitCanvas(surfaceWidth, surfaceHeight);
         _fit = fit;
         if (_medium is not null && (_mediumDirty || _coverDirty))
             RenderMedium(fit.Scale);
+        Section("medium");
         // Animated backdrops draw their next 30 Hz step into their own small frames before the Stage is composed.
         AdvanceBackdropClock(now);
         var clock = _backdropClock;
@@ -586,6 +621,7 @@ public sealed class StageCompositor : INativeScene
                 UpdateAnimated(leaving, clock);
         }
 
+        Section("backdrops");
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, TargetFramebuffer);
         _gl.Viewport(0, 0, (uint)surfaceWidth, (uint)surfaceHeight);
         _gl.Disable(EnableCap.DepthTest);
@@ -639,6 +675,7 @@ public sealed class StageCompositor : INativeScene
             passes = [new InkPass(default, default, default, zone => ZoneInk(zone, showing, deep))];
         }
 
+        Section("present");
         // The veils lie on the backdrop, under everything else (the mock's .shade comes before the case). During a wipe each backdrop's
         // veils are drawn only where it shows.
         if (_ink is not null)
@@ -708,6 +745,7 @@ public sealed class StageCompositor : INativeScene
         if (_fly is { } fly)
             animating |= DrawLaunch(fly, now);
 
+        Section("centre");
         // Big Type's name (M47 B6): its letters arrive, leave and hop, in the left zone's ink.
         var lettersMoving = false;
         if (_letters is { } letters)
@@ -728,6 +766,7 @@ public sealed class StageCompositor : INativeScene
             }
         }
 
+        Section("letters");
         // The rolls under way this frame (M47 B5); a finished one lets its old picture go.
         Dictionary<string, IReadOnlyList<BigTypeRollPiece>>? rolling = null;
         foreach (var (key, roll) in _rolls.Count == 0 ? [] : _rolls.ToList())
@@ -761,6 +800,8 @@ public sealed class StageCompositor : INativeScene
         }
         Clip(null);
 
+        Section("chrome");
+        LastSections = _sections?.ToString();
         _drawnDeep = _backdrop?.Deep;
         _probeTag = _bigType ? ProbeTagOf(lettersMoving, wiping && _beneath.Count > 0) : null;
         _gl.BindVertexArray(0);
@@ -1057,11 +1098,13 @@ public sealed class StageCompositor : INativeScene
             _renderer.SetAccent(medium.LinearAccent);
             _uploadedAccent = medium.LinearAccent;
         }
+        Section("mediumTarget");
         if (_coverDirty)
         {
             _renderer.SetCoverArt(_cover);
             _coverDirty = false;
         }
+        Section("mediumCover");
         _gl.BindFramebuffer(FramebufferTarget.Framebuffer, _mediumFramebuffer);
         _gl.ClearColor(0, 0, 0, 0);
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
@@ -1287,24 +1330,88 @@ public sealed class StageCompositor : INativeScene
         if (opacity <= 0f)
             return;
         var local = part ?? StageAffine.Identity;
+        _sectionQuads++;
         _gl.BindTexture(TextureTarget.Texture2D, texture);
         // A tint (M47 B4) draws a white picture in a zone's ink; without one the picture is drawn as it is.
-        _program.Set("uTintAmount", tint is null ? 0f : 1f);
-        if (tint is { } colour)
-            _program.Set("uTint", colour);
-        _program.Set("uLinear", new Vector4(local.M11, local.M12, local.M21, local.M22));
-        _program.Set("uTranslate", new Vector2(local.M31, local.M32));
-        _program.Set("uOffset", Vector2.Zero);
-        _program.Set("uGroup", new Vector3(1, 0, 0));
-        _program.Set("uRect", new Vector4(x, y, width, height));
-        _program.Set("uScale", new Vector3(scale, pivotX, pivotY));
-        _program.Set("uUv", uv);
-        _program.Set("uOpacity", opacity);
-        // Big Type's circles (M47 B6); all zero, as today's look always has them, cut nothing.
-        _program.Set("uClip0", _clip0);
-        _program.Set("uClip1", _clip1);
-        _program.Set("uClip2", _clip2);
+        var tintAmount = tint is null ? 0f : 1f;
+        var linear = new Vector4(local.M11, local.M12, local.M21, local.M22);
+        var translate = new Vector2(local.M31, local.M32);
+        var rect = new Vector4(x, y, width, height);
+        var pivot = new Vector3(scale, pivotX, pivotY);
+        if (!_bigType)
+        {
+            // Today's look sets every uniform for every quad, as it always has.
+            _quadUniforms = null;
+            _program.Set("uTintAmount", tintAmount);
+            if (tint is { } colour)
+                _program.Set("uTint", colour);
+            _program.Set("uLinear", linear);
+            _program.Set("uTranslate", translate);
+            _program.Set("uOffset", Vector2.Zero);
+            _program.Set("uGroup", new Vector3(1, 0, 0));
+            _program.Set("uRect", rect);
+            _program.Set("uScale", pivot);
+            _program.Set("uUv", uv);
+            _program.Set("uOpacity", opacity);
+            // Big Type's circles (M47 B6); all zero, as today's look always has them, cut nothing.
+            _program.Set("uClip0", _clip0);
+            _program.Set("uClip1", _clip1);
+            _program.Set("uClip2", _clip2);
+            _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+            return;
+        }
+        // Big Type (M47 B6) draws many small quads a frame (a name's letters, twice during a wipe; a rolling line's pieces). Each GL
+        // call costs the render thread a few microseconds on the Thor, so a uniform is set only when it differs from the value the
+        // program already holds: a run of letters or pieces then sets little more than its rectangle and its texture coordinates.
+        var last = _quadUniforms ??= new QuadUniforms();
+        if (!last.Valid || last.TintAmount != tintAmount)
+            _program.Set("uTintAmount", last.TintAmount = tintAmount);
+        if (tint is { } ink && (!last.Valid || last.Tint != ink))
+            _program.Set("uTint", last.Tint = ink);
+        if (!last.Valid || last.Linear != linear)
+            _program.Set("uLinear", last.Linear = linear);
+        if (!last.Valid || last.Translate != translate)
+            _program.Set("uTranslate", last.Translate = translate);
+        if (!last.Valid)
+        {
+            _program.Set("uOffset", Vector2.Zero);
+            _program.Set("uGroup", new Vector3(1, 0, 0));
+        }
+        if (!last.Valid || last.Rect != rect)
+            _program.Set("uRect", last.Rect = rect);
+        if (!last.Valid || last.Pivot != pivot)
+            _program.Set("uScale", last.Pivot = pivot);
+        if (!last.Valid || last.Uv != uv)
+            _program.Set("uUv", last.Uv = uv);
+        if (!last.Valid || last.Opacity != opacity)
+            _program.Set("uOpacity", last.Opacity = opacity);
+        if (!last.Valid || last.Clip0 != _clip0)
+            _program.Set("uClip0", last.Clip0 = _clip0);
+        if (!last.Valid || last.Clip1 != _clip1)
+            _program.Set("uClip1", last.Clip1 = _clip1);
+        if (!last.Valid || last.Clip2 != _clip2)
+            _program.Set("uClip2", last.Clip2 = _clip2);
+        last.Valid = true;
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+    }
+
+    // The values the sprite program holds (Big Type only); every one of its per-quad uniforms is set through DrawQuad.
+    private QuadUniforms? _quadUniforms;
+
+    private sealed class QuadUniforms
+    {
+        public bool Valid;
+        public float TintAmount;
+        public Vector3 Tint;
+        public Vector4 Linear;
+        public Vector2 Translate;
+        public Vector4 Rect;
+        public Vector3 Pivot;
+        public Vector4 Uv;
+        public float Opacity;
+        public Vector4 Clip0;
+        public Vector4 Clip1;
+        public Vector4 Clip2;
     }
 
     private unsafe uint Upload(StagePixels pixels, bool repeat)

@@ -83,6 +83,18 @@ public interface INativeScene : IDisposable
 }
 
 /// <summary>
+/// A scene that can say how long each part of its last frame took (M47 B6, R1's probe made finer): only while the host's probe asks,
+/// so a frame costs nothing extra otherwise.
+/// </summary>
+public interface IProbedScene
+{
+    bool ProbeSections { get; set; }
+
+    /// <summary>The last frame's parts and their milliseconds ("medium=0.2 present=0.4 …"); null while not probing.</summary>
+    string? LastSections { get; }
+}
+
+/// <summary>
 /// A new (or no) backdrop; it crossfades over the old one. <paramref name="Animated"/> is the system's animated
 /// backdrops (M45 H7, ids into <see cref="Backdrops.BackdropCatalog"/>): when one can be drawn it replaces the
 /// pictured layers, which stay as the fallback. The same list again keeps the running backdrop going.

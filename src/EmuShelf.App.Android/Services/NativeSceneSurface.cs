@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Android.Opengl;
@@ -356,13 +357,29 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         try
         {
             _gpuTimer?.Begin();
+            if (compositor is IProbedScene probed)
+                probed.ProbeSections = probing;
+            var gcBefore = probing ? (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)) : default;
+            _applied.Clear();
             while (_queue.TryDequeue(out var command))
+            {
+                var applying = probing ? Stopwatch.GetTimestamp() : 0L;
                 compositor.Apply(command, now);
+                if (probing)
+                    _applied.Add((command.GetType().Name, Stopwatch.GetElapsedTime(applying).TotalMilliseconds));
+            }
+            var drawing = probing ? Stopwatch.GetTimestamp() : 0L;
             var animating = compositor.Draw(now, _width, _height);
+            var drawMilliseconds = probing ? Stopwatch.GetElapsedTime(drawing).TotalMilliseconds : 0d;
+            var drawnCpu = probing ? ThreadCpuMilliseconds() - threadStarted : 0d;
             _gpuTimer?.End(compositor.ProbeTag ?? (animating ? "other" : null));
             CompleteFrame();
             if (probing)
-                Probe(compositor, now, ThreadCpuMilliseconds() - threadStarted, Stopwatch.GetElapsedTime(started).TotalMilliseconds, animating);
+            {
+                var cpu = ThreadCpuMilliseconds() - threadStarted;
+                Slow(compositor, cpu, drawnCpu, drawMilliseconds, gcBefore);
+                Probe(compositor, now, cpu, Stopwatch.GetElapsedTime(started).TotalMilliseconds, animating);
+            }
             // Parked out of sight: what was asked for is drawn, nothing more (no animation, no drift).
             if (_parked)
             {
@@ -390,6 +407,21 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
     private float _vote = -1f;
 
     private const float MaxVotedStepMilliseconds = 1000f;
+
+    // The probe's finer look (M47 B6): a frame over this much render-thread CPU logs what it applied and each part of its draw.
+    private const double SlowFrameMilliseconds = 4.0;
+    private readonly List<(string Command, double Milliseconds)> _applied = [];
+
+    private void Slow(INativeScene compositor, double cpuMilliseconds, double beforeSwapCpu, double drawMilliseconds, (int, int, int) gcBefore)
+    {
+        if (cpuMilliseconds < SlowFrameMilliseconds)
+            return;
+        var gc = (GC.CollectionCount(0) - gcBefore.Item1, GC.CollectionCount(1) - gcBefore.Item2, GC.CollectionCount(2) - gcBefore.Item3);
+        var applied = string.Join(",", _applied.Select(a => FormattableString.Invariant($"{a.Command}={a.Milliseconds:0.0}")));
+        var sections = (compositor as IProbedScene)?.LastSections ?? "-";
+        global::Android.Util.Log.Info("EmuShelfBigType", FormattableString.Invariant(
+            $"{_name}: slow cpu={cpuMilliseconds:0.0} (to the swap {beforeSwapCpu:0.0}) draw={drawMilliseconds:0.0} tag={compositor.ProbeTag ?? "-"} gc={gc.Item1}/{gc.Item2}/{gc.Item3} apply[{applied}] sections[{sections}]"));
+    }
 
     // R1's frame probe (M47 B6), only while debug.emushelf.probe is set: frame intervals and render-thread time per run of frames
     // with the same motions, one logcat line per run ("other" is anything else animating), then the GPU times read back.

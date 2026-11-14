@@ -14688,6 +14688,32 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   `psp-field-v2` wipe). Monograms during a wipe along home's first row: GPU 1.47 typical, 3.25 worst. The GPU's share is plausibly the wipe
   presenting two full-screen backdrops and drawing the text and veils once per backdrop; that was not measured apart. A name's atlas costs
   2.9 to 10.0 ms on the UI thread (R1: 3.5 to 14.4). Whether to accept these figures or work on them is the owner's.
+- **The slow frames, found (the owner's "Find the slow frames", 2026-11-14).** The probe was made finer: with `debug.emushelf.probe` set,
+  every Stage frame over 4 ms of render-thread CPU logs each command it applied with its time, how long each part of the draw took and
+  how many quads it drew (`IProbedScene`, the 3D case's target, cover upload and render apart), and any garbage collection in between.
+  On the Thor, in the same Recent run: **the slow frames 0.6 to 1.0 s after the press were Big Type's own quads, not the 3D case.** Each
+  quad cost about 50 µs of render-thread CPU (its texture bind, about fifteen uniform calls and its draw), and those frames drew many:
+  the Stage's line rolling when its facts (play time, achievements) arrive about 0.5 s after the press, cut into 54 to 59 scissored
+  pieces (2.8 to 3.8 ms), and the name's letters, 18 to 37 quads drawn twice during a wipe (0.8 to 3.4 ms). No collection fell in any of
+  them. The 3D case's work is real but earlier and one-time: its target, cover upload and first render for a new game, 8 to 19 ms, 150
+  to 360 ms after the press (today's look does the same), as is a backdrop's first start (its shaders compile, 13 to 53 ms).
+- **The fix, the least change:** under Big Type, `StageCompositor.DrawQuad` sets a uniform only when its value differs from the one the
+  sprite program already holds, so a run of letters or roll pieces sets little more than its rectangle and texture coordinates. Nothing
+  drawn changes (the desktop GL checks read the same pixels); today's look sets every uniform for every quad as before. It halved the
+  cost per quad (about 50 to about 24 µs), which is the draw calls' own cost now.
+- **Measured again on the Thor (the same runs): the CPU limit is still not met; not ticked.** Three-line names arriving during a wipe
+  (Recent; 247 steady frames): CPU 1.58 ms typical (was 1.81), 3.91 p95 (was 5.10), 19.3 worst; GPU 1.51 typical, 2.18 p95, 7.73 worst
+  (one frame of the Bleach run; the rest of the runs at most 2.80). What is still over 5.2 ms, by cause: the 3D case's first render for a
+  new game (8.2 to 19.3 ms, once per game, 330 to 360 ms after the press); and Big Type's own drawing when a long name and a rolling line
+  meet a wipe ("Metal Gear Solid : The Twin Snakes", 0.9 s after the press: 117 roll pieces and 56 letter quads, everything drawn once per
+  backdrop showing, 6.0 and 6.9 ms). The rest of the steady frames are under 4.7 ms. The console row (20 presses) did not regress: frames
+  over 16.7 ms 2 (was 4), over 8.3 ms 9 (was 11), every one a backdrop's first start; repeats 2.4 to 3.0 ms. **Not tried, for the owner
+  to choose:** drawing a zone's text once, unclipped, when both backdrops of a wipe give it the same ink (the common case); drawing the
+  letters and roll pieces as one batch instead of a draw per quad; and the case's first render, which is today's cost.
+- **The GPU's 3.25 ms on one-line console names during a wipe** (item 5 of the brief, not this round's target): not split by part (the
+  probe's GPU timer covers a whole frame). What a wipe frame adds is visible in the figures: a monogram's few letters are very large
+  quads, drawn once per backdrop showing, over two full-screen backdrop presents and two sets of veils; outside a wipe the same names
+  cost 0.7 ms.
 - **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
   (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
   `letters+wipe`, `flood`, `other`) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame

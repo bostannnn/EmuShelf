@@ -2993,9 +2993,15 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       B6 the press frame is 0.3 to 0.6 ms on every press, and the start-up cost falls on the next frame only the first time each backdrop
       shows in a run (its shaders compile: 13.1 to 36.6 ms, 9 backdrops), repeats 0.3 to 0.5 ms; 4 frames over 16.7 ms, 11 over 8.3 (10
       before). Left on the Thor: this build with `debug.emushelf.look` set to `bigtype` (a reboot or `adb shell setprop debug.emushelf.look
-      classic` returns it to Classic). **Open for the owner:** whether to accept these figures or have the wipe's GPU cost (two backdrops and
-      two ink passes) and the late CPU frames worked on; the swapped screens' wipe (the mock has none; the circle still rises from the
-      Stage's bottom edge); the feel of every motion.
+      classic` returns it to Classic). **The slow frames (the owner: "Find the slow frames"):** found with a finer
+      probe (each slow frame's commands, draw parts and quad count): the frames 0.6 to 1.0 s after the press were Big Type's own quads, about
+      50 µs of CPU each, many at once (the line rolling when its facts arrive, 54 to 59 pieces; the name's letters, drawn twice during a
+      wipe), not the 3D case, whose first render (8 to 19 ms) comes earlier and once per game. **Fix:** under Big Type a quad sets only the
+      uniforms that changed (about 24 µs a quad; nothing drawn changes). **Measured again: CPU still over, not ticked.** Three-line names
+      during a wipe: CPU 1.58 typical, 3.91 p95 (was 5.10), 19.3 worst (the 3D case's first render; Big Type's own worst is 6.9, a long
+      name and a rolling line in a wipe); GPU 1.51 typical, 2.18 p95, 7.73 worst (one frame; the rest at most 2.80). Console row: over 16.7 ms
+      2 (was 4). **Open for the owner:** whether to accept these, or have text drawn once when both backdrops share its ink, the letters and
+      roll pieces batched, or the 3D case's first render looked at; the swapped screens' wipe (the mock has none); the feel of every motion.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
