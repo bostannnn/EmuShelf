@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.Media.TextFormatting;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Rendering.Stage.BigType;
@@ -14,8 +17,14 @@ namespace EmuShelf.App.Views.Handheld;
 /// <summary>
 /// The Big Type Stage's name (M47 B4): the focused item's name fitted into its box as the mock's <c>fitWord</c> does it, by
 /// <see cref="BigTypeLayout"/> (words never broken, at most three lines, line height 0.9), set bottom-anchored at the display
-/// weight with the display tracking. Drawn in the Stage's ink; the native Stage pictures it whole.
+/// weight with the display tracking. Drawn in the Stage's ink.
 /// </summary>
+/// <remarks>
+/// M47 B6: the native Stage no longer pictures it whole. <see cref="Letters"/> sets the same fit as one atlas of its distinct letters
+/// and every letter's place, and the native Stage moves each letter (move 2). On screen (the desktop, the Avalonia fallback) this control
+/// moves its letters the same way when the text changes, from <see cref="Entrance"/>, by <see cref="BigTypeMotion"/>; while it is only
+/// pictured or the device asks for stillness (<see cref="HandheldRollingText.RollsProperty"/> false) it simply swaps.
+/// </remarks>
 public sealed class HandheldBigTypeName : Control
 {
     public static readonly StyledProperty<string?> TextProperty =
@@ -82,15 +91,217 @@ public sealed class HandheldBigTypeName : Control
         }
     }
 
+    /// <summary>Where the next name's letters arrive from (the move that brought it); set before the text changes.</summary>
+    public BigTypeEntrance Entrance { get; set; }
+
+    // The letters in flight on screen: the name arriving (and when), and the names leaving (each with when and which way).
+    private (BigTypeName Name, long Start, BigTypeEntrance Entrance)? _arriving;
+    private readonly List<(BigTypeName Name, long Start, BigTypeEntrance Exit)> _leaving = [];
+    private BigTypeName? _shown;
+    private bool _ticking;
+
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != TextProperty)
+            return;
+        var before = _shown;
+        _arriving = null;
+        if (before is null || !HandheldRollingText.GetRolls(this) || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is null)
+        {
+            _leaving.Clear();
+            return;
+        }
+        var now = Stopwatch.GetTimestamp();
+        _leaving.Add((before, now, Entrance));
+        if (Fitted is { } next)
+            _arriving = (next, now, Entrance);
+        RequestFrame();
+    }
+
     public override void Render(DrawingContext context)
     {
-        if (Fitted is not { } name)
-            return;
         var ink = (Foreground as ISolidColorBrush)?.Color ?? Colors.White;
         var brush = new Avalonia.Media.Immutable.ImmutableSolidColorBrush(ink, TextOpacity * ((Foreground as ISolidColorBrush)?.Opacity ?? 1));
+        if (DrawMoving(context, brush))
+            return;
+        _shown = Fitted;
+        if (_shown is not { } name)
+            return;
         // The box sits at the top of the control; anything below it is room for descenders.
         foreach (var word in name.Words)
             Layout(word.Text, name.Typeface, name.Size, brush).Draw(context, new Point(word.X, word.Top));
+    }
+
+    /// <summary>The letters in flight, each its own layout at its place with its pose; false once nothing moves.</summary>
+    private bool DrawMoving(DrawingContext context, IBrush brush)
+    {
+        _leaving.RemoveAll(leaving => Since(leaving.Start) >= BigTypeMotion.DepartureMilliseconds(LetterCount(leaving.Name)));
+        if (_arriving is { } a && Since(a.Start) >= BigTypeMotion.ArrivalMilliseconds(LetterCount(a.Name)))
+            _arriving = null;
+        if (_arriving is null && _leaving.Count == 0)
+            return false;
+        foreach (var (name, start, exit) in _leaving)
+        {
+            var count = LetterCount(name);
+            foreach (var letter in LettersOf(name))
+            {
+                if (BigTypeMotion.Depart(exit, letter.Order, count, Since(start)) is { } pose)
+                    DrawLetter(context, name, letter, pose, brush);
+            }
+        }
+        if (_arriving is { } arriving)
+        {
+            _shown = arriving.Name;
+            var count = LetterCount(arriving.Name);
+            foreach (var letter in LettersOf(arriving.Name))
+                DrawLetter(context, arriving.Name, letter, BigTypeMotion.Arrive(arriving.Entrance, letter.Order, count, Since(arriving.Start)), brush);
+        }
+        else
+        {
+            // Only leaving letters: the name they gave way to is at rest.
+            _shown = Fitted;
+            if (_shown is { } resting)
+            {
+                foreach (var word in resting.Words)
+                    Layout(word.Text, resting.Typeface, resting.Size, brush).Draw(context, new Point(word.X, word.Top));
+            }
+        }
+        return true;
+    }
+
+    private static void DrawLetter(DrawingContext context, BigTypeName name, PlacedLetter letter, BigTypeLetterPose pose, IBrush brush)
+    {
+        if (pose.Opacity <= 0f)
+            return;
+        var size = (float)name.Size;
+        var turn = Matrix.CreateTranslation(-letter.Centre.X, -letter.Centre.Y) * Matrix.CreateRotation(pose.Degrees * Math.PI / 180) *
+            Matrix.CreateTranslation(letter.Centre.X + (pose.X * size), letter.Centre.Y + (pose.Y * size));
+        using (context.PushOpacity(pose.Opacity))
+        using (context.PushTransform(turn))
+        {
+            using var layout = Layout(letter.Text, name.Typeface, name.Size, brush);
+            layout.Draw(context, letter.Origin);
+        }
+    }
+
+    private static float Since(long start) => (float)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
+
+    private void RequestFrame()
+    {
+        if (_ticking || TopLevel.GetTopLevel(this) is not { } top)
+            return;
+        _ticking = true;
+        top.RequestAnimationFrame(_ =>
+        {
+            _ticking = false;
+            InvalidateVisual();
+            if (_arriving is not null || _leaving.Count > 0)
+                RequestFrame();
+        });
+    }
+
+    // ---- Letters ----
+
+    /// <summary>One letter of a fitted name in the control: its text (a grapheme), where its layout is drawn, its middle, its order.</summary>
+    private readonly record struct PlacedLetter(string Text, Point Origin, Point Centre, int Order);
+
+    private static int LetterCount(BigTypeName name) => LettersOf(name).Count;
+
+    private static readonly ConditionalWeakTableCache LetterCache = new();
+
+    /// <summary>Every letter of a fitted name (spaces left out), placed where the word's own layout puts it, in reading order.</summary>
+    private static IReadOnlyList<PlacedLetter> LettersOf(BigTypeName name) => LetterCache.Get(name, () =>
+    {
+        var letters = new List<PlacedLetter>(name.Text.Length);
+        foreach (var word in name.Words)
+        {
+            using var layout = Layout(word.Text, name.Typeface, name.Size, null);
+            var elements = StringInfo.GetTextElementEnumerator(word.Text);
+            while (elements.MoveNext())
+            {
+                var text = elements.GetTextElement();
+                if (string.IsNullOrWhiteSpace(text))
+                    continue;
+                var index = elements.ElementIndex;
+                var x = layout.HitTestTextPosition(index).X;
+                var advance = layout.HitTestTextPosition(index + text.Length).X - x;
+                var origin = new Point(word.X + x, word.Top);
+                letters.Add(new PlacedLetter(text, origin, new Point(origin.X + (advance / 2), origin.Y + (layout.Height / 2)), letters.Count));
+            }
+        }
+        return letters;
+    });
+
+    // Atlas cells keep a margin round each letter's ink, so its soft edge is not cut.
+    private const int CellPad = 2;
+
+    // The atlas wraps to a new row past this width (every GLES 3 device takes 2048).
+    private const int AtlasMaxWidth = 2048;
+
+    /// <summary>
+    /// The fitted name as the native Stage draws it (M47 B6, R1's route): each distinct letter rasterised once, in white, in an ink-tight
+    /// cell of one atlas, and every letter placed where this control draws it at rest, the control's top left at <paramref name="origin"/>
+    /// on the Stage canvas. Null with no name. Runs on the UI thread (it renders a bitmap).
+    /// </summary>
+    public BigTypeLetters? Letters(Point origin)
+    {
+        if (Fitted is not { } name)
+            return null;
+        var glyphs = new Dictionary<string, (FormattedText Text, Rect Ink, int CellX, int CellY, int CellWidth, int CellHeight)>(StringComparer.Ordinal);
+        int x = 0, y = 0, rowHeight = 0, atlasWidth = 0;
+        var placed = LettersOf(name);
+        foreach (var letter in placed)
+        {
+            if (glyphs.ContainsKey(letter.Text))
+                continue;
+            var formatted = new FormattedText(letter.Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, name.Typeface, name.Size, Brushes.White);
+            var ink = formatted.BuildGeometry(default)?.Bounds ?? default;
+            if (ink.Width <= 0 || ink.Height <= 0)
+                continue;
+            var cellWidth = (int)Math.Ceiling(ink.Width) + (2 * CellPad);
+            var cellHeight = (int)Math.Ceiling(ink.Height) + (2 * CellPad);
+            if (x > 0 && x + cellWidth > AtlasMaxWidth)
+            {
+                x = 0;
+                y += rowHeight;
+                rowHeight = 0;
+            }
+            glyphs[letter.Text] = (formatted, ink, x, y, cellWidth, cellHeight);
+            x += cellWidth;
+            atlasWidth = Math.Max(atlasWidth, x);
+            rowHeight = Math.Max(rowHeight, cellHeight);
+        }
+        var atlasHeight = y + rowHeight;
+        if (glyphs.Count == 0 || atlasWidth == 0 || atlasHeight == 0)
+            return null;
+        using var bitmap = new RenderTargetBitmap(new PixelSize(atlasWidth, atlasHeight));
+        using (var context = bitmap.CreateDrawingContext())
+        // Grey-scale antialiasing: a picture for another surface must not carry sub-pixel colour (B4's black boxes on Android).
+        using (context.PushRenderOptions(new RenderOptions { TextRenderingMode = TextRenderingMode.Antialias }))
+        {
+            foreach (var glyph in glyphs.Values)
+                context.DrawText(glyph.Text, new Point(glyph.CellX + CellPad - glyph.Ink.X, glyph.CellY + CellPad - glyph.Ink.Y));
+        }
+        var letters = new List<BigTypeLetter>(placed.Count);
+        foreach (var letter in placed)
+        {
+            if (!glyphs.TryGetValue(letter.Text, out var glyph))
+                continue;
+            letters.Add(new BigTypeLetter(
+                (float)(origin.X + letter.Origin.X + glyph.Ink.X - CellPad), (float)(origin.Y + letter.Origin.Y + glyph.Ink.Y - CellPad),
+                glyph.CellWidth, glyph.CellHeight, glyph.CellX, glyph.CellY, letter.Order));
+        }
+        return new BigTypeLetters(name.Text, HandheldStageShots.Pixels(bitmap), letters, (float)name.Size, (float)TextOpacity);
+    }
+
+    /// <summary>A small cache of each fitted name's placed letters (a name is laid out again only when its fit changes).</summary>
+    private sealed class ConditionalWeakTableCache
+    {
+        private readonly System.Runtime.CompilerServices.ConditionalWeakTable<BigTypeName, IReadOnlyList<PlacedLetter>> _table = [];
+
+        public IReadOnlyList<PlacedLetter> Get(BigTypeName name, Func<IReadOnlyList<PlacedLetter>> make) =>
+            _table.GetValue(name, _ => make());
     }
 
     /// <summary>A word as it is drawn: the name's tracking (a fixed −0.64 px, as the mock draws it), no wrapping.</summary>

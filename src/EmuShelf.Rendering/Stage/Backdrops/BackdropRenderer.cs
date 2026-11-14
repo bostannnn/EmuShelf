@@ -274,7 +274,9 @@ public sealed class BackdropRenderer : IDisposable
     /// Stage's ONE / ONE_MINUS_SRC_ALPHA blending). Changes the bound program, vertex array and textures.
     /// </summary>
     /// <param name="crop">The share of the frame's width to cut off (half each side) on a narrower screen.</param>
-    public void Present(BackdropInstance instance, float opacity, float crop = 0f)
+    /// <param name="clip">Big Type's wipe (M47 B6): a circle to show it only inside (surface pixels from the bottom-left, the radius, on
+    /// when W is 1). Default: everywhere.</param>
+    public void Present(BackdropInstance instance, float opacity, float crop = 0f, Vector4 clip = default)
     {
         if (instance.Shown is not { } shown || opacity <= 0f)
             return;
@@ -286,6 +288,7 @@ public sealed class BackdropRenderer : IDisposable
         _output.Set("uRes", new Vector2(shown.Width, shown.Height));
         _output.Set("uOpacity", opacity);
         _output.Set("uCrop", Math.Clamp(crop, 0f, 0.9f));
+        _output.Set("uClip", clip);
         _output.Set("uSmooth", output.Smooth ? 1f : 0f);
         _output.Set("uLevels", output.Bits > 0 ? (float)((1 << output.Bits) - 1) : 0f);
         _output.Set("uDither", output.Dither);

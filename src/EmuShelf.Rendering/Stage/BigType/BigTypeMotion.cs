@@ -32,8 +32,8 @@ public enum BigTypeRollCell
 }
 
 /// <summary>
-/// The Big Type look's motion that needs no new drawing (M47 B5): the ring's stretch, its breath, the lift and the
-/// neighbours making room, the bob, rolling digits and the idle hop. The numbers are tokens.js <c>motion</c> and
+/// The Big Type look's motion (M47 B5 and B6): the ring's stretch, its breath, the lift and the neighbours making room, the bob,
+/// rolling digits and the idle hop; the name's letters, the flood and the wipe. The numbers are tokens.js <c>motion</c> and
 /// <c>shape</c> at Thor resolution; the shapes of the curves are the mock's script (docs/prototypes/handheld-big-type).
 /// Everything here is a pure function of time, shared by the native compositors and the Avalonia Launcher.
 /// </summary>
@@ -338,4 +338,196 @@ public static class BigTypeMotion
     /// <summary>How long a roll over <paramref name="cells"/> cells runs.</summary>
     public static float RollMilliseconds(int cells) =>
         Math.Max(DigitFadeMilliseconds, Math.Min(Math.Max(0, cells - 1) * DigitStagger, DigitStaggerMax) + DigitInDelay + DigitInMilliseconds);
+
+    // ---- The name's letters (move 2, M47 B6) ----
+
+    /// <summary>tokens.js <c>LetterIn</c>: each letter lands in 540 ms on the landing curve, after 90 ms.</summary>
+    public const float LetterInMilliseconds = 540f;
+    public const float LetterInDelay = 90f;
+
+    /// <summary>tokens.js <c>LetterIn</c>: up to 26 ms a letter, 300 ms across the name at most.</summary>
+    public const float LetterInStaggerMax = 26f;
+    public const float LetterInStaggerTotal = 300f;
+
+    /// <summary>tokens.js <c>LetterIn</c> (the mock's ENTER): where a letter starts, in ems of the name's size, and its tilt in degrees.</summary>
+    public const float LetterInFromEm = 0.55f;
+    public const float LetterInFromEmVertical = 0.5f;
+    public const float LetterInOpenEm = 0.95f;
+    public const float LetterInOpenTilt = 7f;
+    public const float LetterInBackEm = -0.7f;
+    public const float LetterInBackTilt = -5f;
+    public const float LetterInRiseEm = 0.7f;
+    public const float LetterInRiseTilt = 5f;
+
+    /// <summary>tokens.js <c>LetterOut</c>: each old letter leaves in 170 ms on the leaving curve, up to 12 ms apart (110 in all).</summary>
+    public const float LetterOutMilliseconds = 170f;
+    public const float LetterOutStaggerMax = 12f;
+    public const float LetterOutStaggerTotal = 110f;
+
+    /// <summary>tokens.js <c>LetterOut</c> (the mock's EXIT): where a leaving letter goes, in ems.</summary>
+    public const float LetterOutToEm = 0.45f;
+    public const float LetterOutOpenEm = -0.6f;
+    public const float LetterOutBackEm = 0.6f;
+    public const float LetterOutRiseEm = -0.4f;
+
+    /// <summary>tokens.js <c>LetterOut.stillMs</c>: held still, the old name goes in 60 ms, all at once (the mock's reduced motion).</summary>
+    public const float LetterOutStillMilliseconds = 60f;
+
+    /// <summary>tokens.js <c>Leave</c>, cubic-bezier(.5, 0, .9, .5): anything going.</summary>
+    public static float Leave(float t) => Curve(0.5f, 0f, 0.9f, 0.5f, t);
+
+    /// <summary>The arriving letters' stagger for a name of <paramref name="count"/> letters: up to 26 ms each, 300 ms in all.</summary>
+    public static float LetterInStagger(int count) => Math.Min(LetterInStaggerMax, LetterInStaggerTotal / Math.Max(1, count));
+
+    /// <summary>The leaving letters' stagger: up to 12 ms each, 110 ms in all.</summary>
+    public static float LetterOutStagger(int count) => Math.Min(LetterOutStaggerMax, LetterOutStaggerTotal / Math.Max(1, count));
+
+    /// <summary>Where an arriving letter starts (ems; y down) and its tilt (degrees, clockwise), the mock's <c>ENTER</c>.</summary>
+    public static (float X, float Y, float Degrees) LetterFrom(BigTypeEntrance entrance) => entrance switch
+    {
+        BigTypeEntrance.Right => (LetterInFromEm, 0f, 0f),
+        BigTypeEntrance.Left => (-LetterInFromEm, 0f, 0f),
+        BigTypeEntrance.Up => (0f, -LetterInFromEmVertical, 0f),
+        BigTypeEntrance.Down => (0f, LetterInFromEmVertical, 0f),
+        BigTypeEntrance.Open => (0f, LetterInOpenEm, LetterInOpenTilt),
+        BigTypeEntrance.Back => (0f, LetterInBackEm, LetterInBackTilt),
+        _ => (0f, LetterInRiseEm, LetterInRiseTilt),
+    };
+
+    /// <summary>Where a leaving letter goes (ems), the mock's <c>EXIT</c>: the other way from the arrival.</summary>
+    public static (float X, float Y) LetterTo(BigTypeEntrance entrance) => entrance switch
+    {
+        BigTypeEntrance.Right => (-LetterOutToEm, 0f),
+        BigTypeEntrance.Left => (LetterOutToEm, 0f),
+        BigTypeEntrance.Up => (0f, LetterOutToEm),
+        BigTypeEntrance.Down => (0f, -LetterOutToEm),
+        BigTypeEntrance.Open => (0f, LetterOutOpenEm),
+        BigTypeEntrance.Back => (0f, LetterOutBackEm),
+        _ => (0f, LetterOutRiseEm),
+    };
+
+    /// <summary>
+    /// Letter <paramref name="order"/> (reading order) of a name of <paramref name="count"/> letters, <paramref name="since"/> ms after
+    /// the name came: its offset in ems, tilt and opacity (the mock's <c>setWord</c>: from <see cref="LetterFrom"/> and clear, onto its
+    /// place on the landing curve, 90 ms plus its stagger late; moving left the last letter leads). Before its turn it is not drawn.
+    /// Held still the name is simply there.
+    /// </summary>
+    public static BigTypeLetterPose Arrive(BigTypeEntrance entrance, int order, int count, float since, bool holdStill = false)
+    {
+        if (holdStill)
+            return BigTypeLetterPose.Rest;
+        var index = entrance == BigTypeEntrance.Left ? count - 1 - order : order;
+        var t = (since - LetterInDelay - (index * LetterInStagger(count))) / LetterInMilliseconds;
+        var (x, y, degrees) = LetterFrom(entrance);
+        if (t <= 0f)
+            return new BigTypeLetterPose(x, y, degrees, 0f);
+        if (t >= 1f)
+            return BigTypeLetterPose.Rest;
+        var e = Land(t);
+        var k = 1f - e;
+        return new BigTypeLetterPose(x * k, y * k, degrees * k, Math.Clamp(e, 0f, 1f));
+    }
+
+    /// <summary>How long a name of <paramref name="count"/> letters takes to land (0 held still).</summary>
+    public static float ArrivalMilliseconds(int count, bool holdStill = false) => holdStill ? 0f :
+        LetterInDelay + (Math.Max(0, count - 1) * LetterInStagger(count)) + LetterInMilliseconds;
+
+    /// <summary>
+    /// Leaving letter <paramref name="order"/> <paramref name="since"/> ms after the next name came: its offset in ems and opacity on
+    /// the leaving curve toward <see cref="LetterTo"/>, staggered in reading order; null once it has gone. Held still, every letter goes
+    /// together in <see cref="LetterOutStillMilliseconds"/>.
+    /// </summary>
+    public static BigTypeLetterPose? Depart(BigTypeEntrance entrance, int order, int count, float since, bool holdStill = false)
+    {
+        var duration = holdStill ? LetterOutStillMilliseconds : LetterOutMilliseconds;
+        var delay = holdStill ? 0f : order * LetterOutStagger(count);
+        var t = (since - delay) / duration;
+        if (t >= 1f)
+            return null;
+        var e = Leave(t);
+        var (x, y) = LetterTo(entrance);
+        return new BigTypeLetterPose(x * e, y * e, 0f, 1f - e);
+    }
+
+    /// <summary>How long a name of <paramref name="count"/> letters takes to leave.</summary>
+    public static float DepartureMilliseconds(int count, bool holdStill = false) => holdStill ? LetterOutStillMilliseconds :
+        (Math.Max(0, count - 1) * LetterOutStagger(count)) + LetterOutMilliseconds;
+
+    // ---- The letters' idle hop (move 8) ----
+
+    /// <summary>tokens.js <c>IdleHop</c>: the name's letters hop 260 ms after the tiles' wave begins, 45 ms apart, 0.07 em high.</summary>
+    public const float LetterHopDelay = 260f;
+    public const float LetterHopStagger = 45f;
+    public const float LetterHopRiseEm = 0.07f;
+
+    /// <summary>Letter <paramref name="order"/>'s hop in ems (negative is up) <paramref name="sinceHop"/> ms after the wave began.</summary>
+    public static float LetterHop(int order, float sinceHop)
+    {
+        var t = (sinceHop - LetterHopDelay - (order * LetterHopStagger)) / HopMilliseconds;
+        if (t <= 0f || t >= 1f)
+            return 0f;
+        var p = HopEase(t);
+        return -LetterHopRiseEm * (p < 0.5f ? 2f * p : 2f - (2f * p));
+    }
+
+    /// <summary>How long the letters' part of a wave runs for a name of <paramref name="count"/> letters.</summary>
+    public static float LetterHopWaveMilliseconds(int count) => LetterHopDelay + (Math.Max(0, count - 1) * LetterHopStagger) + HopMilliseconds;
+
+    // ---- The flood and the wipe (move 3) ----
+
+    /// <summary>tokens.js <c>Flood</c>: the Launcher's new ground grows as a circle from the focused tile to 1640 px in 640 ms.</summary>
+    public const float FloodMilliseconds = 640f;
+    public const float FloodRadius = 1640f;
+
+    /// <summary>tokens.js <c>Wipe</c>: the Stage's new backdrop grows as a circle to 2300 px in 760 ms, 110 ms after the flood, from
+    /// <c>below</c> px under the Stage's bottom edge at the focused tile's x.</summary>
+    public const float WipeMilliseconds = 760f;
+    public const float WipeDelay = 110f;
+    public const float WipeRadius = 2300f;
+    public const float WipeBelow = 40f;
+
+    /// <summary>tokens.js <c>Flood.easing</c> and <c>Wipe.easing</c>, cubic-bezier(.2, .6, .2, 1).</summary>
+    public static float FloodEase(float t) => Curve(0.2f, 0.6f, 0.2f, 1f, t);
+
+    /// <summary>The flood's radius <paramref name="since"/> ms after it began; held still it covers at once.</summary>
+    public static float FloodRadiusAt(float since, bool holdStill = false) =>
+        holdStill || since >= FloodMilliseconds ? FloodRadius : FloodRadius * FloodEase(Math.Max(0f, since) / FloodMilliseconds);
+
+    /// <summary>Whether a flood that began <paramref name="since"/> ms ago still grows.</summary>
+    public static bool Flooding(float since, bool holdStill = false) => !holdStill && since < FloodMilliseconds;
+
+    /// <summary>The wipe's radius <paramref name="sinceGrowing"/> ms after its circle began to grow (its delay is the caller's).</summary>
+    public static float WipeRadiusAt(float sinceGrowing) =>
+        sinceGrowing >= WipeMilliseconds ? WipeRadius : WipeRadius * FloodEase(Math.Max(0f, sinceGrowing) / WipeMilliseconds);
+
+    /// <summary>
+    /// Where the Stage's wipe grows from, on a Stage canvas <paramref name="stageWidth"/> × <paramref name="stageHeight"/>: the Launcher's
+    /// focused x (<paramref name="launcherX"/> on its canvas of <paramref name="launcherWidth"/>, centred under the Stage as on the Thor,
+    /// the mock's <c>cx + 170</c>), <see cref="WipeBelow"/> under the bottom edge.
+    /// </summary>
+    public static (float X, float Y) WipeOrigin(float launcherX, float launcherWidth, float stageWidth, float stageHeight) =>
+        (launcherX + ((stageWidth - launcherWidth) / 2f), stageHeight + WipeBelow);
+}
+
+/// <summary>Where the arriving letters come from: the direction of the move, a folder opening or closing, or none (they rise).</summary>
+public enum BigTypeEntrance
+{
+    /// <summary>No move (a first show, a page, a drift): the letters rise in, tilted.</summary>
+    Rise,
+    Left,
+    Right,
+    Up,
+    Down,
+
+    /// <summary>Into a folder: the letters rise from the hinge.</summary>
+    Open,
+
+    /// <summary>Out of a folder: the letters drop in from above.</summary>
+    Back,
+}
+
+/// <summary>A letter of the name at a moment: its offset from its place in ems (y down), its tilt in degrees and its opacity.</summary>
+public readonly record struct BigTypeLetterPose(float X, float Y, float Degrees, float Opacity)
+{
+    public static BigTypeLetterPose Rest { get; } = new(0f, 0f, 0f, 1f);
 }

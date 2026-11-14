@@ -105,22 +105,28 @@ window.BT_TOKENS = {
   motion: {
     Land:  'cubic-bezier(.2, 1.5, .35, 1)',     // anything arriving
     Leave: 'cubic-bezier(.5, 0, .9, .5)',       // anything going; always quicker than landing
-    LetterIn:  { ms: 540, delay: 90, staggerMax: 26, staggerTotal: 300, fromEm: 0.55 },
-    LetterOut: { ms: 170, staggerMax: 12, staggerTotal: 110, toEm: 0.45 },
+    // The name's letters (setWord's ENTER and EXIT): along a move left or right fromEm, up or down fromEmVertical; into a
+    // folder they rise from the hinge (openEm, tilted openTilt degrees), out of one they drop in (backEm), and with no
+    // move they rise (riseEm). Leaving goes the other way. Under reduced motion the new name is simply there and the old
+    // one goes in stillMs.
+    LetterIn:  { ms: 540, delay: 90, staggerMax: 26, staggerTotal: 300, fromEm: 0.55, fromEmVertical: 0.5,
+                 openEm: 0.95, openTilt: 7, backEm: -0.7, backTilt: -5, riseEm: 0.7, riseTilt: 5 },
+    LetterOut: { ms: 170, staggerMax: 12, staggerTotal: 110, toEm: 0.45, openEm: -0.6, backEm: 0.6, riseEm: -0.4, stillMs: 60 },
     TypedLetterIn: { ms: 460, fromEm: 0.55, tilt: -8 },
     DigitIn:   { ms: 400, delay: 50, stagger: 12, travelEm: 1.1 },
     DigitOut:  { ms: 220, stagger: 12, travelEm: 1.1 },
     Ring:      { ms: 300, coversBothAt: 0.38 },
     FocusLift: { ms: 380 },
     Flood:     { ms: 640, easing: 'cubic-bezier(.2, .6, .2, 1)', radius: 1640 },
-    Wipe:      { ms: 760, delay: 110, easing: 'cubic-bezier(.2, .6, .2, 1)', radius: 2300 },
+    Wipe:      { ms: 760, delay: 110, easing: 'cubic-bezier(.2, .6, .2, 1)', radius: 2300, below: 40 },   // from the focused tile's x, below the Stage's bottom edge
     Scroll:    { ms: 500, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
     FolderOut: { ms: 250, staggerPerTile: 20 },
     FolderDeal: { ms: 480, staggerPerTile: 45, rise: 160 },
     RowsIn:    { ms: 420, stagger: 32, slide: 140 },
     Launch:    { flightMs: 340, takeoverMs: 640 },
     SwapScreens: { ms: 650 },
-    IdleHop:   { afterMs: 4800, everyMs: 6500, ms: 560, staggerPerTile: 75, rise: 20 },
+    IdleHop:   { afterMs: 4800, everyMs: 6500, ms: 560, staggerPerTile: 75, rise: 20,
+                 letterDelay: 260, letterStagger: 45, letterRiseEm: 0.07 },   // the name's letters hop too, after the tiles
     MediumSway: { periodMs: 14000, fromDeg: 32, toDeg: 14 },
     RingBreath: { periodMs: 2200, scale: 1.03 },
     Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22 },

@@ -201,6 +201,9 @@ public sealed partial class HandheldShellViewModel
     /// </summary>
     private bool WakeOnInput()
     {
+        // A new press: what the last one moved is forgotten until this one moves (M47 B6, the letters' entrance).
+        LastMoveDirection = null;
+        LastFolderOpened = null;
         var woke = IsDrifting;
         StopDrift(refreshStage: true);
         ArmIdle();

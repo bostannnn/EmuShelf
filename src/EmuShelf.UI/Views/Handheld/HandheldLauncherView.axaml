@@ -979,7 +979,7 @@
       -->
       <Grid x:Name="BtFolderHeader" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" ColumnDefinitions="*,Auto" VerticalAlignment="Top"
             Margin="{x:Static vm:HandheldTokens.HeaderMargin}" Height="{x:Static vm:HandheldTokens.HeaderHeight}">
-        <Border x:Name="BtBackShot" Classes="shot" Padding="24" Margin="{x:Static vm:HandheldTokens.HeaderNameShotMargin}" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+        <Border x:Name="BtBackShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="{x:Static vm:HandheldTokens.HeaderNameShotMargin}" HorizontalAlignment="Left" VerticalAlignment="Bottom">
           <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
             <Viewbox Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" HorizontalAlignment="Left">
               <TextBlock Text="{Binding OpenFolder.Name}" FontSize="{x:Static vm:HandheldTokens.FolderHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}"
@@ -989,7 +989,7 @@
             <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
           </Panel>
         </Border>
-        <vh:HandheldRollingText x:Name="BtFolderCount" Grid.Column="1" Text="{Binding OpenFolder.CountNumber}" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.HeaderCountMargin}"
+        <vh:HandheldRollingText x:Name="BtFolderCount" RenderOptions.TextRenderingMode="Antialias" Grid.Column="1" Text="{Binding OpenFolder.CountNumber}" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.HeaderCountMargin}"
                    FontSize="{x:Static vm:HandheldTokens.HeadingCount}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnColour}"
                    Opacity="{x:Static vm:HandheldTokens.HeadingCountOpacity}" LineHeight="{x:Static vm:HandheldTokens.HeaderLineHeight}" FontFeatures="+tnum"
                    LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" />
@@ -1067,9 +1067,13 @@
         swap hint; at the right the page ("1 / 2") on home, or an open folder's sort, which the ring frames when Up from the
         top row reaches it (the sort chip's place in today's look).
       -->
+      <!--
+        Each piece pictured for the native Launcher sets grey-scale antialiasing on itself (a piece pictured alone does not inherit its
+        parent's): on Android the default draws pictured text with a black box behind each glyph (M47 B6, as B4 found on the Stage).
+      -->
       <Panel x:Name="BtCorners" Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Margin="{x:Static vm:HandheldTokens.DockCornerMargin}"
              Height="{x:Static vm:HandheldTokens.DockTile}" VerticalAlignment="Bottom">
-        <StackPanel x:Name="BtSwap" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
+        <StackPanel x:Name="BtSwap" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
                     Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}">
           <Border Width="{x:Static vm:HandheldTokens.DockCornerGlyph}" Height="{x:Static vm:HandheldTokens.DockCornerGlyph}" CornerRadius="{x:Static vm:HandheldTokens.DockCornerGlyphRadius}"
                   BorderBrush="{x:Static vm:HandheldTokens.OnColour}" BorderThickness="{x:Static vm:HandheldTokens.DockCornerGlyphStroke}" VerticalAlignment="Center">
@@ -1078,10 +1082,10 @@
           </Border>
           <TextBlock Classes="dock-corner" Text="Swap" />
         </StackPanel>
-        <vh:HandheldRollingText x:Name="BtPage" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel" Text="{Binding PageCountText}" IsVisible="{Binding IsPageCountShown}"
+        <vh:HandheldRollingText x:Name="BtPage" RenderOptions.TextRenderingMode="Antialias" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel" Text="{Binding PageCountText}" IsVisible="{Binding IsPageCountShown}"
                    HorizontalAlignment="Right" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
         <Panel IsVisible="{Binding IsFolderOpen}" HorizontalAlignment="Right" VerticalAlignment="Center">
-          <Border x:Name="BtSortShot" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
+          <Border x:Name="BtSortShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
             <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
               <TextBlock Classes="dock-corner" Text="{Binding OpenFolder.SortLabel}" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
               <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />

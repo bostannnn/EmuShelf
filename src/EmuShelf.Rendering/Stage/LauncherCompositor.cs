@@ -49,12 +49,23 @@ public sealed class LauncherCompositor : INativeScene
     private Vector2 _zoomOrigin;
     private string? _zoomTile;
 
-    // The Big Type look's ground (M47 B3): a flat colour, crossfading from the last; null clears to today's light grey,
-    // under the pictured gradient.
-    private Vector3? _groundFrom;
+    // The Big Type look's ground (M47 B3): a flat colour; null clears to today's light grey, under the pictured gradient. A new
+    // colour floods in (M47 B6) as a circle growing from the focused tile over the old: the waves still growing, oldest first, each
+    // with where it grows from (found on the first frame it is drawn, once the focus that came with it has arrived).
     private Vector3? _groundTo;
-    private float _groundStart = float.NegativeInfinity;
-    private float _groundFade;
+    private readonly List<FloodWave> _waves = [];
+    private uint _white;
+    private string? _probeTag;
+
+    private sealed class FloodWave(Vector3 colour, float start)
+    {
+        public Vector3 Colour { get; } = colour;
+        public float Start { get; } = start;
+        public Vector2? Origin { get; set; }
+    }
+
+    /// <inheritdoc />
+    public string? ProbeTag => _probeTag;
 
     // The Big Type look's motion (M47 B5): off until LauncherMotionCommand says so, so today's look moves exactly as before.
     private bool _bigType;
@@ -230,25 +241,79 @@ public sealed class LauncherCompositor : INativeScene
                 break;
             case LauncherGroundCommand ground:
                 var to = new Vector3(ground.R, ground.G, ground.B);
-                _groundFrom = _groundTo is null || ground.FadeMilliseconds <= 0f ? to : Ground(now);
-                _groundTo = to;
-                _groundStart = now;
-                _groundFade = ground.FadeMilliseconds;
+                if (!ground.Flood || _groundTo is null || _bt.HoldStill)
+                {
+                    // The first ground, a replay, or held still: it is simply there.
+                    _groundTo = to;
+                    _waves.Clear();
+                }
+                else if (to != (_waves.Count > 0 ? _waves[^1].Colour : _groundTo.Value))
+                {
+                    _waves.Add(new FloodWave(to, now));
+                }
                 break;
         }
     }
 
-    /// <summary>The ground's colour now (the crossfade is linear: B5 brings the flood).</summary>
-    private Vector3 Ground(float now)
+    /// <summary>The ground the screen is cleared to: the last colour to have covered it.</summary>
+    private Vector3 Ground() => _groundTo ?? new Vector3(0.96f, 0.97f, 0.98f);
+
+    /// <summary>
+    /// Big Type's flood (M47 B6, move 3): each new ground grows as a circle from the tile focused when it came, over the ground and
+    /// the waves before it (the mock's <c>flood</c>); a wave that has covered the screen becomes the ground. Returns whether one grows.
+    /// </summary>
+    private bool DrawFlood(float now, float sx, float sy, int surfaceHeight)
     {
-        if (_groundTo is not { } to)
-            return new Vector3(0.96f, 0.97f, 0.98f);
-        var from = _groundFrom ?? to;
-        var t = _groundFade <= 0f ? 1f : Math.Clamp((now - _groundStart) / _groundFade, 0f, 1f);
-        return from + ((to - from) * t);
+        if (_waves.Count == 0)
+            return false;
+        if (_white == 0)
+            _white = SpriteTextures.Upload(_gl, new StagePixels(1, 1, [255, 255, 255, 255], IsBgra: false), repeat: false);
+        _gl.Disable(EnableCap.ScissorTest);
+        _gl.BindTexture(TextureTarget.Texture2D, _white);
+        _sprites.Set("uLinear", new Vector4(1, 0, 0, 1));
+        _sprites.Set("uTranslate", Vector2.Zero);
+        _sprites.Set("uRect", new Vector4(0, 0, _layout.CanvasWidth, _layout.CanvasHeight));
+        _sprites.Set("uScale", new Vector3(1, 0, 0));
+        _sprites.Set("uOffset", Vector2.Zero);
+        _sprites.Set("uGroup", new Vector3(1, 0, 0));
+        _sprites.Set("uUv", new Vector4(0, 0, 1, 1));
+        _sprites.Set("uOpacity", 1f);
+        _sprites.Set("uTintAmount", 1f);
+        foreach (var wave in _waves)
+        {
+            var origin = wave.Origin ??= FloodOrigin();
+            var radius = BigTypeMotion.FloodRadiusAt(now - wave.Start, _bt.HoldStill);
+            _sprites.Set("uTint", wave.Colour);
+            _sprites.Set("uClip0", new Vector4(origin.X * sx, surfaceHeight - (origin.Y * sy), radius * sx, 1f));
+            _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
+        }
+        // Everything after draws as it always has.
+        _sprites.Set("uTintAmount", 0f);
+        _sprites.Set("uClip0", Vector4.Zero);
+        return true;
     }
 
-    private bool GroundFading(float now) => _groundTo is not null && _groundFade > 0f && now - _groundStart < _groundFade;
+    /// <summary>A wave that has covered the screen becomes the ground, with every wave before it (before the screen is cleared).</summary>
+    private void SettleFlood(float now)
+    {
+        for (var i = _waves.Count - 1; i >= 0; i--)
+        {
+            if (BigTypeMotion.Flooding(now - _waves[i].Start, _bt.HoldStill))
+                continue;
+            _groundTo = _waves[i].Colour;
+            _waves.RemoveRange(0, i + 1);
+            break;
+        }
+    }
+
+    /// <summary>Where a flood grows from: the middle of what the ring is going to (the focused tile), or the screen's middle.</summary>
+    private Vector2 FloodOrigin()
+    {
+        if (_target is not { } target)
+            return new Vector2(_layout.CanvasWidth / 2f, _layout.CanvasHeight / 2f);
+        var at = TargetOnScreen(target);
+        return new Vector2(at.X + (target.Width / 2f), at.Y + (target.Height / 2f));
+    }
 
     private void ApplySprite(LauncherSpriteCommand command, float now)
     {
@@ -404,8 +469,8 @@ public sealed class LauncherCompositor : INativeScene
         _gl.Disable(EnableCap.ScissorTest);
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
-        var ground = Ground(now);
-        animating |= GroundFading(now);
+        SettleFlood(now);
+        var ground = Ground();
         _gl.ClearColor(ground.X, ground.Y, ground.Z, 1f);
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
         _gl.BindVertexArray(_vao);
@@ -416,6 +481,9 @@ public sealed class LauncherCompositor : INativeScene
 
         var sx = surfaceWidth / _layout.CanvasWidth;
         var sy = surfaceHeight / _layout.CanvasHeight;
+        var flooding = _waves.Count > 0 && DrawFlood(now, sx, sy, surfaceHeight);
+        animating |= flooding;
+        _probeTag = flooding ? "flood" : null;
         var zoom = Zoom(now);
         animating |= zoom.Animating;
 
@@ -796,6 +864,8 @@ public sealed class LauncherCompositor : INativeScene
         _closing.Clear();
         if (_glowTexture != 0)
             _gl.DeleteTexture(_glowTexture);
+        if (_white != 0)
+            _gl.DeleteTexture(_white);
         _gl.DeleteVertexArray(_vao);
         _sprites.Dispose();
         _ring.Dispose();

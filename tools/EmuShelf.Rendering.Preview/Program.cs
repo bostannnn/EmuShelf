@@ -127,6 +127,14 @@ if (args.Contains("--launcher-bigtype"))
     return;
 }
 
+// The Stage compositor's Big Type motion: the letters mid-flight, their hop, holding still, the wipe and its ink, the backdrop
+// prepared after the frame its command lands on (M47 B6).
+if (args.Contains("--stage-letters"))
+{
+    Environment.ExitCode = StageLettersCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-letters");
+    return;
+}
+
 // The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
 if (args.Contains("--stage-resume"))
 {
