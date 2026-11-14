@@ -28,7 +28,10 @@ internal static class FrameProbeProperty
             var value = length > 0 ? Encoding.UTF8.GetString(buffer, 0, length).Trim().ToLowerInvariant() : string.Empty;
             var on = value is "1" or "on" or "true";
             if (on)
+            {
                 global::Android.Util.Log.Info("EmuShelfBigType", $"{Property}: native frame times are logged for this run");
+                EmuShelf.App.Views.Handheld.HandheldProbeLog.Write = line => global::Android.Util.Log.Info("EmuShelfBigType", line);
+            }
             return on;
         }
         catch (System.Exception)

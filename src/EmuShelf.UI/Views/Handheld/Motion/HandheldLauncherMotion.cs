@@ -156,8 +156,13 @@ internal sealed partial class HandheldLauncherMotion
 
     /// <summary>
     /// The element that holds the focus now (the most recently focused one still on screen): while a Title page
-    /// is up, only its own buttons and cards.
+    /// is up, only its own buttons and cards; on home, only a slot of the page on screen.
     /// </summary>
+    /// <remarks>
+    /// The shell marks focus on the page on screen only, so a slot left on another page keeps its mark. Moving from page 1's last
+    /// column onto page 2 and back to the same slot changed nothing on that slot (it never lost its mark), so page 2's slot stayed
+    /// the most recently focused and the ring and lift went there, off screen (M47 B6, seen in both looks).
+    /// </remarks>
     public Control? FocusedAnchor()
     {
         var title = _titleLayer.IsVisible;
@@ -165,13 +170,20 @@ internal sealed partial class HandheldLauncherMotion
         {
             var anchor = _anchors[i];
             if (anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible && HandheldSelectorAnchor.GetIsFocused(anchor) &&
-                _titleLayer.IsVisualAncestorOf(anchor) == title)
+                _titleLayer.IsVisualAncestorOf(anchor) == title && !OnAnotherPage(anchor))
             {
                 return anchor;
             }
         }
         return null;
     }
+
+    // A home slot on a page other than the one on screen.
+    private bool OnAnotherPage(Control anchor) =>
+        _screen?.CurrentPage is { } current &&
+        anchor.GetVisualAncestors().OfType<Control>().FirstOrDefault(control => control.DataContext is HandheldHomePageViewModel) is
+            { DataContext: HandheldHomePageViewModel page } &&
+        !ReferenceEquals(page, current);
 
     private T Find<T>(string name) where T : Control =>
         _view.FindControl<T>(name) ?? throw new InvalidOperationException($"The Launcher has no {name}.");

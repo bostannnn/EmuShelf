@@ -444,9 +444,16 @@ internal sealed class HandheldNativeStageFeed
             return;
         var first = _nameSent is null;
         _nameSent = key;
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         var letters = stage.HasBigTypeName && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } at
             ? _bigTypeName.Letters(at)
             : null;
+        // The frame probe (R1's measurement) ties the Stage's frames to the name that arrived: its lines, letters and atlas.
+        if (HandheldProbeLog.Write is { } log && letters is not null)
+        {
+            log(FormattableString.Invariant(
+                $"name '{letters.Text}' lines {_bigTypeName.Fitted?.Lines} letters {letters.Letters.Count} size {letters.Size:0} atlas {letters.Atlas.Width}x{letters.Atlas.Height} in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:0.0} ms (UI thread)"));
+        }
         _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first));
     }
 

@@ -2952,6 +2952,38 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       `backdrop-output.frag`, `NativeFrameProbe`, `GpuFrameTimer`) and turn it from a flagged spike into the real
       thing. Also move the backdrop's start-up cost off the first frame of a console change (R1). **Exit:** frame times on the Thor at or under
       R1's figures for a three-line name during a wipe.
+      **Built 2026-11-14; awaiting the owner's measurement on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B6".) Under Big Type
+      only: **the name arrives letter by letter** on the native Stage from one atlas per name, laid out by the Avalonia name's own fit
+      (`HandheldBigTypeName.Letters`, held to the control's drawing by a headless test) and drawn one quad per letter in the left zone's ink
+      (`StageNameCommand`, `BigTypeStageLayer`); each letter lands from the move (right, left, up, down, into a folder from the hinge, out of
+      one, or rising) on tokens.js `LetterIn`, the old name leaving the other way on `LetterOut`; the Avalonia name moves the same way where
+      the native Stage does not run, and swaps while it is only pictured or held still. **The flood**: the Launcher's new ground grows as a
+      circle from the focused tile (`Flood`, 640 ms to 1640 px), replacing `LauncherGroundCommand`'s fade. **The wipe**: the Stage's new
+      backdrop grows through a circle from 40 px below its bottom edge at the focused tile's x (`Wipe`, 110 ms, 760 ms, 2300 px), over the
+      ones beneath until it covers them; text and veils are drawn per backdrop inside its own circle and outside those above it, each in that
+      backdrop's own ink, so no pixel of text is ever in an ink chosen for another backdrop. **The letters hop** on the tiles' schedule from the
+      shell's `InputArrived` (`StageInputCommand`). **The start-up cost**: the backdrop is sent at once and prepared over the frames after the
+      press (started on the next, first step drawn on the one after; its circle starts at 110 ms or when ready), and its pictured layers go up
+      only if drawn. **Held still**: the name is there at once and the old one goes in 60 ms, the flood lands, the wipe cuts once ready.
+      tokens.js gained the mock's inline numbers for the entrances, `LetterOut.stillMs`, `Wipe.below` and the letters' hop. R1's probe is kept
+      behind `adb shell setprop debug.emushelf.probe 1` (logcat `EmuShelfBigType`, per motion). **Fixed on the way:** after moving from home's
+      page 2 back onto page 1 the ring and lift went to page 2's slot, off screen (both looks; Classic changes by the restored highlight only),
+      and the Launcher's corner type is pictured with grey-scale antialiasing (no black boxes). **Verified on macOS:** Classic rendered before
+      and after, 158 of 158 frames byte-identical; Big Type: CLASSIFY. New tests hold the letters', flood's, wipe's and hop's timing at fixed
+      moments to tokens.js (`HandheldBigTypeLettersTests`); a new desktop GL check (`dotnet run --project tools/EmuShelf.Rendering.Preview --
+      --stage-letters`) reads each letter where the maths puts it mid-flight, the hop, holding still, the backdrop not started on the frame
+      its command lands on, and the text white inside and dark outside the wipe's circle; `--launcher-bigtype` now reads the flood mid-flight
+      and held still. `dotnet build` and `dotnet test` pass. **Emulator check (not a Thor check):** on `emushelf-b3` (Release AOT,
+      `adb install -r`), with `debug.emushelf.look bigtype` and the probe on, recordings of both displays caught the flood's circle growing
+      from the focused tile, the old name's letters leaving while the new ones arrive ("Recent" under "PS2"), the wipe's circle rising from
+      below the PS2 tile, the letters rising from the hinge into the PS2 folder, and the idle hop over the tiles then the letters; back on
+      page 1 the ring and lift were on the slot (and in Classic); the corner type had no black boxes. Frame times, as an indication only
+      (emulator CPU time; its GPU has no timer queries): the press frame of a system change 0.1–0.8 ms, the backdrop's start 0.1–1.5 ms on a
+      later frame once its shaders are compiled (27.7 ms the first time a backdrop shows in a run), a new name's first frame (its atlas
+      upload) 2–9.6 ms, steady letter, wipe and flood frames 0.1–0.3 ms. Holding still was not tried there (it needs a system setting
+      changed); the desktop GL checks cover it. Properties cleared, Classic again, settings untouched. **Open for the owner:** the exit,
+      measured on the Thor at 60 Hz with the probe against R1's figures; the swapped screens' wipe (the mock has none; the circle still rises
+      from the Stage's bottom edge); and the feel of every motion.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the

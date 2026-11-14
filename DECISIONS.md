@@ -14613,3 +14613,78 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   shows two or three white frames on the second display; the Launcher's dock-row corner type ("1 / 2", Swap) is pictured with black
   boxes behind its glyphs, the Android fault B4 fixed on the Stage with `RenderOptions.TextRenderingMode="Antialias"` on each pictured
   piece (it also shows in the corner's roll).
+
+## 2026-11-14 — M47 B6: the name's letters, the flood and the wipe
+
+- **The letters reach the native Stage as R1 sent them, one atlas per name, but laid out by the Avalonia name itself.**
+  `HandheldBigTypeName.Letters` takes the control's own fit (B4's `BigTypeLayout` with the name's face, size and tracking), places
+  every letter where that word's own text layout puts it (each grapheme's x from the word's layout, so kerning and the −0.64 px
+  tracking are kept), and rasterises each distinct letter once, white, into an ink-tight cell of one bitmap with grey-scale
+  antialiasing. The feed sends it as `StageNameCommand` (Big Type only) in place of B4's whole-name picture; the Stage uploads one
+  texture and draws one quad per letter in the left zone's ink (`BigTypeStageLayer`, from the spike, letters only). A headless test
+  composes the atlas at rest and holds it to the control's own drawing for a monogram, a two-line title and a short word (the same ink,
+  centres of mass within half a pixel). The spike's `BigTypeMotion` was not brought over: its letter, flood and wipe timings are now
+  in B5's class, named after tokens.js; its digit atlas was not needed (B5 rolls cut the existing pictures).
+- **Seven entrances, the mock's `ENTER` and `EXIT`.** Right and left (0.55 em along, the last letter leading when moving left), up and
+  down (0.5 em), into a folder (rising 0.95 em from the hinge, tilted 7°), out of one (dropping in from 0.7 em above, −5°), and anything
+  else, a first show, the idle drift or a touch, rising 0.7 em tilted 5°. Leaving goes the other way (0.45 em; −0.6, 0.6, −0.4 for the
+  last three). The shell records the last press's move (`LastMoveDirection`, `LastFolderOpened`, cleared at the next press);
+  `HandheldStageEntrance` maps it. **tokens.js gained the numbers the mock's script had inline** (said so here, as the rule asks):
+  `LetterIn.fromEmVertical/openEm/openTilt/backEm/backTilt/riseEm/riseTilt`, `LetterOut.openEm/backEm/riseEm/stillMs`, `Wipe.below`,
+  `IdleHop.letterDelay/letterStagger/letterRiseEm`.
+- **Where the native Stage does not run** (the desktop, the Avalonia fallback) the name changes correctly and moves the same way: the
+  Avalonia name keeps the names in flight and draws each letter with its pose from the same maths while it is on screen. It swaps (no
+  motion) while it is only pictured or held still (B5's `Rolls`). It does not hop there (the hop needs the press clock the native Stage
+  has), the Avalonia Launcher's ground keeps its 200 ms crossfade, and the Avalonia Stage's backdrop keeps today's crossfade: the flood
+  and the wipe are native only.
+- **The letters hop on the tiles' clock.** The Stage feed forwards the shell's `InputArrived` as `StageInputCommand`; the Stage hops
+  the letters from `BigTypeMotion.HopStart` (the mock: 260 ms after the tiles' wave starts, 45 ms a letter, 0.07 em, 560 ms on the hop's
+  curve), only once the name has landed. A Stage with nothing else moving asks to be woken for the next hop; a wait longer than a second
+  is not voted to Android as a frame rate (`NativeSceneSurface`: every stepped backdrop's cadence is well under a second, so today's
+  votes are unchanged).
+- **The flood** replaces `LauncherGroundCommand`'s linear fade under Big Type (`Flood` instead of `FadeMilliseconds`): each new ground is a
+  wave growing from the middle of the ring's target (the focused tile), found on the first frame it is drawn, so the focus sent in the
+  same batch after the ground is the one it grows from; it is drawn as a white quad tinted to the colour and cut to the circle, under
+  the tiles. A wave that covers the screen (640 ms, 1640 px) becomes the ground before the screen is cleared; waves started before it
+  go with it, so quick moves stack as the mock's do.
+- **The wipe is a stack of backdrops, not the crossfade's pair.** The mock lays each new backdrop's canvas over the others and removes
+  those beneath once its circle has covered the screen; quick system changes therefore show three at once. The Stage keeps up to two
+  beneath the one on top (a further change lets the oldest go). Its circle grows from 40 px below the Stage's bottom edge at the focused
+  tile's x, the Launcher's canvas centred under the Stage's (the mock's `cx + 170`): the Stage feed asks the native Launcher feed where its
+  focused element is on screen when it sends the backdrop. Swapped, the same rule gives the same x (both canvases 1920) and the circle
+  still rises from the Stage's bottom edge; the mock has no swapped wipe, so this is the owner's to judge. With no native Launcher it grows
+  from the middle.
+- **How the ink and veils change with the backdrop, and why no frame has unreadable text: per pixel, in the wipe's own circles.** During a
+  wipe the Stage draws the veils, the name's letters and every zoned text once per backdrop that shows, each pass kept inside its own
+  circle and outside every circle above it (`uClip0..2` in `stage.frag`: include or exclude circles, a one-pixel soft edge; all zero is
+  off, so today's look draws exactly as before), in that backdrop's own answer from `BackdropLegibility` and with the dark ink it was
+  drawn with. So every pixel of text is in the ink chosen for the backdrop actually behind it, from the first frame of the circle to the
+  last; there is no moment where text has switched ahead of or behind its backdrop, which a single ink mixed by the circle's progress
+  would give. The order of the ink and backdrop commands no longer matters: a backdrop that goes beneath a wipe keeps the dark ink of the
+  last frame it was drawn with. Outside a wipe it is B4's mixing, unchanged (a rotation within a system still crossfades). The desktop GL
+  check reads text across the circle's edge mid-wipe: white just inside (over `ps2-trails-v3`), the dark ink just outside (over
+  `ps2-towers`), nothing in a third colour.
+- **The backdrop's start-up cost is off the frame of the press (R1).** Under Big Type the feed sends the new backdrop at once (no 250 ms
+  settle: the wipe is timed from the flood). The compositor does no GL work for it on the frame its command lands on; on the next frame it
+  starts it (its programs are found or compiled), on the one after it draws its first step (its targets are made), and its circle starts
+  growing at 110 ms after the command or once it is ready, whichever is later, so a slow start delays the circle rather than a frame. Its
+  two full-screen pictured layers are uploaded only if they are ever drawn (a system with no animated backdrop, or one whose shaders fail),
+  one per frame. The first backdrop, with nothing on screen to wipe over, is prepared at once (so a rebuilt context's resume finds it).
+  **What is left:** the first time a backdrop shows in a run its shaders compile, on the frame after the press (27.7 ms for `ps2-sea` on the
+  emulator); later starts cost 0.1–1.5 ms there. Compiling a system's backdrops ahead of their first show was not done.
+- **Holding still** (`HoldsStill`) follows the mock's reduced motion: the new name is there at once and the old one goes in 60 ms
+  (`LetterOut.stillMs`), all letters together; the flood lands at once; the new backdrop cuts in once it is ready; no letter hops.
+- **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
+  (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
+  `letters+wipe`, `flood`, `other`) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
+  (`GpuFrameTimer`, where `EXT_disjoint_timer_query` exists: the emulator has none). R1's `measure.py` reads the same lines.
+- **The page 2 → page 1 fault (both looks).** The shell marks focus on the page on screen only, so a slot left on another page keeps its
+  mark. Moving from page 1's last column onto page 2 and back onto the same slot changed nothing on that slot (it had never lost its mark),
+  so page 2's slot stayed the most recently focused anchor and `HandheldLauncherMotion.FocusedAnchor` sent the ring and the lift to it, off
+  screen. Fixed where the anchor is chosen: a home slot counts only while its page is the page on screen. Classic changes by the missing
+  highlight only: the stale mark itself was left alone, because clearing it would also drop the old page's tile out of its focused look
+  during the page's slide, which today's look shows. Seen fixed on the emulator in both looks.
+- **The Launcher's corner type** ("Swap", "1 / 2", the sort, the folder's name and count) sets `RenderOptions.TextRenderingMode="Antialias"`
+  on each pictured piece, as B4 did on the Stage; no black boxes on the emulator.
+- **Found, not fixed:** the Big Type design set is not deterministic from B5's commit: two renders of `ddb0696` differ in 11 frames, each
+  only on the focused ring's edge (6 to 1,215 pixels, sub-pixel), the same frames B5's saved set differs in. Classic is deterministic.

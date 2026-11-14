@@ -38,6 +38,8 @@ public sealed class SingleViewShell : IPlatformShell
         _singleView = singleView;
         // A developer override of Handheld mode's look for this run (M47 B2), read before the view model can start Handheld mode.
         HandheldLookProperty.Read();
+        // R1's frame probe (M47 B6), read once at start-up so the UI side's log is ready before the first name is sent.
+        _ = FrameProbeProperty.IsOn;
 
         InterfaceMode = new AndroidInterfaceModeService(boot.SettingsService, HasPresentationDisplay);
         Frontend = new AndroidFrontendController();
