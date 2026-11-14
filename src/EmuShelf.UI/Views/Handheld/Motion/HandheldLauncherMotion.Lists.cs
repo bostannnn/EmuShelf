@@ -58,10 +58,35 @@ internal sealed partial class HandheldLauncherMotion
         public bool Done { get; set; }
     }
 
+    /// <summary>What the lists view shows: the shell's list, or one that closed while its rows leave.</summary>
+    public HandheldListsShown ListsShown { get; } = new();
+
+    // A list leaving: which it is, how it leaves, when it set off (stamped on the next frame).
+    private sealed class Exit(object identity, BigTypeListExit how, Control[] roots)
+    {
+        public object Identity { get; } = identity;
+        public BigTypeListExit How { get; set; } = how;
+        public Control[] Roots { get; } = roots;
+        public long? Start { get; set; }
+    }
+
+    private Exit? _exit;
+
+    /// <summary>How much longer a list that closed stays on screen while its rows leave (0 when none is leaving).</summary>
+    public float ListExitRemaining => _exit is not { } exit ? 0f
+        : Math.Max(0f, exit.How.HoldMilliseconds - (exit.Start is { } start ? SinceTicks(start) : 0f));
+
+    /// <summary>A leaving list has gone; the Launcher may hand the screen back to the native one.</summary>
+    public event Action? ListExitEnded;
+
+    /// <summary>Brings the lists up to date with the shell now (the native feed asks before it hands the screen back).</summary>
+    public void SyncLists() => UpdateLists();
+
     /// <summary>The Big Type lists this view draws (M47 B7), given once the view is built.</summary>
     public void AttachLists(HandheldBigTypeLists lists)
     {
         _lists = lists;
+        lists.DataContext = ListsShown;
         // After each layout (rows made for a list that just opened), before that frame is drawn: every arriving row takes its pose, so
         // a row never shows once at rest before it slides in.
         lists.LayoutUpdated += (_, _) =>
@@ -98,10 +123,138 @@ internal sealed partial class HandheldLauncherMotion
         return default;
     }
 
-    /// <summary>Notices a list opening, changing or closing (called on every shell change and after every layout).</summary>
+    /// <summary>
+    /// Notices a list opening, changing or closing (called on every shell change and after every layout). A list that closes, or a
+    /// sheet another one replaces, stays shown while its rows leave; then the lists follow the shell again.
+    /// </summary>
     private void UpdateLists()
     {
-        if (!HandheldTokens.IsBigType || _lists is not { } lists)
+        if (!HandheldTokens.IsBigType || _lists is null || _shell is not { } shell)
+            return;
+        ListsShown.LauncherGroundBrush = shell.LauncherGroundBrush;
+        var identity = HandheldListsShown.IdentityOf(shell);
+        if (_exit is { } leaving)
+        {
+            // The same list again before it had gone: it stays.
+            if (ReferenceEquals(identity, leaving.Identity))
+                CancelExit();
+            return;
+        }
+        if (ListsShown.Identity is { } shown && !ReferenceEquals(identity, shown) && _onScreen && !Still)
+        {
+            BeginExit(shown, identity);
+            return;
+        }
+        ListsShown.Follow(shell);
+        UpdateListKey();
+    }
+
+    private void BeginExit(object shown, object? next)
+    {
+        if (_lists is not { } lists)
+            return;
+        var how = ListsShown.Settings is not null ? BigTypeListMotion.SettingsOut
+            : ListsShown.Panel is not null ? BigTypeListMotion.PanelOut
+            : next is HandheldSheetViewModel ? BigTypeListMotion.SheetSwap
+            : BigTypeListMotion.SheetOut;
+        Control[] roots = ListsShown.Settings is not null ? [lists.Rail, lists.SettingsRows, lists.SettingsThemes, lists.ChoiceRows, lists.ConfirmRows]
+            : ListsShown.Panel is not null ? [lists.PanelRows]
+            : ListsShown.IsMenuOpen ? [lists.MenuRows]
+            : [lists.SheetRows];
+        _arrivals.Clear();
+        // A panel's pictures belong to its view models, which go as it closes: its grid of covers goes at once, its rows of type leave.
+        lists.PanelGrid.IsVisible = false;
+        _exit = new Exit(shown, how, roots);
+        RequestTick();
+    }
+
+    private void CancelExit()
+    {
+        if (_exit is not { } exit)
+            return;
+        _exit = null;
+        foreach (var root in exit.Roots)
+        {
+            foreach (var row in Rows(root))
+                Pose(row, 0, 0, 1);
+        }
+        if (_lists is { } lists)
+            lists.PanelGrid.IsVisible = true;
+    }
+
+    /// <summary>Each frame while a list leaves: its rows go on the Leave curve; once it has gone, the lists follow the shell.</summary>
+    private bool StepExit()
+    {
+        if (_exit is not { } exit)
+            return false;
+        if (exit.Start is null)
+        {
+            // A sheet's row that opens the next sheet closes this one first: by the first frame the next one is there, and this
+            // one's rows leave the other way (the mock's openSheet over another).
+            if (exit.How == BigTypeListMotion.SheetOut && _shell is { } shell && HandheldListsShown.IdentityOf(shell) is HandheldSheetViewModel)
+                exit.How = BigTypeListMotion.SheetSwap;
+            exit.Start = Stopwatch.GetTimestamp();
+        }
+        var since = SinceTicks(exit.Start.Value);
+        var index = 0;
+        foreach (var root in exit.Roots)
+        {
+            if (!root.IsEffectivelyVisible)
+                continue;
+            foreach (var row in Rows(root))
+            {
+                var (offset, opacity) = BigTypeListMotion.RowOut(exit.How, index++, since, Still);
+                Pose(row, exit.How.Vertical ? 0 : offset, exit.How.Vertical ? offset : 0, opacity);
+            }
+        }
+        if (since < exit.How.HoldMilliseconds && !Still)
+            return true;
+        EndExit();
+        return false;
+    }
+
+    private void EndExit()
+    {
+        if (_exit is not { } exit || _shell is not { } shell)
+            return;
+        _exit = null;
+        // The rows that left are put back for the next time this list shows (the menu's rows and a sheet's are the same controls).
+        foreach (var root in exit.Roots)
+        {
+            foreach (var row in Rows(root))
+                Pose(row, 0, 0, 1);
+        }
+        ListsShown.Follow(shell);
+        if (_lists is { } lists)
+            lists.PanelGrid.IsVisible = true;
+        // The next list's rows are made on the next layout: until its first row is there the ring stays hidden, so it never lands on
+        // what is under the list for a frame.
+        _awaitListAnchor = ListsShown.Identity is not null;
+        UpdateListKey();
+        ListExitEnded?.Invoke();
+    }
+
+    /// <summary>The ring is hidden while a list leaves (the mock's closeSheet clears it first).</summary>
+    private bool ListLeaving => _exit is not null;
+
+    private bool _awaitListAnchor;
+
+    /// <summary>Whether the ring should wait (hidden, not moving) rather than go to <paramref name="anchor"/>.</summary>
+    private bool AwaitsListAnchor(Control anchor)
+    {
+        if (!_awaitListAnchor)
+            return false;
+        if (_lists is { } lists && lists.IsVisualAncestorOf(anchor))
+        {
+            _awaitListAnchor = false;
+            return false;
+        }
+        return ListsShown.Identity is not null;
+    }
+
+    private void UpdateListKey()
+    {
+        if (_lists is not { } lists)
             return;
         var key = CurrentListKey();
         if (key == _listKey)
@@ -287,7 +440,7 @@ internal sealed partial class HandheldLauncherMotion
             ListKind.None => (1f, 1f),
             _ => (1f, 0f),
         };
-        PlaceCorner(to.Item2 == 0f);
+        PlaceCorner(kind);
         if (to == _underTo)
             return;
         _underFrom = _underNow;
@@ -347,12 +500,14 @@ internal sealed partial class HandheldLauncherMotion
     }
 
     /// <summary>The dock row's right corner (the page, a folder's sort) says nothing of a list that takes the screen (the mock's Settings and panels).</summary>
-    private void PlaceCorner(bool gone)
+    private void PlaceCorner(ListKind kind)
     {
         foreach (var name in CornerNames)
         {
             if (_view.FindControl<Control>(name) is not { } corner)
                 continue;
+            // Under Settings the page's corner says the version instead (the mock's); under a panel it is empty.
+            var gone = kind == ListKind.Panel || (kind is ListKind.Settings or ListKind.SettingsChoice or ListKind.SettingsConfirm && name != "BtPage");
             // Each keeps its own opacity at rest (the page is set at the corners' opacity).
             if (!_cornerOpacity.ContainsKey(name))
                 _cornerOpacity[name] = corner.Opacity;

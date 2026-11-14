@@ -34,11 +34,15 @@ public partial class HandheldShellViewModel
         }
     }
 
+    private string _underName = string.Empty;
+    private bool _underMissing;
+
     private string BtName
     {
         set
         {
-            if (_listText is null)
+            _underName = value;
+            if (_listText is null || KeepsName)
                 Stage.Name = value;
         }
     }
@@ -57,9 +61,7 @@ public partial class HandheldShellViewModel
         set
         {
             _underFacts = value;
-            if (_listText is null)
-                Stage.Facts = value;
-            else if (Sheet is not null && Settings is null && Panel is null && !IsMenuOpen)
+            if (_listText is null || KeepsName)
                 Stage.Facts = value;
         }
     }
@@ -68,7 +70,8 @@ public partial class HandheldShellViewModel
     {
         set
         {
-            if (_listText is null)
+            _underMissing = value;
+            if (_listText is null || KeepsName)
                 Stage.IsMissing = value;
         }
     }
@@ -90,12 +93,53 @@ public partial class HandheldShellViewModel
         if (_listText is not { } list)
             return;
         Stage.Label = list.Label;
-        Stage.Name = list.Name;
         Stage.Line = list.Line;
-        // A sheet keeps saying what it acts on under it (a game's emulator and last played, a folder's last game).
-        Stage.Facts = Sheet is not null && Settings is null && Panel is null && !IsMenuOpen ? _underFacts : list.Facts;
+        if (KeepsName)
+        {
+            // The Y sheet and the Start menu keep the name (and the second line) of what they were opened over: the mock's
+            // focusSheet lands with keep: true. Only the label (the kicker) and the line (the row's meta or hint) change.
+            Stage.Name = _underName;
+            Stage.Facts = _underFacts;
+            Stage.IsMissing = _underMissing;
+            return;
+        }
+        Stage.Name = list.Name;
+        Stage.Facts = list.Facts;
         Stage.IsMissing = false;
     }
+
+    /// <summary>
+    /// Big Type's cover search (M47 B7, the mock's focusPanel: the case wears the candidate): the game's case stands where it did, its
+    /// front the focused candidate. The candidate is lent to the Stage, never disposed by it; the panel takes it back as it closes.
+    /// </summary>
+    private void DressCaseWithCandidate()
+    {
+        if (!HandheldTokens.IsBigType || Settings is not null || Panel is not HandheldCoverSearchPanel { Game: { } game } covers ||
+            covers.BigTypeCover is not { } candidate)
+        {
+            return;
+        }
+        if (!ReferenceEquals(Stage.Medium, game.ViewModel?.ShelfMediaShell))
+        {
+            Stage.Medium = game.ViewModel?.ShelfMediaShell;
+            _platforms.TryGetValue(game.SystemId, out var platform);
+            if (HandheldTokens.ConsoleColour(platform) is { } accent)
+                Stage.MediumAccent = accent;
+        }
+        if (!ReferenceEquals(Stage.Art, candidate))
+            ReplaceStageArt(candidate, borrowed: true);
+    }
+
+    /// <summary>The panel is closing: the Stage gives back a candidate it was lent before the panel disposes it.</summary>
+    private void ReturnCandidate()
+    {
+        Stage.ListCover = null;
+        if (_stageArtBorrowed && Panel is null)
+            ReplaceStageArt(null, borrowed: false);
+    }
+
+    /// <summary>A sheet or the Start menu is the list: the Stage keeps its name (the mock's <c>keep: true</c>).</summary>
+    private bool KeepsName => Settings is null && Panel is null && (IsMenuOpen || Sheet is not null);
 
     /// <summary>Before the Stage is updated: whether a list is open and what it says (null for none, or in today's look).</summary>
     private void TakeBigTypeListText()
@@ -113,11 +157,15 @@ public partial class HandheldShellViewModel
         HandheldListStageText? text = null;
         if (Settings is { IsTyping: false } settings)
         {
+            // The mock's focusSet: on the rail "Settings" over the section's name, its subtitle under it; on a row "Settings ·
+            // Section" over the row's label, its meta (a switch's On or Off, a value, else its hint) under it; no second line.
             var card = settings.Card;
             var where = card.Eyebrow == HandheldSettingsText.Name || card.Eyebrow.StartsWith("Setup", System.StringComparison.Ordinal)
                 ? card.Eyebrow
                 : $"{HandheldSettingsText.Name} · {card.Eyebrow}";
-            text = HandheldListStageText.Of(where, card.Title, card.Value, card.Description, card.Status);
+            var rail = settings.Projection.IsRailFocused && settings.IsNormal;
+            var meta = rail ? card.Description : string.IsNullOrEmpty(card.Value) ? card.Description : card.Value;
+            text = new HandheldListStageText(where, card.Title, meta, string.Empty);
         }
         else if (Settings is null && Panel is { IsListing: true } panel)
         {
@@ -125,12 +173,14 @@ public partial class HandheldShellViewModel
         }
         else if (Settings is null && Panel is null && IsMenuOpen && MenuItems.Count > MenuIndex)
         {
+            // The mock's Start menu is a sheet (kicker "Menu"): the row's meta, a switch's On or Off, else its hint.
             var item = MenuItems[MenuIndex];
-            text = new HandheldListStageText("Menu", item.Label, item.IsToggle ? (item.IsOn ? "On" : "Off") : item.Hint ?? string.Empty, string.Empty);
+            text = new HandheldListStageText("Menu", string.Empty, item.IsToggle ? (item.IsOn ? "On" : "Off") : item.Hint ?? string.Empty, string.Empty);
         }
         else if (Settings is null && Panel is null && Sheet is { FocusedItem: { } row } sheet)
         {
-            text = new HandheldListStageText(sheet.Title, row.Label, row.Note ?? sheet.Subtitle ?? string.Empty, string.Empty);
+            // The mock's focusSheet: the kicker over the name it was opened on, the row's meta or hint under it.
+            text = new HandheldListStageText(sheet.Kicker ?? sheet.Title, string.Empty, row.Note ?? string.Empty, string.Empty);
         }
         return text;
     }

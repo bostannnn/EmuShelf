@@ -73,6 +73,10 @@ window.BT_TOKENS = {
     // PanelCountRaise), the rows from PanelRowsTop in a window PanelRowsVisible rows high, inset PanelRowsInset, PanelWidth wide.
     RowGap: 16, RowValueGap: 28, RowFocusShift: 10, RowRingOutsetX: 28, RowRingOutsetY: 12,
     RowGroupIndent: 48,   // a Settings row inside an opened one (an emulator's options): the app's own indent; the mock has none
+    // Not the mock's (its labels all fit): a rail name or row label too long for its room is set smaller to fit, as the mock's setHead
+    // fits a heading, but no smaller than LabelFitMin of its size; past that it ends in an ellipsis. A row's value takes at most
+    // RowValueMaxShare of the row, so a long one (a folder's path) gives way to the label and never touches it.
+    LabelFitMin: 0.75, RowValueMaxShare: 0.45,
     SheetLeft: 140, SheetTitleTop: 60, SheetTop: 208, SheetWidth: 960, SheetRowsVisible: 8,
     SettingsLeft: 80, SettingsHeadTop: 44, SettingsHeadMaxWidth: 1080, SettingsTop: 224, RailWidth: 300,
     SettingsRowsLeft: 472, SettingsRowsWidth: 688, SettingsRowsVisible: 7,
@@ -149,6 +153,13 @@ window.BT_TOKENS = {
     CoversIn:  { ms: 460, staggerPerTile: 45, rise: 120, fromScale: 0.6 },   // cover search's candidates, by column + row
     HeadingIn: { ms: 520, delay: 60, stagger: 24, staggerMax: 360, fromEm: 0.9, sheetFromEm: 0.8, tilt: 6 },
     StepBack:  { ms: 400, fadeMs: 280, easing: 'cubic-bezier(.2, 1.2, .3, 1)' },
+    // Rows leaving on the Leave curve (the mock's closeSheet, openSheet over another, closeSettings, closePanel): each row goes `to`
+    // px (right, left, or down for drop) and clears over ms, stagger ms apart (a panel's at most staggerCap rows apart); the list
+    // goes after holdMs.
+    SheetOut:    { ms: 160, stagger: 12, to: 120, holdMs: 240 },
+    SheetSwap:   { ms: 150, stagger: 10, to: -120, holdMs: 210 },
+    SettingsOut: { ms: 180, stagger: 10, drop: 80, holdMs: 290 },
+    PanelOut:    { ms: 170, stagger: 10, staggerCap: 8, drop: 80, holdMs: 280 },
     RowFocus:  { ms: 350, fadeMs: 200 },
     Switch:    { ms: 350, fadeMs: 250 },
     Launch:    { flightMs: 340, takeoverMs: 640 },

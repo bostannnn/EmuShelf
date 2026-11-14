@@ -7,7 +7,8 @@ namespace EmuShelf.App.Views.Handheld;
 
 /// <summary>
 /// The Big Type look's lists on the Launcher (M47 B7): the Start menu, the Y sheet, Settings and a panel as type on the colour. A view
-/// onto the shell; its rows' arrival, the grid stepping back and the ring are the Launcher's motion's (<see cref="HandheldLauncherMotion"/>).
+/// onto <see cref="HandheldListsShown"/> (the shell's list, kept while its rows leave); its rows' arrival and leaving, the grid stepping
+/// back and the ring are the Launcher's motion's (<see cref="HandheldLauncherMotion"/>).
 /// </summary>
 public partial class HandheldBigTypeLists : UserControl
 {

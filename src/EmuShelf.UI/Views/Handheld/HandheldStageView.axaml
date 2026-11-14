@@ -495,11 +495,13 @@
         </Border>
         <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <vh:HandheldRollingText Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum" />
+          <vh:HandheldRollingText x:Name="BtLine" Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum"
+                                  TextTrimming="CharacterEllipsis" />
         </Border>
         <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageFactsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum" />
+          <TextBlock x:Name="BtFacts" Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum"
+                     TextTrimming="CharacterEllipsis" />
         </Border>
       </Panel>
 

@@ -378,7 +378,7 @@ public sealed partial class HandheldShellViewModel
     /// Y: the game's actions sheet (M45 H6c), the same one Y opens on the game's tile, with what the page itself can do
     /// first (Play, another screen, the disc). It is the Launcher's sheet, which scrolls when the rows outgrow it.
     /// </summary>
-    private void OpenTitleActions(HandheldTitlePageViewModel page) => ShowSheet(GameSheet(page.Entry, OpenFolder, page));
+    private void OpenTitleActions(HandheldTitlePageViewModel page) => ShowItemSheet(GameSheet(page.Entry, OpenFolder, page));
 
     private void DispatchTitleOptions(HandheldTitlePageViewModel page, GamepadAction action)
     {

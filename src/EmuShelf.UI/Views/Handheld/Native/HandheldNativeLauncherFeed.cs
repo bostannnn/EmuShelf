@@ -259,6 +259,17 @@ internal sealed class HandheldNativeLauncherFeed
         var active = !_failed && _shell is { IsLauncherOverlayOpen: false };
         if (active == _active)
             return;
+        // Big Type (M47 B7): a list that closed keeps the screen while its rows leave; the native Launcher comes back after.
+        if (active && HandheldTokens.IsBigType)
+        {
+            _motion.SyncLists();
+            if (_motion.ListExitRemaining > 0f)
+            {
+                _motion.ListExitEnded -= OnListExitEnded;
+                _motion.ListExitEnded += OnListExitEnded;
+                return;
+            }
+        }
         _active = active;
         _motion.IsOnScreen = !active;
         _view.Opacity = active ? 0 : 1;
@@ -278,6 +289,12 @@ internal sealed class HandheldNativeLauncherFeed
             _tracksSent = null;
             Schedule();
         }
+    }
+
+    private void OnListExitEnded()
+    {
+        _motion.ListExitEnded -= OnListExitEnded;
+        UpdateActive();
     }
 
     // Counts hand-overs, so one overtaken by the next (a sheet closed before this view drew) does nothing.

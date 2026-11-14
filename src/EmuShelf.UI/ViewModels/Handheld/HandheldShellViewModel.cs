@@ -1259,6 +1259,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         TakeBigTypeListText();
         UpdateStageCore();
         ApplyBigTypeListText();
+        DressCaseWithCandidate();
         RaiseStageChanged();
     }
 

@@ -635,6 +635,12 @@ public sealed class HandheldCoverSearchPanel : HandheldPanelViewModel
 
     public override string Heading => "Set cover";
 
+    /// <summary>The game's console, which the Big Type Stage names over it (M47 B7).</summary>
+    public string? SystemName { get; init; }
+
+    /// <summary>The game whose cover is being chosen: the Big Type Stage's case wears the candidate (M47 B7).</summary>
+    public HandheldGameEntry? Game { get; init; }
+
     public override string Subheading => _gameTitle;
 
     /// <summary>
@@ -645,11 +651,12 @@ public sealed class HandheldCoverSearchPanel : HandheldPanelViewModel
     {
         get
         {
+            // The mock's cover search (focusPanel): the console over the game's name, which candidate under it, where it is from
+            // under that; the case wears it.
             if (IsTyping || FocusedRow?.Source is not CoverSearchResultViewModel)
                 return base.BigTypeStage;
             var card = Card;
-            var facts = string.Join(" · ", new[] { card.Value, card.Description }.Where(part => !string.IsNullOrEmpty(part)));
-            return new HandheldListStageText(Heading, _gameTitle, card.Title, facts);
+            return new HandheldListStageText(SystemName ?? Heading, _gameTitle, card.Title, card.Description ?? string.Empty);
         }
     }
 
@@ -883,6 +890,25 @@ public sealed class HandheldAchievementsPanel : HandheldPanelViewModel
     public override string Heading => "Achievements";
 
     public override string Subheading => Details.GameTitle;
+
+    /// <summary>
+    /// The mock's achievements (focusPanel): the game over the achievement's name, whether it is unlocked under it, how many are
+    /// unlocked and its points under that.
+    /// </summary>
+    public override HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            if (IsTyping || FocusedAchievement is not { } achievement)
+                return base.BigTypeStage;
+            var state = achievement.IsUnlocked
+                ? achievement.IsHardcore ? $"{achievement.EarnedText} · hardcore" : achievement.EarnedText
+                : achievement.UnlockStateText;
+            var progress = $"{Details.UnlockedCount} of {Details.TotalCount} unlocked";
+            return new HandheldListStageText($"{Details.GameTitle} · {Heading}", achievement.Title, state,
+                achievement.HasPoints ? $"{progress} · {achievement.PointsText}" : progress);
+        }
+    }
 
     /// <summary>How many are unlocked of how many.</summary>
     public override string? Count => Details.TotalCount > 0 ? $"{Details.UnlockedCount} / {Details.TotalCount}" : null;

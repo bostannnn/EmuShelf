@@ -3025,17 +3025,24 @@ checked on the emulator only, so their exits stay open for the owner's look.
       mock's `lettersIn`); rows sit on `RowPitch` / `RowPitchSettings` / `RowPitchPanel` at the mock's places, slide in (`RowsIn`; a
       Settings section's rows rise, `SectionIn`), move over and brighten when focused, and scroll by whole rows past their window; the
       ring frames them at `RingRadiusRow` on B5's timed path, stretching between rows and breathing, and jumps into and out of a list;
-      the grid under a sheet steps back (`StepBack`) and goes under Settings and a panel. The focused row is the Stage's name, arriving by
-      B6's letters, with what it is above and its value or what it does under it (Activity: the day's play time as the figure; cover
-      search: the game, with the candidate where its cover sits). Settings takes its own colour, and the Avalonia Launcher now floods
+      the grid under a sheet steps back (`StepBack`) and goes under Settings and a panel. What the Stage says follows the mock's code (round 2): the
+      Y sheet and the Start menu keep the name they were opened over, with the kicker ("More", "Menu") over it and the row's meta or
+      hint under it; Settings and the panels make the focused row the name, arriving by B6's letters (Activity: the day's play time as
+      the figure; cover search: the game, its case wearing the candidate). Settings takes its own colour, and the Avalonia Launcher now floods
       too. Held still, everything is in place at once. tokens.js gained the mock's inline list numbers (listed in the decision; one,
-      `RowGroupIndent`, is the app's own). Typing (Settings' and the panels' keyboards) keeps today's look until B9. **Not built:** the
-      rows leaving when a list closes; the 3D case wearing a cover candidate. **Followed the brief over the mock's script:** the Y sheet
-      and the menu make the row the name (the mock's script keeps the name and changes the label). **Fixed:** the two or three white
+      `RowGroupIndent`, is the app's own). Typing (Settings' and the panels' keyboards) keeps today's look until B9. **Round 2:**
+      rows leave as the mock's do (a closing sheet's right, a replaced sheet's left, Settings' and a panel's down) and on the Thor the
+      native Launcher comes back only after; long rail names and row labels shrink to fit down to `LabelFitMin`, then end in an ellipsis,
+      and a row's value gives way to its label; the Stage's lines end before the hints; the dock row's corner rolls to the version under
+      Settings; the ring's resting drift is fixed (the neighbours' push is stepped before the ring); cover search's case wears the
+      candidate; a test that left the process-wide look in Big Type (and made other tests fail by their order) now runs apart. **Fixed:** the two or three white
       frames when a sheet opens (both looks: the native Launcher was hidden before the Avalonia one had drawn; it now waits for two
-      rendered frames), and B5's rolling text drawing an earlier text. **Found, not fixed (the app, not the harness):** the Big Type
-      design frames' ring-edge drift — the ring reads its target before the neighbours' push is stepped, so it can rest a fraction of a
-      pixel off. **Verified on macOS:** Classic rendered before and after (and between), 158 of 158 frames byte-identical; Big Type: 72
+      rendered frames), and B5's rolling text drawing an earlier text. **Verified on macOS (round 2):** Classic at the final code is byte-identical to Classic
+      at the starting commit `7c93bea` on all 158 frames; two Big Type renders of the final code are byte-identical on all 158; the full
+      `dotnet test` ran three times after the last change, all three green (1,407 + 1,651), after the first three runs had each failed one
+      test, `HandheldGroundColourTests.TheFace_IsAppAxamlsHandheldFamily_AndTodaysLookSetsNone` ("Expected: Classic, Actual: BigType"),
+      because a B0 test left the process-wide look in Big Type (now fixed).
+      **Round 1, for the record:** Classic rendered before and after (and between), 158 of 158 frames byte-identical; Big Type: 72
       of 158 frames differ from the starting render, all lists (sheets, menu, Settings, Activity, cover search, add games, the Title
       page's actions sheet) plus the folder header's ring at 32 (`RingRadiusRow`), home page 2's Stage line (the rolling-text fix) and
       ring-edge drift; two Big Type renders of one build differ only in 2 folder frames on the ring's edge. Sheet, menu, Settings
@@ -3049,8 +3056,12 @@ checked on the emulator only, so their exits stay open for the owner's look.
       rows, the Stage naming the focused row by its letters, Settings flooding to its colour and a section's rows rising; no frame of the
       second display was white while a sheet or the menu opened. Faults seen there were fixed and checked again (the rail's names cut, a
       long value squeezing its label, cover search's grid running under the dock and its rows vanishing once scrolled, the candidate
-      missing on the native Stage). With `classic`: the sheet and the menu as before, no white frames; set back to `bigtype`. Left on the
-      Thor: this build, `debug.emushelf.look` `bigtype`. Renders, mock captures, recordings: `m47-b7-renders` in the build sessions' notes.
+      missing on the native Stage). With `classic`: the sheet and the menu as before, no white frames; set back to `bigtype`. **Thor, round
+      2** (the same way, `bigtype`): an item's sheet keeps its name with "More" over it; a sheet's rows leave right and fade with the
+      ring hidden, then the native home returns; "Add to folder…" sends the old rows left and the new sheet's arrive; Settings shows
+      "Achievements" whole, "Artwork & metadata" fitted then ended in an ellipsis, a long value giving way to its label, the version in the
+      corner, and on closing its rail and rows drop; the Stage's line ends before the hints. Left on the Thor: this build,
+      `debug.emushelf.look` `bigtype`. Renders, mock captures, recordings: `m47-b7-renders` in the build sessions' notes.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
       companion's session count and achievement roll.
 - [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.

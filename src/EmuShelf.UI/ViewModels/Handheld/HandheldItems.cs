@@ -913,7 +913,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public partial bool IsMediumUnavailable { get; set; }
 
     /// <summary>A browsed game is drawn as its physical medium.</summary>
-    public bool HasMedium => Kind == HandheldStageKind.Game && Medium is not null && !IsMediumUnavailable;
+    public bool HasMedium => (Kind == HandheldStageKind.Game || IsCoverOnCase) && Medium is not null && !IsMediumUnavailable;
+
+    /// <summary>Big Type's cover search (M47 B7, the mock's): the game's case stands beside the name wearing the candidate.</summary>
+    private bool IsCoverOnCase => HandheldTokens.IsBigType && Kind == HandheldStageKind.Panel && ListCover is not null;
 
     /// <summary>A game (or a Title page without fan art) is drawn as its flat cover.</summary>
     public bool HasFlatCover => IsGame && !HasMedium;
@@ -1042,13 +1045,13 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     /// name. Owned by the panel's view models.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth))]
+    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth), nameof(HasMedium), nameof(HasBigTypeMedium))]
     public partial Avalonia.Media.Imaging.Bitmap? ListCover { get; set; }
 
     public bool HasListCover => HandheldTokens.IsBigType && ListCover is not null && Kind == HandheldStageKind.Panel;
 
     /// <summary>A game drawn as its flat cover sits in the medium's corner under Big Type (or a panel's candidate cover).</summary>
-    public bool HasBigTypeCover => HandheldTokens.IsBigType && (HasFlatCover || HasListCover);
+    public bool HasBigTypeCover => HandheldTokens.IsBigType && (HasFlatCover || (HasListCover && !HasMedium));
 
     /// <summary>A game drawn as its medium sits in its corner under Big Type.</summary>
     public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium;

@@ -14784,7 +14784,9 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   `colour` `RowLockedFocusOpacity`, `SwitchOffOpacity`, `UnderSheetOpacity`, and `motion` `RowsIn.delay/railSlide`, `SectionIn`,
   `CoversIn`, `HeadingIn` (the mock's `lettersIn`: 60 ms, 24 ms a letter to 360, 520 ms, 0.9 em or 0.8 on a sheet's title, 6°),
   `StepBack`, `RowFocus`, `Switch`. One number is the app's, not the mock's: `RowGroupIndent` 48, a Settings row inside an opened one
-  (an emulator's options), which the mock does not have; it is today's indent. Under Big Type the list roles `Row`, `RowValue`,
+  (an emulator's options), which the mock does not have; it is today's indent. Round 2 added the mock's exits (`SheetOut`,
+  `SheetSwap`, `SettingsOut`, `PanelOut`) and three numbers that are not the mock's: `LabelFitMin`, `RowValueMaxShare` and
+  `CoverRowsVisible`. Under Big Type the list roles `Row`, `RowValue`,
   `RailRow`, `SheetTitle`, `Heading`, the switch, `RingRadiusRow` (32, which also rounds the folder header's ring, as B5's decision
   already said it should) and `Danger` take tokens.js's values; the Title page (B8's) keeps today's through two new names
   (`TitleOptionsTitle`, `RingRadiusTitleChip`) and the typing panel's heading through `ClassicPanelHeading`.
@@ -14798,21 +14800,37 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   `UnderSheetOpacity` and `UnderSheetScale`; under Settings and a panel it goes (opacity 0); the dock and its left corner stay, as in the
   mock. Closing a list puts the grid back at once: the native Launcher takes the screen back then and pictures the grid at rest, and no
   picture may be placed from a grid that is still scaled down.
-- **The exits are not built.** The mock's rows also leave when a list closes (and a sheet's rows leave left when another replaces it).
-  On the Thor closing a list hands the screen straight back to the native Launcher, which has no lists to animate; delaying that
-  hand-over for the exit was not in this step's brief. Open for the owner, as is everything about how the motion feels.
-- **The focused row is the Stage's name** (the brief, the roadmap and the mock's own words: "the row you are on becomes the big word
-  above"). For Settings and the panels the mock's script does exactly that. **For the Y sheet and the Start menu the mock's script
-  keeps the name that was there** (`focusSheet` lands with `keep: true`: the label becomes "More" or "Menu" and the line the row's
-  hint) — **the brief was followed**: the name is the row, the label what the sheet acts on (its title, or "Menu"), the line the row's
-  note or what it does (the Start menu's rows gained the mock's hints), and a sheet keeps the facts of what it acts on as its second
-  line. Changing to the mock's script is one method (`HandheldShellViewModel.BigTypeListText`). Settings: "Settings" over a section,
-  "Settings · Section" over a row, its value as the line, its description as the second line (the mock's rows have none). Panels: the
-  card's eyebrow, title, value and description; **Activity** puts the day's play time up as the big figure, the games under it and the
-  week's total under that (the mock's Activity); **cover search** names the game, with "Cover 1 of 6" and the candidate's size and
-  source under it, and the candidate where the game's cover sits (`Stage.ListCover`, the flat cover; the mock's 3D case wearing it is
-  not built: the case is the native medium's, tied to a game's Stage). The Stage writes this text once per update
-  (`BtLabel` … `BtFacts` hold what is under the list), so its rolling line never rolls to the item and back.
+- **Rows leave as the mock's do (round 2).** A list that closes stays shown while its rows leave (`HandheldListsShown`, which the
+  lists view binds to and the Launcher's motion keeps a closed list in): a sheet's and the menu's rows go right (`SheetOut`, the mock's
+  `closeSheet`), a sheet's rows go left when another sheet takes its place (`SheetSwap`, `openSheet` over one, e.g. "Add to folder"),
+  Settings' rail and rows drop (`SettingsOut`), a panel's rows drop (`PanelOut`, at most eight staggers apart), each on the Leave curve,
+  the list going after the mock's wait; the ring is hidden meanwhile (the mock clears it). A panel's grid of covers goes at once: its
+  pictures belong to the panel's view models, which are disposed as it closes. On the Thor the native Launcher takes the screen back
+  only once the rows have gone (`HandheldNativeLauncherFeed` waits on `ListExitEnded`). The Stage changes as the list closes, not
+  after its rows have gone (the mock waits; the native Stage would have to wait on the Launcher). Held still, a closing list simply goes.
+- **The Stage while a list is open: the mock's code decided it (round 2), not the brief.** The owner approved the mock as it behaves.
+  Round 1 followed the brief (the row as the name everywhere); the design session withdrew that. Now:
+  - **The Y sheet and the Start menu** keep the name of what they were opened over (`focusSheet` lands with `keep: true`), its second
+    line too; the label becomes the kicker ("More" for an item's own sheet, "Menu" for the Start menu, the sheet's title for any other,
+    as the mock's "Add to folder"); the line is the focused row's meta or hint (a sheet row's note; a menu row's hint, or On/Off).
+  - **Settings** (`focusSet`): on the rail "Settings" over the section's name, its subtitle (the section's description) under it; on a
+    row "Settings · Section" over the row's label, its meta under it (a switch's On or Off, a value, else its description); no second
+    line, as the mock writes none.
+  - **Panels** (`focusPanel`'s `desc`): achievements, "Game · Achievements" over the achievement, whether it is unlocked under it, how
+    many are unlocked and its points under that; Activity, "Activity · Day" over the day's play time, the games under it, the week's
+    total under that; cover search, the console over the game's name, "Cover n of N" under it, where it is from under that, and the
+    game's case wearing the candidate; the scrapers keep their card's eyebrow, title, value and description.
+- **Cover search's case wears the candidate (round 2).** Under Big Type the Stage keeps the game's medium beside the name with the
+  focused candidate as its front: the candidate is lent to the Stage (`ReplaceStageArt(borrowed: true)`, never disposed by it) and
+  given back before the panel disposes its pictures as it closes. `HasMedium` takes a panel's candidate under Big Type only; a game with
+  no medium (or a GPU that cannot draw one) shows the flat candidate in the case's corner. Classic draws nothing new.
+- **Text that does not fit (round 2).** A rail name or row label is set smaller to fit its room as the mock's `setHead` fits a heading
+  (`HandheldFitText`: size × room ÷ natural width) but no smaller than `LabelFitMin` (0.75 of its size, not the mock's), then ends in an
+  ellipsis; a row's value takes at most `RowValueMaxShare` (0.45 of the row, not the mock's) and the label the rest (`HandheldRowLine`),
+  so no label is cut mid-letter or touches its switch or value. **The Stage's line and second line end before the hints** (the mock
+  sets them no width): a `StageHintGap` short of the hints' first glyph, in an ellipsis.
+- **The dock row's right corner under Settings rolls to the version (round 2, the mock's `roll(dr, '1.8.9')`)** and back to the page
+  when Settings closes; under a panel it is empty.
 - **Cover search is the mock's grid under Big Type.** Its candidates are a grid of the folder's tiles four to a row
   (`FolderColumnsVisible`, `FolderLeft`, `FolderPitch`, `TileFolder`), its "Search for" and "Search" rows stay rows above them (the mock
   has neither, the app needs both); left and right move along the grid and up and down a row of it (`HandheldPanelViewModel.GridStep`).
@@ -14836,24 +14854,25 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   cache filled again with the old text and the block's next layout reused it: the Text property said one thing and the screen
   another. Seen in the design set at B6's commit already (home page 2's Stage line said the pinned game's play time) and in B7's menu
   frame. It now lets its layout go again after making the roll's copy. Classic's frames are unchanged.
-- **The ring-edge drift in Big Type renders (B6's finding): found, and it is the app, not the harness, so it is left as the brief
-  asks.** A render of the starting commit `7c93bea` differs from B6's saved render of it in 13 frames, each only on the focused ring's
-  anti-aliased left or right edge (one side moved by a fraction of a pixel, the top edge identical). Cause: in
-  `HandheldLauncherMotion.OnFrame` the ring (`StepSelector`) reads its target before the neighbours' push (`StepPushes`) is stepped.
-  The tile the focus lands on was a neighbour of the last one, so it is still settling back from its 8 px push for 380 ms, longer than
-  the ring's 300 ms path; on the last frame of that push the ring takes the target from the previous frame's push, and then nothing
-  moves, so the ring rests a fraction of a pixel off, by however the last two frames fell. Stepping the pushes before the ring (or one
-  more frame after them) would fix it; not done here. The harness waits correctly: the frame it captures does not change any more.
-  (An earlier comparison in this session wrongly showed renders identical: its check read only the alpha channel; redone.)
+- **The ring-edge drift in Big Type renders (B6's finding): found and fixed (round 2).** A render of the starting commit `7c93bea`
+  differed from B6's saved render of it in 13 frames, each only on the focused ring's anti-aliased left or right edge. Cause: in
+  `HandheldLauncherMotion.OnFrame` the ring (`StepSelector`) read its target before the neighbours' push (`StepPushes`) was stepped; the
+  tile the focus lands on was a neighbour of the last one and settles back from its 8 px push for 380 ms, longer than the ring's 300 ms
+  path, so on the push's last frame the ring took the previous frame's target and then nothing moved: it rested a fraction of a pixel off
+  by however the frames fell. Under Big Type the push is now stepped first; today's look keeps its order. The harness was not changed.
+  (A comparison in round 1 wrongly showed renders identical: its check read only the alpha channel; every comparison was redone.)
 - **Found on the Thor and fixed:** a list window's clip was sized before the view had a width (the rail's long names were cut); a
   row's long value squeezed its label to "D…" (the label now keeps its length, the value is cut); with 24 candidates cover search ran
   under the dock (its grid now shows `CoverRowsVisible` 2 rows and scrolls a row at a time, a number added to tokens.js); a window's
   items control clipped to its own bounds, so once it scrolled the rows coming into view were cut away; the window clips at its full
   height, not what it held when its rows were still streaming in; and the native Stage pictured a panel's (now empty) card instead of
-  the candidate cover. **Left:** "Artwork & metadata" is longer than the rail and is cut where the rows start (the mock's names are
-  short); a long Stage line (Activity's games) runs under the hints, as any long line does since B4.
+  the candidate cover. In round 2 the long rail names and row labels fit (above) and the Stage's lines end before the hints.
 - **Holding still:** rows and headings are simply there, the ring lands, the grid steps back at once, the switch and the rows' focus
   have no transitions (the root's `still` class), and the ground changes at once.
-- **Not built, for the owner or later steps:** the rows' exits (above); the 3D case wearing a cover candidate; the dock row's right
-  corner under Settings (the mock writes the version there; it is left empty, as under a panel); Settings opens with its rows focused,
-  as it did before B7 (the mock opens on the rail).
+- **The test suite's order-dependent failures, found (round 2).** `MainViewModelTests.HandheldMode_StartsInTheSavedLook` (B0) starts
+  Handheld mode with Big Type saved, which gives the process-wide tokens Big Type, and never put today's look back; it ran with the
+  parallel tests, so a test that read the look afterwards (here `HandheldGroundColourTests.TheFace_IsAppAxamlsHandheldFamily_AndTodaysLookSetsNone`,
+  in all three runs of round 2's first try; very likely round 1's sixteen unnamed failures too) failed depending on the order. It now
+  runs in `HandheldTokenLookCollection` (apart from every other test) and puts today's look back.
+- **Not built, for the owner or later steps:** Settings opens with its rows focused, as before B7 (the mock opens on the rail); the
+  Stage changes as a list closes rather than after its rows have gone.

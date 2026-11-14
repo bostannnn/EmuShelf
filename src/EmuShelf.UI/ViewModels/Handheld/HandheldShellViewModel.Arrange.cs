@@ -129,7 +129,7 @@ public sealed partial class HandheldShellViewModel
     {
         if (Zone == HandheldZone.Dock && DockIndex < DockItems.Count && DockSheet(DockItems[DockIndex]) is { } dockSheet)
         {
-            ShowSheet(dockSheet);
+            ShowItemSheet(dockSheet);
             return;
         }
         if (Zone != HandheldZone.Grid)
@@ -140,16 +140,26 @@ public sealed partial class HandheldShellViewModel
         if (OpenFolder is { } folder)
         {
             if (folder.SelectedTile is { IsSettings: true })
-                ShowSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
+                ShowItemSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
             else if (folder.SelectedTile is { IsActivity: true })
-                ShowSheet(ActivitySheet(_layout.FindFolder(folder.Source.FolderId)));
+                ShowItemSheet(ActivitySheet(_layout.FindFolder(folder.Source.FolderId)));
             else if (folder.SelectedTile is { } tile)
-                ShowSheet(GameSheet(tile.Entry, folder));
+                ShowItemSheet(GameSheet(tile.Entry, folder));
             return;
         }
         if (SlotSheet(HomeIndex) is { } sheet)
-            ShowSheet(sheet);
+            ShowItemSheet(sheet);
     }
+
+    /// <summary>An item's own sheet (Y): the Big Type Stage's label says "More" over it, as the mock's does.</summary>
+    private void ShowItemSheet(HandheldSheetViewModel sheet)
+    {
+        sheet.Kicker = ItemSheetKicker;
+        ShowSheet(sheet);
+    }
+
+    /// <summary>The mock's kicker for an item's sheet.</summary>
+    private const string ItemSheetKicker = "More";
 
     private void ShowSheet(HandheldSheetViewModel sheet)
     {

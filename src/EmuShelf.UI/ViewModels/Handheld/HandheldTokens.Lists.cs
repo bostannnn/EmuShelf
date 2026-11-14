@@ -53,6 +53,15 @@ public static partial class HandheldTokens
 
     public static Thickness RowGroupMargin => new(RowGroupIndent, 0, 0, 0);
 
+    /// <summary>
+    /// The smallest a rail name or row label is set to fit its room, as a share of its size (tokens.js <c>launcher.LabelFitMin</c>, not
+    /// the mock's); past it the label ends in an ellipsis.
+    /// </summary>
+    public static double LabelFitMin { get; private set; }
+
+    /// <summary>The most of a row its value takes (tokens.js <c>launcher.RowValueMaxShare</c>, not the mock's).</summary>
+    public static double RowValueMaxShare { get; private set; }
+
     public static double RowHeight => RowPitch - RowGap;
     public static double RowHeightPanel => RowPitchPanel - RowGap;
     public static double RowHeightSettings => RowPitchSettings - RowGap;
@@ -253,6 +262,8 @@ public static partial class HandheldTokens
         RowRingOutsetX = 28;
         RowRingOutsetY = 12;
         RowGroupIndent = 48;
+        LabelFitMin = 0.75;
+        RowValueMaxShare = 0.45;
 
         SheetLeft = 140;
         SheetTitleTop = 60;

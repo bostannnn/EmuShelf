@@ -56,6 +56,34 @@ public static class BigTypeListMotion
     /// <summary>tokens.js <c>Scroll</c>: a list longer than its window moves by whole rows over 500 ms on cubic-bezier(.2, 1.15, .3, 1).</summary>
     public const float ScrollMilliseconds = 500f;
 
+    /// <summary>tokens.js <c>SheetOut</c>: a sheet's (or the menu's) rows leave right when it closes.</summary>
+    public static readonly BigTypeListExit SheetOut = new(160f, 12f, int.MaxValue, 120f, Vertical: false, HoldMilliseconds: 240f);
+
+    /// <summary>tokens.js <c>SheetSwap</c>: a sheet's rows leave left when another sheet takes its place.</summary>
+    public static readonly BigTypeListExit SheetSwap = new(150f, 10f, int.MaxValue, -120f, Vertical: false, HoldMilliseconds: 210f);
+
+    /// <summary>tokens.js <c>SettingsOut</c>: the rail's and the rows' rows drop when Settings closes.</summary>
+    public static readonly BigTypeListExit SettingsOut = new(180f, 10f, int.MaxValue, 80f, Vertical: true, HoldMilliseconds: 290f);
+
+    /// <summary>tokens.js <c>PanelOut</c>: a panel's rows drop when it closes, at most eight staggers apart.</summary>
+    public static readonly BigTypeListExit PanelOut = new(170f, 10f, 8, 80f, Vertical: true, HoldMilliseconds: 280f);
+
+    /// <summary>
+    /// Row <paramref name="index"/> of a list leaving <paramref name="since"/> ms ago by <paramref name="exit"/>: how far it has gone
+    /// (along x, or y when the exit drops) and how opaque it still is. One keyframe pair eased as a whole on the Leave curve, held at
+    /// its end (fill: forwards).
+    /// </summary>
+    public static (float Offset, float Opacity) RowOut(BigTypeListExit exit, int index, float since, bool holdStill = false)
+    {
+        var local = since - (Math.Min(Math.Max(0, index), exit.StaggerCap) * exit.Stagger);
+        if (holdStill || local >= exit.Milliseconds)
+            return (exit.To, 0f);
+        if (local <= 0f)
+            return (0f, 1f);
+        var eased = BigTypeMotion.Leave(local / exit.Milliseconds);
+        return (exit.To * eased, Math.Clamp(1f - eased, 0f, 1f));
+    }
+
     /// <summary>The grid stepping back: tokens.js <c>StepBack.easing</c>.</summary>
     public static float StepBackEase(float t) => t <= 0f ? 0f : t >= 1f ? 1f : StageCurves.CubicBezier(0.2f, 1.2f, 0.3f, 1f, t);
 
@@ -140,3 +168,8 @@ public static class BigTypeListMotion
         return (from * (1f - eased), Math.Clamp(eased, 0f, 1f));
     }
 }
+
+/// <summary>How a list's rows leave (M47 B7): over <paramref name="Milliseconds"/>, <paramref name="Stagger"/> ms apart for at most
+/// <paramref name="StaggerCap"/> rows, to <paramref name="To"/> px along x (or y when <paramref name="Vertical"/>); the list goes after
+/// <paramref name="HoldMilliseconds"/>.</summary>
+public readonly record struct BigTypeListExit(float Milliseconds, float Stagger, int StaggerCap, float To, bool Vertical, float HoldMilliseconds);

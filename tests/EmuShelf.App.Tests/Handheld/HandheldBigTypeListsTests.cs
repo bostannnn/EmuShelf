@@ -160,6 +160,50 @@ public class HandheldBigTypeListMotionTests
     }
 
     [Fact]
+    public void RowsLeaving_AreTheMocks_AndGoOnTheLeaveCurve()
+    {
+        var tokens = TokensJs();
+        foreach (var (name, exit, to) in new[]
+        {
+            ("SheetOut", BigTypeListMotion.SheetOut, "to"), ("SheetSwap", BigTypeListMotion.SheetSwap, "to"),
+            ("SettingsOut", BigTypeListMotion.SettingsOut, "drop"), ("PanelOut", BigTypeListMotion.PanelOut, "drop"),
+        })
+        {
+            Assert.Equal(Entry(tokens, name, "ms"), exit.Milliseconds);
+            Assert.Equal(Entry(tokens, name, "stagger"), exit.Stagger);
+            Assert.Equal(Entry(tokens, name, to), exit.To);
+            Assert.Equal(Entry(tokens, name, "holdMs"), exit.HoldMilliseconds);
+        }
+        Assert.Equal(Entry(tokens, "PanelOut", "staggerCap"), BigTypeListMotion.PanelOut.StaggerCap);
+        Assert.True(BigTypeListMotion.SheetOut.To > 0 && BigTypeListMotion.SheetSwap.To < 0);
+        Assert.True(BigTypeListMotion.SettingsOut.Vertical && BigTypeListMotion.PanelOut.Vertical && !BigTypeListMotion.SheetOut.Vertical);
+
+        var sheet = BigTypeListMotion.SheetOut;
+        // In place until its turn (the third row, 24 ms), then off to the right and clear by 160 ms after it.
+        Assert.Equal((0f, 1f), BigTypeListMotion.RowOut(sheet, 0, 0f));
+        Assert.Equal((0f, 1f), BigTypeListMotion.RowOut(sheet, 2, 24f));
+        var half = BigTypeListMotion.RowOut(sheet, 0, 80f);
+        var eased = BigTypeMotion.Leave(0.5f);
+        Assert.Equal(sheet.To * eased, half.Offset, 3);
+        Assert.Equal(1f - eased, half.Opacity, 3);
+        Assert.Equal((sheet.To, 0f), BigTypeListMotion.RowOut(sheet, 0, 160f));
+        Assert.Equal((sheet.To, 0f), BigTypeListMotion.RowOut(sheet, 5, 160f + (5 * 12f)));
+        // A panel's rows stagger at most eight steps apart: the twentieth starts with the ninth.
+        Assert.Equal(BigTypeListMotion.RowOut(BigTypeListMotion.PanelOut, 8, 120f), BigTypeListMotion.RowOut(BigTypeListMotion.PanelOut, 19, 120f));
+        // Held still, a leaving row is simply gone.
+        Assert.Equal((sheet.To, 0f), BigTypeListMotion.RowOut(sheet, 3, 0f, holdStill: true));
+    }
+
+    [Fact]
+    public void ALabel_FitsItsRoom_DownToTheFloor()
+    {
+        // As the mock's setHead: size × room ÷ natural width; never below LabelFitMin of the size.
+        Assert.Equal(46, HandheldFitText.Fit(46, 280, 300, 0.75));
+        Assert.Equal(46 * 300 / 320.0, HandheldFitText.Fit(46, 320, 300, 0.75), 6);
+        Assert.Equal(46 * 0.75, HandheldFitText.Fit(46, 600, 300, 0.75), 6);
+    }
+
+    [Fact]
     public void HoldingStill_EverythingIsInPlace()
     {
         Assert.Equal((0f, 1f), BigTypeListMotion.RowIn(5, 0f, holdStill: true));
@@ -227,6 +271,7 @@ public partial class HandheldShellViewModelTests
                     ("PanelLeft", HandheldTokens.PanelLeft), ("PanelHeadTop", HandheldTokens.PanelHeadTop), ("PanelHeadHeight", HandheldTokens.PanelHeadHeight),
                     ("PanelNameMaxWidth", HandheldTokens.PanelNameMaxWidth), ("PanelCountRaise", HandheldTokens.PanelCountRaise),
                     ("PanelRowsTop", HandheldTokens.PanelRowsTop), ("PanelRowsInset", HandheldTokens.PanelRowsInset), ("PanelWidth", HandheldTokens.PanelWidth),
+                    ("LabelFitMin", HandheldTokens.LabelFitMin), ("RowValueMaxShare", HandheldTokens.RowValueMaxShare),
                     ("FolderColumnsVisible", HandheldTokens.CoverColumns), ("FolderLeft", HandheldTokens.FolderLeft), ("CoverRowsVisible", HandheldTokens.CoverRowsVisible),
                     ("SwitchWidth", HandheldTokens.SwitchWidth), ("SwitchHeight", HandheldTokens.SwitchHeight), ("SwitchKnob", HandheldTokens.SwitchKnob),
                     ("SwitchStroke", HandheldTokens.SwitchStroke), ("SwitchKnobInset", HandheldTokens.SwitchKnobInset),
@@ -329,9 +374,10 @@ public partial class HandheldShellViewModelTests
                 }
                 var title = lists.FindControl<HandheldBigTypeHeading>("MenuTitlePart")!;
                 Assert.Equal(new Point(HandheldTokens.SheetLeft, HandheldTokens.SheetTitleTop), title.TranslatePoint(default, canvas));
-                Assert.Equal(("Menu", "Search", "Find a game by name"), (shell.Stage.Label, shell.Stage.Name, shell.Stage.Line));
+                // The mock's focusSheet (keep: true): the name stays the dock's "Menu", the label is the kicker, the line the row's hint.
+                Assert.Equal(("Menu", "Menu", "Find a game by name"), (shell.Stage.Label, shell.Stage.Name, shell.Stage.Line));
                 Press(shell, GamepadAction.NavigateDown);
-                Assert.Equal(("Add games", HandheldDirection.Down), (shell.Stage.Name, shell.LastMoveDirection));
+                Assert.Equal(("Menu", "Point EmuShelf at a folder"), (shell.Stage.Name, shell.Stage.Line));
                 // The rows have arrived: in place and drawn.
                 Assert.All(menu, slot =>
                 {
@@ -339,12 +385,18 @@ public partial class HandheldShellViewModelTests
                     Assert.Equal(1, arrive.Opacity);
                     Assert.Null(arrive.RenderTransform);
                 });
+                // Closed, the menu stays shown while its rows leave right, then goes.
+                var shown = Assert.IsType<HandheldListsShown>(lists.DataContext);
                 Press(shell, GamepadAction.Cancel);
+                Assert.False(shell.IsMenuOpen);
+                Assert.True(shown.IsMenuOpen);
                 await SettleAsync();
+                Assert.False(shown.IsMenuOpen);
 
                 // The Y sheet on a folder: the folder's name is the title; the rows sit as the menu's.
                 Press(shell, GamepadAction.NavigateUp);
                 FocusHome(shell, 0);
+                var itemName = shell.Stage.Name;
                 Press(shell, GamepadAction.Actions);
                 await ArrivedAsync();
                 var sheet = shell.Sheet!;
@@ -355,7 +407,8 @@ public partial class HandheldShellViewModelTests
                     Assert.Equal(MockRing(HandheldTokens.SheetLeft, HandheldTokens.SheetTop, HandheldTokens.SheetWidth, HandheldTokens.RowPitch, i),
                         Placed(canvas, rows[i]).Ring);
                 }
-                Assert.Equal((sheet.Title, sheet.Items[0].Label), (shell.Stage.Label, shell.Stage.Name));
+                // An item's sheet: "More" over the item's own name, the row's note under it.
+                Assert.Equal(("More", itemName, sheet.Items[0].Note ?? string.Empty), (shell.Stage.Label, shell.Stage.Name, shell.Stage.Line));
                 Press(shell, GamepadAction.Cancel);
                 await SettleAsync();
 

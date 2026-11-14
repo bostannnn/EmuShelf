@@ -3,7 +3,7 @@
              xmlns:vm="using:EmuShelf.App.ViewModels"
              xmlns:vh="using:EmuShelf.App.Views.Handheld"
              x:Class="EmuShelf.App.Views.Handheld.HandheldBigTypeLists"
-             x:DataType="vm:HandheldShellViewModel">
+             x:DataType="vh:HandheldListsShown">
 
   <!--
     The lists in the Big Type look (M47 B7, the mock's openSheet, the Start menu, openSettings and openPanel): no card and no scrim,
@@ -46,7 +46,7 @@
       <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.RowLockedOpacity}" />
     </Style>
     <!-- A row inside an opened one (an emulator's options) sits in a little. -->
-    <Style Selector="Panel.row.grouped > Grid">
+    <Style Selector="Panel.row.grouped > vh|HandheldRowLine">
       <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.RowGroupMargin}" />
     </Style>
     <Style Selector="TextBlock.label">
@@ -56,10 +56,8 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
-    <!-- A section's name runs on past the rail rather than being cut, as the mock's does. -->
     <Style Selector="TextBlock.label.rail">
       <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.RailRow}" />
-      <Setter Property="TextTrimming" Value="None" />
     </Style>
     <Style Selector="TextBlock.label.danger">
       <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Danger}" />
@@ -73,13 +71,6 @@
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="FontFeatures" Value="+tnum" />
       <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.RowValueMargin}" />
-    </Style>
-    <!-- The value sits at the row's right and gives way to the label (a folder's path is cut, not the row's name). -->
-    <Style Selector="Grid > TextBlock.value">
-      <Setter Property="HorizontalAlignment" Value="Right" />
-    </Style>
-    <Style Selector="Grid > Border.switch">
-      <Setter Property="HorizontalAlignment" Value="Right" />
     </Style>
     <Style Selector="TextBlock.value.danger">
       <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Danger}" />
@@ -178,15 +169,15 @@
                 <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                 <Panel Classes="arrive">
                   <Panel Classes="row" Classes.focused="{Binding IsFocused}">
-                    <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Classes="label" Text="{Binding Label}" />
-                      <Border Grid.Column="1" Classes="switch" Classes.on="{Binding IsOn}" IsVisible="{Binding IsToggle}">
+                    <vh:HandheldRowLine>
+                      <vh:HandheldFitText Classes="label" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" />
+                      <Border Classes="switch" Classes.on="{Binding IsOn}" IsVisible="{Binding IsToggle}">
                         <Panel>
                           <Border Background="{x:Static vm:HandheldTokens.OnColour}" />
-                          <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vm:HandheldShellViewModel)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
+                          <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
                         </Panel>
                       </Border>
-                    </Grid>
+                    </vh:HandheldRowLine>
                   </Panel>
                 </Panel>
               </Panel>
@@ -211,7 +202,7 @@
                 <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                 <Panel Classes="arrive">
                   <Panel Classes="row" Classes.focused="{Binding IsFocused}">
-                    <TextBlock Classes="label" Classes.danger="{Binding IsDestructive}" Text="{Binding Label}" />
+                    <vh:HandheldFitText Classes="label" Classes.danger="{Binding IsDestructive}" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" />
                   </Panel>
                 </Panel>
               </Panel>
@@ -239,7 +230,7 @@
                     <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                     <Panel Classes="arrive">
                       <Panel Classes="row" Classes.focused="{Binding IsFocused}" Classes.current="{Binding IsSelected}">
-                        <TextBlock Classes="label rail" Text="{Binding Title}" />
+                        <vh:HandheldFitText Classes="label rail" Size="{x:Static vm:HandheldTokens.RailRow}" Text="{Binding Title}" />
                       </Panel>
                     </Panel>
                   </Panel>
@@ -266,22 +257,22 @@
                     <vh:HandheldSelectorAnchor.IsFocused>
                       <MultiBinding Converter="{x:Static BoolConverters.And}">
                         <Binding Path="IsFocused" />
-                        <Binding Path="!$parent[vh:HandheldBigTypeLists].((vm:HandheldShellViewModel)DataContext).Settings.Projection.IsRailFocused" FallbackValue="False" />
+                        <Binding Path="!$parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).Settings.Projection.IsRailFocused" FallbackValue="False" />
                       </MultiBinding>
                     </vh:HandheldSelectorAnchor.IsFocused>
                     <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                     <Panel Classes="arrive">
                       <Panel Classes="row" Classes.locked="{Binding !IsEnabled}" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}">
-                        <Grid ColumnDefinitions="Auto,*">
-                          <TextBlock Classes="label" Classes.danger="{Binding IsDestructive}" Text="{Binding Label}" />
-                          <Border Grid.Column="1" Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
+                        <vh:HandheldRowLine>
+                          <vh:HandheldFitText Classes="label" Classes.danger="{Binding IsDestructive}" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" />
+                          <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
                             <Panel>
                               <Border Background="{x:Static vm:HandheldTokens.OnColour}" />
-                              <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vm:HandheldShellViewModel)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
+                              <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
                             </Panel>
                           </Border>
-                          <TextBlock Grid.Column="1" Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding Value}" IsVisible="{Binding !IsToggle}" />
-                        </Grid>
+                          <TextBlock Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding Value}" IsVisible="{Binding !IsToggle}" />
+                        </vh:HandheldRowLine>
                       </Panel>
                     </Panel>
                   </Panel>
@@ -297,10 +288,10 @@
                     <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                     <Panel Classes="arrive">
                       <Panel Classes="row" Classes.focused="{Binding IsFocused}">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <TextBlock Classes="label" Text="{Binding Name}" />
-                          <TextBlock Grid.Column="1" Classes="value" Text="In use" IsVisible="{Binding IsSelected}" />
-                        </Grid>
+                        <vh:HandheldRowLine>
+                          <vh:HandheldFitText Classes="label" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Name}" />
+                          <TextBlock Classes="value" Text="In use" IsVisible="{Binding IsSelected}" />
+                        </vh:HandheldRowLine>
                       </Panel>
                     </Panel>
                   </Panel>
@@ -326,10 +317,10 @@
                     <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                     <Panel Classes="arrive">
                       <Panel Classes="row" Classes.focused="{Binding IsFocused}">
-                        <Grid ColumnDefinitions="*,Auto">
-                          <TextBlock Classes="label" Text="{Binding DisplayName}" />
-                          <TextBlock Grid.Column="1" Classes="value" Text="Chosen" IsVisible="{Binding IsSelected}" />
-                        </Grid>
+                        <vh:HandheldRowLine>
+                          <vh:HandheldFitText Classes="label" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding DisplayName}" />
+                          <TextBlock Classes="value" Text="Chosen" IsVisible="{Binding IsSelected}" />
+                        </vh:HandheldRowLine>
                       </Panel>
                     </Panel>
                   </Panel>
@@ -357,7 +348,7 @@
               <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
               <Panel Classes="arrive">
                 <Panel Classes="row" Classes.focused="{Binding IsConfirmFocused}">
-                  <TextBlock Classes="label danger" Text="{Binding ConfirmLabel}" />
+                  <vh:HandheldFitText Classes="label danger" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding ConfirmLabel}" />
                 </Panel>
               </Panel>
             </Panel>
@@ -374,7 +365,7 @@
         <Grid Margin="{x:Static vm:HandheldTokens.PanelHeadMargin}" Height="{x:Static vm:HandheldTokens.PanelHeadHeight}" VerticalAlignment="Top" ColumnDefinitions="*,Auto">
           <vh:HandheldBigTypeHeading x:Name="PanelTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.Heading}" MaxTextWidth="{x:Static vm:HandheldTokens.PanelNameMaxWidth}"
                                      FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" VerticalAlignment="Bottom" />
-          <vh:HandheldRollingText x:Name="PanelCount" Grid.Column="1" Text="{Binding Count}" IsVisible="{Binding HasCount}" FontSize="{x:Static vm:HandheldTokens.PanelCount}"
+          <vh:HandheldRollingText x:Name="PanelCount" Text="{Binding Count}" IsVisible="{Binding HasCount}" FontSize="{x:Static vm:HandheldTokens.PanelCount}"
                                   FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnColour}" Opacity="{x:Static vm:HandheldTokens.PanelCountOpacity}"
                                   LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" LineHeight="{x:Static vm:HandheldTokens.PanelCountLine}" FontFeatures="+tnum"
                                   VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.PanelCountMargin}" />
@@ -394,16 +385,16 @@
                   <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
                   <Panel Classes="arrive">
                     <Panel Classes="row" Classes.focused="{Binding IsFocused}" Classes.locked="{Binding IsLocked}">
-                      <Grid ColumnDefinitions="Auto,*">
-                        <TextBlock Classes="label" Text="{Binding Label}" />
-                        <Border Grid.Column="1" Classes="switch" Classes.on="{Binding IsOn}" IsVisible="{Binding IsToggle}">
+                      <vh:HandheldRowLine>
+                        <vh:HandheldFitText Classes="label" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" />
+                        <Border Classes="switch" Classes.on="{Binding IsOn}" IsVisible="{Binding IsToggle}">
                           <Panel>
                             <Border Background="{x:Static vm:HandheldTokens.OnColour}" />
-                            <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vm:HandheldShellViewModel)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
+                            <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
                           </Panel>
                         </Border>
-                        <TextBlock Grid.Column="1" Classes="value" Text="{Binding Trailing}" IsVisible="{Binding !IsToggle}" />
-                      </Grid>
+                        <TextBlock Classes="value" Text="{Binding Trailing}" IsVisible="{Binding !IsToggle}" />
+                      </vh:HandheldRowLine>
                     </Panel>
                   </Panel>
                 </Panel>

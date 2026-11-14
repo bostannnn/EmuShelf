@@ -97,6 +97,9 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     /// <summary>The list's heading: Settings, or Setup with where the wizard is.</summary>
     public string Heading => IsSetup ? "Setup" : HandheldSettingsText.Name;
 
+    /// <summary>The app's version, which the Big Type Launcher rolls into the dock row's corner while Settings is open (M47 B7, the mock's).</summary>
+    public string Version => Projection.AboutRailStatus;
+
     /// <summary>The wizard's way forward (Start): Continue, or Finish on the last step; and what comes next.</summary>
     public string StartLabel => Projection.SetupRail.StartLabel;
 

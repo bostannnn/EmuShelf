@@ -569,13 +569,18 @@ internal sealed partial class HandheldLauncherMotion
 
         if (HandheldTokens.IsBigType)
         {
+            moving |= StepExit();
             moving |= StepArrivals();
             moving |= StepUnder();
             moving |= StepGround();
+            // The neighbours' push before the ring: the tile the focus lands on may still be settling back from its own push, and the
+            // ring must take its target from where the tile is this frame, or it rests a fraction of a pixel off (M47 B7).
+            moving |= StepPushes();
         }
         moving |= StepSelector(dt);
         moving |= StepSelectorFade();
-        moving |= StepPushes();
+        if (!HandheldTokens.IsBigType)
+            moving |= StepPushes();
         if (moving)
             RequestTick();
         else

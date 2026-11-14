@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using EmuShelf.App.Controls;
@@ -37,6 +38,28 @@ public partial class HandheldStageView : UserControl
         // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
         HandheldTokens.ApplyFace(this);
         _canvas = this.FindControl<Grid>("StageCanvas")!;
+        // View wiring (M47 B7): under Big Type the two lines under the name end before the hints' corner, in an ellipsis (the mock sets
+        // them no width; a long line, Activity's games, ran under the hints).
+        if (HandheldTokens.IsBigType && this.FindControl<Control>("BtHintsShot") is { } hints)
+        {
+            var lines = new[] { this.FindControl<TextBlock>("BtLine"), this.FindControl<TextBlock>("BtFacts") };
+            void Fit()
+            {
+                foreach (var line in lines)
+                {
+                    if (line?.Parent is not Control shot || hints.Bounds.Width <= 0 ||
+                        hints.TranslatePoint(default, _canvas) is not { } hintsAt || shot.TranslatePoint(default, _canvas) is not { } shotAt)
+                    {
+                        continue;
+                    }
+                    // From the line's own left edge to a hint's gap before the hints' first glyph (each shot carries its padding).
+                    var max = System.Math.Max(0, hintsAt.X + HandheldTokens.StageShotPad - HandheldTokens.StageHintGap - shotAt.X - HandheldTokens.StageShotPad);
+                    if (!line.MaxWidth.Equals(max))
+                        line.MaxWidth = max;
+                }
+            }
+            hints.LayoutUpdated += (_, _) => Fit();
+        }
         // View wiring only: a GPU path that cannot start tells the Stage to keep flat covers.
         foreach (var name in new[] { "Medium", "BtMedium" })
         {

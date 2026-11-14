@@ -71,8 +71,10 @@ public sealed partial class HandheldShellViewModel
         Panel = null;
         ListOpened = false;
         _panelCard = null;
-        // The card's pictures belong to the panel's view models, which go now: the Stage lets go of them first.
+        // The card's pictures belong to the panel's view models, which go now: the Stage lets go of them first (the case's candidate too).
         Stage.PanelCard = null;
+        if (HandheldTokens.IsBigType)
+            ReturnCandidate();
         try
         {
             if (closed is not null)
@@ -347,7 +349,7 @@ public sealed partial class HandheldShellViewModel
             ShowNotice(_library.CoverSearchUnavailableReason, HandheldGlyph.Alert);
             return;
         }
-        var panel = new HandheldCoverSearchPanel(details, game.Title);
+        var panel = new HandheldCoverSearchPanel(details, game.Title) { SystemName = game.SystemName, Game = game };
         OpenPanel(panel, async _ =>
         {
             var picked = panel.Picked;
