@@ -2703,6 +2703,11 @@ use an emulator: each step's device check runs on the Android emulator with a se
 bottom screen, and its note says "emulator", never "Thor". An emulator check shows that the app starts, that both
 screens draw and whether the native compositors ran; it cannot judge colour on the AMOLED panels, real frame times or
 feel. Every exit that says "on the Thor" therefore stays open for the owner until the device is back.
+**The Thor is back (later on 2026-11-14; the owner: "I've connected ayn thor, you can use it again").** From B6 on,
+device checks run on the Thor again, at 60 Hz as the owner runs it and with no system setting changed. A build goes on
+with `adb install -r` only, so the owner's data stays; nothing is uninstalled and no app data is cleared. A step may
+measure frame times there and record them; how a step looks and feels is still the owner's to judge. B3, B4 and B5 were
+checked on the emulator only, so their exits stay open for the owner's look.
 
 ### Before building: decide (owner)
 
