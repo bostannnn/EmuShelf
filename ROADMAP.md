@@ -2708,6 +2708,9 @@ device checks run on the Thor again, at 60 Hz as the owner runs it and with no s
 with `adb install -r` only, so the owner's data stays; nothing is uninstalled and no app data is cleared. A step may
 measure frame times there and record them; how a step looks and feels is still the owner's to judge. B3, B4 and B5 were
 checked on the emulator only, so their exits stay open for the owner's look.
+**Emulator again from B8 (late on 2026-11-14; the owner: "Use the emulator").** The Thor left adb at the end of B7 and
+the owner chose the emulator over reconnecting it. B6 and B7 were checked on the Thor; B8 onward are emulator checks,
+labelled so, until the owner says the Thor is back. The Thor keeps B7's build, with the look last read as `bigtype`.
 
 ### Before building: decide (owner)
 
