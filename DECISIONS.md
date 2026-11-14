@@ -14457,3 +14457,81 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   AVD's display came up too and two would have competed. On it the native compositors ran (no fallback), and the hand-off to a
   sheet and back left the native frame pixel-identical. What it does not prove: Adreno's behaviour, the Thor's panels and
   timing, and the dock row under the emulator's own navigation bar, which that display shows and the Thor does not.
+
+## 2026-11-14 — M47 B4: the Stage at rest in the Big Type look
+
+- **Selected by the look, beside today's, as B3 did.** Big Type's Stage values are tokens (`HandheldTokens.Stage.cs`: the name's box,
+  the four corners, the medium's corner, the hint glyph). `HandheldStageView` has the Big Type parts beside today's and shows one set
+  by `x:Static HandheldTokens.IsClassic` / `IsBigType`: the veils (`HandheldBigTypeVeils`), the fitted name (`HandheldBigTypeName`),
+  the label, the line and the second line, battery and clock, the hints, and a game's flat cover or medium in its corner. Today's
+  centre parts (the big folder, the flat cover, the app, Settings and Activity tiles, the glyph card) and the status, hints and
+  achievements pills sit in wrappers shown only in today's look; `HasPlate` and `ShowAchievementPill` are false under Big Type.
+  Settings' and a panel's cards, the Title page's fan-art hero, the launch card and the message toast keep today's styling (B7 and
+  later). Proven by the frames: Classic rendered before and after, 158 of 158 identical by the comparison.
+- **What the Stage says** is set on `HandheldStageViewModel` (`Label`, `Name`, `Line`, `Facts`, `IsMissing`) for every Stage in
+  either look, by `HandheldShellViewModel.BigTypeStage.cs`, as the mock's `describe` writes it: a console folder is its full name over
+  its short name, its game count, "Last played: …"; Recent is "Last played" over "Recent"; your folder "Your folder" over its name; a
+  game its console over its full title, its play time and achievements ("8 h 40 min · 6 / 20 achievements"), then its emulator, when
+  it was last played and its disc ("NetherSX2 · last played today · disc 2 of 3"); a missing game "File not found" with its name at
+  0.5; Settings and Activity "System"; the dock's apps, All apps and the menu "Dock"; an empty slot "Home" over "Empty"; the empty
+  library "Welcome" over "No games yet"; a folder's header its name over "Back" or "Sort". The emulator's name comes from the Title
+  page's details, read once per system and forgotten when Settings closes; a folder's last played game from the recently played list
+  (read only under Big Type). Neither costs today's look anything.
+- **Something with no backdrop of its own keeps the one showing** (an app, an empty slot, the dock), as the mock does; the screen is
+  cleared to the Launcher's ground (`LauncherGround`, B3) where no backdrop draws. Your folders' and Recent's pictured backdrop takes
+  the Launcher's colour for them.
+- **The name** is fitted by the spike's `BigTypeLayout` (brought over unchanged from `claude/elegant-lederberg-05c307` to
+  `EmuShelf.Rendering/Stage/BigType`) at most three lines, line height 0.9, words never broken, bottom-anchored at 80 / 240 in a
+  1360 × 680 box (1120 beside a game). Each line's text is centred in its 0.9 line box as a browser centres the face's ascent and
+  descent. **Its tracking is −0.64 px, not −0.02em:** the mock declares −0.02em on the name's box, whose own size is the page's
+  16 px, so it draws −0.32 px at half scale whatever the name's size (B3 found the same on the folder header). With −0.02em the
+  app's names came out 3% larger than the mock's.
+- **Avalonia sets a corner's line lower than a browser.** The mock gives each corner a 1.15 line box; Avalonia clips descenders
+  when a `TextBlock`'s `LineHeight` is that short, so the corners use their natural line and are moved by what their ink measured
+  against the mock's at Thor scale: the label raised 7, the clock 17 (the battery 10 more beside it), the line lowered 8, the facts 4.
+  **The hint glyph is 68 across**, not 58: tokens.js's 58 is the mock's CSS content box, and its 5 px stroke lies outside it.
+- **How the ink follows the backdrop: the native Stage applies it.** The backdrops are picked and rotated by `StageCompositor` on the
+  render thread (random first pick, a 12 s dwell, a 1.6 s crossfade, paused while the Stage rests), and the Avalonia Stage never runs a
+  shader, so the UI side cannot know which one is up without a round trip per rotation, and every rotation would picture the text
+  again. Instead the feed pictures each piece of text in white and names its zone (`StageChromeCommand.Zone`), sends the three veils
+  once as white masks (`Veil`, from `BigTypeVeil`, the mock's `SHADE` geometry) and the ground and dark ink (`StageInkCommand`). The
+  compositor looks up the backdrop that is showing in the baked table and draws the text in that zone's ink and each veil in the
+  opposite tone at the table's strength (`stage.frag` gained a tint that is off unless set, so today's look and the Launcher draw as
+  before). Through a rotation's crossfade and a console change's fade the ink and veil are mixed by the same weights as the backdrops,
+  so the text changes with the picture behind it. Where no shader runs (the pictured fallback, the Avalonia Stage) the rule's answer is
+  white ink and the resting veils, which is what the Avalonia Stage always draws.
+- **The table** is `BackdropLegibility`, beside `BackdropCatalog`, generated from `legibility.json` (53 backdrops); a test holds it to
+  the JSON zone by zone and every system's backdrop list to it. **`ps2-sea`'s hints**, the one zone the prototype could not bake
+  ("changes"), are white with the veil at 0.5, marked `Baked: false`: **for the owner to check on the Thor.** The table was baked from
+  the JavaScript prototypes, not the GLSL ports; R2's look at each console's backdrops on the device is still to do.
+- **The swapped (narrow) screen shows the 16:9 Stage whole**, letterboxed on the ground, as the mock scales its whole top screen when
+  the screens swap: the Avalonia Stage keeps its 1920 canvas under Big Type, the feed sends a 1920 canvas, and the compositor fits the
+  canvas into the surface (today's canvases always have the surface's shape, so they fill it as before). Laying the name out again for
+  1240 would have needed a design the mock does not have.
+- **The medium** keeps its renderer and pose; under Big Type its frame is centred on the case's box (right 248, top 236, 392 × 552)
+  and sized so the case fills it as it fills today's frame (640 of 820), and it pops about its own middle. A flat cover sits in the case's
+  box, rounded 12, no shadow; a game with no cover is the mock's stand-in (its title on #3A3950).
+- **Checked on the desktop's real GL** with a new preview check, `dotnet run --project tools/EmuShelf.Rendering.Preview --
+  --stage-bigtype`: white stand-ins for each zone's text over the real animated backdrops come back in the table's ink (dark over
+  `ps2-towers`; white over `ps2-trails-v3`; split over `arc-checker` and `gc-caustics`), the resting veil over the pictured fallback,
+  and the narrow screen's letterbox.
+- **Where the app and the mock still part** (headless renders, part by part): the name is within 1–5 px of the mock's (the mock fits in
+  2 px steps); the corners land on the mock's pixels; the hints are within 7 px across three. A long title the mock sets on four lines
+  ("Professor Layton and the Curious Village" at 186) is three lines and smaller here, because tokens.js says at most three. The 3D
+  case does not render headless, so the macOS frames show the flat cover in the case's box where the mock shows the case turned 24°.
+  The app's hints and lines are its own (a missing game still offers Play; no "Y to locate it"). The message toast is today's pill.
+  The Avalonia Stage on the narrow screen fills the letterbox bands with the backdrop, the native one with the ground.
+- **Text with an opacity of its own is pictured as solid blocks on Android** (found on the emulator: the battery at 0.85 and the second
+  line at 0.82 came out as filled glyph boxes, whether the opacity was on the text or in its brush; the macOS frames were right). Each
+  Big Type piece the native Stage pictures sets `RenderOptions.TextRenderingMode="Antialias"` on itself (a piece pictured alone does
+  not inherit its parent's), which draws them correctly; the opacities are carried in the brushes. The name's control is 200 px taller
+  than its box, so the native picture keeps its descenders (the box, the fit and the bottom line are unchanged).
+- **Checked on the Android emulator, not the Thor** (AVD `emushelf-b3`, as B3 left it; arm64 android-35, GLES 3.0 through the host
+  GPU; the library is nine stand-in PS2 games). The Release build installed with `adb install -r`. Classic started cleanly into Handheld
+  mode with the native compositors drawing both screens. With `debug.emushelf.look bigtype` the native Stage drew the name, the label,
+  the line and second line ("ARMSX2", read from the Title page's details), battery and clock, the outlined hints and the 3D case in its
+  corner, with no plate and no pills. **The backdrop shaders ran** (`ps2-towers` and `ps2-trails-v3` logged as they came in; `ps2-orbs-v3` seen on screen), and the
+  ink followed them as the table says: the dark ink over the towers and the orbs, white over the trails, changing as the rotation turned.
+  Recent, Settings, an empty slot and the dock drew over the pictured fallback in white. Property cleared, Classic again. What it does not
+  prove: the Thor's panels, Adreno, and the name's legibility over the other consoles' backdrops, which the emulator's library does not
+  reach; B4's exit is the owner's look on the Thor.

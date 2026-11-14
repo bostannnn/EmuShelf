@@ -71,6 +71,7 @@ public sealed partial class HandheldShellViewModel
         if (!ReferenceEquals(Settings, settings))
             return;
         Settings = null;
+        ForgetEmulatorNames();
         settings.Changed -= OnSettingsChanged;
         settings.Dispose();
         _library.CloseSettings(settings.Projection, saved);

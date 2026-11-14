@@ -86,6 +86,13 @@ public sealed class StageCompositor : INativeScene
     private float _popStart = float.NegativeInfinity;
     private readonly Dictionary<string, Layer> _chrome = new(StringComparer.Ordinal);
 
+    // The Big Type look (M47 B4): the ground and dark ink, each picture's zone, and the veils (white masks drawn in a zone's
+    // veil colour under the centre). Null ink: today's look, where nothing is tinted and the screen clears to its grey.
+    private StageInkCommand? _ink;
+    private readonly Dictionary<string, StageInkZone> _chromeZones = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, Layer> _veils = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, StageInkZone> _veilZones = new(StringComparer.Ordinal);
+
     private StageMedium? _medium;
     private MediaShellRenderer? _renderer;
     private Vector3 _uploadedAccent;
@@ -271,13 +278,26 @@ public sealed class StageCompositor : INativeScene
                 }
                 break;
             case StageChromeCommand chrome:
-                _chrome.TryGetValue(chrome.Key, out var old);
+            {
+                var layers = chrome.Veil ? _veils : _chrome;
+                var zones = chrome.Veil ? _veilZones : _chromeZones;
+                layers.TryGetValue(chrome.Key, out var old);
                 var layer = old;
                 Replace(ref layer, chrome.Image, repeat: false);
                 if (layer is null)
-                    _chrome.Remove(chrome.Key);
+                {
+                    layers.Remove(chrome.Key);
+                    zones.Remove(chrome.Key);
+                }
                 else
-                    _chrome[chrome.Key] = layer;
+                {
+                    layers[chrome.Key] = layer;
+                    zones[chrome.Key] = chrome.Zone;
+                }
+                break;
+            }
+            case StageInkCommand ink:
+                _ink = ink;
                 break;
         }
     }
@@ -285,8 +305,9 @@ public sealed class StageCompositor : INativeScene
     /// <summary>Draws one frame into the bound default framebuffer. Returns whether something is still animating.</summary>
     public bool Draw(float now, int surfaceWidth, int surfaceHeight)
     {
+        var fit = FitCanvas(surfaceWidth, surfaceHeight);
         if (_medium is not null && (_mediumDirty || _coverDirty))
-            RenderMedium(surfaceWidth / CanvasWidth);
+            RenderMedium(fit.Scale);
         // Animated backdrops draw their next 30 Hz step into their own small frames before the Stage is composed.
         AdvanceBackdropClock(now);
         var clock = _backdropClock;
@@ -305,8 +326,15 @@ public sealed class StageCompositor : INativeScene
         _gl.Disable(EnableCap.CullFace);
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
-        _gl.ClearColor(0.94f, 0.95f, 0.96f, 1f);
+        // Big Type clears to the focused item's colour (seen where no backdrop draws); today's look to its light grey.
+        if (_ink is { } ground)
+            _gl.ClearColor(ground.Ground.X, ground.Ground.Y, ground.Ground.Z, 1f);
+        else
+            _gl.ClearColor(0.94f, 0.95f, 0.96f, 1f);
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+        // The canvas fills the surface, or (Big Type's 16:9 canvas on the narrow screen, M47 B4) sits in it letterboxed on the
+        // ground, as the mock scales its whole top screen down when the screens swap.
+        _gl.Viewport(fit.X, fit.Y, (uint)fit.Width, (uint)fit.Height);
 
         _program.Use();
         _gl.BindVertexArray(_vao);
@@ -331,6 +359,16 @@ public sealed class StageCompositor : INativeScene
         }
         if (_backdrop is not null)
             DrawBackdrop(_backdrop, clock, _leavingBackdrop is null ? 1f : fade);
+
+        // The veils lie on the backdrop, under everything else (the mock's .shade comes before the case).
+        if (_ink is not null)
+        {
+            foreach (var (key, veil) in _veils)
+            {
+                var zone = ZoneInk(_veilZones.GetValueOrDefault(key), clock, fade);
+                DrawLayer(veil, zone.VeilStrength, 1f, 0, 0, tint: zone.Veil);
+            }
+        }
 
         var sincePop = now - _popStart;
         var centreScale = StageCurves.PopScale(sincePop);
@@ -361,9 +399,10 @@ public sealed class StageCompositor : INativeScene
 
         if (_medium is { } medium && _mediumTexture != 0)
         {
-            // The FBO's first row is the bottom of the picture.
+            // The FBO's first row is the bottom of the picture. It pops about its own middle: the canvas's middle in today's
+            // look, where the medium's box is centred on it; its corner's middle in Big Type's.
             DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, content,
-                centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY, new Vector4(0, 1, 1, 0));
+                centreScale, medium.X + (medium.Width / 2f), medium.Y + (medium.Height / 2f), new Vector4(0, 1, 1, 0));
         }
         else if (_folder is { } folder)
         {
@@ -373,14 +412,21 @@ public sealed class StageCompositor : INativeScene
         }
         else if (_art is { } art)
         {
-            DrawLayer(art, content, centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY);
+            // Big Type's centre is a flat cover in its corner (or a card): it pops about its own middle.
+            if (_ink is not null)
+                DrawLayer(art, content, centreScale, art.Image.X + (art.Image.Width / 2f), art.Image.Y + (art.Image.Height / 2f));
+            else
+                DrawLayer(art, content, centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY);
         }
         if (_plate is { } plate)
             DrawLayer(plate, content, plateScale, _canvasWidth / 2f, StageCurves.PlatePivotY);
         if (_fly is { } fly)
             animating |= DrawLaunch(fly, now);
-        foreach (var chrome in _chrome.Values)
-            DrawLayer(chrome, 1f, 1f, 0, 0);
+        foreach (var (key, chrome) in _chrome)
+        {
+            var zone = _ink is not null ? _chromeZones.GetValueOrDefault(key) : StageInkZone.None;
+            DrawLayer(chrome, 1f, 1f, 0, 0, tint: zone == StageInkZone.None ? null : ZoneInk(zone, clock, fade).Ink);
+        }
 
         _gl.BindVertexArray(0);
         _gl.BindTexture(TextureTarget.Texture2D, 0);
@@ -449,6 +495,84 @@ public sealed class StageCompositor : INativeScene
         DrawQuad(fly.Texture, image.X, image.Y + y, image.Width, image.Height, opacity, scale,
             image.X + (image.Width / 2), image.Y + y + (image.Height / 2), new Vector4(0, 0, 1, 1));
         return true;
+    }
+
+    /// <summary>
+    /// Where the canvas goes on a surface: as large as fits, centred. Today's look always has a canvas of the surface's shape
+    /// (1920 or 1240 by 1080), so it fills the surface exactly as before.
+    /// </summary>
+    internal (int X, int Y, int Width, int Height, float Scale) FitCanvas(int surfaceWidth, int surfaceHeight)
+    {
+        var scale = Math.Min(surfaceWidth / CanvasWidth, surfaceHeight / CanvasHeight);
+        var width = (int)MathF.Round(CanvasWidth * scale);
+        var height = (int)MathF.Round(CanvasHeight * scale);
+        if (Math.Abs(width - surfaceWidth) <= 1 && Math.Abs(height - surfaceHeight) <= 1)
+            return (0, 0, surfaceWidth, surfaceHeight, surfaceWidth / CanvasWidth);
+        return ((surfaceWidth - width) / 2, (surfaceHeight - height) / 2, width, height, scale);
+    }
+
+    // ---- Big Type's ink (M47 B4) ----
+
+    /// <summary>A zone's ink, its veil's colour and the veil's strength, for what is on screen now.</summary>
+    internal readonly record struct ZoneColours(Vector3 Ink, Vector3 Veil, float VeilStrength);
+
+    /// <summary>
+    /// The backdrops on screen with their share of it: the system's backdrop (and the one it is taking over from during a
+    /// rotation), and while a console change crossfades, the leaving system's too. A pictured fallback counts as null.
+    /// </summary>
+    private List<(string? Id, float Weight)> ShowingBackdrops(float clock, float fade)
+    {
+        var showing = new List<(string? Id, float Weight)>(4);
+        void Add(BackdropState? state, float weight)
+        {
+            if (state is null || weight <= 0f)
+                return;
+            if (state.Animated is not { } animated)
+            {
+                showing.Add((null, weight));
+                return;
+            }
+            if (state.Previous is { } previous)
+            {
+                var p = StageCurves.EaseInOut((clock - state.RotationStart) / BackdropRotation.FadeMilliseconds);
+                showing.Add((previous.Id, weight * (1f - p)));
+                showing.Add((animated.Id, weight * p));
+                return;
+            }
+            showing.Add((animated.Id, weight));
+        }
+        var current = _leavingBackdrop is null ? 1f : fade;
+        Add(_backdrop, current);
+        Add(_leavingBackdrop, 1f - current);
+        if (showing.Count == 0)
+            showing.Add((null, 1f));
+        return showing;
+    }
+
+    private ZoneColours ZoneInk(StageInkZone zone, float clock, float fade) =>
+        ZoneInk(zone, ShowingBackdrops(clock, fade), _ink?.Deep ?? Vector3.One);
+
+    /// <summary>
+    /// Mixes the zone's answer (<see cref="BackdropLegibility"/>) over the backdrops on screen by their share: dark ink is
+    /// <paramref name="deep"/> with a white veil, white ink has a veil of <paramref name="deep"/>. The veil's colour is mixed by
+    /// strength, so a strong veil handing over to a light one keeps its colour while it fades.
+    /// </summary>
+    internal static ZoneColours ZoneInk(StageInkZone zone, IReadOnlyList<(string? Id, float Weight)> showing, Vector3 deep)
+    {
+        var ink = Vector3.Zero;
+        var veil = Vector3.Zero;
+        float strength = 0f, total = 0f;
+        foreach (var (id, weight) in showing)
+        {
+            var answer = BackdropLegibility.For(id)[zone];
+            ink += weight * (answer.Dark ? deep : Vector3.One);
+            veil += weight * answer.Veil * (answer.Dark ? Vector3.One : deep);
+            strength += weight * answer.Veil;
+            total += weight;
+        }
+        if (total <= 0f)
+            return new ZoneColours(Vector3.One, deep, 0f);
+        return new ZoneColours(ink / total, strength > 0f ? veil / strength : deep, strength / total);
     }
 
     // ---- The medium ----
@@ -676,19 +800,24 @@ public sealed class StageCompositor : INativeScene
         layer = image is null ? null : new Layer(image, Upload(image.Pixels, repeat));
     }
 
-    private void DrawLayer(Layer layer, float opacity, float scale, float pivotX, float pivotY, float shiftX = 0f)
+    private void DrawLayer(Layer layer, float opacity, float scale, float pivotX, float pivotY, float shiftX = 0f, Vector3? tint = null)
     {
         var image = layer.Image;
-        DrawQuad(layer.Texture, image.X + shiftX, image.Y, image.Width, image.Height, opacity, scale, pivotX, pivotY, new Vector4(0, 0, 1, 1));
+        DrawQuad(layer.Texture, image.X + shiftX, image.Y, image.Width, image.Height, opacity, scale, pivotX, pivotY, new Vector4(0, 0, 1, 1),
+            tint: tint);
     }
 
     private void DrawQuad(uint texture, float x, float y, float width, float height, float opacity, float scale,
-        float pivotX, float pivotY, Vector4 uv, StageAffine? part = null)
+        float pivotX, float pivotY, Vector4 uv, StageAffine? part = null, Vector3? tint = null)
     {
         if (opacity <= 0f)
             return;
         var local = part ?? StageAffine.Identity;
         _gl.BindTexture(TextureTarget.Texture2D, texture);
+        // A tint (M47 B4) draws a white picture in a zone's ink; without one the picture is drawn as it is.
+        _program.Set("uTintAmount", tint is null ? 0f : 1f);
+        if (tint is { } colour)
+            _program.Set("uTint", colour);
         _program.Set("uLinear", new Vector4(local.M11, local.M12, local.M21, local.M22));
         _program.Set("uTranslate", new Vector2(local.M31, local.M32));
         _program.Set("uOffset", Vector2.Zero);
@@ -741,6 +870,9 @@ public sealed class StageCompositor : INativeScene
         foreach (var layer in _chrome.Values)
             _gl.DeleteTexture(layer.Texture);
         _chrome.Clear();
+        foreach (var layer in _veils.Values)
+            _gl.DeleteTexture(layer.Texture);
+        _veils.Clear();
         DeleteMediumTarget();
         _renderer?.Dispose();
         _renderer = null;

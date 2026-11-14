@@ -38,13 +38,16 @@ public partial class HandheldStageView : UserControl
         HandheldTokens.ApplyFace(this);
         _canvas = this.FindControl<Grid>("StageCanvas")!;
         // View wiring only: a GPU path that cannot start tells the Stage to keep flat covers.
-        if (this.FindControl<Media3DControl>("Medium") is { } medium)
+        foreach (var name in new[] { "Medium", "BtMedium" })
         {
-            medium.InitializationFailed += (_, _) =>
+            if (this.FindControl<Media3DControl>(name) is { } medium)
             {
-                if (DataContext is HandheldShellViewModel shell)
-                    shell.Stage.IsMediumUnavailable = true;
-            };
+                medium.InitializationFailed += (_, _) =>
+                {
+                    if (DataContext is HandheldShellViewModel shell)
+                        shell.Stage.IsMediumUnavailable = true;
+                };
+            }
         }
         var motion = new HandheldStageMotion(this, () => IsNarrow);
         // On a platform with a native Stage this view stays laid out but invisible, and lends it its pieces.
@@ -87,10 +90,13 @@ public partial class HandheldStageView : UserControl
     }
 
     // View wiring: the canvas width and the narrow layout's class follow this Stage's screen.
+    // Big Type keeps the 16:9 canvas on the narrow screen too, fitted whole, as the mock scales its top screen when the screens
+    // swap (M47 B4); today's look lays out a narrow canvas of its own.
     private void ApplyCanvas()
     {
-        _canvas.Width = IsNarrow ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
-        _canvas.Classes.Set("narrow", IsNarrow);
+        var narrow = IsNarrow && HandheldTokens.IsClassic;
+        _canvas.Width = narrow ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
+        _canvas.Classes.Set("narrow", narrow);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

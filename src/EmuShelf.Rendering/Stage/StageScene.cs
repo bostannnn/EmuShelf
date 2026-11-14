@@ -142,9 +142,26 @@ public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand
 }
 
 /// <summary>A corner pill or toast, by name; null removes it.</summary>
-public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCommand
+/// <remarks>
+/// Under the Big Type look (M47 B4) a piece of text is pictured in white and names its <paramref name="Zone"/>: the compositor
+/// draws it in that zone's ink for the backdrop that is showing (<see cref="Backdrops.BackdropLegibility"/>). A
+/// <paramref name="Veil"/> is a white mask of the veil behind a zone, drawn under the centre in the opposite tone at the
+/// zone's strength. Today's look sends neither, and its pictures are drawn as they are.
+/// </remarks>
+public sealed record StageChromeCommand(string Key, StageImage? Image, Backdrops.StageInkZone Zone = Backdrops.StageInkZone.None,
+    bool Veil = false) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
+}
+
+/// <summary>
+/// The Big Type look's colours for the Stage (M47 B4): the screen is cleared to <paramref name="Ground"/> (the focused item's
+/// colour, as the Launcher's), and <paramref name="Deep"/> is the dark ink (that colour mixed 74% toward #0B0A18). Its presence
+/// is what turns on the zones' ink; today's look never sends it. Straight sRGB, 0 to 1.
+/// </summary>
+public sealed record StageInkCommand(Vector3 Ground, Vector3 Deep) : StageCommand
+{
+    public override string? RetainKey => "ink";
 }
 
 /// <summary>

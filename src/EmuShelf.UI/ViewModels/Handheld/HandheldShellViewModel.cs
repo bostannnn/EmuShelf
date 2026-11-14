@@ -279,6 +279,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         var firstRead = !_libraryRead;
         _libraryRead = true;
         _recentIds = recent;
+        _ = LoadRecentGamesAsync();
         // A carried tile and an open sheet were arranged against the layout being replaced: they go. A name being
         // typed stays (Done finds a free slot if its own was taken meanwhile).
         if (_move is not null)
@@ -1393,8 +1394,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.AchievementText = null;
         Stage.AppIcon = null;
         Stage.IsDrift = false;
-        // Set once per change, never cleared first: the view crossfades only when colour or era really change.
-        Stage.Backdrop = backdrop;
+        // Set once per change, never cleared first: the view crossfades only when colour or era really change. In the Big Type
+        // look something with no backdrop of its own (an app, an empty slot, the dock) keeps the one showing, as the mock does.
+        Stage.Backdrop = backdrop ?? (HandheldTokens.IsBigType ? Stage.Backdrop : null);
         Stage.Medium = null;
         Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
         Stage.Glyph = kind switch
@@ -1407,13 +1409,17 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldStageKind.ActivityTile => HandheldGlyph.Activity,
             _ => HandheldGlyph.None,
         };
+        ApplyBigTypeText(kind, title, subtitle);
     }
 
     private void ShowFolderStage(HandheldFolderSource source, string subtitle)
     {
         // A platform's folder sits on its own backdrop; yours and Recent on the soft tile grid in their colour.
         ShowStage(HandheldStageKind.Folder, source.Name, subtitle,
-            backdrop: source.Platform is { } platform ? BackdropFor(platform) : FolderBackdrop(source.AccentColor));
+            backdrop: source.Platform is { } platform ? BackdropFor(platform)
+                : HandheldTokens.IsBigType && HandheldTokens.LauncherColour(source) is { } ground
+                    ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge)
+                    : FolderBackdrop(source.AccentColor));
         Stage.Monogram = source.Monogram;
         Stage.FolderGlyph = source.Kind switch
         {
@@ -1423,6 +1429,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _ => HandheldGlyph.None,
         };
         Stage.AccentBrush = HandheldTokens.FolderBrush(source);
+        ApplyBigTypeFolderText(source, subtitle);
         ApplyPeek(source, Stage);
     }
 
@@ -1448,6 +1455,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
+        ApplyBigTypeGameText(game);
         if (HandheldTokens.ConsoleColour(platform) is { } accent)
         {
             Stage.MediumAccent = accent;
@@ -1476,6 +1484,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Hero, game.Title, HeroSubtitle(game), backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
+        ApplyBigTypeGameText(game);
         _ = LoadStageArtAsync(game, hero: true);
     }
 
