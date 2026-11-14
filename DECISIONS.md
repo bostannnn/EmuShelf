@@ -14670,10 +14670,24 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   growing at 110 ms after the command or once it is ready, whichever is later, so a slow start delays the circle rather than a frame. Its
   two full-screen pictured layers are uploaded only if they are ever drawn (a system with no animated backdrop, or one whose shaders fail),
   one per frame. The first backdrop, with nothing on screen to wipe over, is prepared at once (so a rebuilt context's resume finds it).
-  **What is left:** the first time a backdrop shows in a run its shaders compile, on the frame after the press (27.7 ms for `ps2-sea` on the
-  emulator); later starts cost 0.1–1.5 ms there. Compiling a system's backdrops ahead of their first show was not done.
+  **Measured on the Thor** (20 presses along home's first row, Recent to GBA and back, 1.5 s apart, Big Type, R1's probe in both builds):
+  before B6 (B5's commit plus the probe and nothing else) the Stage paid 17.6 to 41.2 ms on 10 of the 20 presses, about 380 ms after each
+  (after the settle, when the backdrop started and its layers went up; repeats of a backdrop included), 10 frames over 16.7 ms. With B6 the
+  frame the press lands on costs 0.3 to 0.6 ms every time; the next frame costs 13.1 to 36.6 ms only the first time a backdrop shows in a
+  run (its shaders compile: nes-raster, snes-mosaic-v2, gbc-sheen-v2, gba-iso, gbc-bands, tiles, nes-stars, nes-meta, gbc-attr,
+  snes-lake-v2), and 0.3 to 0.5 ms on every repeat; 4 frames over 16.7 ms, 11 over 8.3 (10 before). **What is left:** that first compile.
+  Compiling a system's backdrops ahead of their first show (or keeping program binaries) was not done.
 - **Holding still** (`HoldsStill`) follows the mock's reduced motion: the new name is there at once and the old one goes in 60 ms
   (`LetterOut.stillMs`), all letters together; the flood lands at once; the new backdrop cuts in once it is ready; no letter hops.
+- **The exit, measured on the Thor, is not met; not ticked.** R1's figure is every steady frame of the motions under 5.2 ms CPU and 2.4 ms
+  GPU (worst case 0.9 and 0.7 typical). Three-line names arriving during a wipe, in Recent (its games are on different consoles, so each
+  move wipes: "Shin Megami Tensei : Persona 2, Innocent Sin" at 37 letters, "Tony Hawk's Underground 2 Remix", "Metal Gear Solid : The Twin
+  Snakes", "Bleach : Heat the Soul", "Batman : Return of the Joker"; six runs, 304 steady frames, the run's first frame left out): CPU 1.81 ms
+  typical, 5.10 p95, 18.6 worst, with frames over 5.2 in four runs, most 0.7 to 0.85 s after the press when the letters have landed (not
+  isolated; these games show the 3D case, which R1's stress names did not); GPU 1.48 typical, 2.25 p95, 2.54 worst (over the Bleach run's
+  `psp-field-v2` wipe). Monograms during a wipe along home's first row: GPU 1.47 typical, 3.25 worst. The GPU's share is plausibly the wipe
+  presenting two full-screen backdrops and drawing the text and veils once per backdrop; that was not measured apart. A name's atlas costs
+  2.9 to 10.0 ms on the UI thread (R1: 3.5 to 14.4). Whether to accept these figures or work on them is the owner's.
 - **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
   (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
   `letters+wipe`, `flood`, `other`) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
@@ -14683,8 +14697,9 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   so page 2's slot stayed the most recently focused anchor and `HandheldLauncherMotion.FocusedAnchor` sent the ring and the lift to it, off
   screen. Fixed where the anchor is chosen: a home slot counts only while its page is the page on screen. Classic changes by the missing
   highlight only: the stale mark itself was left alone, because clearing it would also drop the old page's tile out of its focused look
-  during the page's slide, which today's look shows. Seen fixed on the emulator in both looks.
+  during the page's slide, which today's look shows. Seen fixed on the emulator in both looks and on the Thor in Classic (GBA, the
+  last slot of the owner's first row).
 - **The Launcher's corner type** ("Swap", "1 / 2", the sort, the folder's name and count) sets `RenderOptions.TextRenderingMode="Antialias"`
-  on each pictured piece, as B4 did on the Stage; no black boxes on the emulator.
+  on each pictured piece, as B4 did on the Stage; no black boxes on the emulator or the Thor.
 - **Found, not fixed:** the Big Type design set is not deterministic from B5's commit: two renders of `ddb0696` differ in 11 frames, each
   only on the focused ring's edge (6 to 1,215 pixels, sub-pixel), the same frames B5's saved set differs in. Classic is deterministic.

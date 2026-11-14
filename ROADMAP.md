@@ -2952,7 +2952,8 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       `backdrop-output.frag`, `NativeFrameProbe`, `GpuFrameTimer`) and turn it from a flagged spike into the real
       thing. Also move the backdrop's start-up cost off the first frame of a console change (R1). **Exit:** frame times on the Thor at or under
       R1's figures for a three-line name during a wipe.
-      **Built 2026-11-14; awaiting the owner's measurement on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B6".) Under Big Type
+      **Built 2026-11-14. Exit measured on the Thor and NOT met (figures below): not ticked; the owner's call.** (Choices and the full
+      figures in `DECISIONS.md` 2026-11-14 "M47 B6".) Under Big Type
       only: **the name arrives letter by letter** on the native Stage from one atlas per name, laid out by the Avalonia name's own fit
       (`HandheldBigTypeName.Letters`, held to the control's drawing by a headless test) and drawn one quad per letter in the left zone's ink
       (`StageNameCommand`, `BigTypeStageLayer`); each letter lands from the move (right, left, up, down, into a folder from the hinge, out of
@@ -2969,21 +2970,31 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       behind `adb shell setprop debug.emushelf.probe 1` (logcat `EmuShelfBigType`, per motion). **Fixed on the way:** after moving from home's
       page 2 back onto page 1 the ring and lift went to page 2's slot, off screen (both looks; Classic changes by the restored highlight only),
       and the Launcher's corner type is pictured with grey-scale antialiasing (no black boxes). **Verified on macOS:** Classic rendered before
-      and after, 158 of 158 frames byte-identical; Big Type: CLASSIFY. New tests hold the letters', flood's, wipe's and hop's timing at fixed
+      and after, 158 of 158 frames byte-identical; Big Type: 12 of 158 differ from both renders made before B6, none in a way the step meant
+      to change at rest (the name at rest is drawn as before): 11 by 1 to 977 sub-pixel pixels on the focused ring's edge (10 of those frames
+      also differ between the two renders of B5's commit, run to run), and the launching frame, where the Avalonia name's letters now move during the
+      harness's wait, so the frame is taken after the launch card's flight has ended. New tests hold the letters', flood's, wipe's and hop's timing at fixed
       moments to tokens.js (`HandheldBigTypeLettersTests`); a new desktop GL check (`dotnet run --project tools/EmuShelf.Rendering.Preview --
       --stage-letters`) reads each letter where the maths puts it mid-flight, the hop, holding still, the backdrop not started on the frame
       its command lands on, and the text white inside and dark outside the wipe's circle; `--launcher-bigtype` now reads the flood mid-flight
-      and held still. `dotnet build` and `dotnet test` pass. **Emulator check (not a Thor check):** on `emushelf-b3` (Release AOT,
-      `adb install -r`), with `debug.emushelf.look bigtype` and the probe on, recordings of both displays caught the flood's circle growing
-      from the focused tile, the old name's letters leaving while the new ones arrive ("Recent" under "PS2"), the wipe's circle rising from
-      below the PS2 tile, the letters rising from the hinge into the PS2 folder, and the idle hop over the tiles then the letters; back on
-      page 1 the ring and lift were on the slot (and in Classic); the corner type had no black boxes. Frame times, as an indication only
-      (emulator CPU time; its GPU has no timer queries): the press frame of a system change 0.1–0.8 ms, the backdrop's start 0.1–1.5 ms on a
-      later frame once its shaders are compiled (27.7 ms the first time a backdrop shows in a run), a new name's first frame (its atlas
-      upload) 2–9.6 ms, steady letter, wipe and flood frames 0.1–0.3 ms. Holding still was not tried there (it needs a system setting
-      changed); the desktop GL checks cover it. Properties cleared, Classic again, settings untouched. **Open for the owner:** the exit,
-      measured on the Thor at 60 Hz with the probe against R1's figures; the swapped screens' wipe (the mock has none; the circle still rises
-      from the Stage's bottom edge); and the feel of every motion.
+      and held still. `dotnet build` and `dotnet test` pass. **Emulator check** (`emushelf-b3`, before the Thor came back): recordings of
+      both displays caught the flood, the letters, the wipe, the letters rising into a folder and the hop mid-flight, and the page fault gone.
+      **Thor check** (Release AOT, `adb install -r`, uid and data kept, 60 Hz untouched, screens unswapped as found; R1's probe on with
+      `debug.emushelf.probe`): the page fault is gone in Classic (back from page 2 the ring and lift are on GBA) and the corner type has no
+      black boxes. **The exit, measured: not met.** Three-line names arriving during a wipe (Recent's games across consoles: "Shin Megami
+      Tensei : Persona 2, Innocent Sin", "Tony Hawk's Underground 2 Remix", "Metal Gear Solid : The Twin Snakes", "Bleach : Heat the Soul",
+      "Batman : Return of the Joker"; 304 steady frames): CPU 1.81 ms typical, 5.10 p95, **18.6 worst** (frames over 5.2 in four of the six
+      runs, most of them 0.7 to 0.85 s after the press, once the letters have landed; their cause is not isolated); GPU 1.48 typical, 2.25
+      p95, **2.54 worst**. R1: every steady frame under 5.2 ms CPU and 2.4 ms GPU (0.9 and 0.7 typical). These games all show the 3D case,
+      which R1's stress run did not have. Monogram names during a wipe (home's first row): GPU 1.47 typical, **3.25 worst**. **The first frame
+      of a console change** (20 presses along home's first row, Big Type, the same probe): before B6 (B5 plus the probe only) the Stage paid
+      17.6 to 41.2 ms on 10 of 20 presses, about 380 ms after the press (after the settle; repeats included), 10 frames over 16.7 ms; with
+      B6 the press frame is 0.3 to 0.6 ms on every press, and the start-up cost falls on the next frame only the first time each backdrop
+      shows in a run (its shaders compile: 13.1 to 36.6 ms, 9 backdrops), repeats 0.3 to 0.5 ms; 4 frames over 16.7 ms, 11 over 8.3 (10
+      before). Left on the Thor: this build with `debug.emushelf.look` set to `bigtype` (a reboot or `adb shell setprop debug.emushelf.look
+      classic` returns it to Classic). **Open for the owner:** whether to accept these figures or have the wipe's GPU cost (two backdrops and
+      two ink passes) and the late CPU frames worked on; the swapped screens' wipe (the mock has none; the circle still rises from the
+      Stage's bottom edge); the feel of every motion.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
