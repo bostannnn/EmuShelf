@@ -60,7 +60,13 @@ public sealed class StageCompositor : INativeScene, IProbedScene
     /// </summary>
     public event Action<string>? BackdropStarted;
     private IReadOnlyList<string>? _animatedIds;
-    private readonly Random _random = new();
+    private Random _random = new();
+
+    /// <summary>
+    /// Makes the backdrops' picks repeatable (the frame probe's A/B runs, M47 B6): the same presses then show the same backdrops, so two
+    /// runs compare. Off the probe the picks stay random.
+    /// </summary>
+    public void SeedBackdrops(int seed) => _random = new Random(seed);
     private BackdropState? _backdrop;
     private BackdropState? _leavingBackdrop;
     private float _backdropFadeStart;
@@ -680,13 +686,14 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         // veils are drawn only where it shows.
         if (_ink is not null)
         {
-            foreach (var pass in passes)
+            foreach (var (key, veil) in _veils)
             {
-                Clip(pass);
-                foreach (var (key, veil) in _veils)
+                var zone = _veilZones.GetValueOrDefault(key);
+                foreach (var pass in PassesFor(zone, passes))
                 {
-                    var zone = pass.Ink(_veilZones.GetValueOrDefault(key));
-                    DrawLayer(veil, zone.VeilStrength, 1f, 0, 0, tint: zone.Veil);
+                    Clip(pass);
+                    var colours = pass.Ink(zone);
+                    DrawLayer(veil, colours.VeilStrength, 1f, 0, 0, tint: colours.Veil);
                 }
             }
             Clip(null);
@@ -755,12 +762,21 @@ public sealed class StageCompositor : INativeScene, IProbedScene
             animating |= lettersMoving || hop is not null;
             if (!letters.IsEmpty)
             {
-                foreach (var pass in passes)
+                foreach (var pass in PassesFor(StageInkZone.Left, passes))
                 {
                     Clip(pass);
                     Vector3? tint = _ink is not null ? pass.Ink(StageInkZone.Left).Ink : null;
-                    letters.Draw(now, _holdStill, hop, (texture, x, y, width, height, opacity, uv, affine) =>
-                        DrawQuad(texture, x, y, width, height, opacity, 1f, 0f, 0f, uv, affine, tint));
+                    if (UseBatch)
+                    {
+                        letters.Draw(now, _holdStill, hop, (texture, x, y, width, height, opacity, uv, affine) =>
+                            BatchQuad(texture, x, y, width, height, opacity, uv, affine, tint, default));
+                        FlushBatch();
+                    }
+                    else
+                    {
+                        letters.Draw(now, _holdStill, hop, (texture, x, y, width, height, opacity, uv, affine) =>
+                            DrawQuad(texture, x, y, width, height, opacity, 1f, 0f, 0f, uv, affine, tint));
+                    }
                 }
                 Clip(null);
             }
@@ -782,16 +798,13 @@ public sealed class StageCompositor : INativeScene, IProbedScene
             _gl.DeleteTexture(roll.Old.Texture);
             _rolls.Remove(key);
         }
-        foreach (var pass in passes)
+        foreach (var (key, chrome) in _chrome)
         {
-            Clip(pass);
-            foreach (var (key, chrome) in _chrome)
+            var zone = _ink is not null ? _chromeZones.GetValueOrDefault(key) : StageInkZone.None;
+            foreach (var pass in PassesFor(zone, passes))
             {
-                var zone = _ink is not null ? _chromeZones.GetValueOrDefault(key) : StageInkZone.None;
+                Clip(pass);
                 Vector3? tint = zone == StageInkZone.None ? null : pass.Ink(zone).Ink;
-                // Text with no zone (today's pills, the message toast) is drawn once, whatever is behind it.
-                if (zone == StageInkZone.None && !ReferenceEquals(pass, passes[^1]))
-                    continue;
                 if (rolling is not null && rolling.TryGetValue(key, out var pieces))
                     DrawRoll(chrome, _rolls[key].Old, pieces, tint, fit);
                 else
@@ -838,7 +851,30 @@ public sealed class StageCompositor : INativeScene, IProbedScene
     /// backdrop's ink, veil colour and strength for each zone. Outside a wipe there is one pass, unclipped, with the ink mixed over
     /// whatever is on screen (B4).
     /// </summary>
-    private sealed record InkPass(Vector4 Clip0, Vector4 Clip1, Vector4 Clip2, Func<StageInkZone, ZoneColours> Ink);
+    internal sealed record InkPass(Vector4 Clip0, Vector4 Clip1, Vector4 Clip2, Func<StageInkZone, ZoneColours> Ink);
+
+    /// <summary>
+    /// The passes a zone's text or veil is drawn in (M47 B6). During a wipe, a zone whose ink, veil colour and veil strength are the same
+    /// for every backdrop showing is drawn once with no circle: the circles share the screen out between the passes, so every pixel gets
+    /// the same ink either way, and the text costs one draw instead of one per backdrop. A zone whose answers differ keeps one pass per
+    /// backdrop, each in its own circle, so no pixel of text is in an ink chosen for another backdrop. Text with no zone (today's pills, the
+    /// message toast) is drawn once, whatever is behind it.
+    /// </summary>
+    internal static IReadOnlyList<InkPass> PassesFor(StageInkZone zone, IReadOnlyList<InkPass> passes)
+    {
+        if (passes.Count <= 1)
+            return passes;
+        if (zone != StageInkZone.None)
+        {
+            var first = passes[0].Ink(zone);
+            for (var i = 1; i < passes.Count; i++)
+            {
+                if (passes[i].Ink(zone) != first)
+                    return passes;
+            }
+        }
+        return [passes[^1] with { Clip0 = default, Clip1 = default, Clip2 = default }];
+    }
 
     private void Clip(InkPass? pass)
     {
@@ -905,6 +941,25 @@ public sealed class StageCompositor : INativeScene, IProbedScene
     private void DrawRoll(Layer layer, Layer old, IReadOnlyList<BigTypeRollPiece> pieces, Vector3? tint,
         (int X, int Y, int Width, int Height, float Scale) fit)
     {
+        if (UseBatch)
+        {
+            // Batched (M47 B6): each piece cut to the same window by the fragment shader instead of the scissor.
+            foreach (var piece in pieces)
+            {
+                var left = fit.X + (int)MathF.Floor(piece.ClipX * fit.Scale);
+                var right = fit.X + (int)MathF.Ceiling((piece.ClipX + piece.ClipWidth) * fit.Scale);
+                var bottom = fit.Y + (int)MathF.Floor((CanvasHeight - piece.ClipY - piece.ClipHeight) * fit.Scale);
+                var top = fit.Y + (int)MathF.Ceiling((CanvasHeight - piece.ClipY) * fit.Scale);
+                if (right <= left || top <= bottom)
+                    continue;
+                var source = piece.Source == BigTypeRollSource.Old ? old : layer;
+                var picture = source.Image;
+                BatchQuad(source.Texture, picture.X, picture.Y + piece.OffsetY, picture.Width, picture.Height, piece.Opacity,
+                    new Vector4(0, 0, 1, 1), StageAffine.Identity, tint, new Vector4(left, bottom, right, top));
+            }
+            FlushBatch();
+            return;
+        }
         _gl.Enable(EnableCap.ScissorTest);
         foreach (var piece in pieces)
         {
@@ -1395,6 +1450,121 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
     }
 
+    // ---- Big Type's batched quads (M47 B6) ----
+
+    /// <summary>How many quads one batched draw holds (sprite-batch.vert's uQuads: five vec4s a quad).</summary>
+    internal const int BatchQuads = 48;
+    private const int BatchStride = 20;
+
+    private GlProgram? _batchProgram;
+    private readonly float[] _batch = new float[BatchQuads * BatchStride];
+    private int _batchCount;
+    private uint _batchTexture0;
+    private uint _batchTexture1;
+    private Vector3? _batchTint;
+
+    /// <summary>
+    /// Whether Big Type draws a name's letters and a rolling line's pieces as batches, one instanced draw for up to
+    /// <see cref="BatchQuads"/> of them, instead of a draw per quad (on by default; the desktop GL check turns it off to compare the
+    /// two pixel for pixel). Today's look never batches.
+    /// </summary>
+    public bool Batching { get; set; } = true;
+
+    private bool UseBatch => _bigType && Batching;
+
+    /// <summary>
+    /// Adds a quad to the batch, as <see cref="DrawQuad"/> would draw it at scale 1 (the letters and the roll's pieces): its place, its
+    /// texture coordinates, its own transform, its opacity, and the window it is cut to (x0, y0, x1, y1 in the surface's pixels; zero is
+    /// none). A batch holds one ink and up to two textures in the order the quads came, so the drawing order is kept.
+    /// </summary>
+    private void BatchQuad(uint texture, float x, float y, float width, float height, float opacity, Vector4 uv, StageAffine affine,
+        Vector3? tint, Vector4 window)
+    {
+        if (opacity <= 0f)
+            return;
+        if (_batchCount > 0 && tint != _batchTint)
+            FlushBatch();
+        float source;
+        if (_batchCount == 0)
+        {
+            (_batchTexture0, _batchTexture1, _batchTint, source) = (texture, 0u, tint, 0f);
+        }
+        else if (texture == _batchTexture0)
+        {
+            source = 0f;
+        }
+        else if (_batchTexture1 == 0 || texture == _batchTexture1)
+        {
+            _batchTexture1 = texture;
+            source = 1f;
+        }
+        else
+        {
+            FlushBatch();
+            (_batchTexture0, _batchTexture1, _batchTint, source) = (texture, 0u, tint, 0f);
+        }
+        var at = _batchCount * BatchStride;
+        _batch[at] = x;
+        _batch[at + 1] = y;
+        _batch[at + 2] = width;
+        _batch[at + 3] = height;
+        _batch[at + 4] = uv.X;
+        _batch[at + 5] = uv.Y;
+        _batch[at + 6] = uv.Z;
+        _batch[at + 7] = uv.W;
+        _batch[at + 8] = affine.M11;
+        _batch[at + 9] = affine.M12;
+        _batch[at + 10] = affine.M21;
+        _batch[at + 11] = affine.M22;
+        _batch[at + 12] = affine.M31;
+        _batch[at + 13] = affine.M32;
+        _batch[at + 14] = opacity;
+        _batch[at + 15] = source;
+        _batch[at + 16] = window.X;
+        _batch[at + 17] = window.Y;
+        _batch[at + 18] = window.Z;
+        _batch[at + 19] = window.W;
+        _batchCount++;
+        _sectionQuads++;
+        if (_batchCount == BatchQuads)
+            FlushBatch();
+    }
+
+    /// <summary>Draws the quads batched so far in one instanced draw, under the circles set now, then hands back the sprite program.</summary>
+    private void FlushBatch()
+    {
+        if (_batchCount == 0)
+            return;
+        _batchProgram ??= GlProgram.Create(
+            _gl,
+            ShaderLibrary.Load("sprite-batch.vert", _dialect, _major, _minor),
+            ShaderLibrary.Load("stage-batch.frag", _dialect, _major, _minor),
+            "stage batch");
+        var program = _batchProgram;
+        program.Use();
+        program.Set("uTexture", 0);
+        program.Set("uTexture1", 1);
+        program.Set("uCanvas", new Vector2(CanvasWidth, CanvasHeight));
+        program.Set("uScale", new Vector3(1f, 0f, 0f));
+        program.Set("uOffset", Vector2.Zero);
+        program.Set("uGroup", new Vector3(1f, 0f, 0f));
+        program.Set("uFit", new Vector3(_fit.X, _fit.Y, _fit.Scale));
+        program.Set("uTintAmount", _batchTint is null ? 0f : 1f);
+        if (_batchTint is { } ink)
+            program.Set("uTint", ink);
+        program.Set("uClip0", _clip0);
+        program.Set("uClip1", _clip1);
+        program.Set("uClip2", _clip2);
+        _gl.ActiveTexture(TextureUnit.Texture1);
+        _gl.BindTexture(TextureTarget.Texture2D, _batchTexture1 != 0 ? _batchTexture1 : _batchTexture0);
+        _gl.ActiveTexture(TextureUnit.Texture0);
+        _gl.BindTexture(TextureTarget.Texture2D, _batchTexture0);
+        program.Set("uQuads", _batch.AsSpan(0, _batchCount * BatchStride));
+        _gl.DrawArraysInstanced(PrimitiveType.TriangleStrip, 0, 4, (uint)_batchCount);
+        _batchCount = 0;
+        _program.Use();
+    }
+
     // The values the sprite program holds (Big Type only); every one of its per-quad uniforms is set through DrawQuad.
     private QuadUniforms? _quadUniforms;
 
@@ -1470,6 +1640,7 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         _renderer?.Dispose();
         _renderer = null;
         _gl.DeleteVertexArray(_vao);
+        _batchProgram?.Dispose();
         _program.Dispose();
     }
 }

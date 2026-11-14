@@ -315,6 +315,12 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             var api = GL.GetApi(new LamdaNativeContext(GetProcAddress));
             _compositor = _create(api);
             _gpuTimer = FrameProbeProperty.IsOn ? GpuFrameTimer.Create(api, GetProcAddress) : null;
+            if (_compositor is StageCompositor probedStage && FrameProbeProperty.IsOn)
+            {
+                // The probe's A/B runs (M47 B6): repeatable backdrop picks, and batching off for "nobatch".
+                probedStage.SeedBackdrops(47);
+                probedStage.Batching = !FrameProbeProperty.NoBatch;
+            }
             if (_compositor is StageCompositor stage)
                 stage.BackdropStarted += id => global::Android.Util.Log.Info("EmuShelfStage", $"{_name}: backdrop '{id}' in");
         }
@@ -359,6 +365,14 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             _gpuTimer?.Begin();
             if (compositor is IProbedScene probed)
                 probed.ProbeSections = probing;
+            // The A/B run: batching on for two frames, off for two (the backdrops step every other frame, so both see the same work).
+            var suffix = string.Empty;
+            if (probing && FrameProbeProperty.Alternate && compositor is StageCompositor alternating)
+            {
+                _abFrames++;
+                alternating.Batching = ((_abFrames >> 1) & 1) == 0;
+                suffix = alternating.Batching ? "+b" : "+u";
+            }
             var gcBefore = probing ? (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)) : default;
             _applied.Clear();
             while (_queue.TryDequeue(out var command))
@@ -372,7 +386,7 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             var animating = compositor.Draw(now, _width, _height);
             var drawMilliseconds = probing ? Stopwatch.GetElapsedTime(drawing).TotalMilliseconds : 0d;
             var drawnCpu = probing ? ThreadCpuMilliseconds() - threadStarted : 0d;
-            _gpuTimer?.End(compositor.ProbeTag ?? (animating ? "other" : null));
+            _gpuTimer?.End(compositor.ProbeTag is { } probeTag ? probeTag + suffix : animating ? "other" : null);
             CompleteFrame();
             if (probing)
             {
@@ -407,6 +421,8 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
     private float _vote = -1f;
 
     private const float MaxVotedStepMilliseconds = 1000f;
+
+    private long _abFrames;
 
     // The probe's finer look (M47 B6): a frame over this much render-thread CPU logs what it applied and each part of its draw.
     private const double SlowFrameMilliseconds = 4.0;

@@ -3000,8 +3000,14 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       uniforms that changed (about 24 µs a quad; nothing drawn changes). **Measured again: CPU still over, not ticked.** Three-line names
       during a wipe: CPU 1.58 typical, 3.91 p95 (was 5.10), 19.3 worst (the 3D case's first render; Big Type's own worst is 6.9, a long
       name and a rolling line in a wipe); GPU 1.51 typical, 2.18 p95, 7.73 worst (one frame; the rest at most 2.80). Console row: over 16.7 ms
-      2 (was 4). **Open for the owner:** whether to accept these, or have text drawn once when both backdrops share its ink, the letters and
-      roll pieces batched, or the 3D case's first render looked at; the swapped screens' wipe (the mock has none); the feel of every motion.
+      2 (was 4). **Then two savings that change nothing on screen:** a zone's text drawn once
+      when every backdrop showing answers it the same way, and the letters and roll pieces in instanced batches (0 pixels different on desktop
+      GL; GPU-neutral by an in-run A/B on the Thor). **Final figures** (the same Recent run): three-line names during a wipe, CPU 1.31 typical,
+      2.83 p95; **Big Type's own drawing, worst 4.5 ms; the 3D case's first render, worst 18.0 ms**; GPU 1.42 typical, 2.14 p95, 2.87 worst
+      (over 2.4 only in step with the two backdrops' renders during a wipe). Today's look on the same run: CPU 1.02 typical, 2.25 p95, 50.0
+      worst, 9 frames over 8.3 and 4 over 16.7 (Big Type 6 and 3); its 3D first render 19.0 ms; GPU 0.74 typical, 7.40 worst. **Still not
+      met, not ticked:** the 3D first render and the GPU through a wipe. **Open for the owner:** whether to accept that; the swapped screens'
+      wipe (the mock has none); the feel of every motion.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the

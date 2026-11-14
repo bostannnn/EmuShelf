@@ -175,6 +175,81 @@ internal static class StageLettersCheck
             gl.DeleteRenderbuffer(colour);
         }
 
+        // ---- A wipe draws a zone's text once when every backdrop showing gives it the same answer (M47 B6) ----
+        {
+            var ids = BackdropCatalog.All.Select(spec => spec.Id).ToList();
+            var same = ids.Where(id => id != "ps2-towers" && BackdropLegibility.For(id)[StageInkZone.Left] == BackdropLegibility.For("ps2-towers")[StageInkZone.Left])
+                .FirstOrDefault();
+            Check($"a backdrop that answers the left zone as ps2-towers does exists ({same})", same is not null);
+            foreach (var (to, shared) in new[] { (same ?? "ps2-orbs-v3", true), ("ps2-trails-v3", false) })
+            {
+                var (framebuffer, colour) = Target(gl);
+                var stage = Stage(gl, framebuffer, holdStill: false, pictured: false);
+                stage.ProbeSections = true;
+                var white = new StagePixels(1, 1, [255, 255, 255, 255], IsBgra: false);
+                stage.Apply(new StageChromeCommand("line", new StageImage(white, 0, 1000, 1920, 30), StageInkZone.Left), 0f);
+                stage.Apply(new StageBackdropCommand(Pictured(Grey), ["ps2-towers"], WipeOriginX: 960f), 0f);
+                for (var clock = 0f; clock <= 1000f; clock += 16f)
+                    stage.Draw(clock, Width, Height);
+                stage.Apply(new StageBackdropCommand(Pictured(Grey), [to], WipeOriginX: 700f), 2000f);
+                var at = 2000f;
+                for (at = 2016f; at <= 2000f + 110f + 100f; at += 16f)
+                    stage.Draw(at, Width, Height);
+                var frame = Read(gl, framebuffer);
+                var quads = Quads(stage.LastSections, "chrome");
+                var radius = BigTypeMotion.WipeRadiusAt(at - 16f - 2000f - BigTypeMotion.WipeDelay);
+                var edge = 700f + MathF.Sqrt((radius * radius) - MathF.Pow(1080f + BigTypeMotion.WipeBelow - 1015f, 2f));
+                var inkIn = BackdropLegibility.For(to)[StageInkZone.Left].Dark ? Deep : Vector3.One;
+                var inkOut = BackdropLegibility.For("ps2-towers")[StageInkZone.Left].Dark ? Deep : Vector3.One;
+                Check($"wipe to {to} ({(shared ? "the same left answer" : "a different left answer")}): the line is drawn {(shared ? "once" : "once per backdrop")} ({quads} quads)",
+                    quads == (shared ? 1 : 2));
+                Check($"wipe to {to}: inside the circle the line is in {to}'s ink", Close(Pixel(frame, (int)(edge - 8f), 1015), inkIn));
+                Check($"wipe to {to}: outside it, in ps2-towers' ink", Close(Pixel(frame, (int)(edge + 8f), 1015), inkOut));
+                if (shared)
+                    Check($"wipe to {to}: one pass leaves no seam on the circle's edge (the line is the ink there too)",
+                        Enumerable.Range((int)edge - 2, 5).All(x => Close(Pixel(frame, x, 1015), inkIn)));
+                stage.Dispose();
+                gl.DeleteFramebuffer(framebuffer);
+                gl.DeleteRenderbuffer(colour);
+            }
+        }
+
+        // ---- Batched letters and roll pieces draw exactly what a draw per quad draws (M47 B6) ----
+        {
+            byte[] Scene(bool batching, out int quads)
+            {
+                var (framebuffer, colour) = Target(gl);
+                var stage = Stage(gl, framebuffer, holdStill: false, pictured: false);
+                stage.Batching = batching;
+                stage.ProbeSections = true;
+                stage.Apply(new StageBackdropCommand(Pictured(Grey), ["ps2-towers"], WipeOriginX: 960f), 0f);
+                stage.Apply(new StageNameCommand(Name("Ab", OldRow, 2), BigTypeEntrance.Rise, Animate: false), 0f);
+                // A line of 40 cells: "0123…" rolling to "1234…" (every cell changes), red to green.
+                stage.Apply(new StageChromeCommand("line", Solid(new Vector3(1, 0, 0), 100, 960, 800, 50), StageInkZone.None, Text: Cells("0", 100, 960)), 0f);
+                for (var clock = 0f; clock <= 1000f; clock += 16f)
+                    stage.Draw(clock, Width, Height);
+                stage.Apply(new StageBackdropCommand(Pictured(Grey), ["ps2-trails-v3"], WipeOriginX: 700f), 2000f);
+                stage.Apply(new StageNameCommand(Name("Cdef", NewRow, 4), BigTypeEntrance.Rise), 2000f);
+                stage.Apply(new StageChromeCommand("line", Solid(new Vector3(0, 1, 0), 100, 960, 800, 50), StageInkZone.None, Text: Cells("1", 100, 960)), 2000f);
+                for (var clock = 2016f; clock <= 2000f + 250f; clock += 16f)
+                    stage.Draw(clock, Width, Height);
+                var frame = Read(gl, framebuffer);
+                quads = Quads(stage.LastSections, "letters") + Quads(stage.LastSections, "chrome");
+                stage.Dispose();
+                gl.DeleteFramebuffer(framebuffer);
+                gl.DeleteRenderbuffer(colour);
+                return frame;
+            }
+            var batched = Scene(batching: true, out var batchedQuads);
+            var single = Scene(batching: false, out var singleQuads);
+            PngWriter.Write(Path.Combine(outputDirectory, "batched.png"), Width, Height, batched);
+            var differing = Enumerable.Range(0, batched.Length / 4).Count(i =>
+                batched[i * 4] != single[i * 4] || batched[(i * 4) + 1] != single[(i * 4) + 1] || batched[(i * 4) + 2] != single[(i * 4) + 2]);
+            Check($"batched: the same {batchedQuads} quads as drawn one by one ({singleQuads}), tilted letters mid-flight and a 40-cell roll during a wipe",
+                batchedQuads == singleQuads && batchedQuads > 60);
+            Check($"batched: every pixel the same as drawn one by one ({differing} differ)", differing == 0);
+        }
+
         Console.WriteLine(failures == 0 ? "All Big Type letter and wipe checks passed." : $"{failures} Big Type letter and wipe check(s) FAILED.");
         return failures == 0 ? 0 : 1;
     }
@@ -190,6 +265,31 @@ internal static class StageLettersCheck
             stage.Apply(new StageBackdropCommand(Pictured(Grey)), 0f);
         return stage;
     }
+
+    // The quads a section of the probe's breakdown drew ("chrome=0.3/12q" → 12).
+    private static int Quads(string? sections, string section)
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(sections ?? string.Empty, $@"\b{section}=[0-9.]+/(?<n>[0-9]+)q");
+        return match.Success ? int.Parse(match.Groups["n"].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+    }
+
+    // A picture of one solid colour on the canvas.
+    private static StageImage Solid(Vector3 colour, float x, float y, int width, int height)
+    {
+        var data = new byte[width * height * 4];
+        for (var i = 0; i < data.Length; i += 4)
+        {
+            data[i] = (byte)(colour.X * 255);
+            data[i + 1] = (byte)(colour.Y * 255);
+            data[i + 2] = (byte)(colour.Z * 255);
+            data[i + 3] = 255;
+        }
+        return new StageImage(new StagePixels(width, height, data, IsBgra: false), x, y, width, height);
+    }
+
+    // Forty 20 px cells of digits counting up from a start, so every cell changes when the start does.
+    private static StageText Cells(string start, float x, float y) =>
+        new(Enumerable.Range(0, 40).Select(i => new StageTextCell((char)('0' + ((start[0] - '0' + i) % 10)), x + (i * 20f), y, 20f, 50f, 40f)).ToArray());
 
     private static StageBackdrop Pictured(Vector3 colour)
     {

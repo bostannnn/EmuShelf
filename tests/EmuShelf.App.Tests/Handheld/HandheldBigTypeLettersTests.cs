@@ -9,6 +9,7 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views.Handheld;
+using EmuShelf.Rendering.Stage;
 using EmuShelf.Rendering.Stage.BigType;
 using Xunit;
 
@@ -191,6 +192,33 @@ public class HandheldBigTypeLettersTests
         Assert.Null(BigTypeMotion.HopStart(4799f, holdStill: false));
         Assert.Equal(4800f, BigTypeMotion.HopStart(4800f, holdStill: false));
         Assert.Null(BigTypeMotion.HopStart(10_000f, holdStill: true));
+    }
+
+    // ---- One pass for a zone every backdrop answers the same way ----
+
+    [Fact]
+    public void AWipe_DrawsAZoneOnce_WhenEveryBackdropShowingGivesItTheSameAnswer_AndOncePerBackdropOtherwise()
+    {
+        var dark = new StageCompositor.ZoneColours(new System.Numerics.Vector3(0.1f, 0.2f, 0.3f), System.Numerics.Vector3.One, 0.28f);
+        var white = new StageCompositor.ZoneColours(System.Numerics.Vector3.One, new System.Numerics.Vector3(0.1f, 0.2f, 0.3f), 0.28f);
+        var circle = new System.Numerics.Vector4(700, -40, 900, 1);
+        var under = new StageCompositor.InkPass(default, circle with { W = -1 }, default, zone => zone == EmuShelf.Rendering.Stage.Backdrops.StageInkZone.Left ? dark : white);
+        var over = new StageCompositor.InkPass(circle, default, default, zone => zone == EmuShelf.Rendering.Stage.Backdrops.StageInkZone.Left ? dark : dark);
+
+        // Outside a wipe: the one pass, as it is.
+        Assert.Same(under, Assert.Single(StageCompositor.PassesFor(EmuShelf.Rendering.Stage.Backdrops.StageInkZone.Left, [under])));
+        // The left zone is dark over both: one pass, with no circle.
+        var once = Assert.Single(StageCompositor.PassesFor(EmuShelf.Rendering.Stage.Backdrops.StageInkZone.Left, [under, over]));
+        Assert.Equal((default(System.Numerics.Vector4), default(System.Numerics.Vector4), default(System.Numerics.Vector4)), (once.Clip0, once.Clip1, once.Clip2));
+        Assert.Equal(dark, once.Ink(EmuShelf.Rendering.Stage.Backdrops.StageInkZone.Left));
+        // A corner is white over one and dark over the other: a pass per backdrop, each in its own circle.
+        var each = StageCompositor.PassesFor(EmuShelf.Rendering.Stage.Backdrops.StageInkZone.TopRight, [under, over]);
+        Assert.Equal(2, each.Count);
+        Assert.Same(under, each[0]);
+        Assert.Same(over, each[1]);
+        // Text with no zone (the message toast) is drawn once, uncut.
+        var toast = Assert.Single(StageCompositor.PassesFor(EmuShelf.Rendering.Stage.Backdrops.StageInkZone.None, [under, over]));
+        Assert.Equal(default, toast.Clip0);
     }
 
     // ---- The atlas ----

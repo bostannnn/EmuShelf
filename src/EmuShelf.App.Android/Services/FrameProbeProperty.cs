@@ -19,6 +19,15 @@ internal static class FrameProbeProperty
 
     public static bool IsOn => _on ??= Read();
 
+    /// <summary>
+    /// "nobatch": the probe on, and Big Type's batching off, for an A/B run against "1" (M47 B6). Either way the backdrops' picks are
+    /// seeded, so two runs of the same presses show the same backdrops.
+    /// </summary>
+    public static bool NoBatch { get; private set; }
+
+    /// <summary>"ab": batching on and off every two frames within one run, GPU times filed under "+b" and "+u" (M47 B6).</summary>
+    public static bool Alternate { get; private set; }
+
     private static bool Read()
     {
         try
@@ -26,7 +35,9 @@ internal static class FrameProbeProperty
             var buffer = new byte[92]; // PROP_VALUE_MAX
             var length = SystemPropertyGet(Property, buffer);
             var value = length > 0 ? Encoding.UTF8.GetString(buffer, 0, length).Trim().ToLowerInvariant() : string.Empty;
-            var on = value is "1" or "on" or "true";
+            NoBatch = value == "nobatch";
+            Alternate = value == "ab";
+            var on = value is "1" or "on" or "true" or "nobatch" or "ab";
             if (on)
             {
                 global::Android.Util.Log.Info("EmuShelfBigType", $"{Property}: native frame times are logged for this run");

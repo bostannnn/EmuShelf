@@ -14714,9 +14714,43 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   probe's GPU timer covers a whole frame). What a wipe frame adds is visible in the figures: a monogram's few letters are very large
   quads, drawn once per backdrop showing, over two full-screen backdrop presents and two sets of veils; outside a wipe the same names
   cost 0.7 ms.
+- **Two more savings for Big Type's own drawing (the owner's round, 2026-11-14), both changing nothing on screen:**
+  - **A zone drawn once when every backdrop showing answers it the same way.** During a wipe, a zone's text and veil are drawn once
+    with no circle when the ink, veil colour and veil strength are equal for every visible backdrop (`StageCompositor.PassesFor`); when
+    they differ, one pass per backdrop as before. The circles share the screen out between the passes, so every pixel gets the same ink
+    either way; the one exception is the circle's soft one-pixel edge, where two half-covered passes let a little backdrop through and
+    one pass covers it fully. It also put text with no zone (the message toast) back to one uncut pass: before it was drawn inside the
+    top backdrop's circle only. The desktop GL check reads one quad for a wipe from `ps2-towers` to `nes-flow` (the same left answer) and
+    two for one to `ps2-trails-v3`, each side in its own ink, and no seam on the edge.
+  - **The letters and the roll's pieces in batches.** Under Big Type up to 48 of them go in one instanced draw (`sprite-batch.vert`,
+    `stage-batch.frag`): the vertex shader is `sprite.vert`'s arithmetic line for line, reading each quad's values from a uniform array by
+    instance; the roll's scissor becomes the same test in the fragment shader (a pixel's centre inside the same whole-pixel window); a
+    second sampler keeps the roll's old and new pictures in their drawing order. A batched roll piece's geometry is shrunk to its window
+    grown by a pixel, so nothing outside it is shaded (the first build shaded the whole line picture per piece and cost the GPU 0.3 ms a
+    frame, found by an in-run A/B and fixed). The desktop GL check draws tilted letters mid-flight and a 40-cell roll during a wipe both
+    ways: 88 quads, 0 pixels different. Today's look never batches.
+  - **They earn their keep:** Big Type's own worst frame on the Recent run went from 6.9 ms to 4.5 ms. An in-run A/B on the Thor
+    (`debug.emushelf.probe ab`: batching on for two frames and off for two, so both halves see the same backdrops' 30 Hz steps) shows
+    the batch GPU-neutral: 0.75 against 0.75 ms typical on letter frames, 1.42 against 1.47 during wipes, 1.34 against 1.34 on the
+    console row. The one-pass saving was not timed apart; it only ever removes draws.
+- **Measured again on the Thor (final build, the same Recent run, 251 steady frames of three-line names arriving during a wipe):** CPU
+  1.31 ms typical, 2.83 p95, 18.0 worst; GPU 1.42 typical, 2.14 p95, 2.87 worst. Split for the owner: **Big Type's own drawing, worst
+  4.5 ms; the 3D case's first render for a new game, worst 18.0 ms.** The press frame of each run is 1.3 to 2.4 ms. Frames over 2.4 ms of
+  GPU come in step with the backdrops' 30 Hz renders during a wipe (two backdrops render and present), not with the text. The console
+  row: 1 frame over 16.7 ms and 2 over 8.3 (each a backdrop's first start).
+- **Today's look on the same run** (`debug.emushelf.look classic`, the same presses and probe; four of its twenty presses met an edge of
+  today's folder grid and drew nothing): CPU 1.02 ms typical, 2.25 p95, 50.0 worst (a backdrop change after the settle), 9 frames over 8.3
+  and 4 over 16.7; GPU 0.74 typical, 1.42 p95, 7.40 worst, 1 frame over 2.4; the 3D case's first render 19.0 ms worst; its other steady
+  frames up to 5.1 ms. Big Type over the whole session: CPU 1.53 typical, 3.08 p95, 28.4 worst (a backdrop's first start), 6 over 8.3
+  and 3 over 16.7; GPU 1.37 typical, 2.49 p95, 7.71 worst, 54 frames over 2.4. So Big Type's worst frames are no worse than today's (its
+  worst CPU frames are fewer and shorter, its 3D first render the same), its typical frames cost a little more, and its GPU is higher
+  through a wipe.
+- **The exit is still not met; not ticked:** the 3D case's first render (18.0 ms CPU) and the GPU during a wipe (2.87 ms) are over R1's
+  5.2 and 2.4. Big Type's own drawing is under both on the CPU. Whether to accept that is the owner's decision.
 - **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
   (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
-  `letters+wipe`, `flood`, `other`) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
+  `letters+wipe`, `flood`, `other`; `nobatch` turns Big Type's batching off and `ab` alternates it every two frames, with the backdrops' picks
+  seeded so runs compare) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
   (`GpuFrameTimer`, where `EXT_disjoint_timer_query` exists: the emulator has none). R1's `measure.py` reads the same lines.
 - **The page 2 → page 1 fault (both looks).** The shell marks focus on the page on screen only, so a slot left on another page keeps its
   mark. Moving from page 1's last column onto page 2 and back onto the same slot changed nothing on that slot (it had never lost its mark),
