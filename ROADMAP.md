@@ -2970,9 +2970,10 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       behind `adb shell setprop debug.emushelf.probe 1` (logcat `EmuShelfBigType`, per motion). **Fixed on the way:** after moving from home's
       page 2 back onto page 1 the ring and lift went to page 2's slot, off screen (both looks; Classic changes by the restored highlight only),
       and the Launcher's corner type is pictured with grey-scale antialiasing (no black boxes). **Verified on macOS:** Classic rendered before
-      and after, 158 of 158 frames byte-identical; Big Type: 12 of 158 differ from both renders made before B6, none in a way the step meant
-      to change at rest (the name at rest is drawn as before): 11 by 1 to 977 sub-pixel pixels on the focused ring's edge (10 of those frames
-      also differ between the two renders of B5's commit, run to run), and the launching frame, where the Avalonia name's letters now move during the
+      and after, 158 of 158 frames byte-identical; Big Type (the final render): 13 of 158 differ from both renders made before B6, none in a
+      way the step meant to change at rest (the name at rest is drawn as before): 12 only on the focused ring's anti-aliased edge (39 to
+      1,202 pixels inside a box the size of the ring, channel differences 6 to 26; the same frames differ between the two renders of B5's
+      commit, run to run), and the launching frame, where the Avalonia name's letters now move during the
       harness's wait, so the frame is taken after the launch card's flight has ended. New tests hold the letters', flood's, wipe's and hop's timing at fixed
       moments to tokens.js (`HandheldBigTypeLettersTests`); a new desktop GL check (`dotnet run --project tools/EmuShelf.Rendering.Preview --
       --stage-letters`) reads each letter where the maths puts it mid-flight, the hop, holding still, the backdrop not started on the frame
