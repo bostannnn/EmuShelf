@@ -635,13 +635,53 @@ public sealed class HandheldCoverSearchPanel : HandheldPanelViewModel
 
     public override string Heading => "Set cover";
 
+    /// <summary>The game's console, which the Big Type Stage names over it (M47 B7).</summary>
+    public string? SystemName { get; init; }
+
+    /// <summary>The game whose cover is being chosen: the Big Type Stage's case wears the candidate (M47 B7).</summary>
+    public HandheldGameEntry? Game { get; init; }
+
     public override string Subheading => _gameTitle;
+
+    /// <summary>
+    /// The Big Type Stage names the game, as the mock's cover search does, with the candidate under it: which one of how many, its
+    /// size and where it is from.
+    /// </summary>
+    public override HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            // The mock's cover search (focusPanel): the console over the game's name, which candidate under it, where it is from
+            // under that; the case wears it.
+            if (IsTyping || FocusedRow?.Source is not CoverSearchResultViewModel)
+                return base.BigTypeStage;
+            var card = Card;
+            return new HandheldListStageText(SystemName ?? Heading, _gameTitle, card.Title, card.Description ?? string.Empty);
+        }
+    }
+
+    /// <summary>The Big Type look sets the candidates four to a row, as the mock's cover search (Classic: one list).</summary>
+    public override int GridColumns => HandheldTokens.IsBigType ? HandheldTokens.CoverColumns : 0;
+
+    /// <summary>The candidate under the ring, where the game's cover sits on the Stage.</summary>
+    public override Avalonia.Media.Imaging.Bitmap? BigTypeCover => IsTyping ? null : (FocusedRow?.Source as CoverSearchResultViewModel)?.Preview;
+
+    /// <summary>How many covers were found.</summary>
+    public override string? Count => Search.Results.Count > 0 ? Search.Results.Count.ToString(System.Globalization.CultureInfo.CurrentCulture) : null;
 
     public override void Dispatch(GamepadAction action)
     {
         if (Keyboard is { } keyboard)
         {
             Apply(keyboard.Dispatch(action));
+            return;
+        }
+        // The Big Type look sets the candidates as a grid (M47 B7): the pad moves across it.
+        if (GridStep(action) is { } step)
+        {
+            if (step != 0)
+                Details.MoveFocus(step);
+            RaiseChanged();
             return;
         }
         switch (action)
@@ -850,6 +890,28 @@ public sealed class HandheldAchievementsPanel : HandheldPanelViewModel
     public override string Heading => "Achievements";
 
     public override string Subheading => Details.GameTitle;
+
+    /// <summary>
+    /// The mock's achievements (focusPanel): the game over the achievement's name, whether it is unlocked under it, how many are
+    /// unlocked and its points under that.
+    /// </summary>
+    public override HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            if (IsTyping || FocusedAchievement is not { } achievement)
+                return base.BigTypeStage;
+            var state = achievement.IsUnlocked
+                ? achievement.IsHardcore ? $"{achievement.EarnedText} · hardcore" : achievement.EarnedText
+                : achievement.UnlockStateText;
+            var progress = $"{Details.UnlockedCount} of {Details.TotalCount} unlocked";
+            return new HandheldListStageText($"{Details.GameTitle} · {Heading}", achievement.Title, state,
+                achievement.HasPoints ? $"{progress} · {achievement.PointsText}" : progress);
+        }
+    }
+
+    /// <summary>How many are unlocked of how many.</summary>
+    public override string? Count => Details.TotalCount > 0 ? $"{Details.UnlockedCount} / {Details.TotalCount}" : null;
 
     private AchievementRowViewModel? FocusedAchievement => FocusedRow?.Source as AchievementRowViewModel;
 

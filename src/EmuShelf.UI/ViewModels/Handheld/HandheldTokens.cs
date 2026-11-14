@@ -1881,6 +1881,7 @@ public static partial class HandheldTokens
 
         UseClassicLauncherValues();
         UseStageValues();
+        UseListValues();
     }
 
     /// <summary>
@@ -1909,5 +1910,8 @@ public static partial class HandheldTokens
 
         // B3: the Launcher at rest.
         UseBigTypeLauncherValues();
+
+        // B7: the lists.
+        UseBigTypeListValues();
     }
 }

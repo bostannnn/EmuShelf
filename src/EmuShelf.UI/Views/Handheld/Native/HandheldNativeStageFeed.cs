@@ -325,6 +325,8 @@ internal sealed class HandheldNativeStageFeed
                 else
                     Schedule(centre: true, pop: false);
                 break;
+            case nameof(HandheldStageViewModel.ListCover):
+            case nameof(HandheldStageViewModel.IsListTyping):
             case nameof(HandheldStageViewModel.AppIcon):
                 // A dock app's large icon arrived after its slot took the Stage (M45 H6d).
                 Schedule(centre: true, pop: false);
@@ -557,8 +559,10 @@ internal sealed class HandheldNativeStageFeed
             SendCover(stage.Art, then: new StageCentreCommand(null, medium, null, pop, FadeIn: fade));
             return;
         }
-        var art = stage.HasFlatCover ? HandheldStageShots.Shot(_bigTypeCover, _canvas)
-            : stage.IsSetting || stage.IsPanel ? HandheldStageShots.Shot(_centre, _canvas)
+        // M47 B7: Settings and a panel are type (their focused row is the name), except while they type; a panel's cover (cover
+        // search's candidate) sits where a game's flat cover does.
+        var art = stage.HasBigTypeCover ? HandheldStageShots.Shot(_bigTypeCover, _canvas)
+            : (stage.IsSetting || stage.IsPanel) && stage.IsListTyping ? HandheldStageShots.Shot(_centre, _canvas)
             : null;
         _host.Post(new StageCentreCommand(art, null, null, pop, FadeIn: fade));
     }

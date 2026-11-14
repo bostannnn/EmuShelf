@@ -36,7 +36,8 @@ public partial class HandheldShellViewModel
     /// <summary>Follows the focus: the ground takes the focused item's colour, when it has one.</summary>
     private void UpdateGround()
     {
-        Color? colour = Zone switch
+        // Settings has its own colour while it is open (M47 B7, the mock's focusSet: SETC); closing it, the focus's comes back.
+        Color? colour = HandheldTokens.IsBigType && Settings is not null ? HandheldTokens.AppGround : Zone switch
         {
             HandheldZone.Grid when OpenFolder is { } folder => folder.SelectedTile switch
             {

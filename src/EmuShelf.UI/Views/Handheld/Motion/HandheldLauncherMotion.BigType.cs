@@ -92,6 +92,11 @@ internal sealed partial class HandheldLauncherMotion
     /// </summary>
     private bool StepRing(Control anchor, Rect rect, double radius)
     {
+        if (AwaitsListAnchor(anchor))
+        {
+            _selector.Opacity = 0;
+            return false;
+        }
         var now = BtNow;
         var target = new BigTypeRing((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height, (float)radius);
         if (!_selectorShown)
@@ -104,14 +109,15 @@ internal sealed partial class HandheldLauncherMotion
         {
             _ringAnchor = anchor;
             StopBreath();
-            _bt.MoveRing(now, instant: Still, pop: _paged);
+            // Into a list or back out of one it simply lands (M47 B7, the mock's 'open' and 'back').
+            _bt.MoveRing(now, instant: TakeJump() || Still, pop: _paged);
         }
         _paged = false;
         var ring = _bt.Ring(target, now, out var opacity, out var moving);
         var bumping = false;
         var bump = StepBump(ring.Width, ring.Height, ref bumping);
 
-        _selector.Opacity = Math.Round(opacity, 3);
+        _selector.Opacity = ListLeaving ? 0 : Math.Round(opacity, 3);
         _glow.Opacity = 0;
         var width = Math.Round(ring.Width, 1);
         var height = Math.Round(ring.Height, 1);

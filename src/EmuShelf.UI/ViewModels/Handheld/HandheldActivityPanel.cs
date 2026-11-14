@@ -45,6 +45,9 @@ public sealed class HandheldActivityPanel : HandheldPanelViewModel
         _ => Activity.WeekLabel,
     };
 
+    /// <summary>The week, the ranking or the game on show, beside the heading in the Big Type look.</summary>
+    public override string? Count => Subheading;
+
     public override void Dispatch(GamepadAction action)
     {
         if (!Activity.Dispatch(action))
@@ -148,6 +151,8 @@ public sealed class HandheldActivityPanel : HandheldPanelViewModel
         OnPropertyChanged(nameof(Heading));
         OnPropertyChanged(nameof(Subheading));
         OnPropertyChanged(nameof(HasSubheading));
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(HasCount));
     }
 
     private string WeekPhrase() => Activity.WeekLabel switch
@@ -236,6 +241,26 @@ public sealed class HandheldActivityPanel : HandheldPanelViewModel
                 ActivityPage.Game => GameCard(),
                 _ => DayCard(),
             };
+        }
+    }
+
+    /// <summary>
+    /// The Big Type Stage puts the day's play time up as the big figure (M47 B7, the mock's Activity): the day above it, what was
+    /// played under it, the week's total under that. The ranking and a game's page say what their card says.
+    /// </summary>
+    public override HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            if (IsTyping || Activity.IsConfirmingDelete || Activity.Page != ActivityPage.Timeline ||
+                Activity.FocusedRow is not ActivitySessionViewModel session || DayOf(session) is not { } day ||
+                !day.Sessions.Any(entry => entry.Session.Duration is not null))
+            {
+                return base.BigTypeStage;
+            }
+            var card = DayCard();
+            return new HandheldListStageText($"{HandheldActivityText.Name} · {day.Label}", day.TotalText, card.Description ?? string.Empty,
+                $"{Activity.WeekLabel}: {Activity.WeekTotalText}");
         }
     }
 

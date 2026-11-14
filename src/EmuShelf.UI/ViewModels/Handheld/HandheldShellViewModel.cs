@@ -64,19 +64,20 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
         // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds is its switch, with its state (H6d).
-        MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()));
+        // Each row's hint is what the Big Type Stage says under it (M47 B7, the mock's START); today's look does not show it.
+        MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync) { Hint = "Find a game by name" });
+        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync) { Hint = "Point EmuShelf at a folder" });
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync) { Hint = "Emulators, library, display" });
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()) { Hint = "What you played, day by day" });
         _soundsMenuItem = new HandheldMenuItemViewModel("Sounds", () =>
         {
             ToggleSounds();
             return Task.CompletedTask;
         })
-        { Note = SoundsNote };
+        { Note = SoundsNote, IsToggle = true, IsOn = SoundsEnabled };
         MenuItems.Add(_soundsMenuItem);
-        MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
-        MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
+        MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)) { Hint = "Leave Handheld mode" });
+        MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }) { Hint = "Close EmuShelf" });
         // A move into a wall is not a move: the sounds hear about it (M45 H6d).
         Bumped += _ => _soundBumped = true;
         RefreshStatus();
@@ -378,6 +379,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private bool DispatchGamepadActionCore(GamepadAction action)
     {
+        // A move inside a list is a move too: the Big Type Stage's next name (the focused row) arrives from it (M47 B7).
+        if (IsListOpen && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft or GamepadAction.NavigateRight)
+            LastMoveDirection = ToDirection(action);
         // A game runs (the companion is the bottom screen), or the companion's All apps or badge grid is open over the
         // Launcher: it owns the pad until that ends.
         if (CompanionScreen is { OwnsPad: true } companion)
@@ -1075,6 +1079,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void OpenMenu()
     {
         IsMenuOpen = true;
+        ListOpened = true;
         MenuIndex = 0;
         UpdateMenuFocus();
         UpdateHints();
@@ -1083,6 +1088,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void CloseMenu()
     {
         IsMenuOpen = false;
+        ListOpened = false;
+        RefreshListStage();
         UpdateHints();
     }
 
@@ -1115,6 +1122,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         for (var i = 0; i < MenuItems.Count; i++)
             MenuItems[i].IsFocused = i == MenuIndex;
+        RefreshListStage();
     }
 
     /// <summary>There is a page to the left / right of the one on screen (the edge hints).</summary>
@@ -1248,7 +1256,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         IsStagePending = false;
         _stageTimer?.Stop();
+        TakeBigTypeListText();
         UpdateStageCore();
+        ApplyBigTypeListText();
+        DressCaseWithCandidate();
         RaiseStageChanged();
     }
 

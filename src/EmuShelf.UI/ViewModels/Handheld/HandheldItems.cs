@@ -782,6 +782,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
     [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     [NotifyPropertyChangedFor(nameof(NameBoxWidth))]
+    [NotifyPropertyChangedFor(nameof(ShowsSettingCard))]
+    [NotifyPropertyChangedFor(nameof(ShowsPanelCard))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -911,7 +913,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public partial bool IsMediumUnavailable { get; set; }
 
     /// <summary>A browsed game is drawn as its physical medium.</summary>
-    public bool HasMedium => Kind == HandheldStageKind.Game && Medium is not null && !IsMediumUnavailable;
+    public bool HasMedium => (Kind == HandheldStageKind.Game || IsCoverOnCase) && Medium is not null && !IsMediumUnavailable;
+
+    /// <summary>Big Type's cover search (M47 B7, the mock's): the game's case stands beside the name wearing the candidate.</summary>
+    private bool IsCoverOnCase => HandheldTokens.IsBigType && Kind == HandheldStageKind.Panel && ListCover is not null;
 
     /// <summary>A game (or a Title page without fan art) is drawn as its flat cover.</summary>
     public bool HasFlatCover => IsGame && !HasMedium;
@@ -1017,18 +1022,42 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(NameOpacity))]
     public partial bool IsMissing { get; set; }
 
-    /// <summary>The fitted name shows (Big Type, and not under Settings', a panel's or a fan-art hero's own card).</summary>
+    /// <summary>
+    /// The fitted name shows (Big Type, and not under a fan-art hero's own card). Under Settings and a panel it is the focused row's
+    /// name (M47 B7), except while they type: the typed text keeps today's card until B9 brings the keyboard.
+    /// </summary>
     public bool HasBigTypeName => HandheldTokens.IsBigType && !string.IsNullOrEmpty(Name) &&
-        Kind is not (HandheldStageKind.None or HandheldStageKind.Setting or HandheldStageKind.Panel) && !IsHeroArt;
+        Kind is not HandheldStageKind.None && !IsHeroArt && !(IsListTyping && Kind is HandheldStageKind.Setting or HandheldStageKind.Panel);
 
-    /// <summary>A game drawn as its flat cover sits in the medium's corner under Big Type.</summary>
-    public bool HasBigTypeCover => HandheldTokens.IsBigType && HasFlatCover;
+    /// <summary>Settings or a panel is typing (the Big Type look keeps today's card for it until B9).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName), nameof(ShowsSettingCard), nameof(ShowsPanelCard))]
+    public partial bool IsListTyping { get; set; }
+
+    /// <summary>Settings' card: today's look, or Big Type while Settings types.</summary>
+    public bool ShowsSettingCard => IsSetting && (HandheldTokens.IsClassic || IsListTyping);
+
+    /// <summary>A panel's card: today's look, or Big Type while the panel types.</summary>
+    public bool ShowsPanelCard => IsPanel && (HandheldTokens.IsClassic || IsListTyping);
+
+    /// <summary>
+    /// A cover the focused row stands for (cover search's candidate, M47 B7): Big Type sets it where a game's cover sits, beside the
+    /// name. Owned by the panel's view models.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth), nameof(HasMedium), nameof(HasBigTypeMedium))]
+    public partial Avalonia.Media.Imaging.Bitmap? ListCover { get; set; }
+
+    public bool HasListCover => HandheldTokens.IsBigType && ListCover is not null && Kind == HandheldStageKind.Panel;
+
+    /// <summary>A game drawn as its flat cover sits in the medium's corner under Big Type (or a panel's candidate cover).</summary>
+    public bool HasBigTypeCover => HandheldTokens.IsBigType && (HasFlatCover || (HasListCover && !HasMedium));
 
     /// <summary>A game drawn as its medium sits in its corner under Big Type.</summary>
     public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium;
 
     /// <summary>The name's box: narrower when a game's medium or cover stands beside it.</summary>
-    public double NameBoxWidth => IsGame ? HandheldTokens.StageNameWidthBesideMedium : HandheldTokens.StageNameWidth;
+    public double NameBoxWidth => IsGame || HasListCover ? HandheldTokens.StageNameWidthBesideMedium : HandheldTokens.StageNameWidth;
 
     public double NameOpacity => IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }
@@ -1089,6 +1118,15 @@ public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> i
     public partial string? Note { get; set; }
 
     public bool HasNote => !string.IsNullOrEmpty(Note);
+
+    /// <summary>What the row does, said on the Stage under its name in the Big Type look (M47 B7, the mock's <c>START</c> hints).</summary>
+    public string? Hint { get; init; }
+
+    /// <summary>A switch (Sounds): the Big Type look draws it as one, <see cref="IsOn"/> or off (M47 B7).</summary>
+    public bool IsToggle { get; init; }
+
+    [ObservableProperty]
+    public partial bool IsOn { get; set; }
 }
 
 /// <summary>The words the Settings tile uses wherever it appears.</summary>

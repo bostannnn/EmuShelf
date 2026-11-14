@@ -16,6 +16,9 @@ internal static class HandheldStageEntrance
             return BigTypeEntrance.Rise;
         if (shell.LastFolderOpened is { } opened)
             return opened ? BigTypeEntrance.Open : BigTypeEntrance.Back;
+        // Into a list and out of one, as into and out of a folder (M47 B7, the mock's 'open' and 'back').
+        if (shell.LastListOpened is { } listed)
+            return listed ? BigTypeEntrance.Open : BigTypeEntrance.Back;
         return shell.LastMoveDirection switch
         {
             HandheldDirection.Left => BigTypeEntrance.Left,

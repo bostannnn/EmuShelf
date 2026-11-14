@@ -215,6 +215,8 @@ internal sealed partial class HandheldLauncherMotion
         // Handheld mode opening counts as the first press: the resting motion lives its minute and the hop waits (M47 B5).
         OnInput();
         UpdateStill();
+        // The ground starts in the shell's colour (Big Type: this motion keeps it, M47 B7).
+        SettleGround(shell.LauncherGroundBrush);
         RequestTick();
     }
 
@@ -282,6 +284,9 @@ internal sealed partial class HandheldLauncherMotion
                 WatchFolder(folder);
                 break;
         }
+        UpdateLists();
+        if (e.PropertyName == nameof(HandheldShellViewModel.LauncherGroundBrush))
+            UpdateGround();
         RequestTick();
     }
 
@@ -562,9 +567,20 @@ internal sealed partial class HandheldLauncherMotion
         moving |= _column.Step(dt);
         ApplyColumn();
 
+        if (HandheldTokens.IsBigType)
+        {
+            moving |= StepExit();
+            moving |= StepArrivals();
+            moving |= StepUnder();
+            moving |= StepGround();
+            // The neighbours' push before the ring: the tile the focus lands on may still be settling back from its own push, and the
+            // ring must take its target from where the tile is this frame, or it rests a fraction of a pixel off (M47 B7).
+            moving |= StepPushes();
+        }
         moving |= StepSelector(dt);
         moving |= StepSelectorFade();
-        moving |= StepPushes();
+        if (!HandheldTokens.IsBigType)
+            moving |= StepPushes();
         if (moving)
             RequestTick();
         else

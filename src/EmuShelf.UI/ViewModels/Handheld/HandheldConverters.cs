@@ -1,3 +1,4 @@
+using System.Linq;
 using Avalonia.Media;
 
 namespace EmuShelf.App.ViewModels;
@@ -92,6 +93,11 @@ public static class HandheldIcons
 /// <summary>Small view-only mappings for the Handheld views.</summary>
 public static class HandheldViewConverters
 {
+    /// <summary>The first text that is not empty (M47 B7: the dock row's corner says Settings' version over the page).</summary>
+    public static readonly Avalonia.Data.Converters.IMultiValueConverter FirstText =
+        new Avalonia.Data.Converters.FuncMultiValueConverter<object?, string>(texts =>
+            texts.OfType<string>().FirstOrDefault(text => text.Length > 0) ?? string.Empty);
+
     /// <summary>A <see cref="HandheldGlyph"/> as the vector the views draw.</summary>
     public static readonly Avalonia.Data.Converters.IValueConverter GlyphGeometry =
         new Avalonia.Data.Converters.FuncValueConverter<HandheldGlyph, Geometry?>(glyph => glyph switch

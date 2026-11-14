@@ -34,6 +34,7 @@ public sealed partial class HandheldShellViewModel
             if (!SetProperty(ref _soundsEnabled, value))
                 return;
             _soundsMenuItem.Note = SoundsNote;
+            _soundsMenuItem.IsOn = value;
         }
     }
 

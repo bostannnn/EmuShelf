@@ -41,6 +41,12 @@ public sealed partial class HandheldSheetViewModel : ObservableObject
 
     public string Title { get; }
     public string? Subtitle { get; }
+
+    /// <summary>
+    /// What the Big Type Stage's label says while the sheet is open (M47 B7, the mock's <c>kicker</c>): "More" for an item's own
+    /// sheet (Y), the sheet's title for any other (Add to folder, a confirmation).
+    /// </summary>
+    public string? Kicker { get; set; }
     public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
 
     /// <summary>What the sheet acts on, beside its title (as in the mockup): a game's cover (owned elsewhere)…</summary>

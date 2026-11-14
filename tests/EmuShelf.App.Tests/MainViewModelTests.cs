@@ -5581,18 +5581,34 @@ public class MainViewModelTests : IDisposable
         Assert.Equal(MediaRotationModel.RestYaw, vm.ShelfHeroYaw);
     }
 
-    // M47 B0: Handheld mode starts in the look the settings hold, today's unless Big Type was saved.
-    [AvaloniaTheory]
-    [InlineData(null, HandheldLook.Classic)]
-    [InlineData(HandheldLook.BigType, HandheldLook.BigType)]
-    public void HandheldMode_StartsInTheSavedLook(HandheldLook? saved, HandheldLook expected)
+    /// <summary>
+    /// M47 B0: Handheld mode starts in the look the settings hold, today's unless Big Type was saved. Starting Handheld mode gives the
+    /// process-wide tokens that look, so this runs apart from every other test and puts today's look back (M47 B7: left in Big Type,
+    /// it made later tests that read the look fail, depending on their order).
+    /// </summary>
+    [Collection(nameof(EmuShelf.App.Tests.Handheld.HandheldTokenLookCollection))]
+    public class SavedLook
     {
-        var settings = new StubSettingsService();
-        if (saved is { } look)
-            settings.Save(settings.Load() with { HandheldLook = look });
+        [AvaloniaTheory]
+        [InlineData(null, HandheldLook.Classic)]
+        [InlineData(HandheldLook.BigType, HandheldLook.BigType)]
+        public void HandheldMode_StartsInTheSavedLook(HandheldLook? saved, HandheldLook expected)
+        {
+            using var tests = new MainViewModelTests();
+            try
+            {
+                var settings = new StubSettingsService();
+                if (saved is { } look)
+                    settings.Save(settings.Load() with { HandheldLook = look });
 
-        var vm = CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
+                var vm = tests.CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
 
-        Assert.Equal(expected, Assert.IsType<HandheldShellViewModel>(vm.Handheld).Look);
+                Assert.Equal(expected, Assert.IsType<HandheldShellViewModel>(vm.Handheld).Look);
+            }
+            finally
+            {
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+        }
     }
 }

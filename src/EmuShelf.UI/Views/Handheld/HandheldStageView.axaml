@@ -333,7 +333,7 @@
           Settings open (M45 H6a): the detail half of its master-detail. Where the focused row sits, what it is, its value,
           its description, and the section's status line (a scan's progress, an account) when there is one.
         -->
-        <Border x:Name="SettingCard" IsVisible="{Binding Stage.IsSetting}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
+        <Border x:Name="SettingCard" IsVisible="{Binding Stage.ShowsSettingCard}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
                 Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageCardShadow}"
                 Padding="72,56">
           <StackPanel Spacing="18">
@@ -363,7 +363,7 @@
           A panel open (M45 H6c): the scraper's field or preview, a cover found on the web, an achievement's badge, Search's
           matches fanned out, a title as typed. Where it is, what it is, its value large, a description, a status line.
         -->
-        <Border x:Name="PanelCard" IsVisible="{Binding Stage.IsPanel}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
+        <Border x:Name="PanelCard" IsVisible="{Binding Stage.ShowsPanelCard}" MinHeight="420" CornerRadius="{x:Static vm:HandheldTokens.StageCardRadius}"
                 Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageCardShadow}"
                 Padding="64,52">
           <Grid ColumnDefinitions="Auto,*" DataContext="{Binding Stage.PanelCard}" x:DataType="vm:HandheldPanelCard">
@@ -463,6 +463,7 @@
         <Border x:Name="BtCoverShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeCover}" HorizontalAlignment="Right" VerticalAlignment="Top"
                 Margin="{x:Static vm:HandheldTokens.StageCoverMargin}" Width="{x:Static vm:HandheldTokens.StageMediumWidth}" Height="{x:Static vm:HandheldTokens.StageMediumHeight}">
           <Panel>
+            <Panel IsVisible="{Binding !Stage.HasListCover}">
             <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageCoverRadius}" ClipToBounds="True"
                     HorizontalAlignment="Center" VerticalAlignment="Center">
               <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
@@ -472,6 +473,12 @@
               <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.StageNoCoverTitle}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
                          LineHeight="{x:Static vm:HandheldTokens.StageNoCoverTitleLineHeight}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" TextWrapping="Wrap"
                          TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            </Panel>
+            <!-- Cover search's candidate, where the game's cover would be (M47 B7). -->
+            <Border IsVisible="{Binding Stage.HasListCover}" CornerRadius="{x:Static vm:HandheldTokens.StageCoverRadius}" ClipToBounds="True"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Image Source="{Binding Stage.ListCover}" Stretch="Uniform" />
             </Border>
           </Panel>
         </Border>
@@ -488,11 +495,13 @@
         </Border>
         <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <vh:HandheldRollingText Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum" />
+          <vh:HandheldRollingText x:Name="BtLine" Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum"
+                                  TextTrimming="CharacterEllipsis" />
         </Border>
         <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageFactsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum" />
+          <TextBlock x:Name="BtFacts" Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum"
+                     TextTrimming="CharacterEllipsis" />
         </Border>
       </Panel>
 

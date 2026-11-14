@@ -62,6 +62,7 @@ public sealed partial class HandheldShellViewModel
         projection.CloseRequested += saved => CloseSettings(settings, saved);
         _settingCard = null;
         Settings = settings;
+        ListOpened = true;
         UpdateFocus();
     }
 
@@ -71,6 +72,7 @@ public sealed partial class HandheldShellViewModel
         if (!ReferenceEquals(Settings, settings))
             return;
         Settings = null;
+        ListOpened = false;
         ForgetEmulatorNames();
         settings.Changed -= OnSettingsChanged;
         settings.Dispose();

@@ -97,6 +97,9 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     /// <summary>The list's heading: Settings, or Setup with where the wizard is.</summary>
     public string Heading => IsSetup ? "Setup" : HandheldSettingsText.Name;
 
+    /// <summary>The app's version, which the Big Type Launcher rolls into the dock row's corner while Settings is open (M47 B7, the mock's).</summary>
+    public string Version => Projection.AboutRailStatus;
+
     /// <summary>The wizard's way forward (Start): Continue, or Finish on the last step; and what comes next.</summary>
     public string StartLabel => Projection.SetupRail.StartLabel;
 
@@ -118,6 +121,13 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     public bool IsRows => !Projection.IsThemesSection;
 
     public bool IsChoicePickerOpen => Projection.IsChoicePickerOpen;
+
+    /// <summary>Neither a choice's list nor a confirmation stands in for the rows (the Big Type look shows those in their place, M47 B7).</summary>
+    public bool IsNormal => !Projection.IsChoicePickerOpen && !Projection.IsConfirmationOpen;
+
+    /// <summary>The section (or setup step) on show, as an index into <see cref="Sections"/>; -1 for none (M47 B7: its rail keeps it in view).</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial int SelectedSectionIndex { get; private set; } = -1;
 
     public bool IsConfirmationOpen => Projection.IsConfirmationOpen;
 
@@ -421,10 +431,12 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 break;
             case nameof(GamepadSettingsViewModel.IsChoicePickerOpen):
                 OnPropertyChanged(nameof(IsChoicePickerOpen));
+                OnPropertyChanged(nameof(IsNormal));
                 break;
             case nameof(GamepadSettingsViewModel.IsConfirmationOpen):
             case nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected):
                 OnPropertyChanged(nameof(IsConfirmationOpen));
+                OnPropertyChanged(nameof(IsNormal));
                 OnPropertyChanged(nameof(IsCancelFocused));
                 OnPropertyChanged(nameof(IsConfirmFocused));
                 OnPropertyChanged(nameof(ConfirmLabel));
@@ -450,6 +462,21 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     }
 
     private void SyncSections()
+    {
+        SyncSectionsCore();
+        var selected = -1;
+        for (var i = 0; i < Sections.Count; i++)
+        {
+            if (Sections[i].IsSelected)
+            {
+                selected = i;
+                break;
+            }
+        }
+        SelectedSectionIndex = selected;
+    }
+
+    private void SyncSectionsCore()
     {
         if (IsSetup)
         {
