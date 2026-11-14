@@ -14535,3 +14535,81 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   Recent, Settings, an empty slot and the dock drew over the pictured fallback in white. Property cleared, Classic again. What it does not
   prove: the Thor's panels, Adreno, and the name's legibility over the other consoles' backdrops, which the emulator's library does not
   reach; B4's exit is the owner's look on the Thor.
+
+## 2026-11-14 — M47 B5: Big Type's motion that needs no new drawing
+
+- **The maths is one place, shared.** `BigTypeMotion` (`EmuShelf.Rendering/Stage/BigType`) holds every number and curve, from tokens.js
+  `motion`/`shape` and the mock's script, as pure functions of time; `BigTypeLauncherMotion` holds the Launcher's state over time (the
+  ring, the neighbours, the bob, the hop, holding still) with no drawing; `BigTypeRollDraw` cuts a rolling text into clipped pieces. The
+  native compositors and the Avalonia Launcher both use them, and the tests (`HandheldBigTypeMotionTests`) render nothing. Today's look
+  keeps all its motion: every change is behind the look (`LauncherMotionCommand.BigType` on the native side, `HandheldTokens.IsBigType`
+  on the Avalonia side), and Classic's 158 frames are identical.
+- **The ring is a timed path, not the springs retargeted in two phases.** The mock's ring is keyframes with fixed times: from the old
+  target to the rectangle covering both by 38% of 300 ms, to the new target by 74% (squashed 10 px along its travel and 6 px across it
+  when the two targets are the same size, the mock's 5 and 3 at half scale), settling by 100%, the corner radius on CSS `ease` over the
+  whole move. Two-phase springs would need a phase switch tuned by feel to land "covers both at 38%", would never quite reach the union,
+  would overshoot it, and could not squash; the path hits each number by construction, is testable at 0, 38% and 100%, and its length is
+  fixed (300 ms) however far the ring goes. A move that comes mid-flight starts from where the ring was last drawn (breath included), so
+  a held direction never jumps. The target is read where its track has it each frame, so the ring still rides a sliding page or column.
+  A move onto another home page does not stretch across the screen: the ring lands there and pops in from 1.25× and clear (320 ms on the
+  landing curve), as the mock does (`LauncherFocusCommand.Pop`). While the selector is hidden for a folder's zoom it lands instead of
+  travelling unseen. The bump still nudges it.
+- **One ring for everything.** Tiles (radius 50), the dock (38) and the folder header's rows (32) are the same ring changing size and
+  radius on the way. The Y sheet, Settings and the panels do not have the ring yet (today they draw focused rows as cards); B7 draws
+  them as type with the ring, and the same path then applies to them with no change here.
+- **The breath and the bob live a minute, then rest.** The ring breathes 1 → 1.03 → 1 every 2.2 s (CSS ease-in-out) once it has landed;
+  the focused tile bobs 6 px over 3 s (the mock's 3 px at half scale). The mock does both forever; here they last a minute after the last
+  press and ease out over 2 s, as the Stage's backdrop rests (`StageRest`, M45 H7: a resting screen must post no frames). Handheld mode
+  opening counts as a press. **The native Launcher's cadence at rest:** for that minute it steps at 30 Hz (`NextFrameMilliseconds`, the
+  surface votes 30 Hz) with nothing else moving, and at the panel's rate only while something travels (the ring, a lift, a neighbour, a
+  hop, a roll); after it, nothing is posted until the next change. Before B5 the Big Type Launcher posted nothing at rest; this minute of
+  30 Hz is the cost of the breath and the bob, the same cadence the Stage's backdrop already keeps over that minute.
+- **The lift lands; the neighbours make room on the same curve.** The focused tile goes to `FocusScale` 1.10 (the dock 1.14) on the
+  landing curve in 380 ms (`FocusLift.ms`), native and Avalonia. Each of the up-to-eight tiles around it moves `NeighbourPush` 8 px away
+  along each axis it neighbours on (a diagonal one along both, as the mock's `--px/--py`), in the same grid and on the same home page,
+  and comes back when focus leaves for anything else (the dock, the header). The feed gives each Big Type tile its place
+  (`LauncherSprite.Cell`); the Avalonia Launcher moves each tile's container, so the push is part of the resting picture.
+- **The idle hop, and how it lives beside the drift.** 4.8 s after the last press, then every 6.5 s, a wave runs over the tiles of the
+  grid in view (home's page, or the open folder): each rises 20 px and comes back in 560 ms, 75 ms later per step of (column mod 8) +
+  row, the column counted from the left of what is on screen. Hops start only within the minute the resting motion lives (nine of them),
+  never while a folder zooms, a Title page is up or (Avalonia) a sheet or menu covers the grid. The press that counts is any pad press or
+  touch (`HandheldShellViewModel.InputArrived`, raised where the drift's timer is re-armed). **The drift and the hop do not fight**: the
+  drift (15 s, M45 H6d) changes only what the Stage shows and the hop moves only the Launcher's tiles; neither is input to the other, so
+  the drift starting does not restart the hop's wait, and a hop never wakes the drift. The hop through the name's letters is B6's.
+- **Rolling digits cut the pictures the app already has; nothing new is drawn.** The feeds send, with each picture of the clock (and
+  battery), the Stage's line (game count, play time, achievements), a folder's count and the page ("1 / 2"), where each character sits
+  (`StageText`, from the text's own layout). When a new picture of the same piece arrives, the compositor keeps the old one for the roll:
+  every part of the new picture outside the changed characters is drawn as it is; each changed character's old glyph leaves upward 1.1 em
+  in 220 ms (ease-in) and the new one rises 1.1 em in 400 ms on the landing curve after 50 ms, staggered 12 ms a cell (at most 240), each
+  under a scissor of its own cell; a cell the new text lost fades in 140 ms. Cells are compared from the left, as the mock's `roll`. The
+  spike's digit atlas was not used: it would have been new drawing, and a tabular atlas per font size; cutting the existing pictures keeps
+  the ink, the face and the tracking exactly as at rest. On the Avalonia side `HandheldRollingText` (a `TextBlock`) does the same with its
+  old and new layouts and draws exactly as a `TextBlock` at rest. It does not roll while its view is only pictured for a native screen
+  (a picture must be the text at rest) or held still. The Stage's line rolls on every focus change, as the mock's `meta` does; the clock
+  rolls once a minute, so a resting Stage now draws about 0.7 s at the panel's rate each minute instead of one frame.
+- **Holding still now reaches the Launcher.** `LauncherMotionCommand.HoldStill` (battery saver, or the animator scale at 0) under Big
+  Type: the ring and the lift land at once, the neighbours are where they go at once, nothing breathes, bobs or hops, digits swap, and the
+  Launcher posts nothing at rest. The Avalonia Launcher does the same (its root's `still` class drops the lift's transition). Today's look
+  ignores it, as before: its motion is unchanged by the task's terms, and B10 removes it.
+- **The pictured fallback takes the dark ink.** Where no backdrop shader runs (the era motif: a light field in the console's hue, which
+  the headless renders and the Avalonia Stage show), `BackdropLegibility.Fallback` is now the dark ink with a white veil at its resting
+  strength (0.28 left, 0.25 in the corners), where B4 had white ink, which read poorly on the light field. The rule for real backdrops is
+  unchanged. The Avalonia Stage's Big Type text takes `HandheldShellViewModel.StageInk` (the console's dark ink) and its veils are white;
+  the native Stage tints its white pictures as before. The stand-in card for a game with no cover keeps its white title (it sits on its own
+  dark card).
+- **The Avalonia Launcher's share.** It draws the ring's path and the pushes in its own frame loop (so a picture at rest shows them),
+  and runs the breath, the bob and the hop as compositor animations that end at rest (`HandheldComposition.Swing`), so they never reach
+  a picture for the native side or a design frame. Its lift lands on the same 380 ms curve (a `bigtype` style transition).
+- **How it was checked.** Classic: 158 of 158 design frames identical before and after (and the final build's against B4's Classic set).
+  Big Type: all 158 render; 113 differ from the render made before B5, each explained by the fallback's ink (76 top frames; the empty
+  page has no text) or the neighbours' push (36 bottom frames; the swapped screen's bottom is the Stage). **Nothing was pinned in the
+  harness**: the breath, the bob and the hop run only on the Avalonia compositor, which the harness's frames (drawn from the visual
+  tree, B0) never include, and the push and the rolls finish inside its wait for rest. A desktop GL check of the real native Launcher
+  (`--launcher-bigtype` in `tools/EmuShelf.Rendering.Preview`) reads the ring at 38% and 74%, the neighbours, a roll, the hop, the rest
+  cadence and holding still back at chosen moments. On the Android emulator (not the Thor) recordings of both displays caught each
+  motion mid-flight and the GL threads went quiet a minute after the last press; the feel needs the owner's hands on the Thor.
+- **Found on the emulator, present before B5** (the same steps on a build of `c7573b3`), left for the design session: after moving
+  from home's page 2 back to page 1 the native Launcher shows no ring and no lift on the focused slot (either look); a sheet opening
+  shows two or three white frames on the second display; the Launcher's dock-row corner type ("1 / 2", Swap) is pictured with black
+  boxes behind its glyphs, the Android fault B4 fixed on the Stage with `RenderOptions.TextRenderingMode="Antialias"` on each pictured
+  piece (it also shows in the corner's roll).

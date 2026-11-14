@@ -66,7 +66,7 @@ internal static class StageBigTypeCheck
             compositor.Dispose();
         }
 
-        // A pictured fallback (no shader): white ink everywhere.
+        // A pictured fallback (no shader, a light field): the dark ink everywhere, over a white veil (M47 B5).
         {
             var (framebuffer, colour) = Target(gl, Width, Height);
             var compositor = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }) { TargetFramebuffer = framebuffer };
@@ -74,11 +74,11 @@ internal static class StageBigTypeCheck
             compositor.Draw(0f, Width, Height);
             var frame = Read(gl, framebuffer, Width, Height);
             foreach (var block in Blocks)
-                Check($"no shader: {block.Key} is white", Close(Pixel(frame, Width, block.X + (block.W / 2), block.Y + (block.H / 2)), Vector3.One));
-            // The left veil (the dark ink at 0.28) over the pictured grey at (40, 540): grey × 0.72 + deep × 0.28.
+                Check($"no shader: {block.Key} is in the dark ink", Close(Pixel(frame, Width, block.X + (block.W / 2), block.Y + (block.H / 2)), deep));
+            // The left veil (white at 0.28) over the pictured grey at (40, 540): grey × 0.72 + white × 0.28.
             var grey = new Vector3(0x40, 0x40, 0x40) / 255f;
             Check("no shader: the left veil lies on the backdrop at its resting strength",
-                Close(Pixel(frame, Width, 40, 540), (grey * 0.72f) + (deep * 0.28f), 3f / 255f));
+                Close(Pixel(frame, Width, 40, 540), (grey * 0.72f) + (Vector3.One * 0.28f), 3f / 255f));
             gl.DeleteFramebuffer(framebuffer);
             gl.DeleteRenderbuffer(colour);
             compositor.Dispose();

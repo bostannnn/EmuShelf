@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Media;
+using Avalonia.Media.Immutable;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -16,7 +17,20 @@ public partial class HandheldShellViewModel
 {
     /// <summary>The dark ink of the Stage in the Big Type look: <see cref="LauncherGround"/> mixed toward near-black.</summary>
     [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    [CommunityToolkit.Mvvm.ComponentModel.NotifyPropertyChangedFor(nameof(StageInk), nameof(StageBatteryInk), nameof(StageFactsInk))]
     public partial Color StageDeep { get; private set; } = HandheldTokens.StageDeep(HandheldTokens.DefaultGround);
+
+    /// <summary>
+    /// The Avalonia Stage's ink in the Big Type look: it draws the pictured fallback, never a shader, so its text takes the
+    /// fallback's answer, the dark ink (M47 B5; <c>BackdropLegibility.Fallback</c>). The native Stage tints its pictures itself.
+    /// </summary>
+    public IBrush StageInk => new ImmutableSolidColorBrush(StageDeep);
+
+    /// <summary>The battery's ink: the Stage's at the battery's opacity, carried in the brush (B4: Android cuts text with its own opacity).</summary>
+    public IBrush StageBatteryInk => new ImmutableSolidColorBrush(StageDeep, HandheldTokens.StageBatteryOpacity);
+
+    /// <summary>The second line's ink: the Stage's at its opacity.</summary>
+    public IBrush StageFactsInk => new ImmutableSolidColorBrush(StageDeep, HandheldTokens.StageFactsOpacity);
 
     partial void OnLauncherGroundChanged(Color value) => StageDeep = HandheldTokens.StageDeep(value);
 

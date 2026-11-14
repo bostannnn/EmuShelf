@@ -85,6 +85,21 @@
     <Style Selector="Panel.bigtype Panel.focusable.dock-tile.focused">
       <Setter Property="RenderTransform" Value="scale(1.14)" />
     </Style>
+    <!-- Big Type's lift lands (M47 B5: tokens.js FocusLift, 380 ms on the Land curve); held still (battery saver), it simply lands. -->
+    <Style Selector="Panel.bigtype Panel.focusable">
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.38">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.2" Y1="1.5" X2="0.35" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.bigtype.still Panel.focusable">
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
     <!-- A lifted tile casts a deeper shadow: a second pre-rendered shadow fades in under it. -->
     <Style Selector="vh|HandheldShadow.lift">
       <Setter Property="Opacity" Value="0" />
@@ -974,7 +989,7 @@
             <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
           </Panel>
         </Border>
-        <TextBlock x:Name="BtFolderCount" Grid.Column="1" Text="{Binding OpenFolder.CountNumber}" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.HeaderCountMargin}"
+        <vh:HandheldRollingText x:Name="BtFolderCount" Grid.Column="1" Text="{Binding OpenFolder.CountNumber}" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.HeaderCountMargin}"
                    FontSize="{x:Static vm:HandheldTokens.HeadingCount}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnColour}"
                    Opacity="{x:Static vm:HandheldTokens.HeadingCountOpacity}" LineHeight="{x:Static vm:HandheldTokens.HeaderLineHeight}" FontFeatures="+tnum"
                    LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" />
@@ -1063,7 +1078,7 @@
           </Border>
           <TextBlock Classes="dock-corner" Text="Swap" />
         </StackPanel>
-        <TextBlock x:Name="BtPage" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel" Text="{Binding PageCountText}" IsVisible="{Binding IsPageCountShown}"
+        <vh:HandheldRollingText x:Name="BtPage" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel" Text="{Binding PageCountText}" IsVisible="{Binding IsPageCountShown}"
                    HorizontalAlignment="Right" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
         <Panel IsVisible="{Binding IsFolderOpen}" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Border x:Name="BtSortShot" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">

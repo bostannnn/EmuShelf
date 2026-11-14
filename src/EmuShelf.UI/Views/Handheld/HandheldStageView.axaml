@@ -477,22 +477,22 @@
         </Border>
 
         <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
-                                TextOpacity="{Binding Stage.NameOpacity}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}"
+                                TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
                                 BoxHeight="{x:Static vm:HandheldTokens.StageNameHeight}"
                                 Width="{Binding Stage.NameBoxWidth}" Height="{x:Static vm:HandheldTokens.StageNameControlHeight}"
                                 HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.StageNameMargin}" />
 
         <Border x:Name="BtLabelShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Top"
                 Margin="{x:Static vm:HandheldTokens.StageLabelShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Label}" FontSize="{x:Static vm:HandheldTokens.StageLabel}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" />
+          <TextBlock Text="{Binding Stage.Label}" FontSize="{x:Static vm:HandheldTokens.StageLabel}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" />
         </Border>
         <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" FontFeatures="+tnum" />
+          <vh:HandheldRollingText Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum" />
         </Border>
         <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageFactsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageFactsInk}" FontFeatures="+tnum" />
+          <TextBlock Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum" />
         </Border>
       </Panel>
 
@@ -580,15 +580,15 @@
       <Border x:Name="BtStatusShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" HorizontalAlignment="Right" VerticalAlignment="Top"
               Margin="{x:Static vm:HandheldTokens.StageStatusShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
         <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageStatusGap}">
-          <TextBlock Text="{Binding BatteryText}" IsVisible="{Binding HasBattery}" FontSize="{x:Static vm:HandheldTokens.StageBattery}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+          <vh:HandheldRollingText Text="{Binding BatteryText}" IsVisible="{Binding HasBattery}" FontSize="{x:Static vm:HandheldTokens.StageBattery}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
                      Margin="{x:Static vm:HandheldTokens.StageBatteryMargin}"
-                     VerticalAlignment="Bottom" Foreground="{x:Static vm:HandheldTokens.StageBatteryInk}" FontFeatures="+tnum" />
-          <TextBlock Text="{Binding TimeText}" FontSize="{x:Static vm:HandheldTokens.StageClock}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" LetterSpacing="{x:Static vm:HandheldTokens.StageClockSpacing}" VerticalAlignment="Bottom" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" FontFeatures="+tnum" />
+                     VerticalAlignment="Bottom" Foreground="{Binding StageBatteryInk}" FontFeatures="+tnum" />
+          <vh:HandheldRollingText Text="{Binding TimeText}" FontSize="{x:Static vm:HandheldTokens.StageClock}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" LetterSpacing="{x:Static vm:HandheldTokens.StageClockSpacing}" VerticalAlignment="Bottom" Foreground="{Binding StageInk}" FontFeatures="+tnum" />
         </StackPanel>
       </Border>
       <Border x:Name="BtHintsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
               Margin="{x:Static vm:HandheldTokens.StageHintsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-        <ItemsControl ItemsSource="{Binding Hints}">
+        <ItemsControl ItemsSource="{Binding Hints}" Foreground="{Binding StageInk}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGap}" />
@@ -598,16 +598,16 @@
             <DataTemplate x:DataType="vm:HandheldHint">
               <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGlyphGap}">
                 <Border Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
-                        BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{x:Static vm:HandheldTokens.StageBigTypeInk}" VerticalAlignment="Center">
+                        BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{Binding $parent[ItemsControl].Foreground}" VerticalAlignment="Center">
                   <Panel>
-                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}"
+                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasIcon}" />
                     <PathIcon Data="{Binding Icon, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
-                              Width="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" Height="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" IsVisible="{Binding HasIcon}" />
+                              Width="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" Height="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" IsVisible="{Binding HasIcon}" />
                   </Panel>
                 </Border>
                 <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.StageHint}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
-                           VerticalAlignment="Center" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" />
+                           VerticalAlignment="Center" />
               </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

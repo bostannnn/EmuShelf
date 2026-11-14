@@ -3,6 +3,7 @@ using EmuShelf.Rendering.Gl;
 using EmuShelf.Rendering.Models;
 using EmuShelf.Rendering.Shells;
 using EmuShelf.Rendering.Stage.Backdrops;
+using EmuShelf.Rendering.Stage.BigType;
 using Silk.NET.OpenGL;
 
 namespace EmuShelf.Rendering.Stage;
@@ -90,6 +91,10 @@ public sealed class StageCompositor : INativeScene
     // veil colour under the centre). Null ink: today's look, where nothing is tinted and the screen clears to its grey.
     private StageInkCommand? _ink;
     private readonly Dictionary<string, StageInkZone> _chromeZones = new(StringComparer.Ordinal);
+
+    // Big Type's rolling text (M47 B5): each piece's characters, and a roll under way (the picture it leaves and when it began).
+    private readonly Dictionary<string, StageText> _chromeTexts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Layer Old, StageText Text, float Start)> _rolls = new(StringComparer.Ordinal);
     private readonly Dictionary<string, Layer> _veils = new(StringComparer.Ordinal);
     private readonly Dictionary<string, StageInkZone> _veilZones = new(StringComparer.Ordinal);
 
@@ -283,7 +288,23 @@ public sealed class StageCompositor : INativeScene
                 var zones = chrome.Veil ? _veilZones : _chromeZones;
                 layers.TryGetValue(chrome.Key, out var old);
                 var layer = old;
-                Replace(ref layer, chrome.Image, repeat: false);
+                if (_rolls.Remove(chrome.Key, out var unfinished))
+                    _gl.DeleteTexture(unfinished.Old.Texture);
+                // Big Type's text rolls the characters that changed (M47 B5): the old picture stays until they have rolled over.
+                if (_ink is not null && old is not null && chrome.Image is { } next && !ReferenceEquals(old.Image, next) &&
+                    _chromeTexts.TryGetValue(chrome.Key, out var before) && chrome.Text is { } after && BigTypeMotion.Rolls(before.Text, after.Text, _holdStill))
+                {
+                    _rolls[chrome.Key] = (old, before, now);
+                    layer = new Layer(next, Upload(next.Pixels, repeat: false));
+                }
+                else
+                {
+                    Replace(ref layer, chrome.Image, repeat: false);
+                }
+                if (chrome.Text is { } text && layer is not null)
+                    _chromeTexts[chrome.Key] = text;
+                else
+                    _chromeTexts.Remove(chrome.Key);
                 if (layer is null)
                 {
                     layers.Remove(chrome.Key);
@@ -425,12 +446,53 @@ public sealed class StageCompositor : INativeScene
         foreach (var (key, chrome) in _chrome)
         {
             var zone = _ink is not null ? _chromeZones.GetValueOrDefault(key) : StageInkZone.None;
-            DrawLayer(chrome, 1f, 1f, 0, 0, tint: zone == StageInkZone.None ? null : ZoneInk(zone, clock, fade).Ink);
+            Vector3? tint = zone == StageInkZone.None ? null : ZoneInk(zone, clock, fade).Ink;
+            if (_rolls.TryGetValue(key, out var roll))
+            {
+                if (DrawRoll(key, chrome, roll, now, tint, fit))
+                {
+                    animating = true;
+                    continue;
+                }
+                _gl.DeleteTexture(roll.Old.Texture);
+                _rolls.Remove(key);
+            }
+            DrawLayer(chrome, 1f, 1f, 0, 0, tint: tint);
         }
 
         _gl.BindVertexArray(0);
         _gl.BindTexture(TextureTarget.Texture2D, 0);
         return animating;
+    }
+
+    /// <summary>
+    /// A rolling text (M47 B5): the new picture's unchanged parts as they are, each changed character's old glyph leaving upward and
+    /// the new one rising in, each under a scissor of its own cell. False once the roll has finished.
+    /// </summary>
+    private bool DrawRoll(string key, Layer layer, (Layer Old, StageText Text, float Start) roll, float now, Vector3? tint,
+        (int X, int Y, int Width, int Height, float Scale) fit)
+    {
+        var image = layer.Image;
+        if (!_chromeTexts.TryGetValue(key, out var text) ||
+            BigTypeRollDraw.Pieces(roll.Text, text, image.X, image.Y, image.Width, image.Height, now - roll.Start) is not { } pieces)
+            return false;
+        _gl.Enable(EnableCap.ScissorTest);
+        foreach (var piece in pieces)
+        {
+            var left = fit.X + (int)MathF.Floor(piece.ClipX * fit.Scale);
+            var right = fit.X + (int)MathF.Ceiling((piece.ClipX + piece.ClipWidth) * fit.Scale);
+            var bottom = fit.Y + (int)MathF.Floor((CanvasHeight - piece.ClipY - piece.ClipHeight) * fit.Scale);
+            var top = fit.Y + (int)MathF.Ceiling((CanvasHeight - piece.ClipY) * fit.Scale);
+            if (right <= left || top <= bottom)
+                continue;
+            _gl.Scissor(left, bottom, (uint)(right - left), (uint)(top - bottom));
+            var source = piece.Source == BigTypeRollSource.Old ? roll.Old : layer;
+            var picture = source.Image;
+            DrawQuad(source.Texture, picture.X, picture.Y + piece.OffsetY, picture.Width, picture.Height, piece.Opacity, 1f, 0f, 0f,
+                new Vector4(0, 0, 1, 1), tint: tint);
+        }
+        _gl.Disable(EnableCap.ScissorTest);
+        return true;
     }
 
     private float _fadeMilliseconds = StageCentreCommand.HeroFadeMilliseconds;
@@ -870,6 +932,9 @@ public sealed class StageCompositor : INativeScene
         foreach (var layer in _chrome.Values)
             _gl.DeleteTexture(layer.Texture);
         _chrome.Clear();
+        foreach (var roll in _rolls.Values)
+            _gl.DeleteTexture(roll.Old.Texture);
+        _rolls.Clear();
         foreach (var layer in _veils.Values)
             _gl.DeleteTexture(layer.Texture);
         _veils.Clear();

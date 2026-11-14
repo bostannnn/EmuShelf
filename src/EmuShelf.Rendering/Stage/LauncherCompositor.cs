@@ -1,5 +1,6 @@
 using System.Numerics;
 using EmuShelf.Rendering.Gl;
+using EmuShelf.Rendering.Stage.BigType;
 using Silk.NET.OpenGL;
 
 namespace EmuShelf.Rendering.Stage;
@@ -55,7 +56,13 @@ public sealed class LauncherCompositor : INativeScene
     private float _groundStart = float.NegativeInfinity;
     private float _groundFade;
 
+    // The Big Type look's motion (M47 B5): off until LauncherMotionCommand says so, so today's look moves exactly as before.
+    private bool _bigType;
+    private readonly BigTypeLauncherMotion _bt = new();
+    private float _lastNow;
+
     private float _lastFrame = float.NaN;
+    private (int X, int Y, int Width, int Height)? _groupScissor;
     private StageRect? _progress;
     private float _progressStart;
 
@@ -80,7 +87,14 @@ public sealed class LauncherCompositor : INativeScene
     /// change of opacity looks the same at 30 frames a second as at the panel's 120, at a quarter of the frames
     /// (each costs Android's compositor as much as it costs us). Null when nothing moves.
     /// </summary>
-    public float? NextFrameMilliseconds => _breathing ? LauncherMotion.BreathStepMilliseconds : null;
+    /// <remarks>Big Type (M47 B5): the ring's breath and the focused tile's bob step at 30 Hz for a minute after the last press,
+    /// then rest; after that nothing is drawn until something changes.</remarks>
+    public float? NextFrameMilliseconds => _bigType
+        ? _selectorShown ? _bt.NextFrameMilliseconds(_lastNow) : null
+        : _breathing ? LauncherMotion.BreathStepMilliseconds : null;
+
+    /// <summary>The framebuffer frames are drawn into: the surface's own (0), or a target of the desktop GL checks.</summary>
+    public uint TargetFramebuffer { get; init; }
 
     /// <summary>The Launcher's retained commands rebuild it whole; nothing else carries over.</summary>
     public StageCommand? CaptureResume() => null;
@@ -100,8 +114,18 @@ public sealed class LauncherCompositor : INativeScene
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
 
+        /// <summary>Big Type lifts on its landing curve over 380 ms (M47 B5); today's look on its own over 220.</summary>
+        public bool BigType { get; set; }
+
+        public float LiftMilliseconds => BigType ? BigTypeMotion.LiftMilliseconds : LauncherMotion.LiftMilliseconds;
+
+        /// <summary>A text roll under way: the picture it leaves, where its characters were, and when it began.</summary>
+        public (uint Texture, StageImage Image, StageText Text, float Start)? Roll { get; set; }
+
         public float Lift(float now)
         {
+            if (BigType)
+                return BigTypeMotion.Settle(LiftFrom, LiftTo, now - LiftStart);
             var t = (now - LiftStart) / LauncherMotion.LiftMilliseconds;
             return t >= 1 ? LiftTo : LiftFrom + ((LiftTo - LiftFrom) * LauncherMotion.Lift(t));
         }
@@ -119,6 +143,18 @@ public sealed class LauncherCompositor : INativeScene
     {
         switch (command)
         {
+            case LauncherMotionCommand motion:
+                _bigType = motion.BigType;
+                _bt.HoldStill = motion.BigType && motion.HoldStill;
+                // The Launcher arriving counts as the first press: the resting motion lives its minute and the hop waits.
+                if (float.IsNaN(_bt.LastInput))
+                    _bt.Input(now);
+                foreach (var state in _live.Values)
+                    state.BigType = _bigType;
+                break;
+            case LauncherInputCommand:
+                _bt.Input(now);
+                break;
             case LauncherLayoutCommand layout:
                 _layout = layout;
                 break;
@@ -144,9 +180,12 @@ public sealed class LauncherCompositor : INativeScene
                     _column.Limit(_layout.ColumnPitch);
                 }
                 _tracksPlaced = true;
+                _bt.HopPage = tracks.Page;
+                _bt.HopFirstColumn = tracks.FirstColumn;
                 break;
             case LauncherFolderCommand folder:
                 _folderOpen = folder.Open;
+                _bt.HopGrid = folder.Open ? LauncherGroup.Folder : LauncherGroup.Home;
                 break;
             case LauncherZoomCommand zoom:
                 _zoomOpening = zoom.Open;
@@ -160,7 +199,10 @@ public sealed class LauncherCompositor : INativeScene
                     DeleteAll(_closing);
                     _closing = _live.Values.Where(s => s.Sprite.Group == LauncherGroup.Folder).ToList();
                     foreach (var state in _closing)
+                    {
                         _live.Remove(state.Sprite.Id);
+                        _bt.Place(state.Sprite.Id, null);
+                    }
                 }
                 break;
             case LauncherFolderStateCommand folderState:
@@ -218,12 +260,18 @@ public sealed class LauncherCompositor : INativeScene
                 Delete(existing);
                 _live.Remove(command.Id);
             }
+            _bt.Place(command.Id, null);
             return;
         }
+        if (_bigType)
+            _bt.Place(command.Id, sprite.Cell);
         if (existing is null)
         {
             var state = new SpriteState(sprite, SpriteTextures.Upload(_gl, sprite.Image.Pixels, repeat: false),
-                sprite.LiftShadow is { } shadow ? SpriteTextures.Upload(_gl, shadow.Pixels, repeat: false) : 0);
+                sprite.LiftShadow is { } shadow ? SpriteTextures.Upload(_gl, shadow.Pixels, repeat: false) : 0)
+            {
+                BigType = _bigType,
+            };
             if (sprite.Id == _focused && sprite.Liftable)
             {
                 state.LiftFrom = state.LiftTo = sprite.LiftTo;
@@ -241,7 +289,15 @@ public sealed class LauncherCompositor : INativeScene
         }
         if (!ReferenceEquals(existing.Sprite.Image, sprite.Image))
         {
-            _gl.DeleteTexture(existing.Texture);
+            // Big Type's counts roll (M47 B5): the old picture stays until the characters that changed have rolled over.
+            if (existing.Roll is { } rolling)
+                _gl.DeleteTexture(rolling.Texture);
+            existing.Roll = null;
+            if (_bigType && existing.Sprite.Text is { } before && sprite.Text is { } after &&
+                BigTypeMotion.Rolls(before.Text, after.Text, _bt.HoldStill))
+                existing.Roll = (existing.Texture, existing.Sprite.Image, before, now);
+            else
+                _gl.DeleteTexture(existing.Texture);
             existing.Texture = SpriteTextures.Upload(_gl, sprite.Image.Pixels, repeat: false);
         }
         if (!ReferenceEquals(existing.Sprite.LiftShadow, sprite.LiftShadow))
@@ -258,12 +314,22 @@ public sealed class LauncherCompositor : INativeScene
 
     private void ApplyFocus(LauncherFocusCommand focus, float now)
     {
+        // Big Type holding still: the lift lands at once too. While the selector is hidden for a folder's zoom it lands where it
+        // is going instead of travelling unseen.
+        var instant = focus.Instant || (_bigType && _bt.HoldStill);
         if (focus.SpriteId != _focused)
         {
-            SetLift(_focused, null, now, focus.Instant);
-            SetLift(focus.SpriteId, lifted: true, now, focus.Instant);
+            SetLift(_focused, null, now, instant);
+            SetLift(focus.SpriteId, lifted: true, now, instant);
             _focused = focus.SpriteId;
             _focusTime = focus.Instant ? float.NegativeInfinity : now;
+            if (_bigType)
+                _bt.Focus(focus.SpriteId, now, instant);
+        }
+        if (_bigType && focus.Selector is not null && focus.Selector != _target)
+        {
+            var hidden = now - _hiddenSince < LauncherMotion.ZoomSelectorHiddenMilliseconds + LauncherMotion.ZoomSelectorFadeMilliseconds;
+            _bt.MoveRing(now, instant || !_selectorShown || hidden, focus.Pop);
         }
         _target = focus.Selector;
         if (focus.Selector is not { } target)
@@ -316,10 +382,11 @@ public sealed class LauncherCompositor : INativeScene
     {
         var dt = float.IsNaN(_lastFrame) ? 1f / 60f : Math.Clamp((now - _lastFrame) / 1000f, 0f, 0.05f);
         _lastFrame = now;
+        _lastNow = now;
         var animating = _page.Step(dt) | _column.Step(dt);
 
-        // The selector follows its target where the target's track has it now.
-        if (_target is { } target && _selectorShown)
+        // The selector follows its target where the target's track has it now (Big Type's ring takes its own path, M47 B5).
+        if (_target is { } target && _selectorShown && !_bigType)
         {
             var at = TargetOnScreen(target);
             _x.Retarget(at.X);
@@ -330,7 +397,7 @@ public sealed class LauncherCompositor : INativeScene
             animating |= _x.Step(dt) | _y.Step(dt) | _w.Step(dt) | _h.Step(dt) | _r.Step(dt);
         }
 
-        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, 0);
+        _gl.BindFramebuffer(FramebufferTarget.Framebuffer, TargetFramebuffer);
         _gl.Viewport(0, 0, (uint)surfaceWidth, (uint)surfaceHeight);
         _gl.Disable(EnableCap.DepthTest);
         _gl.Disable(EnableCap.CullFace);
@@ -360,7 +427,7 @@ public sealed class LauncherCompositor : INativeScene
             animating |= DrawProgress(now);
             animating |= _live.Values.Any(state => !float.IsNegativeInfinity(state.LaunchStart) && now - state.LaunchStart < LaunchMilliseconds);
             animating |= DrawSelector(now);
-            animating |= _live.Values.Any(s => now - s.LiftStart < LauncherMotion.LiftMilliseconds);
+            animating |= _live.Values.Any(s => now - s.LiftStart < s.LiftMilliseconds || s.Roll is not null);
             _gl.Disable(EnableCap.ScissorTest);
             _gl.BindVertexArray(0);
             _gl.BindTexture(TextureTarget.Texture2D, 0);
@@ -387,7 +454,9 @@ public sealed class LauncherCompositor : INativeScene
         DrawGroup(LauncherGroup.Dock, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
 
         animating |= DrawSelector(now);
-        animating |= _live.Values.Any(s => now - s.LiftStart < LauncherMotion.LiftMilliseconds || s.Folder?.IsAnimating(now) == true);
+        animating |= _live.Values.Any(s => now - s.LiftStart < s.LiftMilliseconds || s.Folder?.IsAnimating(now) == true || s.Roll is not null);
+        if (_bigType)
+            animating |= _bt.IsMoving(now, hops: !zoom.Animating);
 
         _gl.Disable(EnableCap.ScissorTest);
         _gl.BindVertexArray(0);
@@ -454,18 +523,23 @@ public sealed class LauncherCompositor : INativeScene
             var y0 = pivot.Y + ((c.Y - pivot.Y) * groupScale);
             var w = c.Width * groupScale;
             var h = c.Height * groupScale;
+            _groupScissor = ((int)MathF.Floor(x0 * sx), (int)MathF.Floor(surfaceHeight - ((y0 + h) * sy)),
+                (int)MathF.Ceiling(w * sx), (int)MathF.Ceiling(h * sy));
             _gl.Enable(EnableCap.ScissorTest);
-            _gl.Scissor((int)MathF.Floor(x0 * sx), (int)MathF.Floor(surfaceHeight - ((y0 + h) * sy)),
-                (uint)MathF.Ceiling(w * sx), (uint)MathF.Ceiling(h * sy));
+            _gl.Scissor(_groupScissor.Value.X, _groupScissor.Value.Y, (uint)_groupScissor.Value.Width, (uint)_groupScissor.Value.Height);
         }
         else
         {
+            _groupScissor = null;
             _gl.Disable(EnableCap.ScissorTest);
         }
         foreach (var state in sprites)
         {
             var sprite = state.Sprite;
             var offset = new Vector2(TrackOffset(sprite.Track), 0);
+            // Big Type's grid tiles make room, bob and hop (M47 B5); a zooming page holds its tiles still.
+            if (_bigType && sprite.Cell is not null)
+                offset += _bt.Offset(sprite.Id, now, hops: !zoom.Animating && sprite.Group != LauncherGroup.Title);
             var lift = sprite.Liftable ? state.Lift(now) : 1f;
             var spriteOpacity = opacity;
             var sinceLaunch = float.IsNegativeInfinity(state.LaunchStart) ? float.NaN : now - state.LaunchStart;
@@ -490,10 +564,59 @@ public sealed class LauncherCompositor : INativeScene
                 var shadowOpacity = state.ShadowOpacity(now) * spriteOpacity;
                 Quad(state.Shadow, shadow, shadowOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot);
             }
+            if (state.Roll is { } roll)
+            {
+                if (DrawRoll(state, roll, now, spriteOpacity, offset, sx, sy, surfaceHeight))
+                    continue;
+                _gl.DeleteTexture(roll.Texture);
+                state.Roll = null;
+            }
             Quad(state.Texture, sprite.Image, spriteOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot);
             state.Folder?.Draw(now, (texture, image, affine) =>
                 Quad(texture, image, spriteOpacity, lift, sprite.PivotX, sprite.PivotY, offset, groupScale, pivot, affine));
         }
+    }
+
+    /// <summary>
+    /// A rolling text (M47 B5): the new picture's unchanged parts as they are, each changed character's old glyph leaving upward and
+    /// the new one rising in, each under a scissor of its own cell. False once the roll has finished.
+    /// </summary>
+    private bool DrawRoll(SpriteState state, (uint Texture, StageImage Image, StageText Text, float Start) roll, float now, float opacity,
+        Vector2 offset, float sx, float sy, int surfaceHeight)
+    {
+        var image = state.Sprite.Image;
+        if (state.Sprite.Text is not { } text ||
+            BigTypeRollDraw.Pieces(roll.Text, text, image.X, image.Y, image.Width, image.Height, now - roll.Start) is not { } pieces)
+            return false;
+        foreach (var piece in pieces)
+        {
+            // The cell's window on the surface, inside the group's own clip.
+            var left = (int)MathF.Floor((piece.ClipX + offset.X) * sx);
+            var bottom = (int)MathF.Floor(surfaceHeight - ((piece.ClipY + offset.Y + piece.ClipHeight) * sy));
+            var right = (int)MathF.Ceiling((piece.ClipX + offset.X + piece.ClipWidth) * sx);
+            var top = (int)MathF.Ceiling(surfaceHeight - ((piece.ClipY + offset.Y) * sy));
+            if (_groupScissor is { } group)
+            {
+                left = Math.Max(left, group.X);
+                bottom = Math.Max(bottom, group.Y);
+                right = Math.Min(right, group.X + group.Width);
+                top = Math.Min(top, group.Y + group.Height);
+            }
+            if (right <= left || top <= bottom)
+                continue;
+            _gl.Enable(EnableCap.ScissorTest);
+            _gl.Scissor(left, bottom, (uint)(right - left), (uint)(top - bottom));
+            var (texture, picture) = piece.Source == BigTypeRollSource.Old ? (roll.Texture, roll.Image) : (state.Texture, image);
+            Quad(texture, picture, opacity * piece.Opacity, 1f, 0f, 0f, offset + new Vector2(0f, piece.OffsetY), 1f, Vector2.Zero);
+        }
+        // Put back the group's clip for the sprites after this one.
+        if (_groupScissor is { } back)
+            _gl.Scissor(back.X, back.Y, (uint)back.Width, (uint)back.Height);
+        else
+        {
+            _gl.Disable(EnableCap.ScissorTest);
+        }
+        return true;
     }
 
     private void Quad(uint texture, StageImage image, float opacity, float scale, float pivotX, float pivotY, Vector2 offset,
@@ -587,20 +710,30 @@ public sealed class LauncherCompositor : INativeScene
             opacity = Math.Clamp((hidden - LauncherMotion.ZoomSelectorHiddenMilliseconds) / LauncherMotion.ZoomSelectorFadeMilliseconds, 0f, 1f);
             animating = true;
         }
-        var bump = Vector2.Zero;
+        float x, y, w, h, radius;
+        if (_bigType)
+        {
+            // Big Type's ring (M47 B5): one timed path from where it was drawn to where its target is now, then a breath at rest.
+            var at = TargetOnScreen(_target);
+            var ring = _bt.Ring(new BigTypeRing(at.X, at.Y, _target.Width, _target.Height, _target.Radius), now, out var ringOpacity, out var moving);
+            animating |= moving;
+            opacity *= ringOpacity;
+            (x, y, w, h, radius) = (ring.X, ring.Y, ring.Width, ring.Height, ring.Radius);
+        }
+        else
+        {
+            (x, y, w, h, radius) = ((float)_x.Value, (float)_y.Value, (float)_w.Value, (float)_h.Value, (float)_r.Value);
+        }
         var sinceBump = now - _bumpStart;
         if (sinceBump < LauncherMotion.BumpMilliseconds)
         {
             var amount = LauncherMotion.Bump(sinceBump / LauncherMotion.BumpMilliseconds) * LauncherMotion.BumpFraction;
-            bump = new Vector2(_bump.X * amount * (float)_w.Value, _bump.Y * amount * (float)_h.Value);
+            x += _bump.X * amount * w;
+            y += _bump.Y * amount * h;
             animating = true;
         }
         if (opacity <= 0f)
             return animating;
-        var x = (float)_x.Value + bump.X;
-        var y = (float)_y.Value + bump.Y;
-        var w = (float)_w.Value;
-        var h = (float)_h.Value;
 
         _gl.Disable(EnableCap.ScissorTest);
         var sinceFocus = now - _focusTime;
@@ -626,7 +759,7 @@ public sealed class LauncherCompositor : INativeScene
         _ring.Set("uGroup", new Vector3(1, 0, 0));
         _ring.Set("uUv", new Vector4(0, 0, 1, 1));
         _ring.Set("uSize", new Vector2(w, h));
-        _ring.Set("uRadius", Math.Max(0f, (float)_r.Value));
+        _ring.Set("uRadius", Math.Max(0f, radius));
         _ring.Set("uFill", Vector4.Zero);
         var bands = _target.Bands ?? LauncherRingBands.Classic;
         _ring.Set("uInsets", new Vector3(bands.Inset1, bands.Inset2, bands.Inset3));
@@ -642,6 +775,8 @@ public sealed class LauncherCompositor : INativeScene
     private void Delete(SpriteState state)
     {
         state.Folder?.Dispose();
+        if (state.Roll is { } roll)
+            _gl.DeleteTexture(roll.Texture);
         _gl.DeleteTexture(state.Texture);
         if (state.Shadow != 0)
             _gl.DeleteTexture(state.Shadow);

@@ -146,10 +146,11 @@ public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand
 /// Under the Big Type look (M47 B4) a piece of text is pictured in white and names its <paramref name="Zone"/>: the compositor
 /// draws it in that zone's ink for the backdrop that is showing (<see cref="Backdrops.BackdropLegibility"/>). A
 /// <paramref name="Veil"/> is a white mask of the veil behind a zone, drawn under the centre in the opposite tone at the
-/// zone's strength. Today's look sends neither, and its pictures are drawn as they are.
+/// zone's strength. Today's look sends neither, and its pictures are drawn as they are. <paramref name="Text"/> (M47 B5) is where a
+/// pictured text's characters sit: a new picture of the same key rolls the characters that changed (the clock, the line's counts).
 /// </remarks>
 public sealed record StageChromeCommand(string Key, StageImage? Image, Backdrops.StageInkZone Zone = Backdrops.StageInkZone.None,
-    bool Veil = false) : StageCommand
+    bool Veil = false, BigType.StageText? Text = null) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
 }

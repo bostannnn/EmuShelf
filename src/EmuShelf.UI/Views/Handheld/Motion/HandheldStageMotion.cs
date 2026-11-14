@@ -61,7 +61,21 @@ internal sealed class HandheldStageMotion
     /// False while the native Stage draws the top screen (this view is then only pictured): its own pops and
     /// the launch flight stand down, while the folder's flap still follows the shell, since it is pictured.
     /// </summary>
-    public bool IsOnScreen { get; set; } = true;
+    public bool IsOnScreen
+    {
+        get => _onScreen;
+        set
+        {
+            _onScreen = value;
+            UpdateRolls();
+        }
+    }
+
+    private bool _onScreen = true;
+
+    // Big Type's rolling text (M47 B5) rolls only on screen and while the device does not ask for stillness: a picture taken for
+    // the native Stage must be the text at rest.
+    private void UpdateRolls() => HandheldRollingText.SetRolls(_view, _onScreen && _shell?.HoldsStill != true);
 
     public void Attach(HandheldShellViewModel? shell)
     {
@@ -83,6 +97,7 @@ internal sealed class HandheldStageMotion
         shell.LaunchStarting += OnLaunchStarting;
         shell.PropertyChanged += OnShellChanged;
         shell.FolderClosing += OnFolderClosing;
+        UpdateRolls();
         UpdateFolderState(peekNow: true);
     }
 
@@ -136,6 +151,9 @@ internal sealed class HandheldStageMotion
         {
             case nameof(HandheldShellViewModel.OpenFolder):
                 UpdateFolderState(peekNow: true);
+                break;
+            case nameof(HandheldShellViewModel.HoldsStill):
+                UpdateRolls();
                 break;
             case nameof(HandheldShellViewModel.TitlePage) when _shell?.TitlePage is null:
                 // The page's cover is disposed right after this: take it off the Stage first.
