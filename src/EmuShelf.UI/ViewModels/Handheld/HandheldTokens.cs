@@ -1880,6 +1880,7 @@ public static partial class HandheldTokens
         CompanionStrongWeight = FontWeight.Bold;
 
         UseClassicLauncherValues();
+        UseStageValues();
     }
 
     /// <summary>

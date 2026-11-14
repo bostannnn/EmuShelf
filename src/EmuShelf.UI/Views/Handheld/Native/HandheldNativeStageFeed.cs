@@ -16,6 +16,8 @@ using EmuShelf.App.ViewModels;
 using EmuShelf.Rendering;
 using EmuShelf.Rendering.Models;
 using EmuShelf.Rendering.Stage;
+using EmuShelf.Rendering.Stage.Backdrops;
+using EmuShelf.Rendering.Stage.BigType;
 
 namespace EmuShelf.App.Views.Handheld;
 
@@ -48,7 +50,10 @@ internal sealed class HandheldNativeStageFeed
     private string? _folderArtKey;
     private FolderArtState? _folderStateSent;
     private readonly HandheldEraBackdrop _backdrop;
-    private readonly (string Key, Control Piece, Func<HandheldShellViewModel, string> Content)[] _chrome;
+    private readonly (string Key, Control Piece, Func<HandheldShellViewModel, string> Content, StageInkZone Zone)[] _chrome;
+    private readonly Control _bigTypeCover;
+    private string? _veilsSent;
+    private Avalonia.Media.Color? _inkSent;
     private readonly Dictionary<string, string> _chromeSent = new(StringComparer.Ordinal);
     private string? _plateSent;
     private StageImage? _plateImage;
@@ -77,20 +82,39 @@ internal sealed class HandheldNativeStageFeed
         _heroBackdrop = Find("HeroBackdrop");
         _heroContent = Find("HeroContent");
         _backdrop = (HandheldEraBackdrop)Find("EraBackdrop");
-        // Each corner piece is pictured again only when what it says changes (a picture is a GPU round trip).
-        _chrome =
-        [
-            ("status", Find("StatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.IsCharging}|{s.WifiOpacity}|{s.HasWifiState}"),
-            ("hints", Find("HintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}"))),
-            ("achievements", Find("AchievementShot"), s => $"{s.Stage.ShowAchievementPill}|{s.Stage.AchievementText}"),
-            ("message", Find("MessageShot"), s => $"{s.HasStatusMessage}|{s.StatusMessage}|{s.StatusGlyph}"),
-        ];
+        _bigTypeCover = Find("BtCoverShot");
+        // Each corner piece is pictured again only when what it says changes (a picture is a GPU round trip). Under Big Type
+        // (M47 B4) the pills are gone: the label, the name, the two lines, the status and the hints are each pictured in white
+        // and drawn by the native Stage in their zone's ink; the message keeps today's toast.
+        var message = ("message", Find("MessageShot"), (Func<HandheldShellViewModel, string>)(s => $"{s.HasStatusMessage}|{s.StatusMessage}|{s.StatusGlyph}"),
+            StageInkZone.None);
+        _chrome = HandheldTokens.IsBigType
+            ?
+            [
+                ("bt-label", Find("BtLabelShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Label}", StageInkZone.Left),
+                ("bt-name", Find("BtName"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Name}|{s.Stage.NameBoxWidth}|{s.Stage.NameOpacity}", StageInkZone.Left),
+                ("bt-line", Find("BtLineShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Line}", StageInkZone.Left),
+                ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}", StageInkZone.Left),
+                ("bt-status", Find("BtStatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.HasBattery}", StageInkZone.TopRight),
+                ("bt-hints", Find("BtHintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}")), StageInkZone.BottomRight),
+                message,
+            ]
+            :
+            [
+                ("status", Find("StatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.IsCharging}|{s.WifiOpacity}|{s.HasWifiState}", StageInkZone.None),
+                ("hints", Find("HintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}")), StageInkZone.None),
+                ("achievements", Find("AchievementShot"), s => $"{s.Stage.ShowAchievementPill}|{s.Stage.AchievementText}", StageInkZone.None),
+                message,
+            ];
 
         // The Avalonia Stage only lends its pieces now: its own backdrop never draws, and its medium neither
         // draws nor follows the pose (each pose would still ask Avalonia for a frame).
-        var medium = Find("Medium");
-        medium.IsVisible = false;
-        medium.DataContext = null;
+        foreach (var name in new[] { "Medium", "BtMedium" })
+        {
+            var medium = Find(name);
+            medium.IsVisible = false;
+            medium.DataContext = null;
+        }
         _backdrop.IsVisible = false;
 
         _backdropSettle = new DispatcherTimer(DispatcherPriority.Background)
@@ -118,6 +142,9 @@ internal sealed class HandheldNativeStageFeed
             var medium = Find("Medium");
             medium.ClearValue(StyledElement.DataContextProperty);
             medium.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding("Stage.HasMedium"));
+            var bigTypeMedium = Find("BtMedium");
+            bigTypeMedium.ClearValue(StyledElement.DataContextProperty);
+            bigTypeMedium.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding("Stage.HasBigTypeMedium"));
             UpdateActive();
         };
     }
@@ -126,7 +153,8 @@ internal sealed class HandheldNativeStageFeed
         _view.FindControl<Control>(name) ?? throw new InvalidOperationException($"The Stage has no {name}.");
 
     // 1920 on the 16:9 screen, 1240 on the narrow one (M45 H5).
-    private float CanvasWidth => (float)(_isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth);
+    // Big Type keeps the 16:9 canvas on either screen (M47 B4): the narrow one shows it whole, letterboxed.
+    private float CanvasWidth => (float)(_isNarrow() && HandheldTokens.IsClassic ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth);
 
     private readonly Func<bool> _isNarrow;
 
@@ -192,6 +220,7 @@ internal sealed class HandheldNativeStageFeed
             SendMotion();
             SendBackdrop();
             Resend();
+            SendInk();
         }
     }
 
@@ -211,6 +240,8 @@ internal sealed class HandheldNativeStageFeed
         _chromeSent.Clear();
         _plateSent = null;
         _folderArtKey = null;
+        _veilsSent = null;
+        _inkSent = null;
         // The backdrop is not resent: its pictures are 1920 wide on either screen (the narrow one shows their middle),
         // and the native side keeps them.
         Schedule(centre: true, pop: true, chrome: true);
@@ -242,6 +273,9 @@ internal sealed class HandheldNativeStageFeed
             case nameof(HandheldShellViewModel.HasStatusMessage):
             case nameof(HandheldShellViewModel.StatusGlyph):
                 Schedule(centre: false, pop: false, chrome: true);
+                break;
+            case nameof(HandheldShellViewModel.LauncherGround):
+                SendInk();
                 break;
             case nameof(HandheldShellViewModel.IsSwapped) when _active && !IsPaused:
                 // A Stage that follows the swap moved to the other canvas: every piece sits somewhere new.
@@ -283,6 +317,12 @@ internal sealed class HandheldNativeStageFeed
                 Schedule(centre: true, pop: false, chrome: true);
                 break;
             case nameof(HandheldStageViewModel.AchievementText):
+            // Big Type's texts (M47 B4): the emulator's name and a folder's last played game arrive after the move.
+            case nameof(HandheldStageViewModel.Label):
+            case nameof(HandheldStageViewModel.Name):
+            case nameof(HandheldStageViewModel.Line):
+            case nameof(HandheldStageViewModel.Facts):
+            case nameof(HandheldStageViewModel.IsMissing):
                 Schedule(centre: false, pop: false, chrome: true);
                 break;
             case nameof(HandheldStageViewModel.PanelCard):
@@ -326,17 +366,20 @@ internal sealed class HandheldNativeStageFeed
             return;
         if (resent)
             _host.Post(new StageCanvasCommand(CanvasWidth));
+        if (resent)
+            SendInk();
         if (centre)
             SendCentre(stage, pop);
         if (chrome && _shell is { } shell)
         {
-            foreach (var (key, piece, content) in _chrome)
+            SendVeils(stage);
+            foreach (var (key, piece, content, zone) in _chrome)
             {
                 var now = content(shell);
                 if (_chromeSent.TryGetValue(key, out var sent) && sent == now)
                     continue;
                 _chromeSent[key] = now;
-                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas)));
+                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone));
             }
         }
         if (resent || _catchUpPending)
@@ -362,6 +405,34 @@ internal sealed class HandheldNativeStageFeed
     /// </summary>
     public event Action? CaughtUp;
 
+    // ---- Big Type's ink and veils (M47 B4) ----
+
+    /// <summary>The ground the native Stage clears to and the dark ink it draws with, from the Launcher's colour. Big Type only.</summary>
+    private void SendInk()
+    {
+        if (!_active || !HandheldTokens.IsBigType || _shell is not { } shell || _inkSent == shell.LauncherGround)
+            return;
+        _inkSent = shell.LauncherGround;
+        var ground = shell.LauncherGround;
+        var deep = shell.StageDeep;
+        _host.Post(new StageInkCommand(new System.Numerics.Vector3(ground.R, ground.G, ground.B) / 255f,
+            new System.Numerics.Vector3(deep.R, deep.G, deep.B) / 255f));
+    }
+
+    /// <summary>The three veils as white masks, sent again only when the name's box (and so the left veil) changes. Big Type only.</summary>
+    private void SendVeils(HandheldStageViewModel stage)
+    {
+        if (!HandheldTokens.IsBigType)
+            return;
+        var flatEnd = BigTypeVeil.LeftFlatEnd((float)HandheldTokens.StageNameLeft, (float)stage.NameBoxWidth);
+        var key = FormattableString.Invariant($"{flatEnd}|{CanvasWidth}");
+        if (key == _veilsSent)
+            return;
+        _veilsSent = key;
+        foreach (var (name, zone) in new[] { ("veil-left", StageInkZone.Left), ("veil-top-right", StageInkZone.TopRight), ("veil-bottom-right", StageInkZone.BottomRight) })
+            _host.Post(new StageChromeCommand(name, BigTypeVeil.Mask(zone, flatEnd, CanvasWidth, StageCompositor.CanvasHeight), zone, Veil: true));
+    }
+
     // ---- Pieces ----
 
     private void SendCentre(HandheldStageViewModel stage, bool pop)
@@ -381,6 +452,11 @@ internal sealed class HandheldNativeStageFeed
                 .Where(image => image is not null).Cast<StageImage>().ToArray();
             _host.Post(new StageCentreCommand(null, null, null, pop, Hero: hero, FadeIn: fade, FadeMilliseconds: fadeMilliseconds,
                 Drift: drift));
+            return;
+        }
+        if (HandheldTokens.IsBigType)
+        {
+            SendBigTypeCentre(stage, pop, fade);
             return;
         }
         // The same plate is the same picture (and the same texture on the other side).
@@ -412,6 +488,27 @@ internal sealed class HandheldNativeStageFeed
         }
         _host.Post(new StageCentreCommand(HandheldStageShots.Shot(_centre, _canvas), null, plate, pop, FadeIn: fade,
             FadeMilliseconds: fadeMilliseconds, Drift: drift));
+    }
+
+    /// <summary>
+    /// The centre under Big Type (M47 B4): no plate and no big folder; a game's medium (or its flat cover) in its corner;
+    /// Settings' and a panel's cards as today until B7; nothing else (the name is the picture).
+    /// </summary>
+    private void SendBigTypeCentre(HandheldStageViewModel stage, bool pop, bool fade)
+    {
+        if (stage.HasMedium && stage.Medium is { } shell)
+        {
+            var accent = MediaShellRenderer.ToLinear(stage.MediumAccent.R / 255f, stage.MediumAccent.G / 255f, stage.MediumAccent.B / 255f);
+            var frame = HandheldTokens.StageMediumFrame(CanvasWidth);
+            var medium = new StageMedium(shell, accent, (float)frame.X, (float)frame.Y, (float)frame.Width, (float)frame.Height);
+            _host.Post(new StageMediumPoseCommand((float)stage.MediumYaw, (float)stage.MediumPitch));
+            SendCover(stage.Art, then: new StageCentreCommand(null, medium, null, pop, FadeIn: fade));
+            return;
+        }
+        var art = stage.HasFlatCover ? HandheldStageShots.Shot(_bigTypeCover, _canvas)
+            : stage.IsSetting || stage.IsPanel ? HandheldStageShots.Shot(_centre, _canvas)
+            : null;
+        _host.Post(new StageCentreCommand(art, null, null, pop, FadeIn: fade));
     }
 
     /// <summary>The big folder as glidable parts, captured again only when what it shows changes.</summary>

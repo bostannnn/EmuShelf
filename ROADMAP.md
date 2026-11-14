@@ -2884,6 +2884,29 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       covers half of the dock row. B3's exit still needs the owner's eyes on the Thor.
 - [ ] **B4 — The Stage, still.** The fitted name, the four corners, no plate and no pills, the veil and ink per R2.
       **Exit:** the name is readable over every backdrop of every console in the owner's library, on the device.
+      **Built 2026-11-14; awaiting the owner's look on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B4".) Under Big Type
+      the Stage has no plate and no pills: the focused item's name is fitted by the spike's `BigTypeLayout` (now in
+      `EmuShelf.Rendering/Stage/BigType`) into 1360 × 680 (1120 beside a game), bottom-anchored at 80 / 240, at most three lines; the
+      console's name (or the item's kind) top left, battery and clock top right, the line and second line under the name, outlined hint
+      glyphs bottom right; a game's medium (or flat cover) in its corner; a missing game's name at 0.5 with "File not found". The texts
+      are `Label`/`Name`/`Line`/`Facts` on the Stage's view model. **The ink follows the backdrop that is showing on the native side:**
+      the feed pictures each text in white with its zone and sends the veils as white masks; `StageCompositor`, which picks and rotates
+      the backdrops, looks the showing one up in `BackdropLegibility` (the baked `legibility.json`, beside `BackdropCatalog`) and tints
+      each zone's text and veil, mixing through crossfades; no shader (the pictured fallback, the Avalonia Stage) is white with the
+      resting veils. `ps2-sea`'s hints are white with a 0.5 veil, **for the owner to check on the Thor**. The swapped screen shows the
+      16:9 Stage whole, letterboxed, as the mock does. Today's look is the default and unchanged. **Verified on macOS:** Classic rendered
+      before and after, 158 of 158 frames identical by the comparison (byte-identical PNGs); the Big Type set renders (158 frames, kept
+      as B5's baseline in the build sessions' notes folder, `m47-b4-renders/bigtype`) and was put beside the mock's top screen, captured
+      headless at Thor scale, part by part: the corners land on the mock's pixels, the name within 1–5 px (monogram "PS2", one-line
+      "Ico", three-line "Burnout 3: Takedown", the missing game); what still differs is listed in the decision. A new desktop GL check
+      (`tools/EmuShelf.Rendering.Preview -- --stage-bigtype`) drives the real compositor over the real backdrops and reads the ink back:
+      dark over `ps2-towers`, white over `ps2-trails-v3`, split over `arc-checker` and `gc-caustics`, white over the fallback, and the
+      letterbox. Unit tests hold the table to `legibility.json`, the Stage's values to tokens.js, the ink's mixing and the veils' shape, and
+      the name fit (monogram, long title, a single very long word); `dotnet build` and `dotnet test` pass. **Emulator check (not a Thor
+      check):** on `emushelf-b3` the Release build ran Classic cleanly; with `debug.emushelf.look bigtype` the native Stage drew the name,
+      corners, hints and the 3D case with no plate or pills, the backdrop shaders ran and the ink followed the rotation (dark over
+      `ps2-towers` and `ps2-orbs-v3`, white over `ps2-trails-v3`); Recent, Settings, an empty slot and the dock drew in white over the
+      fallback; property cleared, Classic again. The emulator's library is PS2 only, so the other consoles' backdrops were not seen.
 - [ ] **B5 — Motion that needs no new drawing.** The ring's stretch between tiles, dock and rows; the tile lift and
       neighbours making room; rolling digits; the idle hop. Give the Launcher compositor the `HoldsStill` hook now.
 - [ ] **B6 — Letters, and the flood.** Start from the spike's code on `claude/elegant-lederberg-05c307`

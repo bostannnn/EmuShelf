@@ -190,6 +190,8 @@
     empty slots and the menu keep the plain light gradient. A Title page with fan art: the art itself,
     full-bleed, darkened toward the logo and meta line.
   -->
+  <!-- Big Type (M47 B4): the focused item's flat colour under everything, seen where no backdrop draws. -->
+  <Border IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Background="{Binding LauncherGroundBrush}" />
   <vh:HandheldEraBackdrop x:Name="EraBackdrop" Backdrop="{Binding Stage.Backdrop}" />
   <Panel x:Name="HeroBackdrop" IsVisible="{Binding Stage.IsHeroArt}">
     <Image Source="{Binding Stage.Fanart}" Stretch="UniformToFill" />
@@ -214,6 +216,10 @@
 
   <Viewbox Stretch="Uniform">
     <Grid x:Name="StageCanvas" Width="1920" Height="1080">
+
+      <!-- Big Type (M47 B4): the veils behind the three text zones, in the dark ink at their resting strength. -->
+      <vh:HandheldBigTypeVeils x:Name="BtVeils" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Deep="{Binding StageDeep}"
+                               NameBoxWidth="{Binding Stage.NameBoxWidth}" NameLeft="{x:Static vm:HandheldTokens.StageNameLeft}" />
 
       <!-- What changes with the focus: the hero, the centre art and the plate. -->
       <Panel x:Name="StageContent">
@@ -257,10 +263,13 @@
       <Border x:Name="CentreShot" Padding="96" HorizontalAlignment="Center" VerticalAlignment="Center">
       <Panel HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding Stage.IsCentreVisible}">
         <!-- A folder: after a beat its flap tilts so the first covers peek out; it swings open with the folder. -->
+        <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
         <Panel IsVisible="{Binding Stage.IsFolder}">
           <vh:HandheldFolderArt x:Name="StageFolder" DataContext="{Binding Stage}" Width="448" Height="448" />
         </Panel>
+        </Panel>
 
+        <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
         <Panel IsVisible="{Binding Stage.IsGame}">
           <!--
             The game's physical medium (case, cartridge, card) with its cover printed on, turned by the right
@@ -287,7 +296,9 @@
           </Panel>
           </Border>
         </Panel>
+        </Panel>
 
+        <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
         <Border IsVisible="{Binding Stage.IsApp}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}" ClipToBounds="True"
                 Background="{x:Static vm:HandheldTokens.ClassicSurface}" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageAppShadow}">
           <Image Source="{Binding Stage.AppIcon}" Stretch="Uniform" Margin="32" />
@@ -316,6 +327,7 @@
           </Border.Background>
           <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="176" Height="176" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
         </Border>
+        </Panel>
 
         <!--
           Settings open (M45 H6a): the detail half of its master-detail. Where the focused row sits, what it is, its value,
@@ -408,11 +420,13 @@
         </Border>
 
         <!-- All apps, the menu, an empty slot, the folder header: a quiet card with what it is. -->
+        <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
         <Border IsVisible="{Binding Stage.IsGlyph}" Width="384" Height="384" CornerRadius="{x:Static vm:HandheldTokens.StageAppRadius}"
                 Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1" BoxShadow="{x:Static vm:HandheldTokens.ClassicStageGlyphCardShadow}">
           <PathIcon Data="{Binding Stage.Glyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
                     Width="144" Height="144" Foreground="{x:Static vm:HandheldTokens.StageInkMuted}" />
         </Border>
+        </Panel>
       </Panel>
       </Border>
       </Panel>
@@ -434,6 +448,53 @@
       </Panel>
       </Panel>
 
+
+      <!--
+        Big Type (M47 B4): the name is the picture, with plain type in the corners and a game's medium (or its flat cover) in
+        its own corner. Each corner is its own shot for the native Stage, which draws it in its zone's ink. Text is white here:
+        the Avalonia Stage runs no backdrop shader, and over the pictured fallback the rule gives white.
+      -->
+      <Panel x:Name="BigTypeStage" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+        <controls:Media3DControl x:Name="BtMedium" IsVisible="{Binding Stage.HasBigTypeMedium}"
+                                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.StageMediumFrameMargin}"
+                                 Width="{x:Static vm:HandheldTokens.StageMediumFrameWidth}" Height="{x:Static vm:HandheldTokens.StageMediumFrameHeight}"
+                                 Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}" Accent="{Binding Stage.MediumAccent}"
+                                 Yaw="{Binding Stage.MediumYaw}" Pitch="{Binding Stage.MediumPitch}" />
+        <Border x:Name="BtCoverShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeCover}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="{x:Static vm:HandheldTokens.StageCoverMargin}" Width="{x:Static vm:HandheldTokens.StageMediumWidth}" Height="{x:Static vm:HandheldTokens.StageMediumHeight}">
+          <Panel>
+            <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageCoverRadius}" ClipToBounds="True"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+              <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
+            </Border>
+            <Border IsVisible="{Binding !Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageCoverRadius}" Background="{x:Static vm:HandheldTokens.StageNoCoverFill}"
+                    Padding="{x:Static vm:HandheldTokens.StageNoCoverPadding}">
+              <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.StageNoCoverTitle}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                         LineHeight="{x:Static vm:HandheldTokens.StageNoCoverTitleLineHeight}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" TextWrapping="Wrap"
+                         TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Panel>
+        </Border>
+
+        <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
+                                TextOpacity="{Binding Stage.NameOpacity}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}"
+                                BoxHeight="{x:Static vm:HandheldTokens.StageNameHeight}"
+                                Width="{Binding Stage.NameBoxWidth}" Height="{x:Static vm:HandheldTokens.StageNameControlHeight}"
+                                HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.StageNameMargin}" />
+
+        <Border x:Name="BtLabelShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="{x:Static vm:HandheldTokens.StageLabelShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+          <TextBlock Text="{Binding Stage.Label}" FontSize="{x:Static vm:HandheldTokens.StageLabel}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" />
+        </Border>
+        <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+          <TextBlock Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" FontFeatures="+tnum" />
+        </Border>
+        <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="{x:Static vm:HandheldTokens.StageFactsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+          <TextBlock Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.StageFactsInk}" FontFeatures="+tnum" />
+        </Border>
+      </Panel>
 
       <!-- Launch: the cover that lifted off the Launcher lands here, then zooms into the emulator. -->
       <Border x:Name="LaunchFly" IsVisible="False" Width="{x:Static vm:HandheldTokens.LaunchCardWidth}" Height="{x:Static vm:HandheldTokens.LaunchCardHeight}" CornerRadius="{x:Static vm:HandheldTokens.LaunchCardRadius}" ClipToBounds="True"
@@ -458,7 +519,7 @@
       </Border>
 
       <!-- Status pill: Wi-Fi, battery, time. -->
-      <Border x:Name="StatusShot" Classes="shot" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,24,24,0">
+      <Border x:Name="StatusShot" Classes="shot" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,24,24,0" IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
       <Border Classes="pill">
         <StackPanel Orientation="Horizontal" Spacing="20">
           <!-- Wi-Fi: solid when connected, faded when not. -->
@@ -475,7 +536,7 @@
       </Border>
 
       <!-- Achievements pill (games with RetroAchievements data). -->
-      <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left">
+      <Border x:Name="AchievementShot" Classes="shot" HorizontalAlignment="Left" IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
       <Border Classes="pill" IsVisible="{Binding Stage.ShowAchievementPill}">
         <StackPanel Orientation="Horizontal" Spacing="12">
           <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="{x:Static vm:HandheldTokens.Trophy}" />
@@ -486,6 +547,7 @@
 
       <!-- Button hints. -->
       <!-- No hints (the idle drift, M45 H6d): no pill. -->
+      <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
       <Border x:Name="HintsShot" Classes="shot" IsVisible="{Binding !!Hints.Count}">
       <Border Classes="pill">
         <ItemsControl ItemsSource="{Binding Hints}" VerticalAlignment="Center">
@@ -511,6 +573,45 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </Border>
+      </Border>
+      </Panel>
+
+      <!-- Big Type (M47 B4): battery and clock top right, the hints bottom right, as plain type. -->
+      <Border x:Name="BtStatusShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" HorizontalAlignment="Right" VerticalAlignment="Top"
+              Margin="{x:Static vm:HandheldTokens.StageStatusShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+        <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageStatusGap}">
+          <TextBlock Text="{Binding BatteryText}" IsVisible="{Binding HasBattery}" FontSize="{x:Static vm:HandheldTokens.StageBattery}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                     Margin="{x:Static vm:HandheldTokens.StageBatteryMargin}"
+                     VerticalAlignment="Bottom" Foreground="{x:Static vm:HandheldTokens.StageBatteryInk}" FontFeatures="+tnum" />
+          <TextBlock Text="{Binding TimeText}" FontSize="{x:Static vm:HandheldTokens.StageClock}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" LetterSpacing="{x:Static vm:HandheldTokens.StageClockSpacing}" VerticalAlignment="Bottom" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" FontFeatures="+tnum" />
+        </StackPanel>
+      </Border>
+      <Border x:Name="BtHintsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              Margin="{x:Static vm:HandheldTokens.StageHintsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+        <ItemsControl ItemsSource="{Binding Hints}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGap}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldHint">
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGlyphGap}">
+                <Border Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
+                        BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{x:Static vm:HandheldTokens.StageBigTypeInk}" VerticalAlignment="Center">
+                  <Panel>
+                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasIcon}" />
+                    <PathIcon Data="{Binding Icon, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                              Width="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" Height="{x:Static vm:HandheldTokens.StageHintGlyphIcon}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" IsVisible="{Binding HasIcon}" />
+                  </Panel>
+                </Border>
+                <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.StageHint}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                           VerticalAlignment="Center" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" />
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
       </Border>
     </Grid>
   </Viewbox>

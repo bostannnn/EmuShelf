@@ -778,6 +778,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsActivityTile))]
     [NotifyPropertyChangedFor(nameof(IsSetting))]
     [NotifyPropertyChangedFor(nameof(IsPanel))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -838,6 +842,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsGame))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth))]
     public partial Bitmap? Fanart { get; set; }
 
     /// <summary>The game's logo over the fan art; without one the hero sets the title in type.</summary>
@@ -863,6 +871,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     public partial EmuShelf.Rendering.Shells.MediaShell? Medium { get; set; }
 
     /// <summary>The platform colour the medium's studio and unprinted faces take.</summary>
@@ -896,6 +906,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     public partial bool IsMediumUnavailable { get; set; }
 
     /// <summary>A browsed game is drawn as its physical medium.</summary>
@@ -975,10 +987,50 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool HasAchievements => !string.IsNullOrEmpty(AchievementText);
 
     /// <summary>The corner achievements pill; the fan-art hero carries the count in its meta line instead.</summary>
-    public bool ShowAchievementPill => HasAchievements && !IsHeroArt;
-    // Settings' card carries its own title, so it has no plate under it.
+    /// <remarks>Never in the Big Type look, which has no pills: the count is on the line under the name (M47 B4).</remarks>
+    public bool ShowAchievementPill => HasAchievements && !IsHeroArt && HandheldTokens.IsClassic;
+    // Settings' card carries its own title, so it has no plate under it. The Big Type look has no plate at all (M47 B4).
     public bool HasPlate => Kind is not (HandheldStageKind.None or HandheldStageKind.Setting or HandheldStageKind.Panel) && !IsHeroArt &&
-        !string.IsNullOrEmpty(Title);
+        !string.IsNullOrEmpty(Title) && HandheldTokens.IsClassic;
+
+    // ---- The Big Type look (M47 B4): the name is the picture, with plain type in the four corners ----
+
+    /// <summary>Top left: the console's full name, or what kind of thing is focused ("Your folder", "Dock", "Home").</summary>
+    [ObservableProperty]
+    public partial string Label { get; set; } = string.Empty;
+
+    /// <summary>The name fitted across the Stage: a console folder's short name, a game's full title, anything else's own name.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    public partial string Name { get; set; } = string.Empty;
+
+    /// <summary>The line under the name: a folder's game count; a game's play time and achievements; what an item does.</summary>
+    [ObservableProperty]
+    public partial string Line { get; set; } = string.Empty;
+
+    /// <summary>The second line: a game's emulator, when it was last played and its disc; a folder's last played game.</summary>
+    [ObservableProperty]
+    public partial string Facts { get; set; } = string.Empty;
+
+    /// <summary>A game whose file is missing: its name is dimmed and the line says so.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NameOpacity))]
+    public partial bool IsMissing { get; set; }
+
+    /// <summary>The fitted name shows (Big Type, and not under Settings', a panel's or a fan-art hero's own card).</summary>
+    public bool HasBigTypeName => HandheldTokens.IsBigType && !string.IsNullOrEmpty(Name) &&
+        Kind is not (HandheldStageKind.None or HandheldStageKind.Setting or HandheldStageKind.Panel) && !IsHeroArt;
+
+    /// <summary>A game drawn as its flat cover sits in the medium's corner under Big Type.</summary>
+    public bool HasBigTypeCover => HandheldTokens.IsBigType && HasFlatCover;
+
+    /// <summary>A game drawn as its medium sits in its corner under Big Type.</summary>
+    public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium;
+
+    /// <summary>The name's box: narrower when a game's medium or cover stands beside it.</summary>
+    public double NameBoxWidth => IsGame ? HandheldTokens.StageNameWidthBesideMedium : HandheldTokens.StageNameWidth;
+
+    public double NameOpacity => IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>

@@ -264,6 +264,7 @@ public sealed partial class HandheldShellViewModel
         if (_disposed || ids.SequenceEqual(_recentIds))
             return;
         _recentIds = ids;
+        _ = LoadRecentGamesAsync();
         InvalidatePeek("r:recent");
         BuildPages();
         ShowPage(_home.Page);

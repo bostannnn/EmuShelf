@@ -113,6 +113,13 @@ if (args.Contains("--backdrops"))
     return;
 }
 
+// The Stage compositor's Big Type drawing: ink per zone from the showing backdrop, veils, the narrow letterbox (M47 B4).
+if (args.Contains("--stage-bigtype"))
+{
+    Environment.ExitCode = StageBigTypeCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-bigtype");
+    return;
+}
+
 // The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
 if (args.Contains("--stage-resume"))
 {
