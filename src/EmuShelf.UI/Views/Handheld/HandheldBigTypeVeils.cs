@@ -12,9 +12,9 @@ using EmuShelf.Rendering.Stage.BigType;
 namespace EmuShelf.App.Views.Handheld;
 
 /// <summary>
-/// The Big Type Stage's three veils as the Avalonia Stage draws them (M47 B4): the shapes of <see cref="BigTypeVeil"/> in the
-/// dark ink at their resting strength, which is what the rule gives white ink where no backdrop shader runs. The native Stage
-/// draws the same masks itself, coloured for the backdrop that is showing.
+/// The Big Type Stage's three veils as the Avalonia Stage draws them (M47 B4): the shapes of <see cref="BigTypeVeil"/> as the
+/// rule answers where no backdrop shader runs (<see cref="BackdropLegibility.Fallback"/>: white at their resting strength under
+/// the dark ink, M47 B5). The native Stage draws the same masks itself, coloured for the backdrop that is showing.
 /// </summary>
 public sealed class HandheldBigTypeVeils : Control
 {
@@ -76,7 +76,9 @@ public sealed class HandheldBigTypeVeils : Control
             {
                 _cache[i]?.Bitmap.Dispose();
                 var mask = BigTypeVeil.Mask(zone, flatEnd, (float)size.Width, (float)size.Height);
-                cached = (key, Colour(mask.Pixels, Deep, BigTypeVeil.RestingStrength(zone)), new Rect(mask.X, mask.Y, mask.Width, mask.Height));
+                // The Avalonia Stage draws the pictured fallback, never a shader: the fallback's answer (white veils under dark ink, M47 B5).
+                var answer = BackdropLegibility.Fallback[zone];
+                cached = (key, Colour(mask.Pixels, answer.Dark ? Colors.White : Deep, answer.Veil), new Rect(mask.X, mask.Y, mask.Width, mask.Height));
                 _cache[i] = cached;
             }
             context.DrawImage(cached.Bitmap, new Rect(cached.Bitmap.Size), cached.Rect);

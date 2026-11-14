@@ -22,7 +22,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// (<see cref="TopLevel.RequestAnimationFrame"/>) only while something moves and write transforms; one-shot
 /// effects are compositor animations. The view model never knows about any of it.
 /// </summary>
-internal sealed class HandheldLauncherMotion
+internal sealed partial class HandheldLauncherMotion
 {
     // A page is the Launcher's canvas wide: 1240, or 1920 on the 16:9 screen (M45 H5).
     private double PageWidth => _screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
@@ -132,8 +132,11 @@ internal sealed class HandheldLauncherMotion
                 return;
             _onScreen = value;
             _selectorLayer.IsVisible = value;
+            UpdateStill();
             if (!value)
             {
+                // Big Type's neighbours, bob and hop are this view's own; a picture for the native Launcher has none (M47 B5).
+                RestBigType();
                 _ticking = false;
                 _pageShift.X = 0;
                 _indicatorShift.X = 0;
@@ -183,6 +186,7 @@ internal sealed class HandheldLauncherMotion
             old.Bumped -= OnBumped;
             old.FolderClosing -= OnFolderClosing;
             old.LaunchStarting -= OnLaunchStarting;
+            old.InputArrived -= OnInput;
         }
         _shell = shell;
         WatchFolder(shell?.OpenFolder);
@@ -195,6 +199,10 @@ internal sealed class HandheldLauncherMotion
         shell.Bumped += OnBumped;
         shell.FolderClosing += OnFolderClosing;
         shell.LaunchStarting += OnLaunchStarting;
+        shell.InputArrived += OnInput;
+        // Handheld mode opening counts as the first press: the resting motion lives its minute and the hop waits (M47 B5).
+        OnInput();
+        UpdateStill();
         RequestTick();
     }
 
@@ -204,8 +212,10 @@ internal sealed class HandheldLauncherMotion
         if (isFocused)
         {
             _anchors.Add(anchor);
-            if (_onScreen)
+            if (_onScreen && HandheldTokens.IsClassic)
                 Breathe();
+            if (HandheldTokens.IsBigType)
+                FocusBigType(anchor);
         }
         RequestTick();
     }
@@ -238,6 +248,7 @@ internal sealed class HandheldLauncherMotion
     {
         if (e.PropertyName == nameof(HandheldHomeScreenViewModel.CurrentPage))
         {
+            _paged = true;
             _page.Retarget(-(_screen?.CurrentPage?.Index ?? 0) * PageWidth);
             RequestTick();
         }
@@ -249,6 +260,9 @@ internal sealed class HandheldLauncherMotion
     {
         switch (e.PropertyName)
         {
+            case nameof(HandheldShellViewModel.HoldsStill):
+                UpdateStill();
+                break;
             case nameof(HandheldShellViewModel.OpenFolder):
                 var folder = _shell?.OpenFolder;
                 if (folder is not null && !ReferenceEquals(folder, _folder))
@@ -538,6 +552,7 @@ internal sealed class HandheldLauncherMotion
 
         moving |= StepSelector(dt);
         moving |= StepSelectorFade();
+        moving |= StepPushes();
         if (moving)
             RequestTick();
         else
@@ -553,7 +568,9 @@ internal sealed class HandheldLauncherMotion
             _selectorShown = false;
             return false;
         }
-        var (rect, radius) = target;
+        var (rect, radius, anchor) = target;
+        if (HandheldTokens.IsBigType)
+            return StepRing(anchor, rect, radius);
         if (!_selectorShown)
         {
             // The first appearance lands in place; after that the selector always travels.
@@ -575,32 +592,7 @@ internal sealed class HandheldLauncherMotion
         var moving = _x.Step(dt) | _y.Step(dt) | _width.Step(dt) | _height.Step(dt) | _radius.Step(dt);
 
         // The edge bump: a nudge toward the wall and back, on top of wherever the spring has the selector.
-        var bump = default(Vector);
-        if (_bumpPending)
-        {
-            _bumpPending = false;
-            _bumpStart = _now;
-        }
-        if (_bumpStart is { } start)
-        {
-            var progress = (_now - start).TotalMilliseconds / HandheldMotion.BumpMilliseconds;
-            if (progress >= 1)
-            {
-                _bumpStart = null;
-            }
-            else
-            {
-                var amount = BumpCurve(progress) * HandheldMotion.BumpFraction;
-                bump = _bumpDirection switch
-                {
-                    HandheldDirection.Left => new Vector(-amount * _width.Value, 0),
-                    HandheldDirection.Right => new Vector(amount * _width.Value, 0),
-                    HandheldDirection.Up => new Vector(0, -amount * _height.Value),
-                    _ => new Vector(0, amount * _height.Value),
-                };
-                moving = true;
-            }
-        }
+        var bump = StepBump(_width.Value, _height.Value, ref moving);
 
         _selector.Opacity = 1;
         _glow.Opacity = 1;
@@ -657,8 +649,34 @@ internal sealed class HandheldLauncherMotion
         return true;
     }
 
+    private Vector StepBump(double width, double height, ref bool moving)
+    {
+        if (_bumpPending)
+        {
+            _bumpPending = false;
+            _bumpStart = _now;
+        }
+        if (_bumpStart is not { } start)
+            return default;
+        var progress = (_now - start).TotalMilliseconds / HandheldMotion.BumpMilliseconds;
+        if (progress >= 1)
+        {
+            _bumpStart = null;
+            return default;
+        }
+        var amount = BumpCurve(progress) * HandheldMotion.BumpFraction;
+        moving = true;
+        return _bumpDirection switch
+        {
+            HandheldDirection.Left => new Vector(-amount * width, 0),
+            HandheldDirection.Right => new Vector(amount * width, 0),
+            HandheldDirection.Up => new Vector(0, -amount * height),
+            _ => new Vector(0, amount * height),
+        };
+    }
+
     // Out to the wall fast (the first 35%), then eased back.
-    private static double BumpCurve(double progress) => progress < 0.35
+    internal static double BumpCurve(double progress) => progress < 0.35
         ? Math.Sin(progress / 0.35 * Math.PI / 2)
         : Math.Pow(Math.Cos((progress - 0.35) / 0.65 * Math.PI / 2), 2);
 
@@ -666,7 +684,7 @@ internal sealed class HandheldLauncherMotion
     /// Where the selector should be: around the most recently focused anchor that is on screen, at its ring's
     /// rectangle as it will be once the anchor's lift has finished (so the lift's own animation never drags it).
     /// </summary>
-    private (Rect Rect, double Radius)? ResolveTarget()
+    private (Rect Rect, double Radius, Control Anchor)? ResolveTarget()
     {
         for (var i = _anchors.Count - 1; i >= 0; i--)
         {
@@ -696,7 +714,7 @@ internal sealed class HandheldLauncherMotion
             var topLeft = lifted.TopLeft.Transform(matrix);
             var bottomRight = lifted.BottomRight.Transform(matrix);
             var radius = (ring?.CornerRadius.TopLeft ?? 32) * lift * matrix.M11;
-            return (new Rect(topLeft, bottomRight), radius);
+            return (new Rect(topLeft, bottomRight), radius, anchor);
         }
         return null;
     }

@@ -120,6 +120,13 @@ if (args.Contains("--stage-bigtype"))
     return;
 }
 
+// The Launcher compositor's Big Type motion: the ring's path, the neighbours, a roll, the hop, the rest cadence, holding still (M47 B5).
+if (args.Contains("--launcher-bigtype"))
+{
+    Environment.ExitCode = LauncherBigTypeCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/launcher-bigtype");
+    return;
+}
+
 // The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
 if (args.Contains("--stage-resume"))
 {

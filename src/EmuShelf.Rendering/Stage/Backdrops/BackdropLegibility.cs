@@ -50,8 +50,11 @@ public static class BackdropLegibility
     /// <summary>The veil in a right corner when nothing stronger is needed (tokens.js <c>BaseVeilCorner</c>).</summary>
     public const float BaseVeilCorner = 0.25f;
 
-    /// <summary>Where no backdrop shader runs (the pictured fallback): white ink and the resting veils.</summary>
-    public static BackdropInk Fallback { get; } = new(string.Empty, White(BaseVeilLeft), White(BaseVeilCorner), White(BaseVeilCorner));
+    /// <summary>
+    /// Where no backdrop shader runs (the pictured era motif, a light field in the console's hue): the dark ink, with the white veil
+    /// at its resting strength (M47 B5; B4 had white, which read poorly on the light field).
+    /// </summary>
+    public static BackdropInk Fallback { get; } = new(string.Empty, Dark(BaseVeilLeft), Dark(BaseVeilCorner), Dark(BaseVeilCorner));
 
     /// <summary>The answer for a backdrop by its <see cref="BackdropCatalog"/> id; <see cref="Fallback"/> for null or an unknown id.</summary>
     public static BackdropInk For(string? id) => id is not null && Table.TryGetValue(id, out var ink) ? ink : Fallback;

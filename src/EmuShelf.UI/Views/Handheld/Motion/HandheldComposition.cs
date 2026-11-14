@@ -85,6 +85,30 @@ internal static class HandheldComposition
         visual.StartAnimation("Opacity", animation);
     }
 
+    /// <summary>
+    /// A swing between <paramref name="from"/> and <paramref name="to"/> and back (CSS <c>alternate</c>), for an even number of half
+    /// cycles so it always ends on <paramref name="from"/>, the control's own resting value (M47 B5: the Big Type ring's breath, the
+    /// focused tile's bob). <paramref name="property"/> is "Scale" (about <paramref name="centre"/>) or "Offset" (displacements from the
+    /// visual's own offset when <paramref name="relativeToOffset"/>).
+    /// </summary>
+    public static void Swing(Visual control, string property, Point centre, Vector3D from, Vector3D to, double halfCycleMilliseconds,
+        int halfCycles, Easing easing, bool relativeToOffset = false)
+    {
+        if (VisualOf(control) is not { } visual)
+            return;
+        if (property == "Scale")
+            visual.CenterPoint = new Vector3D(centre.X, centre.Y, 0);
+        var rest = relativeToOffset ? visual.Offset : default;
+        var animation = visual.Compositor.CreateVector3DKeyFrameAnimation();
+        animation.InsertKeyFrame(0f, rest + from);
+        animation.InsertKeyFrame(1f, rest + to, easing);
+        animation.Duration = TimeSpan.FromMilliseconds(halfCycleMilliseconds);
+        animation.IterationBehavior = AnimationIterationBehavior.Count;
+        animation.IterationCount = Math.Max(2, halfCycles + (halfCycles % 2));
+        animation.Direction = PlaybackDirection.Alternate;
+        visual.StartAnimation(property, animation);
+    }
+
     private static void Run(CompositionVisual visual, string property, KeyFrameAnimation animation, double milliseconds, double delayMilliseconds)
     {
         animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));

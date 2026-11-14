@@ -84,14 +84,6 @@ public static partial class HandheldTokens
 
     public static Thickness StageFactsMargin { get; private set; }
 
-    /// <summary>
-    /// The battery's and the second line's ink: white at their opacity (tokens.js 0.85 and 0.82), carried in the brush rather
-    /// than on the text, because a pictured text with an opacity of its own is cut short on Android.
-    /// </summary>
-    public static IBrush StageBatteryInk => new ImmutableSolidColorBrush(Colors.White, StageBatteryOpacity);
-
-    public static IBrush StageFactsInk => new ImmutableSolidColorBrush(Colors.White, StageFactsOpacity);
-
     /// <summary>The hints, bottom right: plain type (<c>type.Hint</c>) after an outlined glyph (<c>type.HintGlyph</c>).</summary>
     public static double StageHint { get; private set; }
 
@@ -221,7 +213,10 @@ public static partial class HandheldTokens
 
     // ===== The ink =====
 
-    /// <summary>The Stage's ink where no shader runs (the Avalonia Stage, the pictured fallback): white, as the table's fallback.</summary>
+    /// <summary>
+    /// White: the type on a game's stand-in card with no cover. (The Avalonia Stage's text takes the fallback's dark ink from the
+    /// shell, <c>HandheldShellViewModel.StageInk</c>, M47 B5.)
+    /// </summary>
     public static IBrush StageBigTypeInk { get; private set; }
 
     /// <summary>The dark ink for a colour: mixed <see cref="BigTypeVeil.InkMix"/> toward #0B0A18 (tokens.js colour.InkToward / InkMix).</summary>

@@ -2909,6 +2909,44 @@ feel. Every exit that says "on the Thor" therefore stays open for the owner unti
       fallback; property cleared, Classic again. The emulator's library is PS2 only, so the other consoles' backdrops were not seen.
 - [ ] **B5 — Motion that needs no new drawing.** The ring's stretch between tiles, dock and rows; the tile lift and
       neighbours making room; rolling digits; the idle hop. Give the Launcher compositor the `HoldsStill` hook now.
+      **Built 2026-11-14; awaiting the owner's hands on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B5".) Under Big Type
+      only, from one set of maths shared by the native screens and the Avalonia Launcher (`BigTypeMotion`, `BigTypeLauncherMotion`,
+      `BigTypeRollDraw` in `EmuShelf.Rendering/Stage/BigType`): **the ring** is a timed path (not the springs): it covers the old and
+      the new target by 38% of 300 ms, lands by 74% (squashed across its travel when the two are the same size), changes size and
+      radius on the way (tile 50, dock 38, header rows 32; sheets, Settings and panels get the ring with B7), pops in on another home
+      page, and breathes 1 → 1.03 at rest; **the lift** lands on the landing curve in 380 ms and the up-to-eight tiles around the focused
+      one stand 8 px off it (the feed gives each tile its place, `LauncherSprite.Cell`); the focused tile bobs 6 px; **rolling text**
+      (the clock and battery, the Stage's line with its counts, a folder's count, the page "1 / 2") rolls only the characters that
+      changed, cut from the pictures the app already sends with where each character sits (`StageText`), each clipped to its own cell;
+      **the idle hop** runs over the grid in view 4.8 s after a press, then every 6.5 s. The breath, the bob and the hop live a minute
+      after the last press and then rest, as the Stage's backdrop does; the native Launcher steps at 30 Hz over that minute and posts
+      nothing after it. **`LauncherMotionCommand.HoldStill`** (battery saver, reduced motion): the ring and lift land at once, nothing
+      breathes, bobs, hops or rolls. **Fallback ink fixed:** where no backdrop shader runs (the pictured era motif) the text is the dark
+      ink over a white veil at its resting strength (the Avalonia Stage too). Today's look is the default and its motion is unchanged.
+      **Verified on macOS:** Classic rendered before and after, 158 of 158 frames identical by the comparison; the Big Type set renders
+      (158 frames; kept as B6's baseline in the build sessions' notes folder, `m47-b5-renders/bigtype`) and differs from the render made
+      before B5 in 113 frames, every one explained: 76 of 77 top frames by the fallback's ink (the one that does not is the empty page,
+      which has no text), and 36 bottom frames by the neighbours standing 8 px off the focused tile (the swapped screen's bottom is the
+      Stage, so the ink). Nothing needed pinning in the harness: the breath, the bob and the hop run on the Avalonia compositor and never
+      reach a frame, and the push and the rolls settle inside the harness's wait for rest. New tests hold the maths (`HandheldBigTypeMotionTests`:
+      the ring at 0, 38%, 74% and 100% for equal and unequal targets and mid-flight, which neighbours move and how far, which characters
+      roll and when, the hop's schedule and stagger, the rest cadence, and that nothing moves when held still) and tokens.js; a new desktop
+      GL check drives the real `LauncherCompositor` at chosen moments (`dotnet run --project tools/EmuShelf.Rendering.Preview --
+      --launcher-bigtype`) and reads the ring, the neighbours, a roll, the hop, the 30 Hz rest and holding still back; `dotnet build` and
+      `dotnet test` pass. **Emulator check (not a Thor check):** on `emushelf-b3` the Release build ran Classic cleanly
+      into Handheld mode, the native compositors drawing (four GL threads), and its moves were today's (three bands on the spring, the
+      1.13 lift). With `debug.emushelf.look bigtype`, frames read back from recordings of both displays showed: the ring covering
+      Settings and Recent at once, then landing on Recent (home), growing tall over an empty slot and All apps then shrinking onto the
+      dock button at its smaller radius (the dock), stretching between games right, down and right (a folder); Settings and PS2 standing
+      off the focused tile; "1 / 2" caught mid-roll with only its first cell turning, and the ring popping in on page 2; the Stage's line
+      rolling "9 games" → "Loading…" → "Not played yet"; the idle hop running left to right over home's tiles 4.8 s after the last press;
+      the sheet opening over the Avalonia Launcher as before. The GL threads gained CPU ticks through the minute after a press and none
+      in 20 s from about 66 s after it. The Stage drew the fallback in the dark ink. Holding still was not tried there (it needs a system
+      setting changed); the desktop GL check covers it. Property cleared, Classic again. **Seen on the emulator and present on B4's build
+      too** (the same steps on a build of `c7573b3`), so not B5's: after moving from page 2 back to page 1 the native Launcher shows no ring
+      and no lift on the focused slot, in either look; a sheet opening shows two or three white frames on the second display; and the
+      Launcher's corner type ("1 / 2", Swap) draws with black boxes behind each glyph, the pictured-translucent-text fault B4 fixed on the
+      Stage only.
 - [ ] **B6 — Letters, and the flood.** Start from the spike's code on `claude/elegant-lederberg-05c307`
       (`BigTypeLayout`, `BigTypeScene`, `BigTypeStageLayer`, the `uClip` circle in `stage.frag` and
       `backdrop-output.frag`, `NativeFrameProbe`, `GpuFrameTimer`) and turn it from a flagged spike into the real

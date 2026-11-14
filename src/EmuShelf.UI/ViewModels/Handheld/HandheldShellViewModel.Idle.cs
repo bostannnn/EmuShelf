@@ -204,8 +204,15 @@ public sealed partial class HandheldShellViewModel
         var woke = IsDrifting;
         StopDrift(refreshStage: true);
         ArmIdle();
+        InputArrived?.Invoke();
         return woke;
     }
+
+    /// <summary>
+    /// A press or a touch arrived (M47 B5): the Big Type Launcher's resting motion (the ring's breath, the bob) wakes for another
+    /// minute and its idle hop waits again. The drift is not input: it changes the Stage, never the Launcher.
+    /// </summary>
+    public event Action? InputArrived;
 
     /// <summary>
     /// A finger touched either screen (the views call this as the touch begins). True when it only woke the drift: the

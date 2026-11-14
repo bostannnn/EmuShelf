@@ -95,10 +95,15 @@ public class HandheldBigTypeStageTests
         Assert.Equal(deep, trails.Veil);
         Assert.Equal(0.25f, trails.VeilStrength, 4);
 
-        // No shader (the pictured fallback): white and the resting veils.
+        // No shader (the pictured fallback, a light field): the dark ink and a white veil at the resting strength (M47 B5).
         var fallback = StageCompositor.ZoneInk(StageInkZone.Left, [(null, 1f)], deep);
-        Assert.Equal(Vector3.One, fallback.Ink);
+        Assert.Equal(deep, fallback.Ink);
+        Assert.Equal(Vector3.One, fallback.Veil);
         Assert.Equal(0.28f, fallback.VeilStrength, 4);
+        var corner = StageCompositor.ZoneInk(StageInkZone.BottomRight, [(null, 1f)], deep);
+        Assert.Equal(deep, corner.Ink);
+        Assert.Equal(Vector3.One, corner.Veil);
+        Assert.Equal(0.25f, corner.VeilStrength, 4);
 
         // Halfway through a rotation from one to the other, the ink is between the two.
         var half = StageCompositor.ZoneInk(StageInkZone.Left, [("ps2-towers", 0.5f), ("ps2-trails-v3", 0.5f)], deep);

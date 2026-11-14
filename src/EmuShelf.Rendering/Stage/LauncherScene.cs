@@ -1,4 +1,5 @@
 using System.Numerics;
+using EmuShelf.Rendering.Stage.BigType;
 
 namespace EmuShelf.Rendering.Stage;
 
@@ -41,6 +42,10 @@ public enum LauncherTrack
 /// <see cref="PivotY"/>) while focused, to <see cref="Lift"/> (0: today's 1.13, <see cref="LauncherMotion.LiftScale"/>),
 /// with <see cref="LiftShadow"/> fading in under it.
 /// </summary>
+/// <remarks>
+/// Big Type (M47 B5): <see cref="Cell"/> is a grid tile's place, so its neighbours make room around it and it hops; <see cref="Text"/>
+/// is where a pictured text's characters sit, so a new picture of it rolls the characters that changed.
+/// </remarks>
 public sealed record LauncherSprite(
     string Id,
     StageImage Image,
@@ -52,7 +57,9 @@ public sealed record LauncherSprite(
     StageImage? LiftShadow = null,
     FolderArt? Folder = null,
     int Z = 0,
-    float Lift = 0f)
+    float Lift = 0f,
+    LauncherCell? Cell = null,
+    StageText? Text = null)
 {
     /// <summary>The scale this sprite lifts to while focused.</summary>
     public float LiftTo => Lift > 0f ? Lift : LauncherMotion.LiftScale;
@@ -108,11 +115,26 @@ public sealed record LauncherGroundCommand(float R, float G, float B, float Fade
 }
 
 /// <summary>Which sprite holds the focus (it lifts) and where the selector goes; null hides the selector.</summary>
-public sealed record LauncherFocusCommand(string? SpriteId, LauncherSelectorTarget? Selector, bool Instant = false) : StageCommand
+/// <remarks><paramref name="Pop"/> (Big Type, M47 B5): the focus moved onto another home page, so the ring lands there and pops in
+/// rather than stretching across the screen.</remarks>
+public sealed record LauncherFocusCommand(string? SpriteId, LauncherSelectorTarget? Selector, bool Instant = false, bool Pop = false) : StageCommand
 {
     public override string? RetainKey => "focus";
-    public override StageCommand ForReplay() => this with { Instant = true };
+    public override StageCommand ForReplay() => this with { Instant = true, Pop = false };
 }
+
+/// <summary>
+/// How the Launcher moves (M47 B5): <paramref name="BigType"/> turns on the Big Type look's motion (the ring's stretch and breath,
+/// the landing lift, neighbours making room, the bob, the idle hop, rolling text); <paramref name="HoldStill"/> is the device asking
+/// for stillness (battery saver, reduced motion: M45 H7c), under which none of that animates. Today's look keeps its motion as it is.
+/// </summary>
+public sealed record LauncherMotionCommand(bool BigType, bool HoldStill) : StageCommand
+{
+    public override string? RetainKey => "motion";
+}
+
+/// <summary>A press or a touch (M47 B5): the resting motion wakes for another minute and the idle hop waits again.</summary>
+public sealed record LauncherInputCommand : StageCommand;
 
 /// <summary>The tracks' targets: the home page and the folder's first visible column; snaps land without gliding.</summary>
 public sealed record LauncherTracksCommand(int Page, int FirstColumn, bool SnapPage, bool SnapColumn) : StageCommand

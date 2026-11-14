@@ -379,7 +379,9 @@ internal sealed class HandheldNativeStageFeed
                 if (_chromeSent.TryGetValue(key, out var sent) && sent == now)
                     continue;
                 _chromeSent[key] = now;
-                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone));
+                // The clock and the line's counts roll (M47 B5): their pictures carry where each character sits.
+                var text = key is "bt-status" or "bt-line" ? HandheldTextCells.Of(piece, _canvas) : null;
+                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone, Text: text));
             }
         }
         if (resent || _catchUpPending)
