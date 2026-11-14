@@ -69,6 +69,12 @@ public interface INativeScene : IDisposable
     float? NextFrameMilliseconds { get; }
 
     /// <summary>
+    /// The Big Type motions in the last frame drawn (M47 B6, R1's probe), joined by "+" ("letters", "wipe", "flood"); null when
+    /// none ran. The frame probe files the frame's times under it.
+    /// </summary>
+    string? ProbeTag => null;
+
+    /// <summary>
     /// What a rebuilt scene needs to carry on where this one was once its GL context is lost (M45 H7c): applied
     /// after the host has replayed its retained commands into the new scene. Touches no GL. Null when there is nothing
     /// to carry.
@@ -77,13 +83,27 @@ public interface INativeScene : IDisposable
 }
 
 /// <summary>
+/// A scene that can say how long each part of its last frame took (M47 B6, R1's probe made finer): only while the host's probe asks,
+/// so a frame costs nothing extra otherwise.
+/// </summary>
+public interface IProbedScene
+{
+    bool ProbeSections { get; set; }
+
+    /// <summary>The last frame's parts and their milliseconds ("medium=0.2 present=0.4 …"); null while not probing.</summary>
+    string? LastSections { get; }
+}
+
+/// <summary>
 /// A new (or no) backdrop; it crossfades over the old one. <paramref name="Animated"/> is the system's animated
 /// backdrops (M45 H7, ids into <see cref="Backdrops.BackdropCatalog"/>): when one can be drawn it replaces the
 /// pictured layers, which stay as the fallback. The same list again keeps the running backdrop going.
 /// </summary>
 /// <remarks><paramref name="Drift"/>: sent by the idle drift (M45 H6d), which is not navigation, so it never wakes a
-/// resting backdrop.</remarks>
-public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false) : StageCommand
+/// resting backdrop. <paramref name="WipeOriginX"/> (M47 B6, Big Type): where on the Stage canvas a system change's wipe grows from
+/// (<see cref="BigType.BigTypeMotion.WipeOrigin"/>); null grows it from the middle.</remarks>
+public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false,
+    float? WipeOriginX = null) : StageCommand
 {
     public override string? RetainKey => "backdrop";
 }
@@ -170,7 +190,12 @@ public sealed record StageInkCommand(Vector3 Ground, Vector3 Deep) : StageComman
 /// The animated backdrop eases to a stop as it does when resting (<see cref="StageRest"/>) and no navigation wakes it
 /// until this is lifted; a system change still crossfades to the next backdrop's still frame.
 /// </summary>
-public sealed record StageMotionCommand(bool HoldStill) : StageCommand
+/// <remarks>
+/// <paramref name="BigType"/> (M47 B6): the Big Type look's motion. A system change wipes the new backdrop in through a circle
+/// instead of the crossfade (held still, it cuts once the new one is ready), the backdrop is prepared over the frames before it shows,
+/// the name's letters move and hop. Off, the Stage moves exactly as before.
+/// </remarks>
+public sealed record StageMotionCommand(bool HoldStill, bool BigType = false) : StageCommand
 {
     public override string? RetainKey => "motion";
 }

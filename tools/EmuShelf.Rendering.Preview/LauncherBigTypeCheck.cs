@@ -92,6 +92,23 @@ internal static class LauncherBigTypeCheck
             // Landed at 1300; its breath is widest half a period in, every 2.2 s.
             var breath = Frame(1300f + (13 * 2200f) + 1100f, "breath");
             Check("breathing: the ring is 3% wider than at rest", Close(Pixel(breath, 296, 200), White));
+            // The flood (M47 B6): a new ground grows as a circle from the focused tile (1, 0), whose middle is (412, 188), over the old.
+            var violet = new Vector3(0x55, 0x48, 0xC8) / 255f;
+            const float floodAt = 40_000f;
+            launcher.Apply(new LauncherGroundCommand(violet.X, violet.Y, violet.Z, Flood: true), floodAt);
+            var since = Enumerable.Range(1, 639).First(t => BigTypeMotion.FloodRadiusAt(t) >= 150f);
+            var radius = BigTypeMotion.FloodRadiusAt(since);
+            var flood = Frame(floodAt + since, "flood");
+            Check($"flood ({since} ms, radius {radius:0}): the new colour just inside the circle above the tile", Close(Pixel(flood, 412, (int)(188 - radius + 12)), violet));
+            Check("flood: the old ground just outside it", Close(Pixel(flood, 412, (int)(188 - radius - 12)), Ground));
+            Check("flood: the far corner is still the old ground", Close(Pixel(flood, 1200, 1050), Ground));
+            Check("flood: tagged for the frame probe", launcher.ProbeTag == "flood");
+            var flooded = Frame(floodAt + BigTypeMotion.FloodMilliseconds, "flood-done");
+            Check("flood: covered after 640 ms, the new ground everywhere", Close(Pixel(flooded, 1200, 1050), violet) && Close(Pixel(flooded, 412, 20), violet));
+            Check("flood: done, nothing tagged", launcher.ProbeTag is null);
+            launcher.Apply(new LauncherGroundCommand(Ground.X, Ground.Y, Ground.Z, Flood: true), floodAt + 1000f);
+            Frame(floodAt + 1000f + BigTypeMotion.FloodMilliseconds, "flood-back");
+
             launcher.Draw(1000f + 63_000f, Width, Height);
             Check("after the minute: no frame is asked for", launcher.NextFrameMilliseconds is null);
             var still = Frame(1000f + 64_000f, "rested");
@@ -124,6 +141,10 @@ internal static class LauncherBigTypeCheck
             frame = Read(gl, framebuffer);
             Check("still: no hop", Close(Pixel(frame, 180, (int)Top - 15), Ground));
             Check("still: no frame is asked for at rest", launcher.NextFrameMilliseconds is null);
+            launcher.Apply(new LauncherGroundCommand(0.3f, 0.2f, 0.7f, Flood: true), 9000f);
+            Check("still: a new ground is there at once (no flood)", !launcher.Draw(9000f, Width, Height));
+            frame = Read(gl, framebuffer);
+            Check("still: …everywhere", Close(Pixel(frame, 1200, 1050), new Vector3(0.3f, 0.2f, 0.7f)));
             launcher.Dispose();
             gl.DeleteFramebuffer(framebuffer);
             gl.DeleteRenderbuffer(colour);
@@ -138,7 +159,7 @@ internal static class LauncherBigTypeCheck
     {
         launcher.Apply(new LauncherMotionCommand(BigType: true, HoldStill: holdStill), 0f);
         launcher.Apply(new LauncherLayoutCommand(Width, Height, new StageRect(0, 0, Width, Height), new StageRect(0, 0, Width, Height), Width, 264, 30, -17), 0f);
-        launcher.Apply(new LauncherGroundCommand(Ground.X, Ground.Y, Ground.Z, 0f), 0f);
+        launcher.Apply(new LauncherGroundCommand(Ground.X, Ground.Y, Ground.Z), 0f);
         foreach (var (column, row) in new[] { (0, 0), (1, 0), (2, 0), (1, 1) })
         {
             var x = Left + (column * PitchX);

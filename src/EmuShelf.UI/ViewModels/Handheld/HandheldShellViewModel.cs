@@ -509,8 +509,21 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _ => true,
     };
 
+    /// <summary>
+    /// The direction of the last press when it was a move (null after any other press). The Big Type Stage's letters arrive from it
+    /// (M47 B6, the mock's <c>ENTER</c>).
+    /// </summary>
+    public HandheldDirection? LastMoveDirection { get; private set; }
+
+    /// <summary>
+    /// Whether the last press opened a folder (true) or closed one (false); null when it did neither. The Big Type Stage's letters
+    /// rise from the hinge into a folder and drop in out of one (M47 B6).
+    /// </summary>
+    public bool? LastFolderOpened { get; private set; }
+
     private void Move(HandheldDirection direction)
     {
+        LastMoveDirection = direction;
         // The top screen changes once per move: a held direction waits until it settles (Motion spec).
         _stageHold = null;
         _stageDefer = _heldDirection.Press() ? HandheldMotion.HeldDirectionSettle : null;
@@ -762,6 +775,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             RibbonIndex = !source.IsSearch && index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
         };
         OpenFolder = folder;
+        LastFolderOpened = true;
         Zone = HandheldZone.Grid;
         // The top screen stays on the open folder while the page zooms in, then moves on to the first one.
         _stageHold = _clock.GetTimestamp();
@@ -850,6 +864,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         // A Title page belongs to its folder's entries, which are released below.
         CloseTitle();
         _stageHold = null;
+        LastFolderOpened = false;
         FolderClosing?.Invoke(folder);
         _folderLoad?.Cancel();
         _folderLoad?.Dispose();

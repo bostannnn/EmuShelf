@@ -105,7 +105,13 @@ internal sealed class HandheldStageMotion
 
     // The old art is not pictured: rendering a full-resolution snapshot on the UI thread for every settled
     // change cost more than it showed (the 3D medium could never be pictured anyway). It gives way at once.
-    private void OnStageChanging() => _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
+    private void OnStageChanging()
+    {
+        _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
+        // Big Type's name (M47 B6): its letters arrive from the move that brought it.
+        if (_shell is { } shell && _view.FindControl<HandheldBigTypeName>("BtName") is { } name)
+            name.Entrance = HandheldStageEntrance.Of(shell);
+    }
 
     private void OnStageChanged()
     {

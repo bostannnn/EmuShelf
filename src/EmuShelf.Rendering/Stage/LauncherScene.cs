@@ -105,13 +105,14 @@ public sealed record LauncherRingBands(float Inset1, float Inset2, float Inset3,
 }
 
 /// <summary>
-/// The Launcher's ground (M47 B3, the Big Type look): the screen is cleared to this flat colour, crossfading from the last one
-/// over <paramref name="FadeMilliseconds"/> (0 lands it). Never sent in today's look, whose ground is a pictured gradient.
+/// The Launcher's ground (M47 B3, the Big Type look): the screen is cleared to this flat colour. With <paramref name="Flood"/> (M47 B6,
+/// move 3) the new colour grows as a circle from the focused tile over the old (<see cref="BigType.BigTypeMotion.FloodRadiusAt"/>);
+/// without it, or held still, it is there at once. Never sent in today's look, whose ground is a pictured gradient.
 /// </summary>
-public sealed record LauncherGroundCommand(float R, float G, float B, float FadeMilliseconds) : StageCommand
+public sealed record LauncherGroundCommand(float R, float G, float B, bool Flood = false) : StageCommand
 {
     public override string? RetainKey => "ground";
-    public override StageCommand ForReplay() => this with { FadeMilliseconds = 0f };
+    public override StageCommand ForReplay() => this with { Flood = false };
 }
 
 /// <summary>Which sprite holds the focus (it lifts) and where the selector goes; null hides the selector.</summary>

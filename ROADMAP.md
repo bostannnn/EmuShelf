@@ -2957,6 +2957,65 @@ checked on the emulator only, so their exits stay open for the owner's look.
       `backdrop-output.frag`, `NativeFrameProbe`, `GpuFrameTimer`) and turn it from a flagged spike into the real
       thing. Also move the backdrop's start-up cost off the first frame of a console change (R1). **Exit:** frame times on the Thor at or under
       R1's figures for a three-line name during a wipe.
+      **Built 2026-11-14. Exit measured on the Thor and NOT met (figures below): not ticked; the owner's call.** (Choices and the full
+      figures in `DECISIONS.md` 2026-11-14 "M47 B6".) Under Big Type
+      only: **the name arrives letter by letter** on the native Stage from one atlas per name, laid out by the Avalonia name's own fit
+      (`HandheldBigTypeName.Letters`, held to the control's drawing by a headless test) and drawn one quad per letter in the left zone's ink
+      (`StageNameCommand`, `BigTypeStageLayer`); each letter lands from the move (right, left, up, down, into a folder from the hinge, out of
+      one, or rising) on tokens.js `LetterIn`, the old name leaving the other way on `LetterOut`; the Avalonia name moves the same way where
+      the native Stage does not run, and swaps while it is only pictured or held still. **The flood**: the Launcher's new ground grows as a
+      circle from the focused tile (`Flood`, 640 ms to 1640 px), replacing `LauncherGroundCommand`'s fade. **The wipe**: the Stage's new
+      backdrop grows through a circle from 40 px below its bottom edge at the focused tile's x (`Wipe`, 110 ms, 760 ms, 2300 px), over the
+      ones beneath until it covers them; text and veils are drawn per backdrop inside its own circle and outside those above it, each in that
+      backdrop's own ink, so no pixel of text is ever in an ink chosen for another backdrop. **The letters hop** on the tiles' schedule from the
+      shell's `InputArrived` (`StageInputCommand`). **The start-up cost**: the backdrop is sent at once and prepared over the frames after the
+      press (started on the next, first step drawn on the one after; its circle starts at 110 ms or when ready), and its pictured layers go up
+      only if drawn. **Held still**: the name is there at once and the old one goes in 60 ms, the flood lands, the wipe cuts once ready.
+      tokens.js gained the mock's inline numbers for the entrances, `LetterOut.stillMs`, `Wipe.below` and the letters' hop. R1's probe is kept
+      behind `adb shell setprop debug.emushelf.probe 1` (logcat `EmuShelfBigType`, per motion). **Fixed on the way:** after moving from home's
+      page 2 back onto page 1 the ring and lift went to page 2's slot, off screen (both looks; Classic changes by the restored highlight only),
+      and the Launcher's corner type is pictured with grey-scale antialiasing (no black boxes). **Verified on macOS:** Classic rendered before
+      and after, 158 of 158 frames byte-identical; Big Type (the final render): 13 of 158 differ from both renders made before B6, none in a
+      way the step meant to change at rest (the name at rest is drawn as before): 12 only on the focused ring's anti-aliased edge (39 to
+      1,202 pixels inside a box the size of the ring, channel differences 6 to 26; the same frames differ between the two renders of B5's
+      commit, run to run), and the launching frame, where the Avalonia name's letters now move during the
+      harness's wait, so the frame is taken after the launch card's flight has ended. New tests hold the letters', flood's, wipe's and hop's timing at fixed
+      moments to tokens.js (`HandheldBigTypeLettersTests`); a new desktop GL check (`dotnet run --project tools/EmuShelf.Rendering.Preview --
+      --stage-letters`) reads each letter where the maths puts it mid-flight, the hop, holding still, the backdrop not started on the frame
+      its command lands on, and the text white inside and dark outside the wipe's circle; `--launcher-bigtype` now reads the flood mid-flight
+      and held still. `dotnet build` and `dotnet test` pass. **Emulator check** (`emushelf-b3`, before the Thor came back): recordings of
+      both displays caught the flood, the letters, the wipe, the letters rising into a folder and the hop mid-flight, and the page fault gone.
+      **Thor check** (Release AOT, `adb install -r`, uid and data kept, 60 Hz untouched, screens unswapped as found; R1's probe on with
+      `debug.emushelf.probe`): the page fault is gone in Classic (back from page 2 the ring and lift are on GBA) and the corner type has no
+      black boxes. **The exit, measured: not met.** Three-line names arriving during a wipe (Recent's games across consoles: "Shin Megami
+      Tensei : Persona 2, Innocent Sin", "Tony Hawk's Underground 2 Remix", "Metal Gear Solid : The Twin Snakes", "Bleach : Heat the Soul",
+      "Batman : Return of the Joker"; 304 steady frames): CPU 1.81 ms typical, 5.10 p95, **18.6 worst** (frames over 5.2 in four of the six
+      runs, most of them 0.7 to 0.85 s after the press, once the letters have landed; their cause is not isolated); GPU 1.48 typical, 2.25
+      p95, **2.54 worst**. R1: every steady frame under 5.2 ms CPU and 2.4 ms GPU (0.9 and 0.7 typical). These games all show the 3D case,
+      which R1's stress run did not have. Monogram names during a wipe (home's first row): GPU 1.47 typical, **3.25 worst**. **The first frame
+      of a console change** (20 presses along home's first row, Big Type, the same probe): before B6 (B5 plus the probe only) the Stage paid
+      17.6 to 41.2 ms on 10 of 20 presses, about 380 ms after the press (after the settle; repeats included), 10 frames over 16.7 ms; with
+      B6 the press frame is 0.3 to 0.6 ms on every press, and the start-up cost falls on the next frame only the first time each backdrop
+      shows in a run (its shaders compile: 13.1 to 36.6 ms, 9 backdrops), repeats 0.3 to 0.5 ms; 4 frames over 16.7 ms, 11 over 8.3 (10
+      before). Left on the Thor: this build with `debug.emushelf.look` set to `bigtype` (a reboot or `adb shell setprop debug.emushelf.look
+      classic` returns it to Classic). **The slow frames (the owner: "Find the slow frames"):** found with a finer
+      probe (each slow frame's commands, draw parts and quad count): the frames 0.6 to 1.0 s after the press were Big Type's own quads, about
+      50 µs of CPU each, many at once (the line rolling when its facts arrive, 54 to 59 pieces; the name's letters, drawn twice during a
+      wipe), not the 3D case, whose first render (8 to 19 ms) comes earlier and once per game. **Fix:** under Big Type a quad sets only the
+      uniforms that changed (about 24 µs a quad; nothing drawn changes). **Measured again: CPU still over, not ticked.** Three-line names
+      during a wipe: CPU 1.58 typical, 3.91 p95 (was 5.10), 19.3 worst (the 3D case's first render; Big Type's own worst is 6.9, a long
+      name and a rolling line in a wipe); GPU 1.51 typical, 2.18 p95, 7.73 worst (one frame; the rest at most 2.80). Console row: over 16.7 ms
+      2 (was 4). **Then two savings that change nothing on screen:** a zone's text drawn once
+      when every backdrop showing answers it the same way, and the letters and roll pieces in instanced batches (0 pixels different on desktop
+      GL; GPU-neutral by an in-run A/B on the Thor). **Final figures** (the same Recent run): three-line names during a wipe, CPU 1.31 typical,
+      2.83 p95; **Big Type's own drawing, worst 4.5 ms; the 3D case's first render, worst 18.0 ms**; GPU 1.42 typical, 2.14 p95, 2.87 worst
+      (over 2.4 only in step with the two backdrops' renders during a wipe). Today's look on the same run: CPU 1.02 typical, 2.25 p95, 50.0
+      worst, 9 frames over 8.3 and 4 over 16.7 (Big Type 6 and 3); its 3D first render 19.0 ms; GPU 0.74 typical, 7.40 worst. **Still not
+      met, not ticked:** the 3D first render and the GPU through a wipe. **Open for the owner:** whether to accept that; the swapped screens'
+      wipe (the mock has none); the feel of every motion.
+      **Merged into the design branch on 2026-11-14 with the exit left open** (the orchestrating session, while the owner was away):
+      what is over the limit is the 3D first render, which today's look pays the same, and the GPU through a wipe, 2.87 ms inside a
+      16.7 ms frame; neither is touched by B7, so the build goes on and the decision stays the owner's.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the

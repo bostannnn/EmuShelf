@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Android.Opengl;
@@ -313,6 +314,13 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         {
             var api = GL.GetApi(new LamdaNativeContext(GetProcAddress));
             _compositor = _create(api);
+            _gpuTimer = FrameProbeProperty.IsOn ? GpuFrameTimer.Create(api, GetProcAddress) : null;
+            if (_compositor is StageCompositor probedStage && FrameProbeProperty.IsOn)
+            {
+                // The probe's A/B runs (M47 B6): repeatable backdrop picks, and batching off for "nobatch".
+                probedStage.SeedBackdrops(47);
+                probedStage.Batching = !FrameProbeProperty.NoBatch;
+            }
             if (_compositor is StageCompositor stage)
                 stage.BackdropStarted += id => global::Android.Util.Log.Info("EmuShelfStage", $"{_name}: backdrop '{id}' in");
         }
@@ -349,12 +357,43 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         if (_compositor is not { } compositor)
             return;
         var now = Now;
+        var probing = FrameProbeProperty.IsOn;
+        var started = probing ? Stopwatch.GetTimestamp() : 0L;
+        var threadStarted = probing ? ThreadCpuMilliseconds() : 0d;
         try
         {
+            _gpuTimer?.Begin();
+            if (compositor is IProbedScene probed)
+                probed.ProbeSections = probing;
+            // The A/B run: batching on for two frames, off for two (the backdrops step every other frame, so both see the same work).
+            var suffix = string.Empty;
+            if (probing && FrameProbeProperty.Alternate && compositor is StageCompositor alternating)
+            {
+                _abFrames++;
+                alternating.Batching = ((_abFrames >> 1) & 1) == 0;
+                suffix = alternating.Batching ? "+b" : "+u";
+            }
+            var gcBefore = probing ? (GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2)) : default;
+            _applied.Clear();
             while (_queue.TryDequeue(out var command))
+            {
+                var applying = probing ? Stopwatch.GetTimestamp() : 0L;
                 compositor.Apply(command, now);
+                if (probing)
+                    _applied.Add((command.GetType().Name, Stopwatch.GetElapsedTime(applying).TotalMilliseconds));
+            }
+            var drawing = probing ? Stopwatch.GetTimestamp() : 0L;
             var animating = compositor.Draw(now, _width, _height);
+            var drawMilliseconds = probing ? Stopwatch.GetElapsedTime(drawing).TotalMilliseconds : 0d;
+            var drawnCpu = probing ? ThreadCpuMilliseconds() - threadStarted : 0d;
+            _gpuTimer?.End(compositor.ProbeTag is { } probeTag ? probeTag + suffix : animating ? "other" : null);
             CompleteFrame();
+            if (probing)
+            {
+                var cpu = ThreadCpuMilliseconds() - threadStarted;
+                Slow(compositor, cpu, drawnCpu, drawMilliseconds, gcBefore);
+                Probe(compositor, now, cpu, Stopwatch.GetElapsedTime(started).TotalMilliseconds, animating);
+            }
             // Parked out of sight: what was asked for is drawn, nothing more (no animation, no drift).
             if (_parked)
             {
@@ -362,7 +401,9 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
                 return;
             }
             var next = animating ? null : compositor.NextFrameMilliseconds;
-            VoteFrameRate(next is { } step ? 1000f / step : 0f);
+            // A wait longer than a second (the Big Type name's next idle hop over a still backdrop, M47 B6) is a wake-up, not a
+            // cadence: no rate is voted for it. Every stepped backdrop's cadence is well under a second.
+            VoteFrameRate(next is { } step && step <= MaxVotedStepMilliseconds ? 1000f / step : 0f);
             _frameComing = animating || (next is not null && _active);
             if (animating)
             {
@@ -378,6 +419,60 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
     }
 
     private float _vote = -1f;
+
+    private const float MaxVotedStepMilliseconds = 1000f;
+
+    private long _abFrames;
+
+    // The probe's finer look (M47 B6): a frame over this much render-thread CPU logs what it applied and each part of its draw.
+    private const double SlowFrameMilliseconds = 4.0;
+    private readonly List<(string Command, double Milliseconds)> _applied = [];
+
+    private void Slow(INativeScene compositor, double cpuMilliseconds, double beforeSwapCpu, double drawMilliseconds, (int, int, int) gcBefore)
+    {
+        if (cpuMilliseconds < SlowFrameMilliseconds)
+            return;
+        var gc = (GC.CollectionCount(0) - gcBefore.Item1, GC.CollectionCount(1) - gcBefore.Item2, GC.CollectionCount(2) - gcBefore.Item3);
+        var applied = string.Join(",", _applied.Select(a => FormattableString.Invariant($"{a.Command}={a.Milliseconds:0.0}")));
+        var sections = (compositor as IProbedScene)?.LastSections ?? "-";
+        global::Android.Util.Log.Info("EmuShelfBigType", FormattableString.Invariant(
+            $"{_name}: slow cpu={cpuMilliseconds:0.0} (to the swap {beforeSwapCpu:0.0}) draw={drawMilliseconds:0.0} tag={compositor.ProbeTag ?? "-"} gc={gc.Item1}/{gc.Item2}/{gc.Item3} apply[{applied}] sections[{sections}]"));
+    }
+
+    // R1's frame probe (M47 B6), only while debug.emushelf.probe is set: frame intervals and render-thread time per run of frames
+    // with the same motions, one logcat line per run ("other" is anything else animating), then the GPU times read back.
+    private readonly NativeFrameProbe _probe = new();
+    private GpuFrameTimer? _gpuTimer;
+
+    private void Probe(INativeScene compositor, float now, double cpuMilliseconds, double wallMilliseconds, bool animating)
+    {
+        var tag = compositor.ProbeTag ?? (animating ? "other" : null);
+        if (_probe.Frame(now, (float)cpuMilliseconds, tag, (float)wallMilliseconds) is { } line)
+            global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {line}");
+        if (animating)
+            return;
+        if (_probe.Flush() is { } last)
+            global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {last}");
+        if (_gpuTimer is { } timer)
+        {
+            foreach (var gpu in timer.Drain())
+                global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {gpu}");
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TimeSpec
+    {
+        public long Seconds;
+        public long Nanoseconds;
+    }
+
+    [DllImport("libc", EntryPoint = "clock_gettime")]
+    private static extern int ClockGetTime(int clock, out TimeSpec time);
+
+    // CLOCK_THREAD_CPUTIME_ID: what this thread has run, not counting time it waited.
+    private static double ThreadCpuMilliseconds() =>
+        ClockGetTime(3, out var time) == 0 ? (time.Seconds * 1000d) + (time.Nanoseconds / 1_000_000d) : 0d;
 
     // Tells Android the rate this surface is posting at while only a stepped backdrop moves (30 Hz), and takes
     // the hint back (0) while something animates at the panel's rate or nothing moves, so the compositor and

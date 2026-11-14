@@ -14613,3 +14613,153 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   shows two or three white frames on the second display; the Launcher's dock-row corner type ("1 / 2", Swap) is pictured with black
   boxes behind its glyphs, the Android fault B4 fixed on the Stage with `RenderOptions.TextRenderingMode="Antialias"` on each pictured
   piece (it also shows in the corner's roll).
+
+## 2026-11-14 — M47 B6: the name's letters, the flood and the wipe
+
+- **The letters reach the native Stage as R1 sent them, one atlas per name, but laid out by the Avalonia name itself.**
+  `HandheldBigTypeName.Letters` takes the control's own fit (B4's `BigTypeLayout` with the name's face, size and tracking), places
+  every letter where that word's own text layout puts it (each grapheme's x from the word's layout, so kerning and the −0.64 px
+  tracking are kept), and rasterises each distinct letter once, white, into an ink-tight cell of one bitmap with grey-scale
+  antialiasing. The feed sends it as `StageNameCommand` (Big Type only) in place of B4's whole-name picture; the Stage uploads one
+  texture and draws one quad per letter in the left zone's ink (`BigTypeStageLayer`, from the spike, letters only). A headless test
+  composes the atlas at rest and holds it to the control's own drawing for a monogram, a two-line title and a short word (the same ink,
+  centres of mass within half a pixel). The spike's `BigTypeMotion` was not brought over: its letter, flood and wipe timings are now
+  in B5's class, named after tokens.js; its digit atlas was not needed (B5 rolls cut the existing pictures).
+- **Seven entrances, the mock's `ENTER` and `EXIT`.** Right and left (0.55 em along, the last letter leading when moving left), up and
+  down (0.5 em), into a folder (rising 0.95 em from the hinge, tilted 7°), out of one (dropping in from 0.7 em above, −5°), and anything
+  else, a first show, the idle drift or a touch, rising 0.7 em tilted 5°. Leaving goes the other way (0.45 em; −0.6, 0.6, −0.4 for the
+  last three). The shell records the last press's move (`LastMoveDirection`, `LastFolderOpened`, cleared at the next press);
+  `HandheldStageEntrance` maps it. **tokens.js gained the numbers the mock's script had inline** (said so here, as the rule asks):
+  `LetterIn.fromEmVertical/openEm/openTilt/backEm/backTilt/riseEm/riseTilt`, `LetterOut.openEm/backEm/riseEm/stillMs`, `Wipe.below`,
+  `IdleHop.letterDelay/letterStagger/letterRiseEm`.
+- **Where the native Stage does not run** (the desktop, the Avalonia fallback) the name changes correctly and moves the same way: the
+  Avalonia name keeps the names in flight and draws each letter with its pose from the same maths while it is on screen. It swaps (no
+  motion) while it is only pictured or held still (B5's `Rolls`). It does not hop there (the hop needs the press clock the native Stage
+  has), the Avalonia Launcher's ground keeps its 200 ms crossfade, and the Avalonia Stage's backdrop keeps today's crossfade: the flood
+  and the wipe are native only.
+- **The letters hop on the tiles' clock.** The Stage feed forwards the shell's `InputArrived` as `StageInputCommand`; the Stage hops
+  the letters from `BigTypeMotion.HopStart` (the mock: 260 ms after the tiles' wave starts, 45 ms a letter, 0.07 em, 560 ms on the hop's
+  curve), only once the name has landed. A Stage with nothing else moving asks to be woken for the next hop; a wait longer than a second
+  is not voted to Android as a frame rate (`NativeSceneSurface`: every stepped backdrop's cadence is well under a second, so today's
+  votes are unchanged).
+- **The flood** replaces `LauncherGroundCommand`'s linear fade under Big Type (`Flood` instead of `FadeMilliseconds`): each new ground is a
+  wave growing from the middle of the ring's target (the focused tile), found on the first frame it is drawn, so the focus sent in the
+  same batch after the ground is the one it grows from; it is drawn as a white quad tinted to the colour and cut to the circle, under
+  the tiles. A wave that covers the screen (640 ms, 1640 px) becomes the ground before the screen is cleared; waves started before it
+  go with it, so quick moves stack as the mock's do.
+- **The wipe is a stack of backdrops, not the crossfade's pair.** The mock lays each new backdrop's canvas over the others and removes
+  those beneath once its circle has covered the screen; quick system changes therefore show three at once. The Stage keeps up to two
+  beneath the one on top (a further change lets the oldest go). Its circle grows from 40 px below the Stage's bottom edge at the focused
+  tile's x, the Launcher's canvas centred under the Stage's (the mock's `cx + 170`): the Stage feed asks the native Launcher feed where its
+  focused element is on screen when it sends the backdrop. Swapped, the same rule gives the same x (both canvases 1920) and the circle
+  still rises from the Stage's bottom edge; the mock has no swapped wipe, so this is the owner's to judge. With no native Launcher it grows
+  from the middle.
+- **How the ink and veils change with the backdrop, and why no frame has unreadable text: per pixel, in the wipe's own circles.** During a
+  wipe the Stage draws the veils, the name's letters and every zoned text once per backdrop that shows, each pass kept inside its own
+  circle and outside every circle above it (`uClip0..2` in `stage.frag`: include or exclude circles, a one-pixel soft edge; all zero is
+  off, so today's look draws exactly as before), in that backdrop's own answer from `BackdropLegibility` and with the dark ink it was
+  drawn with. So every pixel of text is in the ink chosen for the backdrop actually behind it, from the first frame of the circle to the
+  last; there is no moment where text has switched ahead of or behind its backdrop, which a single ink mixed by the circle's progress
+  would give. The order of the ink and backdrop commands no longer matters: a backdrop that goes beneath a wipe keeps the dark ink of the
+  last frame it was drawn with. Outside a wipe it is B4's mixing, unchanged (a rotation within a system still crossfades). The desktop GL
+  check reads text across the circle's edge mid-wipe: white just inside (over `ps2-trails-v3`), the dark ink just outside (over
+  `ps2-towers`), nothing in a third colour.
+- **The backdrop's start-up cost is off the frame of the press (R1).** Under Big Type the feed sends the new backdrop at once (no 250 ms
+  settle: the wipe is timed from the flood). The compositor does no GL work for it on the frame its command lands on; on the next frame it
+  starts it (its programs are found or compiled), on the one after it draws its first step (its targets are made), and its circle starts
+  growing at 110 ms after the command or once it is ready, whichever is later, so a slow start delays the circle rather than a frame. Its
+  two full-screen pictured layers are uploaded only if they are ever drawn (a system with no animated backdrop, or one whose shaders fail),
+  one per frame. The first backdrop, with nothing on screen to wipe over, is prepared at once (so a rebuilt context's resume finds it).
+  **Measured on the Thor** (20 presses along home's first row, Recent to GBA and back, 1.5 s apart, Big Type, R1's probe in both builds):
+  before B6 (B5's commit plus the probe and nothing else) the Stage paid 17.6 to 41.2 ms on 10 of the 20 presses, about 380 ms after each
+  (after the settle, when the backdrop started and its layers went up; repeats of a backdrop included), 10 frames over 16.7 ms. With B6 the
+  frame the press lands on costs 0.3 to 0.6 ms every time; the next frame costs 13.1 to 36.6 ms only the first time a backdrop shows in a
+  run (its shaders compile: nes-raster, snes-mosaic-v2, gbc-sheen-v2, gba-iso, gbc-bands, tiles, nes-stars, nes-meta, gbc-attr,
+  snes-lake-v2), and 0.3 to 0.5 ms on every repeat; 4 frames over 16.7 ms, 11 over 8.3 (10 before). **What is left:** that first compile.
+  Compiling a system's backdrops ahead of their first show (or keeping program binaries) was not done.
+- **Holding still** (`HoldsStill`) follows the mock's reduced motion: the new name is there at once and the old one goes in 60 ms
+  (`LetterOut.stillMs`), all letters together; the flood lands at once; the new backdrop cuts in once it is ready; no letter hops.
+- **The exit, measured on the Thor, is not met; not ticked.** R1's figure is every steady frame of the motions under 5.2 ms CPU and 2.4 ms
+  GPU (worst case 0.9 and 0.7 typical). Three-line names arriving during a wipe, in Recent (its games are on different consoles, so each
+  move wipes: "Shin Megami Tensei : Persona 2, Innocent Sin" at 37 letters, "Tony Hawk's Underground 2 Remix", "Metal Gear Solid : The Twin
+  Snakes", "Bleach : Heat the Soul", "Batman : Return of the Joker"; six runs, 304 steady frames, the run's first frame left out): CPU 1.81 ms
+  typical, 5.10 p95, 18.6 worst, with frames over 5.2 in four runs, most 0.7 to 0.85 s after the press when the letters have landed (not
+  isolated; these games show the 3D case, which R1's stress names did not); GPU 1.48 typical, 2.25 p95, 2.54 worst (over the Bleach run's
+  `psp-field-v2` wipe). Monograms during a wipe along home's first row: GPU 1.47 typical, 3.25 worst. The GPU's share is plausibly the wipe
+  presenting two full-screen backdrops and drawing the text and veils once per backdrop; that was not measured apart. A name's atlas costs
+  2.9 to 10.0 ms on the UI thread (R1: 3.5 to 14.4). Whether to accept these figures or work on them is the owner's.
+- **The slow frames, found (the owner's "Find the slow frames", 2026-11-14).** The probe was made finer: with `debug.emushelf.probe` set,
+  every Stage frame over 4 ms of render-thread CPU logs each command it applied with its time, how long each part of the draw took and
+  how many quads it drew (`IProbedScene`, the 3D case's target, cover upload and render apart), and any garbage collection in between.
+  On the Thor, in the same Recent run: **the slow frames 0.6 to 1.0 s after the press were Big Type's own quads, not the 3D case.** Each
+  quad cost about 50 µs of render-thread CPU (its texture bind, about fifteen uniform calls and its draw), and those frames drew many:
+  the Stage's line rolling when its facts (play time, achievements) arrive about 0.5 s after the press, cut into 54 to 59 scissored
+  pieces (2.8 to 3.8 ms), and the name's letters, 18 to 37 quads drawn twice during a wipe (0.8 to 3.4 ms). No collection fell in any of
+  them. The 3D case's work is real but earlier and one-time: its target, cover upload and first render for a new game, 8 to 19 ms, 150
+  to 360 ms after the press (today's look does the same), as is a backdrop's first start (its shaders compile, 13 to 53 ms).
+- **The fix, the least change:** under Big Type, `StageCompositor.DrawQuad` sets a uniform only when its value differs from the one the
+  sprite program already holds, so a run of letters or roll pieces sets little more than its rectangle and texture coordinates. Nothing
+  drawn changes (the desktop GL checks read the same pixels); today's look sets every uniform for every quad as before. It halved the
+  cost per quad (about 50 to about 24 µs), which is the draw calls' own cost now.
+- **Measured again on the Thor (the same runs): the CPU limit is still not met; not ticked.** Three-line names arriving during a wipe
+  (Recent; 247 steady frames): CPU 1.58 ms typical (was 1.81), 3.91 p95 (was 5.10), 19.3 worst; GPU 1.51 typical, 2.18 p95, 7.73 worst
+  (one frame of the Bleach run; the rest of the runs at most 2.80). What is still over 5.2 ms, by cause: the 3D case's first render for a
+  new game (8.2 to 19.3 ms, once per game, 330 to 360 ms after the press); and Big Type's own drawing when a long name and a rolling line
+  meet a wipe ("Metal Gear Solid : The Twin Snakes", 0.9 s after the press: 117 roll pieces and 56 letter quads, everything drawn once per
+  backdrop showing, 6.0 and 6.9 ms). The rest of the steady frames are under 4.7 ms. The console row (20 presses) did not regress: frames
+  over 16.7 ms 2 (was 4), over 8.3 ms 9 (was 11), every one a backdrop's first start; repeats 2.4 to 3.0 ms. **Not tried, for the owner
+  to choose:** drawing a zone's text once, unclipped, when both backdrops of a wipe give it the same ink (the common case); drawing the
+  letters and roll pieces as one batch instead of a draw per quad; and the case's first render, which is today's cost.
+- **The GPU's 3.25 ms on one-line console names during a wipe** (item 5 of the brief, not this round's target): not split by part (the
+  probe's GPU timer covers a whole frame). What a wipe frame adds is visible in the figures: a monogram's few letters are very large
+  quads, drawn once per backdrop showing, over two full-screen backdrop presents and two sets of veils; outside a wipe the same names
+  cost 0.7 ms.
+- **Two more savings for Big Type's own drawing (the owner's round, 2026-11-14), both changing nothing on screen:**
+  - **A zone drawn once when every backdrop showing answers it the same way.** During a wipe, a zone's text and veil are drawn once
+    with no circle when the ink, veil colour and veil strength are equal for every visible backdrop (`StageCompositor.PassesFor`); when
+    they differ, one pass per backdrop as before. The circles share the screen out between the passes, so every pixel gets the same ink
+    either way; the one exception is the circle's soft one-pixel edge, where two half-covered passes let a little backdrop through and
+    one pass covers it fully. It also put text with no zone (the message toast) back to one uncut pass: before it was drawn inside the
+    top backdrop's circle only. The desktop GL check reads one quad for a wipe from `ps2-towers` to `nes-flow` (the same left answer) and
+    two for one to `ps2-trails-v3`, each side in its own ink, and no seam on the edge.
+  - **The letters and the roll's pieces in batches.** Under Big Type up to 48 of them go in one instanced draw (`sprite-batch.vert`,
+    `stage-batch.frag`): the vertex shader is `sprite.vert`'s arithmetic line for line, reading each quad's values from a uniform array by
+    instance; the roll's scissor becomes the same test in the fragment shader (a pixel's centre inside the same whole-pixel window); a
+    second sampler keeps the roll's old and new pictures in their drawing order. A batched roll piece's geometry is shrunk to its window
+    grown by a pixel, so nothing outside it is shaded (the first build shaded the whole line picture per piece and cost the GPU 0.3 ms a
+    frame, found by an in-run A/B and fixed). The desktop GL check draws tilted letters mid-flight and a 40-cell roll during a wipe both
+    ways: 88 quads, 0 pixels different. Today's look never batches.
+  - **They earn their keep:** Big Type's own worst frame on the Recent run went from 6.9 ms to 4.5 ms. An in-run A/B on the Thor
+    (`debug.emushelf.probe ab`: batching on for two frames and off for two, so both halves see the same backdrops' 30 Hz steps) shows
+    the batch GPU-neutral: 0.75 against 0.75 ms typical on letter frames, 1.42 against 1.47 during wipes, 1.34 against 1.34 on the
+    console row. The one-pass saving was not timed apart; it only ever removes draws.
+- **Measured again on the Thor (final build, the same Recent run, 251 steady frames of three-line names arriving during a wipe):** CPU
+  1.31 ms typical, 2.83 p95, 18.0 worst; GPU 1.42 typical, 2.14 p95, 2.87 worst. Split for the owner: **Big Type's own drawing, worst
+  4.5 ms; the 3D case's first render for a new game, worst 18.0 ms.** The press frame of each run is 1.3 to 2.4 ms. Frames over 2.4 ms of
+  GPU come in step with the backdrops' 30 Hz renders during a wipe (two backdrops render and present), not with the text. The console
+  row: 1 frame over 16.7 ms and 2 over 8.3 (each a backdrop's first start).
+- **Today's look on the same run** (`debug.emushelf.look classic`, the same presses and probe; four of its twenty presses met an edge of
+  today's folder grid and drew nothing): CPU 1.02 ms typical, 2.25 p95, 50.0 worst (a backdrop change after the settle), 9 frames over 8.3
+  and 4 over 16.7; GPU 0.74 typical, 1.42 p95, 7.40 worst, 1 frame over 2.4; the 3D case's first render 19.0 ms worst; its other steady
+  frames up to 5.1 ms. Big Type over the whole session: CPU 1.53 typical, 3.08 p95, 28.4 worst (a backdrop's first start), 6 over 8.3
+  and 3 over 16.7; GPU 1.37 typical, 2.49 p95, 7.71 worst, 54 frames over 2.4. So Big Type's worst frames are no worse than today's (its
+  worst CPU frames are fewer and shorter, its 3D first render the same), its typical frames cost a little more, and its GPU is higher
+  through a wipe.
+- **The exit is still not met; not ticked:** the 3D case's first render (18.0 ms CPU) and the GPU during a wipe (2.87 ms) are over R1's
+  5.2 and 2.4. Big Type's own drawing is under both on the CPU. Whether to accept that is the owner's decision.
+- **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
+  (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
+  `letters+wipe`, `flood`, `other`; `nobatch` turns Big Type's batching off and `ab` alternates it every two frames, with the backdrops' picks
+  seeded so runs compare) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
+  (`GpuFrameTimer`, where `EXT_disjoint_timer_query` exists: the emulator has none). R1's `measure.py` reads the same lines.
+- **The page 2 → page 1 fault (both looks).** The shell marks focus on the page on screen only, so a slot left on another page keeps its
+  mark. Moving from page 1's last column onto page 2 and back onto the same slot changed nothing on that slot (it had never lost its mark),
+  so page 2's slot stayed the most recently focused anchor and `HandheldLauncherMotion.FocusedAnchor` sent the ring and the lift to it, off
+  screen. Fixed where the anchor is chosen: a home slot counts only while its page is the page on screen. Classic changes by the missing
+  highlight only: the stale mark itself was left alone, because clearing it would also drop the old page's tile out of its focused look
+  during the page's slide, which today's look shows. Seen fixed on the emulator in both looks and on the Thor in Classic (GBA, the
+  last slot of the owner's first row).
+- **The Launcher's corner type** ("Swap", "1 / 2", the sort, the folder's name and count) sets `RenderOptions.TextRenderingMode="Antialias"`
+  on each pictured piece, as B4 did on the Stage; no black boxes on the emulator or the Thor.
+- **Found, not fixed:** the Big Type design set is not deterministic from B5's commit: two renders of `ddb0696` differ in 11 frames, each
+  only on the focused ring's edge (6 to 1,215 pixels, sub-pixel), the same frames B5's saved set differs in. Classic is deterministic.

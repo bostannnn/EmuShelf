@@ -86,8 +86,47 @@ internal sealed class HandheldNativeLauncherFeed
     private bool _failed;
     private bool _syncPending;
 
+    // The feeds alive, for the Stage's wipe (M47 B6), which grows from the tile the native Launcher has focused.
+    private static readonly List<WeakReference<HandheldNativeLauncherFeed>> Feeds = [];
+
+    /// <summary>
+    /// Where the native Launcher drawing <paramref name="shell"/> has its focus (M47 B6): the focused element's middle across the
+    /// Launcher's canvas as it is on screen at rest, and that canvas's width; null when no native Launcher draws or nothing is focused.
+    /// Read when the Stage's backdrop changes, so it is worked out from the views now rather than from the last sync.
+    /// </summary>
+    public static (float X, float CanvasWidth)? FocusX(HandheldShellViewModel shell)
+    {
+        foreach (var weak in Feeds)
+        {
+            if (weak.TryGetTarget(out var feed) && ReferenceEquals(feed._shell, shell) && feed._active && !feed.IsPaused &&
+                feed.FocusCentre() is { } x)
+            {
+                return (x, feed.PageWidth);
+            }
+        }
+        return null;
+    }
+
+    private float? FocusCentre()
+    {
+        if (_motion.FocusedAnchor() is not { } anchor || !_anchors.TryGetValue(anchor, out var known) ||
+            Target(anchor, known.Track, known.ColumnShift) is not { } target)
+        {
+            return null;
+        }
+        var shift = known.Track switch
+        {
+            LauncherTrack.Page => -(_screen?.CurrentPage?.Index ?? 0) * PageWidth,
+            LauncherTrack.Column => -(_shell?.OpenFolder?.FirstColumnFor(IsWide) ?? 0) * (float)ColumnPitch,
+            _ => 0f,
+        };
+        return target.X + (target.Width / 2f) + shift;
+    }
+
     public HandheldNativeLauncherFeed(Control view, HandheldLauncherMotion motion, IHandheldNativeStage host)
     {
+        Feeds.RemoveAll(weak => !weak.TryGetTarget(out _));
+        Feeds.Add(new WeakReference<HandheldNativeLauncherFeed>(this));
         _view = view;
         _motion = motion;
         _host = host;
@@ -562,17 +601,18 @@ internal sealed class HandheldNativeLauncherFeed
 
     /// <summary>
     /// Big Type's ground (M47 B3): the native Launcher clears to the shell's colour for what is focused, the same value the
-    /// Avalonia Launcher's ground draws, so the hand-off to a sheet and back shows no change. It crossfades as the view's does.
+    /// Avalonia Launcher's ground draws, so the hand-off to a sheet and back shows no change. A new colour floods in from the focused
+    /// tile (M47 B6, move 3); the first, a catch-up and holding still land it at once.
     /// </summary>
     private void SyncGround(HandheldShellViewModel shell, bool instant)
     {
         var colour = shell.LauncherGround;
         if (_groundSent == colour && !instant)
             return;
-        var fade = _groundSent is null || instant ? 0f : (float)HandheldTokens.GroundFade.TotalMilliseconds;
+        var flood = _groundSent is not null && !instant && !shell.HoldsStill;
         _groundSent = colour;
-        // The view's brush transition interpolates in sRGB; so does this (the compositor writes sRGB values straight out).
-        _host.Post(new LauncherGroundCommand(colour.R / 255f, colour.G / 255f, colour.B / 255f, fade));
+        // The compositor writes sRGB values straight out, as the view's brush does.
+        _host.Post(new LauncherGroundCommand(colour.R / 255f, colour.G / 255f, colour.B / 255f, flood));
     }
 
     /// <summary>The ring for the look: today's three bands, or Big Type's one white band of <c>shape.RingStroke</c>.</summary>

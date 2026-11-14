@@ -149,6 +149,16 @@ public sealed class GlProgram : IDisposable
         }
     }
 
+    /// <summary>An array of vec4s, as consecutive floats (four per element), in one call.</summary>
+    public void Set(string name, ReadOnlySpan<float> vec4s)
+    {
+        var location = Location(name);
+        if (location >= 0 && vec4s.Length >= 4)
+        {
+            _gl.Uniform4(location, (uint)(vec4s.Length / 4), vec4s);
+        }
+    }
+
     public void Set(string name, Matrix4x4 value)
     {
         var location = Location(name);
