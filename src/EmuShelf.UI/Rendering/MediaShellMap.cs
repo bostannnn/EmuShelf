@@ -38,14 +38,16 @@ public static class MediaShellMap
         // rather than a profile stretched over the DVD one.
         ["playstation3"] = MediaShell.BluRayCase,
 
-        // One temporary geometry family, four distinct profiles. PSP is the odd one: the other
-        // three shipped in this exact case, and a UMD case is a different object that borrows it —
-        // see its profile below for what that costs and why it is still worth it.
+        // One DVD keep case, three consoles that really did ship in it, and Steam borrowing it as
+        // a virtual PC case.
         ["playstation2"] = MediaShell.DiscKeepCase,
         ["gamecube"] = MediaShell.DiscKeepCase,
         ["wii"] = MediaShell.DiscKeepCase,
-        ["psp"] = MediaShell.DiscKeepCase,
         ["steam"] = MediaShell.DiscKeepCase,
+
+        // A UMD case is a different object from a DVD case — slimmer, shorter and a millimetre
+        // thicker — so it has its own geometry rather than a squeezed copy of the one above.
+        ["psp"] = MediaShell.UmdCase,
     };
 
     private static readonly Dictionary<string, PhysicalMediaProfile> ProfilesBySystemId = new(StringComparer.Ordinal)
@@ -87,11 +89,11 @@ public static class MediaShellMap
         // which is why the error survived the proportion test and why the shell was never
         // distorted — it was simply a quarter too big, standing taller than a SNES cartridge that
         // really is a head taller than it. Ratio agreement checks shape, not size; only a
-        // measurement does that. The depth is the asset's 11.8mm rather than a real cart's ~17mm,
-        // taken from the model's ratio for the same reason as NES: a profile that disagrees with
-        // its asset does not read as a size error, it silently distorts the shell.
+        // measurement does that. The depth is a real cartridge's 17mm, and the asset's: the download
+        // is 11.8mm deep, and tools/thicken_shell.py inserts the missing 5.2mm behind its rounded
+        // front shell rather than stretching it. See DECISIONS 2026-11-14.
         ["megadrive"] = new(
-            MediaShell.MegaDriveCartridge, new(109f, 70f, 11.8f),
+            MediaShell.MegaDriveCartridge, new(109f, 70f, 17f),
             PhysicalArtworkSlots.CartridgeSupport,
             "megadrive-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.010f),
         // A DS card is 33.4 x 35 x 3.8mm, and genuinely tiny beside a keep case — at true scale it
@@ -99,11 +101,15 @@ public static class MediaShellMap
         // Anchored on the real 35mm height and otherwise taking satchii_'s asset's own ratios, which
         // is the rule every shell follows: a profile that disagrees with its asset does not read as
         // a size error, it silently distorts the shell. Its face is almost exactly right — 0.960 W/H
-        // against a real card's 0.954 — and its thickness is not: 1.75mm against a real 3.8mm, which
-        // is the price of the flat, unwarped front this asset was chosen for. Correcting that belongs
-        // in the asset, not here.
+        // against a real card's 0.954.
+        //
+        // Its thickness is now right too. The download is 1.75mm thick, under half a real card,
+        // and this comment said for a quarter that correcting it belonged in the asset; it has
+        // been corrected there, by tools/thicken_shell.py, which inserts the missing 2mm as a
+        // slab behind the flat front plate so that neither the label face nor the back's pin bay
+        // is stretched. See DECISIONS 2026-11-14.
         ["nds"] = new(
-            MediaShell.DsCard, new(33.6f, 35f, 1.75f), PhysicalArtworkSlots.CartridgeSupport,
+            MediaShell.DsCard, new(33.6f, 35f, 3.8f), PhysicalArtworkSlots.CartridgeSupport,
             "ds-black", "cartridge-vertical", FloorClearanceInShelfUnits: 0.008f),
         // The same 35mm anchor and the same rule as its DS sibling, and it lands closer to the real
         // object than any other cartridge here: 33.7 x 35 x 3.2mm against a real card's 33 x 35 x
@@ -185,33 +191,24 @@ public static class MediaShellMap
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
                 | PhysicalArtworkSlots.DiscLabel,
             "wii-white", "disc-from-case", DiscDiameterMillimetres: 120f),
-        // A real UMD case, 104 x 178 x 15mm, and the one profile here that knowingly disagrees with
-        // its asset: against the shared case's own 0.695 proportions this draws the mesh at 84% of
-        // its authored width. That is deliberate, and it is now the only such disagreement left in
-        // this table, so it needs its reason recorded.
+        // A real UMD case, 104 x 178 x 15mm, on geometry authored at exactly those figures.
         //
-        // The rule those comments keep restating — take the asset's ratios, a profile that
-        // disagrees silently distorts the shell — was written for cartridges, where the moulding
-        // *is* the object. A keep case is not that. Its front is a flat sleeve that fills nearly
-        // the whole silhouette, and the mesh's own contribution is a rim a few pixels wide. So the
-        // squeeze has to be weighed against what it buys, and what it buys is the sleeve: this
-        // panel is ArtFit.Stretch, and at 104mm the front face is 0.584 against a PSP box scan's
-        // 0.581, so the art lands undistorted. At the asset's own 0.695 it stretches every scraped
-        // PSP cover about 20% wider — on the one surface you actually look at.
-        //
-        // Rendered both before choosing. Squeezed mesh with correct art reads as a UMD case;
-        // correct mesh with fat art reads as a slightly small PS2 case with something wrong with
-        // the cover. PS3 faced the same trade and answered it differently, taking the undistorted
-        // mesh at the wrong height; it is out of the comparison now that its own case is authored,
-        // and what that leaves behind is the more useful lesson — the trade only ever existed
-        // because two objects were sharing one mesh, and it ends when they stop. Locked by
-        // MediaShellTests.MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted, which is
-        // also why PSP is the one exclusion from the proportion theory. See DECISIONS 2026-08-15.
+        // This profile spent a quarter as the one deliberate exception to the rule every comment
+        // above restates. PSP borrowed the DVD case, and since a keep case's sleeve is
+        // ArtFit.Stretch the choice was between the right case shape with every cover stretched
+        // 20% wider, or the right cover on a mesh drawn at 84% of its width; it took the squeeze,
+        // and the case's corners, fillets and thumb notch were squeezed with it. As with PS3
+        // before it, the trade only existed because two objects were sharing one mesh, and it
+        // ended when they stopped: the UMD case's film is 99.5 x 171mm, the 0.581 of a PSP box
+        // scan, so the art lands undistorted on a case that is simply the right shape.
+        // See DECISIONS 2026-11-14.
         ["psp"] = new(
-            MediaShell.DiscKeepCase, new(104f, 178f, 15f),
+            MediaShell.UmdCase, new(104f, 178f, 15f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "psp-clear", "case-downward"),
-        // Virtual PC library case, sized to Steam's 2:3 capsule. No fictional disc label.
+        // Virtual PC library case, sized to Steam's 2:3 capsule. No fictional disc label. It
+        // draws the DVD case 7% narrower than authored, which is accepted here and nowhere else:
+        // there is no real object to be faithful to, and the capsule is the thing that must fit.
         ["steam"] = new(
             MediaShell.DiscKeepCase, new(126f, 190f, 14f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,

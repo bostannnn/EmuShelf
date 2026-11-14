@@ -86,7 +86,7 @@ public static class PreviewShelf
             PhysicalArtworkSlots.CartridgeSupport, "3ds-white", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.008f)),
         new("nds", new PhysicalMediaProfile(
-            MediaShell.DsCard, new Vector3(33.6f, 35f, 1.75f),
+            MediaShell.DsCard, new Vector3(33.6f, 35f, 3.8f),
             PhysicalArtworkSlots.CartridgeSupport, "ds-black", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.008f)),
         new("gba", new PhysicalMediaProfile(
@@ -120,7 +120,7 @@ public static class PreviewShelf
         // of the acceptance shot, which is how it kept a profile a quarter too big for a whole
         // milestone.
         new("megadrive", new PhysicalMediaProfile(
-            MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 11.8f),
+            MediaShell.MegaDriveCartridge, new Vector3(109f, 70f, 17f),
             PhysicalArtworkSlots.CartridgeSupport, "megadrive-black", "cartridge-vertical",
             FloorClearanceInShelfUnits: 0.010f)),
         new("playstation2", new PhysicalMediaProfile(
@@ -128,12 +128,11 @@ public static class PreviewShelf
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine
                 | PhysicalArtworkSlots.DiscLabel,
             "ps2-black", "disc-from-case", DiscDiameterMillimetres: 120f)),
-        // Immediately after the PS2 case on purpose: PSP shares that geometry and the entire claim
-        // being reviewed is that it stands shorter and clearer beside it. Split apart in this list
-        // the two would be judged separately, which is the one comparison that cannot answer the
-        // question.
+        // Immediately after the PS2 case on purpose: the claim being reviewed is that a UMD case
+        // stands slimmer, shorter and clearer beside a DVD one. Split apart in this list the two
+        // would be judged separately, which is the one comparison that cannot answer the question.
         new("psp", new PhysicalMediaProfile(
-            MediaShell.DiscKeepCase, new Vector3(104f, 178f, 15f),
+            MediaShell.UmdCase, new Vector3(104f, 178f, 15f),
             PhysicalArtworkSlots.Front | PhysicalArtworkSlots.Back | PhysicalArtworkSlots.Spine,
             "psp-clear", "case-downward")),
         // Third in the disc-case run, and the only one of them that is no longer the same object.

@@ -14189,3 +14189,83 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
 - **Left as found:** seven empty folders named "New folder" on the owner's home (one on page 1, six on page 2),
   apparently made by another session's scripted press loop on the same Thor earlier today. Not deleted: they are the
   owner's to keep or remove.
+
+## 2026-11-14 — The DVD keep case is rebuilt, and PSP gets its own UMD case
+
+- **What a review of the bundled models found.** All twelve shells were loaded in Blender and rendered with the
+  preview tool. Nine hold up. The downloaded DVD keep case did not: it is a smoothed cube rather than a case. Its
+  front face starts curving away 8–11mm before the edge and falls 3mm, its top edge is crowned by 2.9mm and its bottom
+  by 1.7mm, and it stands 194.3mm tall drawn into a 190mm profile. Its sleeve and body are one mesh, so the cover
+  printed edge to edge and bent over that roll-off, with no rim of bare plastic round it. PSP drew the same mesh at 84%
+  of its width (2026-08-15), which squeezed the rounded edges and the thumb notch with it.
+- **Decided: generate both cases rather than source another download.** `tools/blender/keep_cases.py` builds the DVD
+  case (135 × 190 × 14mm) and a UMD case (104 × 178 × 15mm) and writes `disc-keep-case.glb` and `umd-case.glb`. The
+  script is the source, kept in git, which the downloaded models' sources never were (`models/` is ignored and was not
+  on the machine this was done on). The geometry is original, so there is no packaging to mask and no credit to carry;
+  the MacDrawz entry is gone from `THIRD-PARTY-NOTICES.md`.
+- **Built the way the Blu-ray shell is.** A moulded body, and the clear film as its own mesh on a material named
+  `cover`, which the artwork panels are scoped to. Flat faces, a 1.5mm edge fillet, 3mm silhouette corners, the
+  parting seam between lid and tray, and the long finger slot in the opening edge's wall. On the real cases the lid's and tray's side walls
+  are set inboard along the middle of that edge while both panels run on to the outline, so the slot is let into the
+  wall only and the outline stays a plain rounded rectangle. It took three tries, the last against the owner's
+  photographs of an open PS2 case and an open UMD case: first a 32mm bite cut through the lid, which notched the front
+  silhouette; then a 32 × 5mm pocket, a third of the real length; now 87mm on the DVD case and 110mm on the UMD case
+  (46% and 62% of their heights, measured off the photographs), 2mm deep, leaving a 2.3mm lip on each side. The film stops 3.5mm short of
+  the top and bottom and 5.5mm (DVD) or 4.5mm (UMD) short of the opening edge, so its front panel is 129.5 × 183mm and
+  99.5 × 171mm — the 0.708 and 0.581 the scraped covers are drawn at. `KeepCaseSleeveDepth` and its 2.1mm reasoning
+  are gone with the mesh they described; all three keep cases now share `SleevePanel`.
+- **PSP's squeeze is over, and 2026-08-15's trade with it.** `MediaShell.UmdCase` is new and `psp` maps to it. The
+  profile is unchanged at 104 × 178 × 15mm; what changed is that the asset now agrees with it, so PSP joins
+  `MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset`, and the test that pinned the 0.841 squeeze now asserts the
+  two things that were in tension together: the mesh is undistorted and the film is the shape of the scan.
+- **The black, white and Steam finishes are unchanged by construction.** The new plastic is a flat linear 0.027 at
+  roughness 0.25, the medians of the old case's maps, so `ps2-black`, `gamecube-black`, `wii-white` and
+  `steam-midnight` keep the calibration they were tuned against.
+- **`psp-clear` was retuned, at the owner's request.** On its own geometry the old finish (a 0.20 mix, roughness scale
+  0.74) read as brushed aluminium, and a photograph of the real case shows frosted clear plastic. It is now a 0.80 mix
+  toward a neutral light grey at roughness scale 1.70. Measured in the shelf row the lit rim reads sRGB 159, between
+  the PS3 case's 116 and the white Wii case's 178, with the black PS2 case at 37. The UMD case also takes the Blu-ray
+  case's soft clearcoat, being clear polypropylene over its sleeve.
+- **What it costs.** The old case's normal and roughness maps carried scuffs and ribs; the generated cases carry no
+  maps, so their plastic is perfectly clean. The asset went from 1.03MB to 30KB.
+- **Left as found.** Steam still borrows the DVD case at 126mm, a 7% squeeze, accepted because there is no real
+  object to be faithful to. The review also flagged the Mega Drive cartridge (334 triangles, no label recess or grip
+  ridges, 11.8mm deep against a real 17mm) and the DS card's thickness; both are taken up in the entries below.
+- **Checked:** every shell re-rendered with the preview tool, both cases at all eight poses and in the shelf row
+  beside each other and the Blu-ray case. **Not checked:** the running app, or any device.
+
+## 2026-11-14 — The DS card is a real card's thickness
+
+- **What was wrong.** satchii_'s card is right face-on (0.960 W/H against a real 0.954) and 1.75mm thick where a real
+  DS card is 3.8mm. The profile recorded 1.75mm to match the asset and said the correction belonged in the asset.
+- **Decided: insert the thickness, do not scale it.** The card's front is one flat plane, all of its relief (the pin
+  bay, the moulded steps) is on the back, and the only thing between them is straight side wall: every one of the 128
+  triangles crossing that gap is perpendicular to the thickness to within 0.2%. `tools/thicken_shell.py` (first written as `thicken_ds_card.py`) moves the
+  3,455 vertices behind the front plate back 2.05mm, so the walls get longer and nothing else changes. Scaling the
+  thickness instead, in the asset or through the profile, would have stretched the pin bay to twice its depth; its
+  1.3–1.45mm is already about right in absolute terms.
+- **Edited in the file, not round-tripped through Blender.** The source download is not on this machine, so the
+  shipped GLB is the only copy. The script changes the position data and the provenance note and nothing else:
+  textures, materials, UVs, normals, tangents and the author's metadata are byte-identical, and a second run does
+  nothing. Blender was used to measure the card beforehand and to check the result, which welds to a closed manifold.
+- **Profile:** `nds` is now 33.6 × 35 × 3.8mm, in `MediaShellMap` and the preview tool's copy.
+
+## 2026-11-14 — The Mega Drive cartridge is a real cartridge's depth
+
+- **What was wrong, and what was not.** Naser's cartridge is 11.8mm deep where a real one is about 17mm, which is
+  most of why it read as a thin black slab. The review also called it too low-poly, with no label recess or grip
+  ridges. Looked at properly that was half right: the mesh is 334 triangles and its front face is nearly blank, but
+  its shape is the real one — a front shell whose side edges round over 6.5mm, a flat back with small corners — and
+  its normal map carries the back's moulding. Front details were not added: no photograph of a standard cartridge's
+  front was to hand, and the two things the keep cases got wrong first were both details modelled from memory.
+- **Decided: insert the depth, as for the DS card.** The cartridge has exactly one plane across its thickness that
+  only straight wall crosses, 7.8mm behind the front: behind the rounded front edges, which end 5mm in, and behind the
+  board. `tools/thicken_shell.py` (the DS script, generalised to take either shell) moves the 230 vertices behind it
+  back 5.2mm across 42 side-wall triangles. The rounded front edges keep their radius, where stretching the depth
+  through the asset or the profile would have made them ellipses. The board stays with the front shell, so it now
+  sits 2mm forward of centre in the pin opening.
+- **One constant moved with it.** The default panel depth allowance is 0.40 of a shell's depth, which on a 17mm
+  cartridge reaches 6.8mm, past the board's front face at 5.8mm, whose top 2mm lies inside the label's rectangle
+  and would have taken a strip of cover art. The cartridge now states 0.28, the same 4.7mm it had before.
+- **Profile:** `megadrive` is now 109 × 70 × 17mm, in `MediaShellMap` and the preview tool's copy. The label's fold
+  over the top edge is sized from the printed sheet rather than the model's depth, so it did not move.

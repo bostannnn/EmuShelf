@@ -2166,19 +2166,26 @@ public sealed class MediaShellRenderer : IDisposable
             "ds-black" => new(new Vector3(0.045f, 0.045f, 0.052f), 0.12f, 1.02f, 1f),
             "gamecube-black" => new(new Vector3(0.022f, 0.024f, 0.030f), 0.80f, 1.04f, 1f),
             "ps3-clear" => new(new Vector3(0.38f, 0.46f, 0.58f), 0.28f, 0.76f, 1.35f),
-            // Clearer and more neutral than the Blu-ray case above, which is the difference you
-            // actually see between the two in life: a UMD case is uncoloured transparent plastic
-            // over its sleeve, where a PS3 case is tinted blue. Same family of correction — the
-            // gloss and reflectance of a clear shell, not a repaint.
+            // Frosted clear polypropylene, which is what a UMD case is: uncoloured, milky, and satin
+            // rather than glossy. Neutral where the Blu-ray case above is tinted blue, and a good
+            // deal lighter.
             //
-            // The reflectance is 1.18 rather than the 1.42 first tried here, and the tint is
-            // near-neutral rather than carrying PS3's blue. On this geometry the difference between
-            // the case finishes is read almost entirely off the spine rim — the front is covered by
-            // the sleeve — and at 1.42 that rim blew out into a cyan strip that read as a light
-            // leak down the edge of the case rather than as clear plastic. Clear plastic is not
-            // brighter than black plastic by half, it is less absorbing and slightly glossier.
+            // This was a 0.20 mix at roughness 0.74 until the UMD case got its own geometry, and
+            // on that geometry it read as brushed aluminium: a mid-grey body with a sharp
+            // highlight. Set against a photograph of the real case, the two things wrong were the
+            // two things that make plastic read as metal — too dark and too glossy — so the mix
+            // goes to 0.80 and the roughness scale to 1.70, which lands the body at roughness 0.43.
+            //
+            // Placed by measurement in the shelf row, the same test the Blu-ray case's albedo was
+            // set by: the lit rim reads sRGB 159 here, against 116 for the PS3 case, 178 for the
+            // white Wii case and 37 for the black PS2 one. Above the Wii it would stop reading as
+            // clear and start reading as a white case.
+            //
+            // The reflectance stays modest for the reason it was brought down from 1.42 once
+            // before: clear plastic is not brighter than black plastic by half, it is less
+            // absorbing, and a hot rim reads as a light leak down the edge of the case.
+            "psp-clear" => new(new Vector3(0.60f, 0.62f, 0.64f), 0.80f, 1.70f, 1.10f),
             "steam-midnight" => new(new Vector3(0.08f, 0.14f, 0.21f), 0.42f, 0.64f, 1.12f),
-            "psp-clear" => new(new Vector3(0.56f, 0.57f, 0.59f), 0.20f, 0.74f, 1.18f),
             // Jewel-case polystyrene rather than the keep cases' polypropylene: harder, glossier
             // and more reflective, which is most of what tells the two apart on screen. The tint is
             // a light touch because this shell's printed area is masked to a card grey and its

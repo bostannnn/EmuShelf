@@ -553,6 +553,7 @@ static string Slug(MediaShell shell) => shell switch
     MediaShell.JewelCase => "jewel-case",
     MediaShell.ArcadeCabinet => "arcade-cabinet",
     MediaShell.DiscKeepCase => "disc-keep-case",
+    MediaShell.UmdCase => "umd-case",
     MediaShell.BluRayCase => "blu-ray-case",
     MediaShell.CoverCard => "cover-card",
     MediaShell.Nintendo3dsCard => "3ds-card",

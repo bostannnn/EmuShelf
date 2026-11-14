@@ -302,11 +302,13 @@ public class MediaShellTests
     // The shorter Blu-ray case, authored separately once it became clear that one mesh could not
     // be both objects without lying about one of them.
     [InlineData("playstation3", MediaShell.BluRayCase)]
-    // One temporary geometry family; profiles still retain the systems' different metrics/materials.
+    // One DVD keep case, three consoles that really did ship in it; profiles still carry the
+    // systems' different finishes.
     [InlineData("playstation2", MediaShell.DiscKeepCase)]
     [InlineData("gamecube", MediaShell.DiscKeepCase)]
     [InlineData("wii", MediaShell.DiscKeepCase)]
-    [InlineData("psp", MediaShell.DiscKeepCase)]
+    // Its own UMD case, authored once it was clear the DVD mesh could not be both objects.
+    [InlineData("psp", MediaShell.UmdCase)]
     public void ForSystem_MapsAConsoleToItsMedium(string systemId, MediaShell expected) =>
         Assert.Equal(expected, MediaShellMap.ForSystem(systemId));
 
@@ -315,9 +317,9 @@ public class MediaShellTests
     /// </summary>
     /// <remarks>
     /// This was a theory listing the systems still waiting for a shell, and it emptied out: PS1 and
-    /// Dreamcast left when the jewel case was authored, PSP when it took the keep case — the one
-    /// profile here that borrows a case not its own, see
-    /// <see cref="MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted"/> — and 3DS when
+    /// Dreamcast left when the jewel case was authored, PSP when it took the keep case — borrowed
+    /// at first, and its own since
+    /// <see cref="MetricProfile_PspCaseIsARealUmdCaseAndItsSleeveFitsABoxScan"/> — and 3DS when
     /// it got its own card. Arcade was on the list on the grounds that it has no packaging at all,
     /// which is true and turned out not to matter: the machine is the medium.
     ///
@@ -455,8 +457,9 @@ public class MediaShellTests
     /// with 129 x 20mm, which stretched it 12% vertically. PS3 was the second catch: its truthful
     /// Blu-ray height on shared DVD geometry came to a 13.7% stretch, and now renders undistorted.
     ///
-    /// Every authored shell is now checked. GBA was the last exclusion — 85 x 60mm against an asset
-    /// whose own ratio is 1.708, a 20% stretch — and it was fixed when that shell was replaced.
+    /// Every authored shell is now checked. GBA was an exclusion — 85 x 60mm against an asset whose
+    /// own ratio is 1.708, a 20% stretch — until that shell was replaced, and PSP until it stopped
+    /// borrowing the DVD case.
     /// </remarks>
     [Theory]
     [InlineData("snes")]
@@ -473,10 +476,10 @@ public class MediaShellTests
     [InlineData("playstation3")]
     [InlineData("gamecube")]
     [InlineData("wii")]
-    // PSP is the one deliberate exclusion, and it is not the old kind. Every exclusion this theory
-    // shed was a profile that disagreed with its asset by accident; PSP disagrees on purpose, to
-    // keep its sleeve art undistorted, and the test below pins the exact disagreement so it cannot
-    // drift. Adding "psp" here is therefore not the fix if this pair ever conflicts — read both.
+    // PSP was the last exclusion and a deliberate one: it borrowed the DVD case and squeezed it to
+    // keep its sleeve art undistorted. It joined when the UMD case was authored, which leaves Steam
+    // as the only mapped system outside this theory — a virtual case with no real object behind it.
+    [InlineData("psp")]
     public void MetricProfiles_MatchTheProportionsOfTheirAuthoredAsset(string systemId)
     {
         var profile = MediaShellMap.ProfileForSystem(systemId, 0.708);
@@ -728,12 +731,16 @@ public class MediaShellTests
         // Ordering is the half of this that compression must not buy its way out of: the arcade
         // cabinet is still the biggest thing in the library and a handheld card still the smallest.
         //
-        // The DS card rather than the Game Pak, which is the shorter object of the two — because
-        // what is measured here is the silhouette of a medium pitched toward the player, so a
-        // cartridge's depth counts toward its height on screen. A Game Pak is 6.6mm against a DS
-        // card's 1.75mm, which is more than the 2mm that separates them upright.
+        // A game card rather than the Game Pak, which is the shorter object — because what is
+        // measured here is the silhouette of a medium pitched toward the player, so a cartridge's
+        // depth counts toward its height on screen, and a Game Pak is 6.6mm deep.
+        //
+        // Which of the two cards it is follows their thickness, since they share a 35mm height.
+        // It was the DS card while that asset was 1.75mm thick; brought up to a real card's 3.8mm
+        // it now stands a hair taller in this pose than the 3DS card, whose scan is 3.2mm.
         Assert.Equal("arcade", heights.MaxBy(entry => entry.Value).Key);
-        Assert.Equal("nds", heights.MinBy(entry => entry.Value).Key);
+        Assert.Equal("3ds", heights.MinBy(entry => entry.Value).Key);
+        Assert.Equal(heights["3ds"], heights["nds"], 0.02f * heights["nds"]);
         Assert.True(
             profiles["gba"].HeightInShelfUnits < profiles["snes"].HeightInShelfUnits
                 && profiles["snes"].HeightInShelfUnits < profiles["playstation2"].HeightInShelfUnits
@@ -1237,14 +1244,12 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// PSP borrows the disc case's geometry but must not borrow its size.
+    /// A UMD case stands visibly smaller than the DVD cases it shares a shelf with.
     /// </summary>
     /// <remarks>
     /// The whole reason a UMD case is worth rendering rather than leaving on a flat cover is that
-    /// it is visibly smaller than the disc cases it shares a shelf with, so a profile that let it
-    /// stand at 190mm would have bought the geometry and thrown away the point. This is the cheap
-    /// half of PSP's contract and the one that would survive any later change of mind about the
-    /// mesh squeeze: whatever the case's width ends up being, it is not a disc case's size.
+    /// it is visibly smaller than the disc cases beside it, so a profile that let it stand at
+    /// 190mm would have bought the geometry and thrown away the point.
     /// </remarks>
     [Fact]
     public void MetricProfile_StandsThePspCaseShorterThanADiscCase()
@@ -1252,7 +1257,8 @@ public class MediaShellTests
         var ps2 = MediaShellMap.ProfileForSystem("playstation2", 0.708);
         var psp = MediaShellMap.ProfileForSystem("psp", 0.708);
 
-        Assert.Equal(ps2.Shell, psp.Shell);
+        Assert.Equal(MediaShell.DiscKeepCase, ps2.Shell);
+        Assert.Equal(MediaShell.UmdCase, psp.Shell);
         Assert.True(psp.HeightInShelfUnits < ps2.HeightInShelfUnits);
         Assert.True(psp.WidthInShelfUnits < ps2.WidthInShelfUnits);
         Assert.NotEqual(ps2.MaterialVariant, psp.MaterialVariant);
@@ -1271,43 +1277,39 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// PSP takes a real UMD case's shape, and pays for it with a known squeeze of the shared mesh.
+    /// PSP's case is a real UMD case, drawn undistorted, and a PSP box scan fits its sleeve.
     /// </summary>
     /// <remarks>
-    /// The counterweight to the proportion theory above, and the reason PSP is excluded from it.
-    /// That theory is right for a cartridge, where the moulding is the object. A keep case is a flat
-    /// sleeve filling nearly the whole silhouette with a rim a few pixels wide around it, so the
-    /// question is not "is the mesh undistorted" but "which of the mesh and the artwork should carry
-    /// the error". The keep case's cover panel is ArtFit.Stretch, so the profile's own width/height
-    /// is the shape every scraped cover is pulled to: at 104mm that lands on a PSP box scan almost
-    /// exactly, and at the asset's own 0.695 it would stretch every cover about 20% wider.
+    /// This test used to pin a trade. PSP borrowed the DVD case, whose sleeve is ArtFit.Stretch,
+    /// so one of the mesh and the artwork had to carry the error: at the asset's own 0.695 every
+    /// cover was stretched about 20% wider, and at a UMD case's 104mm the mesh was drawn at 84% of
+    /// its authored width. The squeeze was chosen and its exact size asserted here so it could not
+    /// drift.
     ///
-    /// Both were rendered before this was chosen. The assertions are the two halves of the trade —
-    /// the art fits, and the mesh distortion is exactly the one accepted, not a new one.
+    /// With the UMD case authored there is nothing to trade, and the assertions are now the two
+    /// things that were in tension said together: the mesh is drawn at its own proportions, and
+    /// the film it prints on is the shape of the scan.
     /// </remarks>
     [Fact]
-    public void MetricProfile_TakesARealUmdCasesShapeToKeepItsSleeveUndistorted()
+    public void MetricProfile_PspCaseIsARealUmdCaseAndItsSleeveFitsABoxScan()
     {
         var profile = MediaShellMap.ProfileForSystem("psp", 0.581);
         var asset = MediaShellCatalog.Load(profile.Shell);
 
-        var panelAspect = profile.DimensionsMillimetres.X / profile.DimensionsMillimetres.Y;
-        var scrapedCoverAspect = (float)KnownSystems.All.Single(system => system.Id == "psp")
-            .CoverAspectRatio;
-
-        // What the squeeze buys. Sourced from KnownSystems rather than repeated as a literal, so
-        // that re-measuring a UMD case in one place cannot leave the two silently disagreeing.
-        Assert.Equal(scrapedCoverAspect, panelAspect, 0.01f * scrapedCoverAspect);
-
-        // All three axes are a real UMD case, which is the whole point: this profile is not a
-        // compromise between the case and the asset, it is the case, and the asset bends to it.
         Assert.Equal(new Vector3(104f, 178f, 15f), profile.DimensionsMillimetres);
 
-        // What it costs, pinned so an accidental change cannot hide inside the accepted one. The
-        // mesh is drawn at 84% of its authored width. Measured against the asset rather than
-        // against the PS2 profile — those differ, 0.695 to 0.711, and taking the profile's figure
-        // is how this was first written down as an 18% squeeze when the real one is 16%.
-        Assert.Equal(0.841f, panelAspect / (asset.Size.X / asset.Size.Y), 0.005f);
+        // No squeeze: the profile's shape is the asset's.
+        var profileAspect = profile.DimensionsMillimetres.X / profile.DimensionsMillimetres.Y;
+        Assert.Equal(1f, profileAspect / (asset.Size.X / asset.Size.Y), 0.005f);
+
+        // And the art fits. Sourced from KnownSystems rather than repeated as a literal, so that
+        // re-measuring a UMD sleeve in one place cannot leave the two silently disagreeing.
+        var scrapedCoverAspect = (float)KnownSystems.All.Single(system => system.Id == "psp")
+            .CoverAspectRatio;
+        var sleeveAspect = MediaShellCatalog.TrySheetAspect(
+            MediaShellCatalog.Definition(profile.Shell).CoverPanel, asset);
+        Assert.NotNull(sleeveAspect);
+        Assert.Equal(scrapedCoverAspect, sleeveAspect.Value, 0.01f * scrapedCoverAspect);
     }
 
     /// <summary>
@@ -1388,6 +1390,7 @@ public class MediaShellTests
     [InlineData(MediaShell.SnesCartridge)]
     [InlineData(MediaShell.GbaCartridge)]
     [InlineData(MediaShell.DiscKeepCase)]
+    [InlineData(MediaShell.UmdCase)]
     // The trimmed shell has to be normalised against what is left of it, not what was authored:
     // measuring the cut cabinet against the whole machine's height would leave it half a unit tall
     // and hovering above the shelf floor.
@@ -1488,7 +1491,11 @@ public class MediaShellTests
 
         Assert.True(model.Size.X > model.Size.Y);
         Assert.InRange(model.Size.X, 1.53f, 1.58f);
-        Assert.InRange(model.Size.Z, 0.15f, 0.19f);
+
+        // 17mm on a 70mm cartridge. The download is 11.8mm deep — 0.168 here — and
+        // tools/thicken_shell.py is what makes this true of the shipped file; a re-prepared asset
+        // that skipped that step would come back a third thinner.
+        Assert.Equal(17f / 70f, model.Size.Z, 0.003f);
     }
 
     /// <summary>
@@ -1542,7 +1549,7 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The DS card loads upright, roughly square, and thin.
+    /// The DS card loads upright, roughly square, and as thick as a real one.
     /// </summary>
     /// <remarks>
     /// satchii_'s card carries its orientation in its node matrices — the raw accessor bounds say it
@@ -1558,9 +1565,11 @@ public class MediaShellTests
 
         // Near square: this asset is 0.960 W/H where a real 33.4 x 35mm card is 0.954.
         Assert.InRange(model.Size.X / model.Size.Y, 0.94f, 0.98f);
-        Assert.True(
-            model.Size.Z < 0.12f * model.Size.Y,
-            $"A DS card is thin; got depth {model.Size.Z} against height {model.Size.Y}.");
+
+        // 3.8mm on a 35mm card. The download is 1.75mm thick, and tools/thicken_shell.py is what
+        // makes this true of the shipped file; a re-prepared asset that skipped that step would
+        // come back at half this.
+        Assert.Equal(3.8f / 35f, model.Size.Z / model.Size.Y, 0.003f);
     }
 
     /// <summary>
@@ -2308,12 +2317,11 @@ public class MediaShellTests
     {
         var model = MediaShellCatalog.Load(MediaShell.DiscKeepCase);
 
-        // Close to a real 135 x 190 x 14mm keep case. The tolerance is real rather than sloppy: the
-        // model stands about 194mm tall including the lip around the lid, so its proportions land
-        // near the nominal figures without matching them exactly.
+        // A real 135 x 190 x 14mm keep case, generated at exactly those figures. The downloaded
+        // case this replaced stood 194mm tall and needed a tolerance several times this one.
         Assert.True(model.Size.X < model.Size.Y);
-        Assert.InRange(model.Size.X, 0.66f, 0.74f);
-        Assert.InRange(model.Size.Z, 0.05f, 0.09f);
+        Assert.Equal(135f / 190f, model.Size.X, 0.002f);
+        Assert.Equal(14f / 190f, model.Size.Z, 0.002f);
     }
 
     [Fact]
@@ -2392,33 +2400,36 @@ public class MediaShellTests
     }
 
     /// <summary>
-    /// The keep case's three sheets meet round its corners instead of leaving bare plastic between
+    /// A keep case's three sheets meet round its corners instead of leaving bare plastic between
     /// them, and still stop at the opening edge.
     /// </summary>
     /// <remarks>
-    /// Reported as "the DVD boxes have gaps between the images". They did: each panel printed only
-    /// what lay within a millimetre of its own plane, and the rounded corner between the front face
-    /// and the spine is 3.5mm across, so a band of it belonged to neither — 2.6mm of black moulding
-    /// on the spine side and 3.25mm on the back side of a case 13.7mm thick, which reads as two
+    /// First reported as "the DVD boxes have gaps between the images", on the downloaded case:
+    /// each panel printed only what lay within a millimetre of its own plane, and that case's
+    /// rounded corner was 3.5mm across, so a band of it belonged to neither sheet and read as two
     /// pictures with a gap rather than as one sheet folded round.
     ///
-    /// Stated as a walk round the shell's own cross-section rather than as bounds on the constants,
-    /// because the constants are only ever right relative to this mesh's fillet: the front print has
-    /// to reach at least as far round as the spine's begins. That is one comparison and it is the
-    /// whole defect. The opening edge is asserted too, and pulls the other way — it is the one large
-    /// face of a case that no sleeve wraps, so a fix that simply printed everything would pass the
-    /// first assertion and be just as wrong.
+    /// The generated cases cannot fail quite that way — their film is its own mesh, with a 1.8mm
+    /// corner the panels' millimetre reaches past from both sides — but the property is the same
+    /// one and it is still only ever right relative to the mesh: change the film's corner radius
+    /// in the generator, or the allowance in the catalog, and this is what says whether the two
+    /// still agree. Stated as a walk round the film's own cross-section: the front print has to
+    /// reach at least as far round as the spine's begins. The opening edge is asserted too, and
+    /// pulls the other way — it is the one large face of a case that no sleeve wraps.
     /// </remarks>
-    [Fact]
-    public void KeepCaseSleeve_MeetsRoundTheCornersAndStopsAtTheOpening()
+    [Theory]
+    [InlineData(MediaShell.DiscKeepCase, 190f)]
+    [InlineData(MediaShell.UmdCase, 178f)]
+    public void KeepCaseSleeve_MeetsRoundTheCornersAndStopsAtTheOpening(
+        MediaShell shell, float heightMillimetres)
     {
-        var model = MediaShellCatalog.Load(MediaShell.DiscKeepCase);
-        var definition = MediaShellCatalog.Definition(MediaShell.DiscKeepCase);
-        var millimetres = 190f / model.Size.Y;
+        var model = MediaShellCatalog.Load(shell);
+        var definition = MediaShellCatalog.Definition(shell);
+        var millimetres = heightMillimetres / model.Size.Y;
 
-        var cover = PrintedSpanAtMidHeight(model, definition.CoverPanel);
-        var back = PrintedSpanAtMidHeight(model, definition.ExtraPanels[0]);
-        var spine = PrintedSpanAtMidHeight(model, definition.ExtraPanels[1]);
+        var cover = PrintedSpanAtMidHeight(model, definition, definition.CoverPanel);
+        var back = PrintedSpanAtMidHeight(model, definition, definition.ExtraPanels[0]);
+        var spine = PrintedSpanAtMidHeight(model, definition, definition.ExtraPanels[1]);
 
         // The spine is at -X, so "further round the corner" is a smaller x for the two sheets and a
         // larger one for the spine itself. Meeting means their spans overlap rather than abut,
@@ -2434,11 +2445,9 @@ public class MediaShellTests
             + $"only begins at {spine.Max.X * millimetres:F1}mm, leaving "
             + $"{(back.Min.X - spine.Max.X) * millimetres:F1}mm of bare case between them.");
 
-        // And each sheet stays on its own half of the case's thickness. This is the assertion that
-        // pulls the other way, and it is why the fix could not simply be a larger allowance: the
-        // opening edge is the one large face of a case no sleeve wraps, and reaching it means coming
-        // round to the middle of the 13.7mm the case is thick. Printing everything would satisfy the
-        // corners above and put cover art over the thumb notch.
+        // And each sheet stays on its own half of the case's thickness: reaching the opening edge
+        // means coming round to the middle of it. Printing everything would satisfy the corners
+        // above and put cover art over the finger recess.
         Assert.True(
             cover.Min.Z > model.BoundsMax.Z * 0.5f,
             $"The front sleeve reaches z {cover.Min.Z * millimetres:F1}mm, over half way through a "
@@ -2447,6 +2456,13 @@ public class MediaShellTests
             back.Max.Z < model.BoundsMin.Z * 0.5f,
             $"The back sleeve reaches z {back.Max.Z * millimetres:F1}mm, over half way through a "
             + $"{model.Size.Z * millimetres:F1}mm case, so it is wrapping onto the opening edge.");
+
+        // The print stops short of the opening edge and leaves the case's own rim bare there,
+        // which is the visible difference from the case this replaced.
+        Assert.True(
+            cover.Max.X < model.BoundsMax.X - (3f / millimetres),
+            $"The front sleeve runs to within {(model.BoundsMax.X - cover.Max.X) * millimetres:F1}mm "
+            + "of the opening edge; the case's rim should stay bare.");
     }
 
     /// <summary>
@@ -2456,16 +2472,19 @@ public class MediaShellTests
     /// </summary>
     /// <remarks>
     /// Sampled along the surface rather than at the vertices, because the shader shades fragments
-    /// and this shell's fillet carries only a handful of edge loops: taken at vertices alone the
-    /// back sleeve appears to stop 1.2mm short of the spine's when the surface between those
-    /// vertices is printed the whole way. A test that cannot see what the shader prints would have
-    /// been read as the gap still being there.
+    /// and a fillet carries only a handful of edge loops: taken at vertices alone a sheet can
+    /// appear to stop short of its neighbour when the surface between those vertices is printed
+    /// the whole way. A test that cannot see what the shader prints would be read as a gap.
+    ///
+    /// And only over the meshes the panel is scoped to, which is the fourth thing the renderer
+    /// applies: a panel naming a material prints on nothing else.
     /// </remarks>
-    private static (Vector3 Min, Vector3 Max) PrintedSpanAtMidHeight(ModelAsset model, ArtPanel panel)
+    private static (Vector3 Min, Vector3 Max) PrintedSpanAtMidHeight(
+        ModelAsset model, MediaShellDefinition definition, ArtPanel panel)
     {
         var placement = MediaShellCatalog.Place(panel, model);
         var allowance = panel.MaxSurfaceDepth
-            ?? MediaShellCatalog.Definition(MediaShell.DiscKeepCase).PanelDepthFraction
+            ?? definition.PanelDepthFraction
                 * MathF.Abs(Vector3.Dot(model.Size, Vector3.Abs(placement.Normal)));
         var height = (model.BoundsMin.Y + model.BoundsMax.Y) * 0.5f;
 
@@ -2473,6 +2492,13 @@ public class MediaShellTests
         var max = new Vector3(float.NegativeInfinity);
         foreach (var mesh in model.Meshes)
         {
+            if (panel.Material is not null && !string.Equals(
+                    model.Materials[mesh.MaterialIndex].Name, panel.Material,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
             for (var triangle = 0; triangle < mesh.Indices.Length; triangle += 3)
             {
                 var corners = new (Vector3 Position, Vector3 Normal)[3];
@@ -2591,9 +2617,9 @@ public class MediaShellTests
     /// <remarks>
     /// Two things make this a fold rather than a second sticker. It starts exactly at the front
     /// edge, so no plastic shows in the crease; and its length comes from the front panel's height
-    /// and the fold fraction rather than from the model's depth, because this asset is about 12mm
-    /// deep where a real cartridge is 17mm and a strip sized against it would print the title
-    /// smaller than the label it belongs to.
+    /// and the fold fraction rather than from the model's depth. That is what kept the title the
+    /// right size while this asset was 12mm deep against a real cartridge's 17mm, and what left
+    /// the print where it was when the asset was thickened.
     /// </remarks>
     [Fact]
     public void WrapPanel_ContinuesTheLabelOverTheTopEdgeAtTheSamePrintedScale()
