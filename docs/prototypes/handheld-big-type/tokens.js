@@ -64,6 +64,21 @@ window.BT_TOKENS = {
     HeaderLeft: 162, HeaderTop: 40, HeaderHeight: 136,
     DockBottom: 32, DockGap: 24,
     RowPitch: 88, RowPitchPanel: 92, RowPitchSettings: 104, PanelRowsVisible: 7,
+    // The lists (the mock's openSheet, openSettings and openPanel, B7). A row is its pitch less RowGap high, its value RowValueGap
+    // from its label; the focused one moves RowFocusShift right and the ring sits RowRingOutsetX beside it and RowRingOutsetY above
+    // and below. The Y sheet and the menu: their title at SheetLeft / SheetTitleTop, at most SheetWidth wide, the rows from
+    // SheetTop, SheetRowsVisible at a time. Settings: its heading at SettingsLeft / SettingsHeadTop, the sections' rail from
+    // SettingsLeft and the rows from SettingsRowsLeft, both from SettingsTop, SettingsRowsVisible at a time (the rest scroll). A panel: its heading and count in a box PanelHeadTop
+    // from the top, PanelHeadHeight high and PanelLeft in from each side (the name at most PanelNameMaxWidth wide, the count raised
+    // PanelCountRaise), the rows from PanelRowsTop in a window PanelRowsVisible rows high, inset PanelRowsInset, PanelWidth wide.
+    RowGap: 16, RowValueGap: 28, RowFocusShift: 10, RowRingOutsetX: 28, RowRingOutsetY: 12,
+    RowGroupIndent: 48,   // a Settings row inside an opened one (an emulator's options): the app's own indent; the mock has none
+    SheetLeft: 140, SheetTitleTop: 60, SheetTop: 208, SheetWidth: 960, SheetRowsVisible: 8,
+    SettingsLeft: 80, SettingsHeadTop: 44, SettingsHeadMaxWidth: 1080, SettingsTop: 224, RailWidth: 300,
+    SettingsRowsLeft: 472, SettingsRowsWidth: 688, SettingsRowsVisible: 7,
+    PanelLeft: 80, PanelHeadTop: 40, PanelHeadHeight: 136, PanelNameMaxWidth: 680, PanelCountRaise: 12,
+    PanelRowsTop: 200, PanelRowsInset: 16, PanelWidth: 1080,
+    CoverRowsVisible: 2,   // cover search's candidates: two rows of the folder's tiles in view (the mock's eight); more scroll
     KeyPitch: 112, KeyboardLeft: 66, KeyboardTop: 424,
   },
 
@@ -76,6 +91,8 @@ window.BT_TOKENS = {
     FocusScale: 1.10, DockFocusScale: 1.14, KeyFocusScale: 1.08, HeldScale: 1.20,
     NeighbourPush: 8,
     SwitchWidth: 84, SwitchHeight: 48, SwitchKnob: 26,
+    SwitchStroke: 5, SwitchKnobInset: 6, SwitchKnobTravel: 36, SwitchOnKnobScale: 1.15,   // on: filled white, the knob in the ground's colour
+    UnderSheetScale: 0.95,                  // the grid steps back under a sheet or the menu
     ProgressHeight: 12,
   },
 
@@ -85,7 +102,7 @@ window.BT_TOKENS = {
     TileFocus: '#FFFFFF',                  // the focused one; its ink is the console's colour
     Ring: '#FFFFFF',
     Danger: '#FFC9BD',
-    RowRestOpacity: 0.58, RowLockedOpacity: 0.34, EmptySlotDotOpacity: 0.30, MissingTileOpacity: 0.45,
+    RowRestOpacity: 0.58, RowLockedOpacity: 0.34, RowLockedFocusOpacity: 0.8, SwitchOffOpacity: 0.65, UnderSheetOpacity: 0.12, EmptySlotDotOpacity: 0.30, MissingTileOpacity: 0.45,
     InkToward: '#0B0A18', InkMix: 0.74,    // the Stage's dark ink: the console colour mixed this far toward InkToward
     InGameMix: 0.64,                       // the Launcher while a game runs
     InGameRestOpacity: 0.28,
@@ -122,7 +139,18 @@ window.BT_TOKENS = {
     Scroll:    { ms: 500, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
     FolderOut: { ms: 250, staggerPerTile: 20 },
     FolderDeal: { ms: 480, staggerPerTile: 45, rise: 160 },
-    RowsIn:    { ms: 420, stagger: 32, slide: 140 },
+    // Rows arrive from the right (the sections' rail from the left, railSlide), the first after delay. A Settings section's rows,
+    // when the section changes, rise from the way you moved (SectionIn). A heading's letters (the mock's lettersIn) rise fromEm
+    // (sheetFromEm on a sheet's or the menu's title) tilted tilt degrees, one every stagger ms up to staggerMax. Under a sheet or the
+    // menu the grid steps back (StepBack: its scale on the curve, its opacity in fadeMs); a row taking the focus moves over and
+    // brightens (RowFocus), a switch's knob springs across (Switch). Under reduced motion all of these are simply there.
+    RowsIn:    { ms: 420, stagger: 32, slide: 140, delay: 40, railSlide: -100 },
+    SectionIn: { ms: 400, stagger: 30, rise: 52 },
+    CoversIn:  { ms: 460, staggerPerTile: 45, rise: 120, fromScale: 0.6 },   // cover search's candidates, by column + row
+    HeadingIn: { ms: 520, delay: 60, stagger: 24, staggerMax: 360, fromEm: 0.9, sheetFromEm: 0.8, tilt: 6 },
+    StepBack:  { ms: 400, fadeMs: 280, easing: 'cubic-bezier(.2, 1.2, .3, 1)' },
+    RowFocus:  { ms: 350, fadeMs: 200 },
+    Switch:    { ms: 350, fadeMs: 250 },
     Launch:    { flightMs: 340, takeoverMs: 640 },
     SwapScreens: { ms: 650 },
     IdleHop:   { afterMs: 4800, everyMs: 6500, ms: 560, staggerPerTile: 75, rise: 20,

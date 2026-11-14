@@ -104,7 +104,8 @@ internal sealed partial class HandheldLauncherMotion
         {
             _ringAnchor = anchor;
             StopBreath();
-            _bt.MoveRing(now, instant: Still, pop: _paged);
+            // Into a list or back out of one it simply lands (M47 B7, the mock's 'open' and 'back').
+            _bt.MoveRing(now, instant: TakeJump() || Still, pop: _paged);
         }
         _paged = false;
         var ring = _bt.Ring(target, now, out var opacity, out var moving);

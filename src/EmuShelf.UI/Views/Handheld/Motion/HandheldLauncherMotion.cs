@@ -215,6 +215,8 @@ internal sealed partial class HandheldLauncherMotion
         // Handheld mode opening counts as the first press: the resting motion lives its minute and the hop waits (M47 B5).
         OnInput();
         UpdateStill();
+        // The ground starts in the shell's colour (Big Type: this motion keeps it, M47 B7).
+        SettleGround(shell.LauncherGroundBrush);
         RequestTick();
     }
 
@@ -282,6 +284,9 @@ internal sealed partial class HandheldLauncherMotion
                 WatchFolder(folder);
                 break;
         }
+        UpdateLists();
+        if (e.PropertyName == nameof(HandheldShellViewModel.LauncherGroundBrush))
+            UpdateGround();
         RequestTick();
     }
 
@@ -562,6 +567,12 @@ internal sealed partial class HandheldLauncherMotion
         moving |= _column.Step(dt);
         ApplyColumn();
 
+        if (HandheldTokens.IsBigType)
+        {
+            moving |= StepArrivals();
+            moving |= StepUnder();
+            moving |= StepGround();
+        }
         moving |= StepSelector(dt);
         moving |= StepSelectorFade();
         moving |= StepPushes();

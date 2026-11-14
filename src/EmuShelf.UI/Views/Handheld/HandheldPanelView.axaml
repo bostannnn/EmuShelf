@@ -93,7 +93,7 @@
         </StackPanel>
       </Border>
       <StackPanel Grid.Column="1" Margin="28,0,0,0" VerticalAlignment="Center" Spacing="2">
-        <TextBlock Text="{Binding Heading}" FontSize="{x:Static vm:HandheldTokens.Heading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Text="{Binding Heading}" FontSize="{x:Static vm:HandheldTokens.ClassicPanelHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" TextTrimming="CharacterEllipsis" />
         <TextBlock Text="{Binding Subheading}" IsVisible="{Binding HasSubheading}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                    TextTrimming="CharacterEllipsis" />
       </StackPanel>

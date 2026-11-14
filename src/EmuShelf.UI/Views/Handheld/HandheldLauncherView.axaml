@@ -622,6 +622,8 @@
       </Transitions>
     </Border.Transitions>
   </Border>
+  <!-- Big Type (M47 B7): a new colour floods in as a circle over the ground (the view's motion grows it; the native Launcher has its own). -->
+  <Border x:Name="GroundWave" IsVisible="False" IsHitTestVisible="False" />
   <Viewbox Stretch="Uniform" ClipToBounds="False">
     <Grid x:Name="Canvas" Width="1240" Height="1080" RowDefinitions="*,144">
 
@@ -1084,7 +1086,7 @@
         </StackPanel>
         <vh:HandheldRollingText x:Name="BtPage" RenderOptions.TextRenderingMode="Antialias" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel" Text="{Binding PageCountText}" IsVisible="{Binding IsPageCountShown}"
                    HorizontalAlignment="Right" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
-        <Panel IsVisible="{Binding IsFolderOpen}" HorizontalAlignment="Right" VerticalAlignment="Center">
+        <Panel x:Name="BtSortCorner" IsVisible="{Binding IsFolderOpen}" HorizontalAlignment="Right" VerticalAlignment="Center">
           <Border x:Name="BtSortShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
             <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
               <TextBlock Classes="dock-corner" Text="{Binding OpenFolder.SortLabel}" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
@@ -1240,7 +1242,7 @@
                   Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,16,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}">
             <StackPanel Spacing="8">
               <StackPanel Margin="24,8,24,8" Spacing="4">
-                <TextBlock Text="{Binding TitlePage.OptionsHeading}" FontSize="{x:Static vm:HandheldTokens.SheetTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" />
+                <TextBlock Text="{Binding TitlePage.OptionsHeading}" FontSize="{x:Static vm:HandheldTokens.TitleOptionsTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" />
                 <TextBlock Text="{Binding TitlePage.Title}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <ItemsControl ItemsSource="{Binding TitlePage.Options}">
@@ -1321,7 +1323,7 @@
                     <TextBlock Classes="chip-text" Text="{Binding TitlePage.RememberScreenLabel}" />
                   </StackPanel>
                 </Border>
-                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-20">
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusTitleChip}" Margin="-20">
                   <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusRow}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusRow}" /></Border>
                 </Border>
               </Panel>
@@ -1356,6 +1358,14 @@
   </Panel>
 
   <!--
+    Big Type (M47 B7): the Start menu, the Y sheet, Settings and the panels as type on the colour, under the one ring (so drawn before
+    it). Today's look keeps its cards below; Big Type still shows those for typing (the keyboard is B9's).
+  -->
+  <Viewbox Stretch="Uniform" ClipToBounds="False" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+    <vh:HandheldBigTypeLists x:Name="BtLists" Width="1240" Height="1080" />
+  </Viewbox>
+
+  <!--
     ===== The selector =====
     One frame for every focusable element (tiles, chips, dock buttons, Title page buttons and cards): a thick
     violet frame between white keylines, over a pre-rendered glow that breathes. It springs from element to
@@ -1372,6 +1382,8 @@
     </Canvas>
   </Viewbox>
 
+  <!-- Today's look (Big Type draws the menu and the sheet as type, M47 B7). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <!-- The menu's scrim covers the whole window, letterbox bands included. -->
       <Border IsVisible="{Binding IsMenuOpen}" Background="{x:Static vm:HandheldTokens.Scrim}">
         <Viewbox Stretch="Uniform">
@@ -1478,11 +1490,21 @@
     </Viewbox>
   </Border>
 
+  </Panel>
+
   <!--
     ===== A panel (M45 H6c): the scraper, the batch scraper, cover search, achievements, Search, Edit title =====
     Laid across the screens the way Settings is: its rows (or the keyboard) here, the focused row's card on the Stage. It
     takes this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets PanelCanvas's width.
   -->
+  <!-- Today's look; Big Type only while the panel types (M47 B7). -->
+  <Panel>
+    <Panel.IsVisible>
+      <MultiBinding Converter="{x:Static BoolConverters.Or}">
+        <Binding Source="{x:Static vm:HandheldTokens.IsClassic}" />
+        <Binding Path="Panel.IsTyping" FallbackValue="False" />
+      </MultiBinding>
+    </Panel.IsVisible>
   <Border x:Name="PanelLayer" IsVisible="{Binding IsPanelOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
@@ -1496,6 +1518,7 @@
       </Grid>
     </Viewbox>
   </Border>
+  </Panel>
 
   <!--
     ===== Naming a folder (H4) =====
@@ -1600,6 +1623,14 @@
     Launcher's look; the choosers, the confirmations and the keyboard for text rows are states of this layer. It takes
     this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets SettingsCanvas's width.
   -->
+  <!-- Today's look; Big Type only while Settings types (M47 B7). -->
+  <Panel>
+    <Panel.IsVisible>
+      <MultiBinding Converter="{x:Static BoolConverters.Or}">
+        <Binding Source="{x:Static vm:HandheldTokens.IsClassic}" />
+        <Binding Path="Settings.IsTyping" FallbackValue="False" />
+      </MultiBinding>
+    </Panel.IsVisible>
   <Border x:Name="SettingsLayer" IsVisible="{Binding IsSettingsOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
@@ -1858,5 +1889,6 @@
       </Grid>
     </Viewbox>
   </Border>
+  </Panel>
   </Panel>
 </UserControl>

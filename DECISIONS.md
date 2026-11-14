@@ -14763,3 +14763,97 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   on each pictured piece, as B4 did on the Stage; no black boxes on the emulator or the Thor.
 - **Found, not fixed:** the Big Type design set is not deterministic from B5's commit: two renders of `ddb0696` differ in 11 frames, each
   only on the focused ring's edge (6 to 1,215 pixels, sub-pixel), the same frames B5's saved set differs in. Classic is deterministic.
+
+## 2026-11-14 — M47 B7: the lists as type on the colour
+
+- **The lists are a view of their own, drawn only under Big Type.** `HandheldBigTypeLists` (the Start menu, the Y sheet and its
+  confirmations, Settings with its choice lists and confirmations, and the generic panel) sits in the Avalonia Launcher just under
+  the selector layer, so the one ring is drawn over it, as the mock's `z-index`. Today's cards are untouched: their layers are wrapped
+  in `IsClassic`, except that Big Type still shows today's Settings and panel layers **while they type**, because the keyboard is B9's
+  (the Stage keeps today's card for the typed text then, `HandheldStageViewModel.IsListTyping`). Classic's 158 design frames are
+  byte-identical before and after.
+- **Every row is three parts.** A slot at rest (the ring's anchor, with a `Border.ring` `RowRingOutsetX`/`RowRingOutsetY` round it, so
+  the ring sits exactly on the mock's `buildList` `_rect`), a part that arrives (the motion slides and fades it), and the row itself
+  (moves `RowFocusShift` and brightens when focused, on style transitions). So the ring is never dragged by a row sliding in, and a
+  picture at rest is the mock's at rest. Rows are `RowPitch − RowGap` high; a list longer than its window (`SheetRowsVisible`,
+  `SettingsRowsVisible`, `PanelRowsVisible`) moves by whole rows to keep the focus in view (`HandheldRowWindow`, the mock's
+  `P.scroll`, on tokens.js `Scroll`), its window clipped above and below only so a row sliding in from the side is never cut.
+- **tokens.js gained the mock's inline numbers for the lists, as the rule asks:** `launcher` `RowGap`, `RowValueGap`,
+  `RowFocusShift`, `RowRingOutsetX/Y`, the sheet's, Settings' and the panel's places (`SheetLeft` … `PanelWidth`, `SheetRowsVisible`,
+  `SettingsRowsVisible`), `shape` `SwitchStroke`, `SwitchKnobInset`, `SwitchKnobTravel`, `SwitchOnKnobScale`, `UnderSheetScale`,
+  `colour` `RowLockedFocusOpacity`, `SwitchOffOpacity`, `UnderSheetOpacity`, and `motion` `RowsIn.delay/railSlide`, `SectionIn`,
+  `CoversIn`, `HeadingIn` (the mock's `lettersIn`: 60 ms, 24 ms a letter to 360, 520 ms, 0.9 em or 0.8 on a sheet's title, 6°),
+  `StepBack`, `RowFocus`, `Switch`. One number is the app's, not the mock's: `RowGroupIndent` 48, a Settings row inside an opened one
+  (an emulator's options), which the mock does not have; it is today's indent. Under Big Type the list roles `Row`, `RowValue`,
+  `RailRow`, `SheetTitle`, `Heading`, the switch, `RingRadiusRow` (32, which also rounds the folder header's ring, as B5's decision
+  already said it should) and `Danger` take tokens.js's values; the Title page (B8's) keeps today's through two new names
+  (`TitleOptionsTitle`, `RingRadiusTitleChip`) and the typing panel's heading through `ClassicPanelHeading`.
+- **The motion is the mock's, from one class of maths.** `BigTypeListMotion` (beside `BigTypeMotion`) gives rows arriving, a
+  section's rows rising (from above when the move was up), the heading's letters (`HandheldBigTypeHeading`, which fits the heading as
+  `setHead` does, places each letter by the line's own layout and turns it about its own box), cover search's candidates rising and
+  growing, and the grid stepping back, each as the mock's Web Animation: one keyframe pair eased as a whole on its curve, held at its
+  start until its delay. The Avalonia Launcher's motion applies them on its frame clock and after every layout, so a row is posed
+  before the first frame it could be drawn in. **The ring jumps into a list and back out of it** (the mock's `open` and `back` do not
+  glide) and travels on B5's timed path between rows, breathing at rest. **The grid under a sheet or the menu steps back** to
+  `UnderSheetOpacity` and `UnderSheetScale`; under Settings and a panel it goes (opacity 0); the dock and its left corner stay, as in the
+  mock. Closing a list puts the grid back at once: the native Launcher takes the screen back then and pictures the grid at rest, and no
+  picture may be placed from a grid that is still scaled down.
+- **The exits are not built.** The mock's rows also leave when a list closes (and a sheet's rows leave left when another replaces it).
+  On the Thor closing a list hands the screen straight back to the native Launcher, which has no lists to animate; delaying that
+  hand-over for the exit was not in this step's brief. Open for the owner, as is everything about how the motion feels.
+- **The focused row is the Stage's name** (the brief, the roadmap and the mock's own words: "the row you are on becomes the big word
+  above"). For Settings and the panels the mock's script does exactly that. **For the Y sheet and the Start menu the mock's script
+  keeps the name that was there** (`focusSheet` lands with `keep: true`: the label becomes "More" or "Menu" and the line the row's
+  hint) — **the brief was followed**: the name is the row, the label what the sheet acts on (its title, or "Menu"), the line the row's
+  note or what it does (the Start menu's rows gained the mock's hints), and a sheet keeps the facts of what it acts on as its second
+  line. Changing to the mock's script is one method (`HandheldShellViewModel.BigTypeListText`). Settings: "Settings" over a section,
+  "Settings · Section" over a row, its value as the line, its description as the second line (the mock's rows have none). Panels: the
+  card's eyebrow, title, value and description; **Activity** puts the day's play time up as the big figure, the games under it and the
+  week's total under that (the mock's Activity); **cover search** names the game, with "Cover 1 of 6" and the candidate's size and
+  source under it, and the candidate where the game's cover sits (`Stage.ListCover`, the flat cover; the mock's 3D case wearing it is
+  not built: the case is the native medium's, tied to a game's Stage). The Stage writes this text once per update
+  (`BtLabel` … `BtFacts` hold what is under the list), so its rolling line never rolls to the item and back.
+- **Cover search is the mock's grid under Big Type.** Its candidates are a grid of the folder's tiles four to a row
+  (`FolderColumnsVisible`, `FolderLeft`, `FolderPitch`, `TileFolder`), its "Search for" and "Search" rows stay rows above them (the mock
+  has neither, the app needs both); left and right move along the grid and up and down a row of it (`HandheldPanelViewModel.GridStep`).
+  Today's look keeps its list and its moves.
+- **A panel's count** (`HandheldPanelViewModel.Count`) is the mock's `pcount`: unlocked of all for achievements, covers found for cover
+  search, the week or the ranking for Activity; the others have none. Its progress (`Card.Progress`) is a flat bar `ProgressHeight`
+  high between the heading and the rows, in a tile's white over the colour; the mock draws no bar, so its place is the app's.
+- **Settings has its own colour while it is open** (the mock's `focusSet` with `SETC`): `UpdateGround` gives `AppGround` under Big
+  Type while Settings is open; closing it, the focus's colour comes back. **The Avalonia Launcher now floods too**: a new ground grows
+  as a circle on B6's `Flood` timing over the old one, from the ring's target, or from the middle of the screen when a list took the
+  colour (the mock's `flood` with no tile); held still, or while the native Launcher has the screen, it simply changes. B3's 200 ms
+  crossfade is gone under Big Type.
+- **The white frames when a sheet opens, fixed (both looks).** Cause: when the Avalonia Launcher took the screen, the feed made it
+  opaque and hid the native surface in the same step, so for the two or three frames before the Avalonia surface had drawn anything
+  since it became visible the second display showed its empty, white surface. Now the native surface stays in front until the
+  Avalonia Launcher's compositor has rendered two batches since (`HandheldNativeLauncherFeed.HandOverAsync`); a hand-over overtaken by
+  another (a sheet closed at once) does nothing. Closing is unchanged. In Classic this changes only those frames: the native Launcher
+  shows instead of white, then the sheet.
+- **Found and fixed on the way: `HandheldRollingText` (B5) could keep drawing an earlier text.** When its text changed while shown it
+  laid out the old text for the roll (`CreateTextLayout(before)`) after the text block had let its cache of shaped runs go, so the
+  cache filled again with the old text and the block's next layout reused it: the Text property said one thing and the screen
+  another. Seen in the design set at B6's commit already (home page 2's Stage line said the pinned game's play time) and in B7's menu
+  frame. It now lets its layout go again after making the roll's copy. Classic's frames are unchanged.
+- **The ring-edge drift in Big Type renders (B6's finding): found, and it is the app, not the harness, so it is left as the brief
+  asks.** A render of the starting commit `7c93bea` differs from B6's saved render of it in 13 frames, each only on the focused ring's
+  anti-aliased left or right edge (one side moved by a fraction of a pixel, the top edge identical). Cause: in
+  `HandheldLauncherMotion.OnFrame` the ring (`StepSelector`) reads its target before the neighbours' push (`StepPushes`) is stepped.
+  The tile the focus lands on was a neighbour of the last one, so it is still settling back from its 8 px push for 380 ms, longer than
+  the ring's 300 ms path; on the last frame of that push the ring takes the target from the previous frame's push, and then nothing
+  moves, so the ring rests a fraction of a pixel off, by however the last two frames fell. Stepping the pushes before the ring (or one
+  more frame after them) would fix it; not done here. The harness waits correctly: the frame it captures does not change any more.
+  (An earlier comparison in this session wrongly showed renders identical: its check read only the alpha channel; redone.)
+- **Found on the Thor and fixed:** a list window's clip was sized before the view had a width (the rail's long names were cut); a
+  row's long value squeezed its label to "D…" (the label now keeps its length, the value is cut); with 24 candidates cover search ran
+  under the dock (its grid now shows `CoverRowsVisible` 2 rows and scrolls a row at a time, a number added to tokens.js); a window's
+  items control clipped to its own bounds, so once it scrolled the rows coming into view were cut away; the window clips at its full
+  height, not what it held when its rows were still streaming in; and the native Stage pictured a panel's (now empty) card instead of
+  the candidate cover. **Left:** "Artwork & metadata" is longer than the rail and is cut where the rows start (the mock's names are
+  short); a long Stage line (Activity's games) runs under the hints, as any long line does since B4.
+- **Holding still:** rows and headings are simply there, the ring lands, the grid steps back at once, the switch and the rows' focus
+  have no transitions (the root's `still` class), and the ground changes at once.
+- **Not built, for the owner or later steps:** the rows' exits (above); the 3D case wearing a cover candidate; the dock row's right
+  corner under Settings (the mock writes the version there; it is left empty, as under a panel); Settings opens with its rows focused,
+  as it did before B7 (the mock opens on the rail).

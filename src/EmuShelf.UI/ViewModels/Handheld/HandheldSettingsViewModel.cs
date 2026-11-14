@@ -119,6 +119,13 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
 
     public bool IsChoicePickerOpen => Projection.IsChoicePickerOpen;
 
+    /// <summary>Neither a choice's list nor a confirmation stands in for the rows (the Big Type look shows those in their place, M47 B7).</summary>
+    public bool IsNormal => !Projection.IsChoicePickerOpen && !Projection.IsConfirmationOpen;
+
+    /// <summary>The section (or setup step) on show, as an index into <see cref="Sections"/>; -1 for none (M47 B7: its rail keeps it in view).</summary>
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial int SelectedSectionIndex { get; private set; } = -1;
+
     public bool IsConfirmationOpen => Projection.IsConfirmationOpen;
 
     /// <summary>The confirmation's two answers: Cancel (focused first) and the action.</summary>
@@ -421,10 +428,12 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 break;
             case nameof(GamepadSettingsViewModel.IsChoicePickerOpen):
                 OnPropertyChanged(nameof(IsChoicePickerOpen));
+                OnPropertyChanged(nameof(IsNormal));
                 break;
             case nameof(GamepadSettingsViewModel.IsConfirmationOpen):
             case nameof(GamepadSettingsViewModel.IsConfirmChoiceSelected):
                 OnPropertyChanged(nameof(IsConfirmationOpen));
+                OnPropertyChanged(nameof(IsNormal));
                 OnPropertyChanged(nameof(IsCancelFocused));
                 OnPropertyChanged(nameof(IsConfirmFocused));
                 OnPropertyChanged(nameof(ConfirmLabel));
@@ -450,6 +459,21 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     }
 
     private void SyncSections()
+    {
+        SyncSectionsCore();
+        var selected = -1;
+        for (var i = 0; i < Sections.Count; i++)
+        {
+            if (Sections[i].IsSelected)
+            {
+                selected = i;
+                break;
+            }
+        }
+        SelectedSectionIndex = selected;
+    }
+
+    private void SyncSectionsCore()
     {
         if (IsSetup)
         {

@@ -637,11 +637,44 @@ public sealed class HandheldCoverSearchPanel : HandheldPanelViewModel
 
     public override string Subheading => _gameTitle;
 
+    /// <summary>
+    /// The Big Type Stage names the game, as the mock's cover search does, with the candidate under it: which one of how many, its
+    /// size and where it is from.
+    /// </summary>
+    public override HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            if (IsTyping || FocusedRow?.Source is not CoverSearchResultViewModel)
+                return base.BigTypeStage;
+            var card = Card;
+            var facts = string.Join(" · ", new[] { card.Value, card.Description }.Where(part => !string.IsNullOrEmpty(part)));
+            return new HandheldListStageText(Heading, _gameTitle, card.Title, facts);
+        }
+    }
+
+    /// <summary>The Big Type look sets the candidates four to a row, as the mock's cover search (Classic: one list).</summary>
+    public override int GridColumns => HandheldTokens.IsBigType ? HandheldTokens.CoverColumns : 0;
+
+    /// <summary>The candidate under the ring, where the game's cover sits on the Stage.</summary>
+    public override Avalonia.Media.Imaging.Bitmap? BigTypeCover => IsTyping ? null : (FocusedRow?.Source as CoverSearchResultViewModel)?.Preview;
+
+    /// <summary>How many covers were found.</summary>
+    public override string? Count => Search.Results.Count > 0 ? Search.Results.Count.ToString(System.Globalization.CultureInfo.CurrentCulture) : null;
+
     public override void Dispatch(GamepadAction action)
     {
         if (Keyboard is { } keyboard)
         {
             Apply(keyboard.Dispatch(action));
+            return;
+        }
+        // The Big Type look sets the candidates as a grid (M47 B7): the pad moves across it.
+        if (GridStep(action) is { } step)
+        {
+            if (step != 0)
+                Details.MoveFocus(step);
+            RaiseChanged();
             return;
         }
         switch (action)
@@ -850,6 +883,9 @@ public sealed class HandheldAchievementsPanel : HandheldPanelViewModel
     public override string Heading => "Achievements";
 
     public override string Subheading => Details.GameTitle;
+
+    /// <summary>How many are unlocked of how many.</summary>
+    public override string? Count => Details.TotalCount > 0 ? $"{Details.UnlockedCount} / {Details.TotalCount}" : null;
 
     private AchievementRowViewModel? FocusedAchievement => FocusedRow?.Source as AchievementRowViewModel;
 

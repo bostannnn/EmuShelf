@@ -89,9 +89,13 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SheetScroller")!, () => 92);
         HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SettingsChoiceScroller")!, () => 92);
         _panelCanvas = this.FindControl<Control>("PanelCanvas")!;
+        _btLists = this.FindControl<HandheldBigTypeLists>("BtLists")!;
         _sheetRows = this.FindControl<ItemsControl>("SheetRows")!;
         // View wiring only: the motion follows whichever shell the view shows.
         _motion = new HandheldLauncherMotion(this);
+        _motion.AttachLists(_btLists);
+        if (HandheldTokens.IsBigType)
+            _motion.AttachGround(this.FindControl<Border>("Ground")!, this.FindControl<Border>("GroundWave")!);
         // On a platform with a native Launcher this view stays laid out but invisible, and lends it pictures.
         _feed = native is { } host ? new HandheldNativeLauncherFeed(this, _motion, host) : null;
         if (_feed is not null)
@@ -132,6 +136,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private readonly ItemsControl _settingsThemes;
     private readonly ItemsControl _settingsChoices;
     private readonly Control _panelCanvas;
+    private readonly HandheldBigTypeLists _btLists;
     private readonly ItemsControl _sheetRows;
     private HandheldSheetViewModel? _sheet;
     private HandheldHomeScreenViewModel? _screen;
@@ -233,6 +238,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _selectorLayer.Width = width;
         _settingsCanvas.Width = width;
         _panelCanvas.Width = width;
+        _btLists.Width = width;
         _motion.SetScreen(screen);
         _feed?.SetScreen(screen);
     }

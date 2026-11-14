@@ -263,7 +263,11 @@ internal sealed class HandheldNativeLauncherFeed
         _motion.IsOnScreen = !active;
         _view.Opacity = active ? 0 : 1;
         _root.Classes.Set("native", active);
-        _host.SetActive(active);
+        var handOver = ++_handOver;
+        if (active)
+            _host.SetActive(true);
+        else
+            _ = HandOverAsync(handOver);
         if (active)
         {
             // The native side kept every picture and state while the Avalonia Launcher had the screen (the host
@@ -274,6 +278,37 @@ internal sealed class HandheldNativeLauncherFeed
             _tracksSent = null;
             Schedule();
         }
+    }
+
+    // Counts hand-overs, so one overtaken by the next (a sheet closed before this view drew) does nothing.
+    private int _handOver;
+
+    /// <summary>
+    /// The Avalonia Launcher takes the screen (a sheet, the menu, Settings, a panel): the native Launcher stays in front until this
+    /// view has drawn a frame of its own. Hiding it at once showed the second display's Avalonia surface before it had drawn anything
+    /// since it was made visible: two or three white frames each time a sheet opened (seen on the emulator, both looks; M47 B7).
+    /// </summary>
+    private async System.Threading.Tasks.Task HandOverAsync(int handOver)
+    {
+        try
+        {
+            if (Avalonia.Rendering.Composition.ElementComposition.GetElementVisual(_view)?.Compositor is { } compositor)
+            {
+                // The frame that lays out and draws what just showed, then the one after it: the first is on screen by then.
+                for (var frame = 0; frame < 2; frame++)
+                {
+                    await compositor.RequestCompositionBatchCommitAsync().Rendered;
+                    if (handOver != _handOver)
+                        return;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // A view torn down meanwhile: hand over at once, as before.
+        }
+        if (handOver == _handOver && !_active)
+            _host.SetActive(false);
     }
 
     /// <summary>

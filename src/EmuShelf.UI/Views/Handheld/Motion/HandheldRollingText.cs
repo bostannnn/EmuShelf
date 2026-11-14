@@ -48,6 +48,9 @@ public sealed class HandheldRollingText : TextBlock
             return;
         // The text block lets its own layout of the old text go; the roll draws one of its own, laid out the same way.
         var layout = CreateTextLayout(before);
+        // Laying out the old text fills the text block's cache of shaped runs with it, after the block had already let its cache
+        // go for the new text: its next layout then drew the old text (the Stage's line kept an earlier line, M47 B7). Let it go again.
+        InvalidateTextLayout();
         if (Cells(layout, before, _shownOrigin) is not { } cells)
         {
             layout.Dispose();

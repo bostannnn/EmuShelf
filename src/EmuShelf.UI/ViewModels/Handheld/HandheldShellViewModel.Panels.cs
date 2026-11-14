@@ -57,6 +57,7 @@ public sealed partial class HandheldShellViewModel
         _panelClosed = closed;
         _panelCard = null;
         Panel = panel;
+        ListOpened = true;
         UpdateFocus();
     }
 
@@ -68,6 +69,7 @@ public sealed partial class HandheldShellViewModel
         var closed = _panelClosed;
         _panelClosed = null;
         Panel = null;
+        ListOpened = false;
         _panelCard = null;
         // The card's pictures belong to the panel's view models, which go now: the Stage lets go of them first.
         Stage.PanelCard = null;

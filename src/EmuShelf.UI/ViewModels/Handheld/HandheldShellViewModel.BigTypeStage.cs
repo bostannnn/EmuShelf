@@ -47,10 +47,10 @@ public partial class HandheldShellViewModel
     private void ApplyBigTypeText(HandheldStageKind kind, string title, string subtitle)
     {
         _stageFolder = null;
-        Stage.IsMissing = false;
-        Stage.Facts = string.Empty;
+        BtIsMissing = false;
+        BtFacts = string.Empty;
         var sorting = OpenFolder?.IsSortFocused == true;
-        Stage.Label = kind switch
+        BtLabel = kind switch
         {
             HandheldStageKind.SettingsTile or HandheldStageKind.ActivityTile => "System",
             HandheldStageKind.App or HandheldStageKind.AllApps or HandheldStageKind.Menu => "Dock",
@@ -58,13 +58,13 @@ public partial class HandheldShellViewModel
             HandheldStageKind.Header => OpenFolder?.Name ?? string.Empty,
             _ => string.Empty,
         };
-        Stage.Name = kind switch
+        BtName = kind switch
         {
             HandheldStageKind.EmptySlot => IsLibraryEmpty ? "No games yet" : "Empty",
             HandheldStageKind.Header => sorting ? "Sort" : "Back",
             _ => title,
         };
-        Stage.Line = kind switch
+        BtLine = kind switch
         {
             HandheldStageKind.Header when sorting && OpenFolder is { } folder => $"{folder.SortLabel} · A changes the order",
             HandheldStageKind.Header => "Back to home",
@@ -76,7 +76,7 @@ public partial class HandheldShellViewModel
     private void ApplyBigTypeFolderText(HandheldFolderSource source, string subtitle)
     {
         _stageFolder = source;
-        Stage.Label = source.Kind switch
+        BtLabel = source.Kind switch
         {
             HandheldFolderKind.Platform when source.Platform is { } platform => platform.Name,
             HandheldFolderKind.Recent => "Last played",
@@ -84,12 +84,12 @@ public partial class HandheldShellViewModel
             HandheldFolderKind.Search => "Search",
             _ => string.Empty,
         };
-        Stage.Name = source.Platform is { ShortName.Length: > 0 } shortNamed ? shortNamed.ShortName : source.Name;
+        BtName = source.Platform is { ShortName.Length: > 0 } shortNamed ? shortNamed.ShortName : source.Name;
         var count = HandheldText.GameCount(source.GameCount);
-        Stage.Line = subtitle.StartsWith("New ·", StringComparison.Ordinal) ? $"New · {count}"
+        BtLine = subtitle.StartsWith("New ·", StringComparison.Ordinal) ? $"New · {count}"
             : subtitle == "Loading…" ? subtitle
             : count;
-        Stage.Facts = FolderFacts(source);
+        BtFacts = FolderFacts(source);
     }
 
     private string FolderFacts(HandheldFolderSource source)
@@ -108,19 +108,19 @@ public partial class HandheldShellViewModel
     /// <summary>A game: its console over its title; play time and achievements; emulator, last played and disc.</summary>
     private void ApplyBigTypeGameText(HandheldGameEntry game)
     {
-        Stage.Label = game.SystemName;
-        Stage.Name = game.Title;
-        Stage.IsMissing = !game.IsAvailable;
+        BtLabel = game.SystemName;
+        BtName = game.Title;
+        BtIsMissing = !game.IsAvailable;
         if (!game.IsAvailable)
         {
-            Stage.Line = "File not found";
-            Stage.Facts = string.Empty;
+            BtLine = "File not found";
+            BtFacts = string.Empty;
             return;
         }
         var played = game.Playtime.TotalMinutes >= 1 ? HandheldText.Duration(game.Playtime)
             : game.PlayCount == 0 ? "Not played yet" : "Played";
-        Stage.Line = string.IsNullOrEmpty(game.AchievementText) ? played : $"{played} · {game.AchievementText} achievements";
-        Stage.Facts = GameFacts(game);
+        BtLine = string.IsNullOrEmpty(game.AchievementText) ? played : $"{played} · {game.AchievementText} achievements";
+        BtFacts = GameFacts(game);
         if (HandheldTokens.IsBigType && !_emulatorNames.ContainsKey(game.SystemId))
             _ = LoadEmulatorNameAsync(game);
     }
@@ -166,7 +166,7 @@ public partial class HandheldShellViewModel
             return;
         _emulatorNames[game.SystemId] = name;
         if (Stage.Kind is HandheldStageKind.Game or HandheldStageKind.Hero && _stageGameId == game.Id && game.IsAvailable)
-            Stage.Facts = GameFacts(game);
+            BtFacts = GameFacts(game);
     }
 
     /// <summary>Settings may have changed a system's emulator: its name is read again next time.</summary>
@@ -197,6 +197,6 @@ public partial class HandheldShellViewModel
         _recentGames = games.Select(game => game with { ViewModel = null }).OrderBy(game => order.GetValueOrDefault(game.Id, int.MaxValue)).ToList();
         _library.ReleaseGames(games);
         if (_stageFolder is { } folder && Stage.Kind == HandheldStageKind.Folder)
-            Stage.Facts = FolderFacts(folder);
+            BtFacts = FolderFacts(folder);
     }
 }

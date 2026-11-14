@@ -3018,6 +3018,39 @@ checked on the emulator only, so their exits stay open for the owner's look.
       16.7 ms frame; neither is touched by B7, so the build goes on and the decision stays the owner's.
 - [ ] **B7 — Lists.** The Y sheet, the Start menu, Settings and the generic panel as type on the colour, with the
       focused row as the Stage's name. Avalonia only.
+      **Built 2026-11-14; awaiting the owner's look on the Thor.** (Choices in `DECISIONS.md` 2026-11-14 "M47 B7".) Under Big Type only
+      (`HandheldBigTypeLists`, under the one ring): the Start menu, the Y sheet and its confirmations, Settings (rail, rows, switches,
+      a choice's list, a confirmation) and the panels (achievements, Activity, cover search as the mock's grid of covers, the scrapers)
+      are type on the Launcher's flat colour under a heading whose letters land (`HandheldBigTypeHeading`, tokens.js `HeadingIn`, the
+      mock's `lettersIn`); rows sit on `RowPitch` / `RowPitchSettings` / `RowPitchPanel` at the mock's places, slide in (`RowsIn`; a
+      Settings section's rows rise, `SectionIn`), move over and brighten when focused, and scroll by whole rows past their window; the
+      ring frames them at `RingRadiusRow` on B5's timed path, stretching between rows and breathing, and jumps into and out of a list;
+      the grid under a sheet steps back (`StepBack`) and goes under Settings and a panel. The focused row is the Stage's name, arriving by
+      B6's letters, with what it is above and its value or what it does under it (Activity: the day's play time as the figure; cover
+      search: the game, with the candidate where its cover sits). Settings takes its own colour, and the Avalonia Launcher now floods
+      too. Held still, everything is in place at once. tokens.js gained the mock's inline list numbers (listed in the decision; one,
+      `RowGroupIndent`, is the app's own). Typing (Settings' and the panels' keyboards) keeps today's look until B9. **Not built:** the
+      rows leaving when a list closes; the 3D case wearing a cover candidate. **Followed the brief over the mock's script:** the Y sheet
+      and the menu make the row the name (the mock's script keeps the name and changes the label). **Fixed:** the two or three white
+      frames when a sheet opens (both looks: the native Launcher was hidden before the Avalonia one had drawn; it now waits for two
+      rendered frames), and B5's rolling text drawing an earlier text. **Found, not fixed (the app, not the harness):** the Big Type
+      design frames' ring-edge drift — the ring reads its target before the neighbours' push is stepped, so it can rest a fraction of a
+      pixel off. **Verified on macOS:** Classic rendered before and after (and between), 158 of 158 frames byte-identical; Big Type: 72
+      of 158 frames differ from the starting render, all lists (sheets, menu, Settings, Activity, cover search, add games, the Title
+      page's actions sheet) plus the folder header's ring at 32 (`RingRadiusRow`), home page 2's Stage line (the rolling-text fix) and
+      ring-edge drift; two Big Type renders of one build differ only in 2 folder frames on the ring's edge. Sheet, menu, Settings
+      (rail and rows), achievements, Activity and cover search were put beside the mock's bottom screen captured headless at Thor
+      scale: heading, rows and ring land on the mock's places (also held by a headless test to the mock's `buildList` ring), the switch
+      matches. New tests: `HandheldBigTypeListMotionTests` (timing at fixed moments, tokens.js) and `HandheldShellViewModelTests+BigTypeLists`
+      (tokens, every row's and ring's place for the menu, a sheet and Settings, the Stage's text, Classic untouched, the native Launcher
+      handing over only after this view has drawn). `dotnet build` and `dotnet test` pass. **Thor check** (Release AOT, `adb install -r`,
+      uid 10211 kept, 60 Hz untouched; both displays recorded and screencapped): with `bigtype`, the Y sheet, the Start menu, Settings,
+      Activity, achievements and cover search open with their rows arriving and the heading's letters landing, the ring stretching between
+      rows, the Stage naming the focused row by its letters, Settings flooding to its colour and a section's rows rising; no frame of the
+      second display was white while a sheet or the menu opened. Faults seen there were fixed and checked again (the rail's names cut, a
+      long value squeezing its label, cover search's grid running under the dock and its rows vanishing once scrolled, the candidate
+      missing on the native Stage). With `classic`: the sheet and the menu as before, no white frames; set back to `bigtype`. Left on the
+      Thor: this build, `debug.emushelf.look` `bigtype`. Renders, mock captures, recordings: `m47-b7-renders` in the build sessions' notes.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
       companion's session count and achievement roll.
 - [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.

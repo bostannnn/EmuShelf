@@ -154,12 +154,16 @@ public sealed partial class HandheldShellViewModel
     private void ShowSheet(HandheldSheetViewModel sheet)
     {
         Sheet = sheet;
+        ListOpened = true;
+        RefreshListStage();
         UpdateHints();
     }
 
     private void CloseSheet()
     {
         Sheet = null;
+        ListOpened = false;
+        RefreshListStage();
         UpdateHints();
     }
 
@@ -169,9 +173,11 @@ public sealed partial class HandheldShellViewModel
         {
             case GamepadAction.NavigateUp when sheet.Index > 0:
                 sheet.Focus(sheet.Index - 1);
+                RefreshListStage();
                 break;
             case GamepadAction.NavigateDown when sheet.Index < sheet.Items.Count - 1:
                 sheet.Focus(sheet.Index + 1);
+                RefreshListStage();
                 break;
             case GamepadAction.NavigateUp:
             case GamepadAction.NavigateDown:
