@@ -2711,6 +2711,10 @@ checked on the emulator only, so their exits stay open for the owner's look.
 **Emulator again from B8 (late on 2026-11-14; the owner: "Use the emulator").** The Thor left adb at the end of B7 and
 the owner chose the emulator over reconnecting it. B6 and B7 were checked on the Thor; B8 onward are emulator checks,
 labelled so, until the owner says the Thor is back. The Thor keeps B7's build, with the look last read as `bigtype`.
+**The Thor again (2026-11-15; the owner: "ayn thor is connected again, you can use it for testing and review").** B8's
+check, already under way, moves back to the Thor, and B9 and B10 run there too, under the same rules as before: 60 Hz, no
+system setting changed, `adb install -r` only, the owner's data untouched. If adb loses the Thor mid-step, that step
+falls back to the emulator and says so.
 
 ### Before building: decide (owner)
 
