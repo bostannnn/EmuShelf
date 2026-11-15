@@ -194,9 +194,9 @@ const savePoint=(()=>{
 // frame from the upper right; a chip lights up inside a shaft and flashes when it faces the light.
 // =====================================================================
 const loosePixels=(()=>{
- const N=760,DUST=220,A=new Float32Array(N*10),SRX=560,SRY=-110,LN=2048,lut=new Float32Array(LN),M=new Array(9),o=[0,0,0];let ang=null,fall=null;
+ const N=640,DUST=220,A=new Float32Array(N*10),SRX=560,SRY=-110,LN=2048,lut=new Float32Array(LN),M=new Array(9),o=[0,0,0];let ang=null,fall=null;
  for(let i=0;i<N;i++){const q=i*10,h=hash(i*7.7+2);let ax=hash(i*5.1+1)-.5,ay=hash(i*6.3+8)-.5,az=hash(i*8.9+3)-.5;const l=Math.hypot(ax,ay,az)||1;
-  A[q]=hash(i*1.31+.7);A[q+1]=.75+.55*hash(i*2.17+3);A[q+2]=Math.sqrt(hash(i*3.71+5));A[q+3]=hash(i*4.3+9)*TAU;A[q+4]=.045+.12*h*h*h;A[q+5]=ax/l;A[q+6]=ay/l;A[q+7]=az/l;A[q+8]=(.9+2.2*hash(i*9.7+4))*(i&1?1:-1);A[q+9]=hash(i*11.3+6)*TAU;}
+  A[q]=hash(i*1.31+.7);A[q+1]=.75+.55*hash(i*2.17+3);A[q+2]=Math.sqrt(hash(i*3.71+5));A[q+3]=hash(i*4.3+9)*TAU;A[q+4]=.055+.14*h*h;A[q+5]=ax/l;A[q+6]=ay/l;A[q+7]=az/l;A[q+8]=(.9+2.2*hash(i*9.7+4))*(i&1?1:-1);A[q+9]=hash(i*11.3+6)*TAU;}
  // the current, given as screen positions and depths and turned into points in space
  const K=[[590,350,3.4],[452,236,4.8],[300,186,7],[226,118,10.5],[300,60,15],[404,44,22],[486,18,30]].map(([sx,sy,z])=>[(sx-240)*z/300,(135-sy)*z/300,z]);
  const pathAt=s=>{const n=K.length-1,u=clamp(s,0,.9999)*n,i=Math.floor(u),f=u-i,p0=K[Math.max(0,i-1)],p1=K[i],p2=K[i+1],p3=K[Math.min(n,i+2)];
@@ -208,7 +208,7 @@ const loosePixels=(()=>{
    for(let i=i0;i<=i1;i++){const d=(i/LN*TAU-th)/w;lut[i&(LN-1)]+=amp*Math.exp(-d*d);}}
   const d0=P.sh(.7),d1=P.sh(.2),lc=P.ti(.5);
   for(let y=0,i=0,j=0;y<H;y++){const gy=(1-y/H)*.45;for(let x=0;x<W;x++,i++,j+=3){let g=x/W*.55+gy;g*=g;const b=lut[ang[i]]*fall[i]*.5;C[j]=d0[0]+(d1[0]-d0[0])*g+lc[0]*b;C[j+1]=d0[1]+(d1[1]-d0[1])*g+lc[1]*b;C[j+2]=d0[2]+(d1[2]-d0[2])*g+lc[2]*b;}}
-  const lx=.42,ly=.74,lz=-.52,hl=Math.hypot(lx,ly,lz-1),hx=lx/hl,hy=ly/hl,hz=(lz-1)/hl,cd=P.sh(.52),cm=P.sh(.1),cl=P.ti(.55),fg=P.sh(.44);
+  const lx=.42,ly=.74,lz=-.52,hl=Math.hypot(lx,ly,lz-1),hx=lx/hl,hy=ly/hl,hz=(lz-1)/hl,cd=P.sh(.5),cm=P.sh(.06),cl=P.ti(.62),fg=P.sh(.44);
   for(let i=0;i<N;i++){const q=i*10,s=fract(A[q]+t*.052*A[q+1]);pathAt(s);
    const R=.4+1.5*4*s*(1-s)+(s<.25?(.25-s)*2:0),rho=R*A[q+2],th=A[q+3]+t*.32*(A[q+1]-.55),x=o[0]+rho*Math.cos(th),y=o[1]+rho*Math.sin(th)*.8,z=o[2]+rho*Math.cos(th*2.3+1)*1.3;
    if(z<1.6||!proj(x,y,z))continue;const px=SX,py=SY,xi=clamp(px|0,0,W-1),yi=clamp(py|0,0,H-1),pi=yi*W+xi,beam=Math.min(1.15,lut[ang[pi]]*fall[pi]*1.6);
@@ -481,7 +481,7 @@ const overworld=(()=>{
      else{let g=Math.floor(gy+bayer[(y&3)*4+(x&3)]/16)/7;g*=g;C[j]=top[0]+(hc[0]-top[0])*g;C[j+1]=top[1]+(hc[1]-top[1])*g;C[j+2]=top[2]+(hc[2]-top[2])*g;}}continue;}
    const fk=fogk(RTH),det=clamp((RTH-16)/10,0,1);
    for(let x=0;x<W;x++,j+=3){const X=RX0+x*RXS,Z=RZ0+x*RZS,fx=Math.floor(X),fz=Math.floor(Z),tx=fx&255,tz=fz&255,k=map[tz*MS+tx];let s=AVG[k];
-    if(det<1){const tv=texel(k,((X-fx)*8)|0,((Z-fz)*8)|0,t,tx,tz);s=tv+(s-tv)*det;}
+    if(det<1){const u=((X-fx)*8)|0;let tv=texel(k,u,((Z-fz)*8)|0,t,tx,tz);if(u>2&&k!==3&&map[tz*MS+((tx+1)&255)]===3)tv=tv>1.6?tv-1.6:0;s=tv+(s-tv)*det;}   // a block throws a shadow on the tile beside it
     const s0=s|0,s1=s0<7?s0+1:7,sf=s-s0,a=pal[s0],b=pal[s1],r=a[0]+(b[0]-a[0])*sf,g=a[1]+(b[1]-a[1])*sf,bl=a[2]+(b[2]-a[2])*sf;C[j]=r+(hc[0]-r)*fk;C[j+1]=g+(hc[1]-g)*fk;C[j+2]=bl+(hc[2]-bl)*fk;}}
   // what stands on the map: blocks, which rise as they come into range, and gems over the path
   GEM.lx=.4;GEM.ly=.8;GEM.lz=-.45;GEM.d=pal[3];GEM.m=pal[6];GEM.l=P.ti(.85);GEM.fog=hc;GEM.al=1;GEM.mode=0;GEM.spec=300;
@@ -516,13 +516,13 @@ const ringRun=(()=>{
     const r=wn[0]*m,g=wn[1]*m,b=wn[2]*m;C[j]=r+(hc[0]-r)*fk+lc[0]*gl;C[j+1]=g+(hc[1]-g)*fk+lc[1]*gl;C[j+2]=b+(hc[2]-b)*fk+lc[2]*gl;}}
   MT.lx=.3;MT.ly=.85;MT.lz=-.43;MT.amb=.3;MT.d=P.sh(.84);MT.m=P.sh(.5);MT.l=P.sh(.08);MT.spec=.16;MT.shin=20;MT.rim=.2;MT.rc=P.ti(.5);MT.fog=hc;MT.fn=4;MT.fr=62;MT.k=1;
   const n0=Math.ceil((sc+.9)/SP);let cx=0,cy=0,cz=0,dim=1;
-  const shade=(wx,wy,wz,nx,ny,nz)=>{lit(wx,wy,wz,nx,ny,nz);const rx=wx-cx,ry=wy-cy,rz=wz-cz,nr=-(nx*rx+ny*ry+nz*rz)/Math.sqrt(rx*rx+ry*ry+rz*rz),e=nr>0?nr*nr*(1-clamp((SZ-4)/62,0,1))*smooth(1,7,SZ)*1.5:0;R_=(R_+lc[0]*e)*dim;G_=(G_+lc[1]*e)*dim;B_=(B_+lc[2]*e)*dim;};
+  const shade=(wx,wy,wz,nx,ny,nz)=>{lit(wx,wy,wz,nx,ny,nz);const rx=wx-cx,ry=wy-cy,rz=wz-cz,nr=-(nx*rx+ny*ry+nz*rz)/Math.sqrt(rx*rx+ry*ry+rz*rz),e=nr>0?nr*nr*(1-clamp((SZ-4)/62,0,1))*smooth(1,7,SZ)*1.15:0;R_=(R_+lc[0]*e)*dim;G_=(G_+lc[1]*e)*dim;B_=(B_+lc[2]*e)*dim;};
   const ring=(n,flip)=>{const s=n*SP;let tx=dxs(s),ty=dys(s),tz=1;const l=1/Math.hypot(tx,ty,tz);tx*=l;ty*=l;tz*=l;const rl=1/Math.hypot(tx,tz),rx=tz*rl,rz=-tx*rl;
    M[0]=rx;M[1]=ty*rz;M[2]=tx;M[3]=0;M[4]=(tz*rx-tx*rz)*flip;M[5]=ty*flip;M[6]=rz;M[7]=-ty*rx;M[8]=tz;cx=px(s);cy=py(s)*flip;cz=s;
    drawMesh(s-sc<22&&flip>0?hi:lo,M,1,cx,cy,cz,shade,flip>0?1:.3,flip>0?0:5);};
   dim=.8;for(let k=11;k>=0;k--)ring(n0+k,-1);
   D.fill(0);dim=1;for(let k=11;k>=0;k--)ring(n0+k,1);
-  present(ctx,.26,150,.75);};
+  present(ctx,.26,160,.6);};
 })();
 
 window.BT_IDEAS_BG=[
