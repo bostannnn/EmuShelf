@@ -120,6 +120,13 @@ if (args.Contains("--stage-bigtype"))
     return;
 }
 
+// Whether the baked legibility table holds over the narrow Stage's crop of every backdrop (M47 B11).
+if (args.Contains("--stage-narrow-legibility"))
+{
+    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility");
+    return;
+}
+
 // The Launcher compositor's Big Type motion: the ring's path, the neighbours, a roll, the hop, the rest cadence, holding still (M47 B5).
 if (args.Contains("--launcher-bigtype"))
 {

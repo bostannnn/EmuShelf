@@ -143,9 +143,11 @@ public sealed record StageLaunchCommand(StageImage? Cover, bool FromAbove = fals
 /// takes the Stage over through a circle from the case (<see cref="BigType.BigTypeLaunchMotion.TakeoverRadiusAt"/>), and the title's
 /// letters (<paramref name="Title"/>, white) land in it, timed from the press that launched, <paramref name="Elapsed"/> ms before the
 /// command. With <paramref name="Ending"/> the game ended: it fades. A null colour takes it away; without <paramref name="Animate"/> (a
-/// replay, holding still) it is simply there.
+/// replay, holding still) it is simply there. <paramref name="Origin"/> is where the circle grows from on the canvas: null is the wide
+/// Stage's case (tokens.js <c>Launch.takeoverX / takeoverY</c>); the narrow Stage sends its own case's middle (M47 B11).
 /// </summary>
-public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true)
+public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true,
+    Vector2? Origin = null)
     : StageCommand
 {
     public override string? RetainKey => "takeover";

@@ -79,8 +79,10 @@ internal sealed partial class HandheldStageMotion
         {
             var since = Since(play.Started);
             var radius = BigTypeLaunchMotion.TakeoverRadiusAt(since, still);
+            // The narrow Stage's takeover grows from its own case (M47 B11).
+            var origin = HandheldTokens.StageTakeoverCentre(_isNarrow());
             launch.Clip = radius >= BigTypeLaunchMotion.TakeoverRadius ? null
-                : new EllipseGeometry(new Rect(BigTypeLaunchMotion.TakeoverX - radius, BigTypeLaunchMotion.TakeoverY - radius, radius * 2, radius * 2));
+                : new EllipseGeometry(new Rect(origin.X - radius, origin.Y - radius, radius * 2, radius * 2));
             var fade = play.IsEnding ? BigTypeLaunchMotion.LaunchFade(Since(play.EndingSince), still) : 1f;
             launch.Opacity = Math.Round(fade, 3);
             var (scale, rise) = BigTypeLaunchMotion.CaseBump(since, still);

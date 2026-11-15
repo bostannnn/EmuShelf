@@ -435,6 +435,14 @@ public sealed class HandheldBigTypeName : Control
     /// words measured once at a reference size, the size and the lines from <see cref="BigTypeLayout.Fit"/>, each line's text
     /// centred in its 0.9 line box as a browser centres a font's ascent and descent in a short line.
     /// </summary>
+    /// <summary>
+    /// The fit's smallest size for a box <paramref name="width"/> wide: the mock's (<see cref="HandheldTokens.StageNameMinSize"/>) for the
+    /// wide Stage's boxes, smaller by as much as a box is narrower than the wide Stage's narrowest (M47 B11: the narrow Stage beside a
+    /// game's case is about half as wide, and a single long word must still fit it).
+    /// </summary>
+    public static double StageNameMinSize(double width) =>
+        HandheldTokens.StageNameMinSize * Math.Min(1, width / HandheldTokens.StageNameWidthBesideMedium);
+
     public static BigTypeName Fit(string text, Typeface typeface, double width, double height)
     {
         const float reference = 100f;
@@ -445,7 +453,7 @@ public sealed class HandheldBigTypeName : Control
         var space = (float)(Layout("a a", typeface, reference, null).WidthIncludingTrailingWhitespace -
             Layout("aa", typeface, reference, null).WidthIncludingTrailingWhitespace);
         var fit = BigTypeLayout.Fit(measured, space, reference, (float)width, (float)height, HandheldTokens.StageNameMaxLines,
-            (float)HandheldTokens.StageNameMinSize, (float)HandheldTokens.StageNameMaxSize);
+            (float)StageNameMinSize(width), (float)HandheldTokens.StageNameMaxSize);
         var size = fit.Size;
         var lineHeight = BigTypeLayout.LineHeight * size;
         // The content area a browser centres in the line box: the face's ascent and descent at this size.

@@ -185,6 +185,60 @@
       <Setter Property="Background" Value="{x:Static vm:HandheldTokens.HintGlyphFill}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
+    <!--
+      Big Type's Stage (M47 B4), its layout as styles so the narrow screen can move it (M47 B11, the app's own: the mock only scales its
+      top screen onto the small one). On the 1240-wide screen (the screens swapped) the name is fitted to the narrow box, the hints keep
+      their corner on a row of their own so the name and its two lines stand a hint row higher, and the medium has a corner of its own.
+    -->
+    <Style Selector="vh|HandheldBigTypeVeils#BtVeils" x:DataType="vm:HandheldShellViewModel">
+      <Setter Property="NameBoxWidth" Value="{Binding Stage.NameBoxWidth}" />
+    </Style>
+    <Style Selector="vh|HandheldBigTypeName#BtName" x:DataType="vm:HandheldShellViewModel">
+      <Setter Property="Width" Value="{Binding Stage.NameBoxWidth}" />
+      <Setter Property="BoxHeight" Value="{x:Static vm:HandheldTokens.StageNameHeight}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNameControlHeight}" />
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNameMargin}" />
+    </Style>
+    <Style Selector="Border#BtLineShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageLineShotMargin}" />
+    </Style>
+    <Style Selector="Border#BtFactsShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageFactsShotMargin}" />
+    </Style>
+    <Style Selector="Border#BtCoverShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageCoverMargin}" />
+    </Style>
+    <Style Selector="controls|Media3DControl#BtMedium">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageMediumFrameMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageMediumFrameWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageMediumFrameHeight}" />
+    </Style>
+    <Style Selector="Grid.btnarrow vh|HandheldBigTypeVeils#BtVeils" x:DataType="vm:HandheldShellViewModel">
+      <Setter Property="NameBoxWidth" Value="{Binding Stage.NarrowNameBoxWidth}" />
+    </Style>
+    <Style Selector="Grid.btnarrow vh|HandheldBigTypeName#BtName" x:DataType="vm:HandheldShellViewModel">
+      <Setter Property="Width" Value="{Binding Stage.NarrowNameBoxWidth}" />
+      <Setter Property="BoxHeight" Value="{x:Static vm:HandheldTokens.StageNarrowNameHeight}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNarrowNameControlHeight}" />
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowNameMargin}" />
+    </Style>
+    <Style Selector="Grid.btnarrow Border#BtLineShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowLineShotMargin}" />
+    </Style>
+    <Style Selector="Grid.btnarrow Border#BtFactsShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowFactsShotMargin}" />
+    </Style>
+    <Style Selector="Grid.btnarrow Border#BtCoverShot">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowCoverMargin}" />
+    </Style>
+    <Style Selector="Grid.btnarrow controls|Media3DControl#BtMedium">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowMediumFrameMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageNarrowMediumFrameWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNarrowMediumFrameHeight}" />
+    </Style>
+    <Style Selector="Grid.btnarrow vh|HandheldBigTypeLaunchTitle#BtLaunchTitle">
+      <Setter Property="MaxLineWidth" Value="{x:Static vm:HandheldTokens.StageNarrowLaunchTitleMaxWidth}" />
+    </Style>
   </UserControl.Styles>
 
   <Panel>
@@ -224,7 +278,7 @@
 
       <!-- Big Type (M47 B4): the veils behind the three text zones, in the dark ink at their resting strength. -->
       <vh:HandheldBigTypeVeils x:Name="BtVeils" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Deep="{Binding StageDeep}"
-                               NameBoxWidth="{Binding Stage.NameBoxWidth}" NameLeft="{x:Static vm:HandheldTokens.StageNameLeft}" />
+                               NameLeft="{x:Static vm:HandheldTokens.StageNameLeft}" />
 
       <!-- What changes with the focus: the hero, the centre art and the plate. -->
       <Panel x:Name="StageContent">
@@ -461,12 +515,11 @@
       -->
       <Panel x:Name="BigTypeStage" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
         <controls:Media3DControl x:Name="BtMedium" IsVisible="{Binding Stage.HasBigTypeMedium}"
-                                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.StageMediumFrameMargin}"
-                                 Width="{x:Static vm:HandheldTokens.StageMediumFrameWidth}" Height="{x:Static vm:HandheldTokens.StageMediumFrameHeight}"
+                                 HorizontalAlignment="Left" VerticalAlignment="Top"
                                  Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}" Accent="{Binding Stage.MediumAccent}"
                                  Yaw="{Binding Stage.MediumYaw}" Pitch="{Binding Stage.MediumPitch}" />
         <Border x:Name="BtCoverShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeCover}" HorizontalAlignment="Right" VerticalAlignment="Top"
-                Margin="{x:Static vm:HandheldTokens.StageCoverMargin}" Width="{x:Static vm:HandheldTokens.StageMediumWidth}" Height="{x:Static vm:HandheldTokens.StageMediumHeight}">
+                Width="{x:Static vm:HandheldTokens.StageMediumWidth}" Height="{x:Static vm:HandheldTokens.StageMediumHeight}">
           <Panel>
             <Panel IsVisible="{Binding !Stage.HasListCover}">
             <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageCoverRadius}" ClipToBounds="True"
@@ -491,21 +544,20 @@
         <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
                                 Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
                                 TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
-                                BoxHeight="{x:Static vm:HandheldTokens.StageNameHeight}"
-                                Width="{Binding Stage.NameBoxWidth}" Height="{x:Static vm:HandheldTokens.StageNameControlHeight}"
-                                HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.StageNameMargin}" />
+                                HorizontalAlignment="Left" VerticalAlignment="Bottom" />
 
         <Border x:Name="BtLabelShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Top"
                 Margin="{x:Static vm:HandheldTokens.StageLabelShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <TextBlock Text="{Binding Stage.Label}" FontSize="{x:Static vm:HandheldTokens.StageLabel}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" />
+          <vh:HandheldFitText x:Name="BtLabel" Text="{Binding Stage.Label}" Size="{x:Static vm:HandheldTokens.StageLabel}" FontSize="{x:Static vm:HandheldTokens.StageLabel}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}"
+                             TextTrimming="CharacterEllipsis" />
         </Border>
         <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+                Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
           <vh:HandheldRollingText x:Name="BtLine" Classes.message="{Binding HasLineMessage}" Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum"
                                   TextTrimming="CharacterEllipsis" />
         </Border>
         <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
-                Margin="{x:Static vm:HandheldTokens.StageFactsShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
+                Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
           <TextBlock x:Name="BtFacts" Text="{Binding Stage.Facts}" FontSize="{x:Static vm:HandheldTokens.StageFacts}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageFactsInk}" FontFeatures="+tnum"
                      TextTrimming="CharacterEllipsis" />
         </Border>

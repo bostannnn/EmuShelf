@@ -440,7 +440,8 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             Ids = ids,
             Queued = now,
             Deep = _ink?.Deep ?? Vector3.One,
-            WipeOriginX = command.WipeOriginX ?? (WideCanvasWidth / 2f),
+            // The middle of the canvas this Stage draws on (the narrow one's own when the screens are swapped, M47 B11).
+            WipeOriginX = command.WipeOriginX ?? (_canvasWidth / 2f),
         };
         if (_backdrop is { } showing && showing.Ready)
         {
@@ -687,7 +688,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                 DrawBackdrop(_backdrop, clock, _leavingBackdrop is null ? 1f : fade);
             var showing = ShowingBackdrops(clock, fade);
             var deep = _ink?.Deep ?? Vector3.One;
-            passes = [new InkPass(default, default, default, zone => ZoneInk(zone, showing, deep))];
+            passes = [new InkPass(default, default, default, zone => ZoneInk(zone, showing, deep, IsNarrowCanvas))];
         }
 
         Section("present");
@@ -921,7 +922,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         if (visible.Count == 0)
         {
             var deep = _ink?.Deep ?? Vector3.One;
-            return [new InkPass(default, default, default, zone => ZoneInk(zone, [(null, 1f)], deep))];
+            return [new InkPass(default, default, default, zone => ZoneInk(zone, [(null, 1f)], deep, IsNarrowCanvas))];
         }
         var passes = new List<InkPass>(visible.Count);
         for (var i = 0; i < visible.Count; i++)
@@ -933,7 +934,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             var showing = EntryShowing(state, clock);
             var deep = state.Deep;
             passes.Add(new InkPass(inside, above.Length > 0 ? above[0] : default, above.Length > 1 ? above[1] : default,
-                zone => ZoneInk(zone, showing, deep)));
+                zone => ZoneInk(zone, showing, deep, IsNarrowCanvas)));
         }
         return passes;
     }
@@ -1112,21 +1113,25 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
     }
 
     private ZoneColours ZoneInk(StageInkZone zone, float clock, float fade) =>
-        ZoneInk(zone, ShowingBackdrops(clock, fade), _ink?.Deep ?? Vector3.One);
+        ZoneInk(zone, ShowingBackdrops(clock, fade), _ink?.Deep ?? Vector3.One, IsNarrowCanvas);
+
+    // The narrow screen's canvas (the screens swapped): the legibility table's narrow answer (M47 B11).
+    private bool IsNarrowCanvas => _canvasWidth < WideCanvasWidth;
 
     /// <summary>
     /// Mixes the zone's answer (<see cref="BackdropLegibility"/>) over the backdrops on screen by their share: dark ink is
     /// <paramref name="deep"/> with a white veil, white ink has a veil of <paramref name="deep"/>. The veil's colour is mixed by
     /// strength, so a strong veil handing over to a light one keeps its colour while it fades.
     /// </summary>
-    internal static ZoneColours ZoneInk(StageInkZone zone, IReadOnlyList<(string? Id, float Weight)> showing, Vector3 deep)
+    internal static ZoneColours ZoneInk(StageInkZone zone, IReadOnlyList<(string? Id, float Weight)> showing, Vector3 deep, bool narrow = false)
     {
         var ink = Vector3.Zero;
         var veil = Vector3.Zero;
         float strength = 0f, total = 0f;
         foreach (var (id, weight) in showing)
         {
-            var answer = BackdropLegibility.For(id)[zone];
+            // The narrow Stage's own veil where the table's falls short over its crop (M47 B11).
+            var answer = BackdropLegibility.For(id, narrow)[zone];
             ink += weight * (answer.Dark ? deep : Vector3.One);
             veil += weight * answer.Veil * (answer.Dark ? Vector3.One : deep);
             strength += weight * answer.Veil;
