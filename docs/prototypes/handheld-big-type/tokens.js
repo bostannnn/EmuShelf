@@ -43,6 +43,13 @@ window.BT_TOKENS = {
     InGameStat:         { size: 64,  weight: 900 },
     InGameLabel:        { size: 36,  weight: 700, opacity: 0.75 },
     LaunchTitle:        { sizes: [224, 160, 128], weight: 900 },    // up to 12 letters, up to 22, longer
+    // B8, the mock's launch and in-game companion (its inline sizes, doubled):
+    LaunchStatus:       { size: 44,  weight: 700, opacity: 0.9 },   // the line under the launch title: syncing, what is running
+    InGameTitle:        { size: 80,  weight: 900 },                 // the game's title under "Now playing", set smaller to fit
+    InGameTab:          { size: 34,  weight: 700, restOpacity: 0.45 },  // Session, Achievements, Photos; the one showing at 1
+    InGameStatLabel:    { size: 32,  weight: 700, opacity: 0.75 },  // "in total", "achievements" beside their figures
+    InGameRecent:       { size: 38,  weight: 700 },                 // an achievement unlocked lately
+    InGameRecentWhen:   { size: 32,  weight: 700, opacity: 0.7 },   // when it was unlocked
   },
 
   // The Stage, 1920x1080. Text sits in the four corners.
@@ -55,6 +62,9 @@ window.BT_TOKENS = {
     HintsRight: 88, HintsBottom: 72, HintGap: 44,
     MediumRight: 248, MediumTop: 236, MediumWidth: 392, MediumHeight: 552,
     NameDimmedOpacity: 0.5,          // a game whose file is missing
+    // The launch (B8, the mock's .launch): the title's lines centred, at most LaunchTitleMaxWidth wide, LaunchTitleLineHeight of its
+    // size apart, the status LaunchGap under it; the block in the middle of the Stage.
+    LaunchTitleMaxWidth: 1600, LaunchTitleLineHeight: 0.92, LaunchGap: 36,
   },
 
   // The Launcher, 1240x1080.
@@ -84,6 +94,22 @@ window.BT_TOKENS = {
     PanelRowsTop: 200, PanelRowsInset: 16, PanelWidth: 1080,
     CoverRowsVisible: 2,   // cover search's candidates: two rows of the folder's tiles in view (the mock's eight); more scroll
     KeyPitch: 112, KeyboardLeft: 66, KeyboardTop: 424,
+  },
+
+  // The in-game companion (B8, the mock's launch builds it), on the Launcher's 1240x1080 in the in-game colour. Tops are the top of each
+  // text's line box (1.15 of its size), as the mock places them.
+  ingame: {
+    KickerLeft: 80, KickerTop: 60,                      // "Now playing", in InGameLabel
+    TitleLeft: 80, TitleTop: 108, TitleMaxWidth: 1080,  // the game's title, in InGameTitle
+    TabsRight: 80, TabsTop: 60, TabsGap: 36,            // Session, Achievements, Photos
+    TimerLeft: 68, TimerTop: 244,                       // the session's time, in SessionTimer
+    LabelLeft: 88, LabelTop: 660,                       // "this session", in InGameLabel
+    StatsInset: 80, StatsTop: 736, StatGap: 20,         // the total and the achievements, at either end, each figure beside its label
+    FigureLeft: 72, FigureTop: 264, FigureLabelTop: 544,   // the Achievements tab's figure, in InGameFigure, and "unlocked"
+    RecentInset: 80, RecentTop: 676, RecentPitch: 60,   // the three latest unlocks
+    ShotLeft: 80, ShotTop: 256, ShotPitchX: 376, ShotPitchY: 232, ShotWidth: 328, ShotHeight: 200, ShotRadius: 20, ShotsLabelTop: 744,
+    BarInset: 80, BarTop: 868, BarRadius: 6,            // ProgressHeight high, white over white at BarTrackOpacity
+    BarTrackOpacity: 0.2,
   },
 
   shape: {
@@ -141,8 +167,20 @@ window.BT_TOKENS = {
     Flood:     { ms: 640, easing: 'cubic-bezier(.2, .6, .2, 1)', radius: 1640 },
     Wipe:      { ms: 760, delay: 110, easing: 'cubic-bezier(.2, .6, .2, 1)', radius: 2300, below: 40 },   // from the focused tile's x, below the Stage's bottom edge
     Scroll:    { ms: 500, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
-    FolderOut: { ms: 250, staggerPerTile: 20 },
-    FolderDeal: { ms: 480, staggerPerTile: 45, rise: 160 },
+    // Opening and closing a folder (B8, the mock's openFolder, fallAway, closeFolder and popIn). Opening: home's tiles fall away from the
+    // opened one on the Leave curve (FolderOut: each goes `push` px for every cell it stands from it, shrinking to toScale; the opened one
+    // grows to openedScale after openedDelay; staggerPerTile ms per cell of distance, at most staggerSteps), then after holdMs the
+    // folder's games deal in on the Land curve (FolderDeal: rising `rise` px from fromScale, by column + row, at most staggerSteps), and
+    // ringAfterMs later the ring pops in on the first game (RingPop, from folderFromScale). Closing: the games drop out on the Leave curve
+    // (FolderClose: `drop` px to toScale, staggerPerTile ms for every step of column + row short of staggerFrom), after holdMs home's
+    // tiles pop back in around the folder's tile (FolderPopIn: from fromScale on the Land curve, staggerPerTile ms per cell of distance,
+    // at most staggerSteps) and ringAfterMs later the ring is on it again. Under reduced motion the folder or home is simply there.
+    FolderOut: { ms: 250, staggerPerTile: 20, push: 56, toScale: 0.55, openedScale: 1.7, openedDelay: 70, staggerSteps: 6, holdMs: 370 },
+    FolderDeal: { ms: 480, staggerPerTile: 45, rise: 160, fromScale: 0.55, staggerSteps: 8, ringAfterMs: 230 },
+    FolderClose: { ms: 200, staggerPerTile: 16, drop: 120, toScale: 0.6, staggerFrom: 5, holdMs: 300, ringAfterMs: 130 },
+    FolderPopIn: { ms: 440, staggerPerTile: 30, fromScale: 0.45, staggerSteps: 6 },
+    // The ring popping in on the Land curve: on another home page (B5) from fromScale, on a folder's first game from folderFromScale.
+    RingPop:   { ms: 320, fromScale: 1.25, folderFromScale: 1.3 },
     // Rows arrive from the right (the sections' rail from the left, railSlide), the first after delay. A Settings section's rows,
     // when the section changes, rise from the way you moved (SectionIn). A heading's letters (the mock's lettersIn) rise fromEm
     // (sheetFromEm on a sheet's or the menu's title) tilted tilt degrees, one every stagger ms up to staggerMax. Under a sheet or the
@@ -162,15 +200,31 @@ window.BT_TOKENS = {
     PanelOut:    { ms: 170, stagger: 10, staggerCap: 8, drop: 80, holdMs: 280 },
     RowFocus:  { ms: 350, fadeMs: 200 },
     Switch:    { ms: 350, fadeMs: 250 },
-    Launch:    { flightMs: 340, takeoverMs: 640 },
+    // The launch (B8, the mock's launch). The tile flies up and out through the hinge over flightMs on flightEasing, growing to
+    // flightScale, until its top is flightBeyond px above the screen's; bumpAtMs after the press the case on the Stage bumps (bumpMs,
+    // ease-out, to bumpScale and up bumpRise); at takeoverAtMs the console's colour takes the Stage over through a circle from
+    // (takeoverX, takeoverY), the case's middle, to takeoverRadius over takeoverMs on takeoverEasing, the title's letters land (HeadingIn,
+    // from titleFromEm) and the Launcher floods to the in-game colour; its grid goes over gridFadeMs and companionAtMs after the press
+    // the companion builds. Under reduced motion the takeover is simply there.
+    Launch:    { flightMs: 340, takeoverMs: 640, flightEasing: 'cubic-bezier(.6, 0, .9, .5)', flightScale: 1.25, flightBeyond: 340,
+                 bumpAtMs: 270, bumpMs: 420, bumpScale: 1.16, bumpRise: 20, takeoverAtMs: 430, takeoverEasing: 'cubic-bezier(.3, .6, .2, 1)',
+                 takeoverX: 1484, takeoverY: 516, takeoverRadius: 2200, titleFromEm: 0.8, gridFadeMs: 280, companionAtMs: 710 },
+    // The companion (B8): its parts arrive (InGameIn, the mock's launch: rising `rise` px, stagger ms apart, on the Land curve); a tab
+    // slides in from the side you moved to (InGameTab); when the game ends its parts drop out (InGameOut, on the Leave curve), the
+    // Stage's colour fades over launchFadeMs, and after holdMs the ground floods back and the tiles pop in, the ring popAfterMs later.
+    // An unlock holds the Stage's line on it for UnlockLine.holdMs.
+    InGameIn:  { ms: 460, stagger: 55, rise: 80 },
+    InGameTab: { ms: 420, slide: 120 },
+    InGameOut: { ms: 200, stagger: 18, drop: 60, launchFadeMs: 320, holdMs: 340, popAfterMs: 130 },
+    UnlockLine: { holdMs: 3200 },
     SwapScreens: { ms: 650 },
     IdleHop:   { afterMs: 4800, everyMs: 6500, ms: 560, staggerPerTile: 75, rise: 20,
                  letterDelay: 260, letterStagger: 45, letterRiseEm: 0.07 },   // the name's letters hop too, after the tiles
     MediumSway: { periodMs: 14000, fromDeg: 32, toDeg: 14 },
     RingBreath: { periodMs: 2200, scale: 1.03 },
-    Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22 },
+    Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22, shakeBack: 18, shakeSettle: 12 },   // an error shakes -22, +18, -12, 0
     InGameRest: { afterMs: 9000, fadeMs: 1200 },
-    SessionAchievementBar: { ms: 800 },
+    SessionAchievementBar: { ms: 800, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },   // B8: the mock's .pbar transition
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

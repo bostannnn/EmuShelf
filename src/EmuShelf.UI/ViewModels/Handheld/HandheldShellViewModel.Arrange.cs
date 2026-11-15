@@ -202,6 +202,7 @@ public sealed partial class HandheldShellViewModel
             case GamepadAction.Actions:
             case GamepadAction.Menu:
                 CloseSheet();
+                sheet.Cancelled?.Invoke();
                 break;
         }
         return true;
@@ -212,6 +213,12 @@ public sealed partial class HandheldShellViewModel
     {
         if (Sheet is not { } sheet || !sheet.Items.Contains(item))
             return;
+        if (item.KeepsOpen)
+        {
+            item.Run();
+            RefreshListStage();
+            return;
+        }
         CloseSheet();
         item.Run();
     }
@@ -287,7 +294,13 @@ public sealed partial class HandheldShellViewModel
         if (title?.Details is { IsMultiDisc: true })
             items.Add(new("Choose disc…", title.DiscText, () => OpenDiscChooser(title)));
         else if (title is null && _library.DiscsOf(game) is { Numbers.Count: > 1 } discs)
-            items.Add(new("Choose disc…", $"Disc {discs.Selected} of {discs.Numbers.Count}", () => ShowSheet(DiscSheet(game))));
+        {
+            // Big Type (M47 B8, decision "A on a game plays"): the disc is a row that cycles where it is, and A plays the disc chosen.
+            if (HandheldTokens.IsBigType)
+                items.Add(DiscRow(game, discs));
+            else
+                items.Add(new("Choose disc…", $"Disc {discs.Selected} of {discs.Numbers.Count}", () => ShowSheet(DiscSheet(game))));
+        }
         if (_library.HasAchievementDetails(game))
             items.Add(new("Achievements", game.AchievementText, () => _ = OpenAchievementsAsync(game)));
         if (folder is null && title is null)

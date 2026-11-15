@@ -38,7 +38,13 @@ public partial class HandheldCompanionView : UserControl
         this.FindControl<Panel>("RestCanvas")!.Width = width;
         // Every touch keeps the companion lit; the tunnel pass with handled events too, so a tap a button takes still counts.
         AddHandler(PointerPressedEvent, OnAnyPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
-        DataContextChanged += (_, _) => Bind(DataContext as HandheldCompanionViewModel);
+        // View wiring: Big Type's in-game motion (M47 B8) follows the companion.
+        var motion = new HandheldCompanionMotion(this);
+        DataContextChanged += (_, _) =>
+        {
+            Bind(DataContext as HandheldCompanionViewModel);
+            motion.Attach(DataContext as HandheldCompanionViewModel);
+        };
         // The space under All apps' title changes with the screen: the scroller is fitted to whole rows again.
         var drawerScroll = this.FindControl<ScrollViewer>("DrawerScroll")!;
         var drawerApps = this.FindControl<ItemsControl>("DrawerApps")!;
@@ -91,6 +97,8 @@ public partial class HandheldCompanionView : UserControl
     private void OnAnyPointerPressed(object? sender, PointerPressedEventArgs e) => Companion?.NoteTouch();
 
     // ---- The body ----
+
+    private void OnSessionTabTapped(object? sender, TappedEventArgs e) => Companion?.SelectTab(HandheldCompanionTab.Session);
 
     private void OnAchievementsTabTapped(object? sender, TappedEventArgs e) => Companion?.SelectTab(HandheldCompanionTab.Achievements);
 

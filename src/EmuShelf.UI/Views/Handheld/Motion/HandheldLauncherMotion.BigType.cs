@@ -99,6 +99,14 @@ internal sealed partial class HandheldLauncherMotion
         }
         var now = BtNow;
         var target = new BigTypeRing((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height, (float)radius);
+        // A folder opening or closing, a launch, the shelf coming back: the ring waits, then pops in or lands (M47 B8).
+        if (RingWaits(now))
+        {
+            _selector.Opacity = 0;
+            _ringAnchor = anchor;
+            _selectorShown = true;
+            return true;
+        }
         if (!_selectorShown)
         {
             _bt.MoveRing(now, instant: true, pop: false);
@@ -204,6 +212,9 @@ internal sealed partial class HandheldLauncherMotion
     {
         if (!HandheldTokens.IsBigType)
             return false;
+        // A folder opening or closing, a launch or the shelf coming back poses every tile itself, the push folded in (M47 B8).
+        if (GridMoving)
+            return _bt.IsMoving(BtNow, hops: false);
         var now = BtNow;
         foreach (var (id, container, cell) in GridContainers())
         {
@@ -302,7 +313,7 @@ internal sealed partial class HandheldLauncherMotion
     // something covers the grid (a sheet, the menu, a Title page) or a folder is zooming.
     private void Hop()
     {
-        if (!_onScreen || Still || _shell is not { } shell || shell.IsLauncherOverlayOpen || shell.TitlePage is not null ||
+        if (!_onScreen || Still || _shell is not { } shell || shell.IsLauncherOverlayOpen || shell.ShowsTitlePage || GridMoving || shell.IsPlaying ||
             _selectorHideStart is not null || _selectorHidePending)
             return;
         var folder = _folder;

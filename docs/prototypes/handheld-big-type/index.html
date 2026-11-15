@@ -1136,7 +1136,7 @@ $('snd').onclick=()=>{soundOn=!soundOn;syncSound();if(soundOn)sfx.open();};
 
 /* ---------- the frozen numbers, printed from tokens.js ---------- */
 function renderFrozen(){const box=$('frozen');if(!TK){box.textContent='tokens.js is not beside this page, so the list cannot be shown here.';return;}
- const names={face:'Face',type:'Type',stage:'The Stage, 1920 × 1080',launcher:'The Launcher, 1240 × 1080',shape:'Shape',colour:'Colour',motion:'Motion',legibility:'Legibility'};
+ const names={face:'Face',type:'Type',stage:'The Stage, 1920 × 1080',launcher:'The Launcher, 1240 × 1080',ingame:'In game, 1240 × 1080',shape:'Shape',colour:'Colour',motion:'Motion',legibility:'Legibility'};
  const fmt=v=>Array.isArray(v)?v.join(v.length===2&&typeof v[0]==='number'?' × ':', '):v&&typeof v==='object'?Object.entries(v).map(([k,x])=>`${k} ${fmt(x)}`).join(' · '):String(v);
  box.innerHTML=Object.keys(names).filter(g=>TK[g]).map(g=>`<h3>${names[g]}</h3><dl>${Object.entries(TK[g]).map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(fmt(v))}</dd>`).join('')}</dl>`).join('');}
 

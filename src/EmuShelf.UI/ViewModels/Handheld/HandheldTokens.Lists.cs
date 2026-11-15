@@ -138,6 +138,9 @@ public static partial class HandheldTokens
     /// <summary>A sheet's title rises less far than a heading (tokens.js <c>HeadingIn.sheetFromEm</c>).</summary>
     public static double HeadingInSheetFromEm => BigTypeListMotion.HeadingInSheetFromEm;
 
+    /// <summary>A heading's letters rise this far (tokens.js <c>HeadingIn.fromEm</c>): a folder's name, a panel's.</summary>
+    public static double HeadingInFromEm => BigTypeListMotion.HeadingInFromEm;
+
     // ===== Cover search's candidates (the mock's: a folder's tiles, four to a row) =====
 
     /// <summary>Candidates to a row (tokens.js <c>launcher.FolderColumnsVisible</c>).</summary>

@@ -983,11 +983,10 @@
             Margin="{x:Static vm:HandheldTokens.HeaderMargin}" Height="{x:Static vm:HandheldTokens.HeaderHeight}">
         <Border x:Name="BtBackShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="{x:Static vm:HandheldTokens.HeaderNameShotMargin}" HorizontalAlignment="Left" VerticalAlignment="Bottom">
           <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
-            <Viewbox Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" HorizontalAlignment="Left">
-              <TextBlock Text="{Binding OpenFolder.Name}" FontSize="{x:Static vm:HandheldTokens.FolderHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}"
-                         Foreground="{x:Static vm:HandheldTokens.OnColour}" LineHeight="{x:Static vm:HandheldTokens.HeaderLineHeight}"
-                         LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" />
-            </Viewbox>
+            <!-- M47 B8: the name's letters land as the folder opens (the mock's lettersIn(fname, .9)); set smaller to fit as setHead does. -->
+            <vh:HandheldBigTypeHeading x:Name="BtFolderName" Text="{Binding OpenFolder.Name, FallbackValue={x:Null}}" Size="{x:Static vm:HandheldTokens.FolderHeading}"
+                                       MaxTextWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}"
+                                       FromEm="{x:Static vm:HandheldTokens.HeadingInFromEm}" Foreground="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Left" />
             <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
           </Panel>
         </Border>
@@ -1120,7 +1119,7 @@
     Covers the grid and the dock, as the mockup's page does; the facts on the left of a row of big buttons,
     and the disc chooser, the screen chooser, the actions sheet and the launching panel as its states.
   -->
-  <Panel x:Name="TitleLayer" IsVisible="{Binding IsTitleOpen}">
+  <Panel x:Name="TitleLayer" IsVisible="{Binding ShowsTitlePage}">
     <Panel.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
         <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />

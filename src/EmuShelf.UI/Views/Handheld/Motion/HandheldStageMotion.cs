@@ -15,7 +15,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// page crossfades in, and a launch lands the cover from below and zooms into the emulator. All compositor
 /// animations on fixed-size wrappers, scale and opacity only.
 /// </summary>
-internal sealed class HandheldStageMotion
+internal sealed partial class HandheldStageMotion
 {
     // 1920 on the 16:9 screen, 1240 on the narrow one once the screens are swapped (M45 H5).
     private double CanvasWidth => _isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
@@ -166,6 +166,7 @@ internal sealed class HandheldStageMotion
                 EndLaunch();
                 break;
         }
+        OnBigTypeShellChanged(e.PropertyName);
     }
 
     // A closing folder comes back to the Stage still open, from the centre, and closes a beat later.
@@ -213,6 +214,12 @@ internal sealed class HandheldStageMotion
 
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
+        // Big Type (M47 B8): the takeover is the launch layer's, timed from the press (HandheldStageMotion.BigType).
+        if (HandheldTokens.IsBigType)
+        {
+            RequestBigTypeFrame();
+            return;
+        }
         var launch = ++_launch;
         if (!IsOnScreen)
             return;

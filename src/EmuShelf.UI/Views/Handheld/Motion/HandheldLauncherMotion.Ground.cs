@@ -99,7 +99,9 @@ internal sealed partial class HandheldLauncherMotion
     private Point FloodOrigin()
     {
         var onCanvas = new Point(_canvas.Bounds.Width / 2, _canvas.Bounds.Height / 2);
-        if (_listKey.Kind == ListKind.None && ResolveTarget() is { } target)
+        // The shelf coming back after a game floods from the middle (M47 B8, the mock's endPlay).
+        var middle = _shell is { MiddleFloodGround: { } back } shell && back == shell.LauncherGround;
+        if (!middle && _listKey.Kind == ListKind.None && ResolveTarget() is { } target)
             onCanvas = _selectorLayer.TranslatePoint(target.Rect.Center, _canvas) ?? onCanvas;
         return _wave is { } wave ? _canvas.TranslatePoint(onCanvas, wave) ?? default : default;
     }

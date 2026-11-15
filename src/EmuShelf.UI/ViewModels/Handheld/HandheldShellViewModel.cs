@@ -115,6 +115,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The open Title page (A on a game), drawn over the grid it was opened from; null while browsing.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTitleOpen))]
+    [NotifyPropertyChangedFor(nameof(ShowsTitlePage))]
     [NotifyPropertyChangedFor(nameof(TitleGame))]
     public partial HandheldTitlePageViewModel? TitlePage { get; private set; }
 
@@ -238,7 +239,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             CompanionScreen = value is null
                 ? null
                 : new HandheldCompanionViewModel(value, (entry, token) =>
-                    _library.LoadCoverAsync(entry, HandheldCompanionViewModel.CoverDecodeWidth, fullSize: false, token));
+                    _library.LoadCoverAsync(entry, HandheldCompanionViewModel.CoverDecodeWidth, fullSize: false, token), _clock);
             RebuildDock();
             // The Title page's Achievements button depends on a companion to open in.
             if (TitlePage is { } title)
@@ -407,8 +408,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (_move is { } move)
             return DispatchMoveAction(move, action);
 
+        // Big Type (M47 B8): a game launching or running, with the companion not owning the pad.
+        if (Playing is { } play && DispatchPlaying(play, action))
+            return true;
+
         if (TitlePage is { } title)
             return DispatchTitleAction(title, action);
+
+        // A press moves on: a message on the Stage's line gives way.
+        DropLineMessage();
 
         switch (action)
         {
@@ -708,7 +716,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             else if (folder.SelectedTile is { IsActivity: true })
                 _ = OpenActivityAsync();
             else if (folder.SelectedTile is { } tile)
-                OpenTitle(tile.Entry);
+                OpenOrPlay(tile.Entry);
             return;
         }
 
@@ -735,7 +743,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return;
             case HandheldSlotKind.Game:
                 if (_pins.TryGetValue(slot.GameId, out var pinned))
-                    OpenTitle(pinned);
+                    OpenOrPlay(pinned);
                 return;
         }
         if (FolderSourceFor(slot) is { } source)
@@ -1259,6 +1267,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         TakeBigTypeListText();
         UpdateStageCore();
         ApplyBigTypeListText();
+        if (_lineMessage is { } message)
+            Stage.Line = message;
         DressCaseWithCandidate();
         RaiseStageChanged();
     }
@@ -1295,7 +1305,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             ShowMoveStage(move);
             return;
         }
-        if (TitlePage is { } title)
+        // Under Big Type the Title page is never drawn: the Stage stays on the game the press was on (M47 B8).
+        if (TitlePage is { } title && !HandheldTokens.IsBigType)
         {
             ShowHeroStage(title.Entry);
             return;
@@ -1688,7 +1699,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             AddArrangeHints();
             return;
         }
-        if (TitlePage is { } title)
+        // Big Type (M47 B8): the launch covers the Stage and shows no hints; a page still waiting for its details keeps the grid's.
+        if (Playing is not null)
+            return;
+        if (TitlePage is { } title && !HandheldTokens.IsBigType)
         {
             AddTitleHints(title);
             return;

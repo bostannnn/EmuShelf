@@ -109,10 +109,34 @@ public sealed record LauncherRingBands(float Inset1, float Inset2, float Inset3,
 /// move 3) the new colour grows as a circle from the focused tile over the old (<see cref="BigType.BigTypeMotion.FloodRadiusAt"/>);
 /// without it, or held still, it is there at once. Never sent in today's look, whose ground is a pictured gradient.
 /// </summary>
-public sealed record LauncherGroundCommand(float R, float G, float B, bool Flood = false) : StageCommand
+/// <remarks><paramref name="FromMiddle"/> (M47 B8): the wave grows from the middle of the screen, not the focus (the shelf coming back
+/// after a game, the mock's <c>endPlay</c>).</remarks>
+public sealed record LauncherGroundCommand(float R, float G, float B, bool Flood = false, bool FromMiddle = false) : StageCommand
 {
     public override string? RetainKey => "ground";
-    public override StageCommand ForReplay() => this with { Flood = false };
+    public override StageCommand ForReplay() => this with { Flood = false, FromMiddle = false };
+}
+
+/// <summary>
+/// A game launched under the Big Type look (M47 B8): with <paramref name="Playing"/> the grid goes as the Stage's takeover starts
+/// (<see cref="BigTypeLaunchMotion.GridOpacity"/>) and the ring hides; without it the shelf comes back and the tiles pop in around the
+/// focused one. <paramref name="Animate"/> false (a replay, holding still) just sets where it is.
+/// </summary>
+public sealed record LauncherPlayCommand(bool Playing, bool Animate = true) : StageCommand
+{
+    public override string? RetainKey => "play";
+    public override StageCommand ForReplay() => this with { Animate = false };
+}
+
+/// <summary>
+/// A pictured text's letters under the Big Type look (M47 B8: a folder's name, the mock's <c>lettersIn(fname, .9)</c>): while they land
+/// (tokens.js <c>HeadingIn</c>, from <paramref name="FromEm"/>) they are drawn one quad each in place of the sprite
+/// <paramref name="SpriteId"/>, which shows again once they have. During a folder's opening they wait for it to show. Null takes them away.
+/// </summary>
+public sealed record LauncherLettersCommand(string SpriteId, BigTypeLetters? Letters, float FromEm, bool Animate = true) : StageCommand
+{
+    public override string? RetainKey => "letters:" + SpriteId;
+    public override StageCommand ForReplay() => this with { Animate = false };
 }
 
 /// <summary>Which sprite holds the focus (it lifts) and where the selector goes; null hides the selector.</summary>
@@ -179,7 +203,9 @@ public sealed record LauncherProgressCommand(StageRect? Track) : StageCommand
 /// <summary>The launch: the sprite (the Title page's cover) presses in, pops and lifts off toward the top screen.</summary>
 /// <remarks><paramref name="Downward"/>: the Launcher is the top screen (the screens swapped, M45 H5), so the cover
 /// leaves through its bottom edge toward the Stage below.</remarks>
-public sealed record LauncherLaunchCommand(string SpriteId, bool Downward = false) : StageCommand;
+/// <remarks><paramref name="BigType"/> (M47 B8): the tile flies up and out through the hinge on the mock's curve
+/// (<see cref="BigTypeLaunchMotion.Flight"/>) and stays gone until the shelf comes back.</remarks>
+public sealed record LauncherLaunchCommand(string SpriteId, bool Downward = false, bool BigType = false) : StageCommand;
 
 /// <summary>The edge bump: the selector nudges toward a wall and eases back.</summary>
 public sealed record LauncherBumpCommand(int DirectionX, int DirectionY) : StageCommand;

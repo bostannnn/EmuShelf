@@ -233,12 +233,6 @@ public sealed class HandheldBigTypeName : Control
         return letters;
     });
 
-    // Atlas cells keep a margin round each letter's ink, so its soft edge is not cut.
-    private const int CellPad = 2;
-
-    // The atlas wraps to a new row past this width (every GLES 3 device takes 2048).
-    private const int AtlasMaxWidth = 2048;
-
     /// <summary>
     /// The fitted name as the native Stage draws it (M47 B6, R1's route): each distinct letter rasterised once, in white, in an ink-tight
     /// cell of one atlas, and every letter placed where this control draws it at rest, the control's top left at <paramref name="origin"/>
@@ -248,51 +242,8 @@ public sealed class HandheldBigTypeName : Control
     {
         if (Fitted is not { } name)
             return null;
-        var glyphs = new Dictionary<string, (FormattedText Text, Rect Ink, int CellX, int CellY, int CellWidth, int CellHeight)>(StringComparer.Ordinal);
-        int x = 0, y = 0, rowHeight = 0, atlasWidth = 0;
-        var placed = LettersOf(name);
-        foreach (var letter in placed)
-        {
-            if (glyphs.ContainsKey(letter.Text))
-                continue;
-            var formatted = new FormattedText(letter.Text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, name.Typeface, name.Size, Brushes.White);
-            var ink = formatted.BuildGeometry(default)?.Bounds ?? default;
-            if (ink.Width <= 0 || ink.Height <= 0)
-                continue;
-            var cellWidth = (int)Math.Ceiling(ink.Width) + (2 * CellPad);
-            var cellHeight = (int)Math.Ceiling(ink.Height) + (2 * CellPad);
-            if (x > 0 && x + cellWidth > AtlasMaxWidth)
-            {
-                x = 0;
-                y += rowHeight;
-                rowHeight = 0;
-            }
-            glyphs[letter.Text] = (formatted, ink, x, y, cellWidth, cellHeight);
-            x += cellWidth;
-            atlasWidth = Math.Max(atlasWidth, x);
-            rowHeight = Math.Max(rowHeight, cellHeight);
-        }
-        var atlasHeight = y + rowHeight;
-        if (glyphs.Count == 0 || atlasWidth == 0 || atlasHeight == 0)
-            return null;
-        using var bitmap = new RenderTargetBitmap(new PixelSize(atlasWidth, atlasHeight));
-        using (var context = bitmap.CreateDrawingContext())
-        // Grey-scale antialiasing: a picture for another surface must not carry sub-pixel colour (B4's black boxes on Android).
-        using (context.PushRenderOptions(new RenderOptions { TextRenderingMode = TextRenderingMode.Antialias }))
-        {
-            foreach (var glyph in glyphs.Values)
-                context.DrawText(glyph.Text, new Point(glyph.CellX + CellPad - glyph.Ink.X, glyph.CellY + CellPad - glyph.Ink.Y));
-        }
-        var letters = new List<BigTypeLetter>(placed.Count);
-        foreach (var letter in placed)
-        {
-            if (!glyphs.TryGetValue(letter.Text, out var glyph))
-                continue;
-            letters.Add(new BigTypeLetter(
-                (float)(origin.X + letter.Origin.X + glyph.Ink.X - CellPad), (float)(origin.Y + letter.Origin.Y + glyph.Ink.Y - CellPad),
-                glyph.CellWidth, glyph.CellHeight, glyph.CellX, glyph.CellY, letter.Order));
-        }
-        return new BigTypeLetters(name.Text, HandheldStageShots.Pixels(bitmap), letters, (float)name.Size, (float)TextOpacity);
+        var placed = LettersOf(name).Select(letter => new HandheldLetterAtlas.Placed(letter.Text, letter.Origin, letter.Order)).ToList();
+        return HandheldLetterAtlas.Build(name.Text, placed, name.Typeface, name.Size, origin, (float)TextOpacity);
     }
 
     /// <summary>A small cache of each fitted name's placed letters (a name is laid out again only when its fit changes).</summary>
