@@ -198,6 +198,9 @@ public sealed record StageChromeCommand(string Key, StageImage? Image, Backdrops
     bool Veil = false, BigType.StageText? Text = null) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
+
+    /// <summary>Brought by a press within a run of the one before (M47 B11): its text swaps in place rather than rolling.</summary>
+    public bool Quick { get; init; }
 }
 
 /// <summary>

@@ -418,7 +418,7 @@ internal sealed partial class HandheldNativeStageFeed
                 _chromeSent[key] = now;
                 // The clock and the line's counts roll (M47 B5): their pictures carry where each character sits.
                 var text = key is "bt-status" or "bt-line" ? HandheldTextCells.Of(piece, _canvas) : null;
-                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone, Text: text));
+                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone, Text: text) { Quick = shell.QuickChange });
             }
         }
         if (resent || _catchUpPending)
@@ -474,7 +474,7 @@ internal sealed partial class HandheldNativeStageFeed
         var typed = stage.IsTyped && _bigTypeName.TypedChange is { } change && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } origin
             ? change with { AnchorX = (float)(origin.X + change.AnchorX), AnchorY = (float)(origin.Y + change.AnchorY) }
             : null;
-        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first) { Typed = typed });
+        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first) { Typed = typed, Quick = shell.QuickChange });
     }
 
     // ---- Big Type's ink and veils (M47 B4) ----

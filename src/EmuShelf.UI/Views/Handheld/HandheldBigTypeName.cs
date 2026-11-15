@@ -167,8 +167,8 @@ public sealed class HandheldBigTypeName : Control
     public BigTypeEntrance Entrance { get; set; }
 
     // The letters in flight on screen: the name arriving (and when), and the names leaving (each with when and which way).
-    private (BigTypeName Name, long Start, BigTypeEntrance Entrance)? _arriving;
-    private readonly List<(BigTypeName Name, long Start, BigTypeEntrance Exit)> _leaving = [];
+    private (BigTypeName Name, long Start, BigTypeEntrance Entrance, bool Quick)? _arriving;
+    private readonly List<(BigTypeName Name, long Start, BigTypeEntrance Exit, bool Quick)> _leaving = [];
     private BigTypeName? _shown;
     private bool _ticking;
 
@@ -212,9 +212,14 @@ public sealed class HandheldBigTypeName : Control
             return;
         }
         var now = Stopwatch.GetTimestamp();
-        _leaving.Add((before!, now, Entrance));
+        // M47 B11: within a run of the last name (a held direction, quick taps) the new one follows in the short form and the names
+        // already leaving go at once, so nothing queues or stacks.
+        var run = HandheldInputRun.Of(this);
+        if (run)
+            _leaving.Clear();
+        _leaving.Add((before!, now, Entrance, run));
         if (Fitted is { } next)
-            _arriving = (next, now, Entrance);
+            _arriving = (next, now, Entrance, run);
         // The word typed leaves as a name does (the mock's setWord after closeKb).
         _ = wasTyped;
         RequestFrame();
@@ -239,17 +244,19 @@ public sealed class HandheldBigTypeName : Control
     {
         if (DrawTyping(context, brush))
             return true;
-        _leaving.RemoveAll(leaving => Since(leaving.Start) >= BigTypeMotion.DepartureMilliseconds(LetterCount(leaving.Name)));
-        if (_arriving is { } a && Since(a.Start) >= BigTypeMotion.ArrivalMilliseconds(LetterCount(a.Name)))
+        _leaving.RemoveAll(leaving => Since(leaving.Start) >=
+            (leaving.Quick ? BigTypeMotion.RunDepartureMilliseconds() : BigTypeMotion.DepartureMilliseconds(LetterCount(leaving.Name))));
+        if (_arriving is { } a && Since(a.Start) >= (a.Quick ? BigTypeMotion.RunArrivalMilliseconds() : BigTypeMotion.ArrivalMilliseconds(LetterCount(a.Name))))
             _arriving = null;
         if (_arriving is null && _leaving.Count == 0)
             return false;
-        foreach (var (name, start, exit) in _leaving)
+        foreach (var (name, start, exit, quick) in _leaving)
         {
             var count = LetterCount(name);
             foreach (var letter in LettersOf(name))
             {
-                if (BigTypeMotion.Depart(exit, letter.Order, count, Since(start)) is { } pose)
+                var leave = quick ? BigTypeMotion.DepartInRun(exit, Since(start)) : BigTypeMotion.Depart(exit, letter.Order, count, Since(start));
+                if (leave is { } pose)
                     DrawLetter(context, name, letter, pose, brush);
             }
         }
@@ -258,7 +265,11 @@ public sealed class HandheldBigTypeName : Control
             _shown = arriving.Name;
             var count = LetterCount(arriving.Name);
             foreach (var letter in LettersOf(arriving.Name))
-                DrawLetter(context, arriving.Name, letter, BigTypeMotion.Arrive(arriving.Entrance, letter.Order, count, Since(arriving.Start)), brush);
+            {
+                var pose = arriving.Quick ? BigTypeMotion.ArriveInRun(arriving.Entrance, Since(arriving.Start))
+                    : BigTypeMotion.Arrive(arriving.Entrance, letter.Order, count, Since(arriving.Start));
+                DrawLetter(context, arriving.Name, letter, pose, brush);
+            }
         }
         else
         {

@@ -277,6 +277,17 @@ window.BT_TOKENS = {
     Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22, shakeBack: 18, shakeSettle: 12 },   // an error shakes -22, +18, -12, 0
     InGameRest: { afterMs: 9000, fadeMs: 1200 },
     SessionAchievementBar: { ms: 800, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },   // B8: the mock's .pbar transition
+    // B11, the app's own (the mock's moves are one per press; on the Thor a held direction repeats every 90 ms down to 38): a move
+    // that arrives while the ring is still on its way glides on from where it is and how fast it is going, its middle trailing a
+    // moving focus by at most RingGlide.lagMs of travel, its size easing to the target's; it lands Ring.ms after the last move,
+    // squashed on Ring's keyframes.
+    RingGlide: { lagMs: 40 },
+    // A press that comes within LetterRun.withinMs of the one before is part of a run (quick taps): the name a run's first press
+    // brings lands as LetterIn; each after it comes in short, all its letters together from fromShare of LetterIn's distance over ms,
+    // the name it replaces goes in outMs, all together, and the Stage's and the Launcher's rolling texts swap in place. A held
+    // direction keeps the app's once-per-move rule (the Stage waits while the direction is held) and the name it rests on lands as
+    // LetterIn.
+    LetterRun: { withinMs: 220, ms: 200, fromShare: 0.4, outMs: 90 },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

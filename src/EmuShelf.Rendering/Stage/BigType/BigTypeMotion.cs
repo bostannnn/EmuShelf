@@ -456,6 +456,60 @@ public static class BigTypeMotion
     public static float DepartureMilliseconds(int count, bool holdStill = false) => holdStill ? LetterOutStillMilliseconds :
         (Math.Max(0, count - 1) * LetterOutStagger(count)) + LetterOutMilliseconds;
 
+    // ---- A run of names (M47 B11, the app's own) ----
+
+    /// <summary>
+    /// tokens.js <c>LetterRun.withinMs</c>: a press that comes this soon after the one before is part of a run (quick taps; a held
+    /// direction keeps the app's once-per-move rule, the Stage waiting until the focus rests). The name a run's first press brings lands
+    /// as the mock's does; each after it follows in a short form, so quick taps never queue a full landing per tile: the name there goes at once (<see cref="RunOutMilliseconds"/>, all letters together) and the
+    /// new one's letters come in together from <see cref="RunFromShare"/> of the mock's distance over <see cref="RunInMilliseconds"/> on
+    /// the landing curve; rolling texts swap in place. The name the run stops on is already in place; nothing lands again.
+    /// </summary>
+    public const float RunWithinMilliseconds = 220f;
+
+    /// <summary>tokens.js <c>LetterRun.ms</c>: a name in a run arrives in this long, all its letters together.</summary>
+    public const float RunInMilliseconds = 200f;
+
+    /// <summary>tokens.js <c>LetterRun.fromShare</c>: of the mock's distance (and tilt) a name in a run comes from.</summary>
+    public const float RunFromShare = 0.4f;
+
+    /// <summary>tokens.js <c>LetterRun.outMs</c>: the name a run's next one replaces goes in this long, all its letters together.</summary>
+    public const float RunOutMilliseconds = 90f;
+
+    /// <summary>Whether a press <paramref name="sinceLast"/> ms after the one before is part of a run (NaN: there was none before).</summary>
+    public static bool InRun(float sinceLast) => sinceLast >= 0f && sinceLast < RunWithinMilliseconds;
+
+    /// <summary>A letter of a name in a run, <paramref name="since"/> ms after it came: every letter together, from a short way off.</summary>
+    public static BigTypeLetterPose ArriveInRun(BigTypeEntrance entrance, float since, bool holdStill = false)
+    {
+        if (holdStill)
+            return BigTypeLetterPose.Rest;
+        var t = since / RunInMilliseconds;
+        if (t >= 1f)
+            return BigTypeLetterPose.Rest;
+        var (x, y, degrees) = LetterFrom(entrance);
+        var e = Land(Math.Max(0f, t));
+        var k = RunFromShare * (1f - e);
+        return new BigTypeLetterPose(x * k, y * k, degrees * k, Math.Clamp(e, 0f, 1f));
+    }
+
+    /// <summary>A letter of a name a run's next one replaces, <paramref name="since"/> ms after: all together, the short way; null once gone.</summary>
+    public static BigTypeLetterPose? DepartInRun(BigTypeEntrance entrance, float since, bool holdStill = false)
+    {
+        var duration = holdStill ? LetterOutStillMilliseconds : RunOutMilliseconds;
+        var t = since / duration;
+        if (t >= 1f)
+            return null;
+        var e = Leave(Math.Max(0f, t));
+        var (x, y) = LetterTo(entrance);
+        return new BigTypeLetterPose(x * e * RunFromShare, y * e * RunFromShare, 0f, 1f - e);
+    }
+
+    /// <summary>How long a name in a run takes to arrive (0 held still) and to go.</summary>
+    public static float RunArrivalMilliseconds(bool holdStill = false) => holdStill ? 0f : RunInMilliseconds;
+
+    public static float RunDepartureMilliseconds(bool holdStill = false) => holdStill ? LetterOutStillMilliseconds : RunOutMilliseconds;
+
     // ---- The letters' idle hop (move 8) ----
 
     /// <summary>tokens.js <c>IdleHop</c>: the name's letters hop 260 ms after the tiles' wave begins, 45 ms apart, 0.07 em high.</summary>

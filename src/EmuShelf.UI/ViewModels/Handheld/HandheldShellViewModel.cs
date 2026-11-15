@@ -1258,8 +1258,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
     public void SettleStage()
     {
-        if (IsStagePending)
-            UpdateStage();
+        if (!IsStagePending)
+            return;
+        // A held direction's Stage lands as a single press's (M47 B11: QuickChange is off until the next press).
+        _stageSettledSincePress = true;
+        UpdateStage();
     }
 
     private TimeSpan? StageDelay()

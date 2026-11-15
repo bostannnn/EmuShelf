@@ -360,8 +360,9 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                 var layer = old;
                 if (_rolls.Remove(chrome.Key, out var unfinished))
                     _gl.DeleteTexture(unfinished.Old.Texture);
-                // Big Type's text rolls the characters that changed (M47 B5): the old picture stays until they have rolled over.
-                if (_ink is not null && old is not null && chrome.Image is { } next && !ReferenceEquals(old.Image, next) &&
+                // Big Type's text rolls the characters that changed (M47 B5): the old picture stays until they have rolled over. Within a
+                // run of presses (quick taps; M47 B11) it swaps in place, so a roll never restarts on a roll.
+                if (_ink is not null && old is not null && chrome.Image is { } next && !ReferenceEquals(old.Image, next) && !chrome.Quick &&
                     _chromeTexts.TryGetValue(chrome.Key, out var before) && chrome.Text is { } after && BigTypeMotion.Rolls(before.Text, after.Text, _holdStill))
                 {
                     _rolls[chrome.Key] = (old, before, now);

@@ -28,6 +28,9 @@ internal static class FrameProbeProperty
     /// <summary>"ab": batching on and off every two frames within one run, GPU times filed under "+b" and "+u" (M47 B6).</summary>
     public static bool Alternate { get; private set; }
 
+    /// <summary>"ring": the probe on, and the native Launcher logs where its Big Type ring and its target are every frame (M47 B11).</summary>
+    public static bool Ring { get; private set; }
+
     private static bool Read()
     {
         try
@@ -37,7 +40,8 @@ internal static class FrameProbeProperty
             var value = length > 0 ? Encoding.UTF8.GetString(buffer, 0, length).Trim().ToLowerInvariant() : string.Empty;
             NoBatch = value == "nobatch";
             Alternate = value == "ab";
-            var on = value is "1" or "on" or "true" or "nobatch" or "ab";
+            Ring = value == "ring";
+            var on = value is "1" or "on" or "true" or "nobatch" or "ab" or "ring";
             if (on)
             {
                 global::Android.Util.Log.Info("EmuShelfBigType", $"{Property}: native frame times are logged for this run");

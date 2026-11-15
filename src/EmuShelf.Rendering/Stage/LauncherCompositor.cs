@@ -67,6 +67,12 @@ public sealed partial class LauncherCompositor : INativeScene
     /// <inheritdoc />
     public string? ProbeTag => _probeTag;
 
+    /// <summary>While set (the probe's "ring" run, M47 B11), each frame's ring and target are kept in <see cref="LastRing"/>.</summary>
+    public bool ProbeRing { get; set; }
+
+    /// <summary>The last frame's ring and target, for the probe; null until one is drawn with <see cref="ProbeRing"/> set.</summary>
+    public string? LastRing { get; private set; }
+
     // The Big Type look's motion (M47 B5): off until LauncherMotionCommand says so, so today's look moves exactly as before.
     private bool _bigType;
     private readonly BigTypeLauncherMotion _bt = new();
@@ -125,6 +131,8 @@ public sealed partial class LauncherCompositor : INativeScene
         public float LiftFrom { get; set; } = 1f;
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
+
+
 
         /// <summary>Big Type lifts on its landing curve over 380 ms (M47 B5); today's look on its own over 220.</summary>
         public bool BigType { get; set; }
@@ -378,7 +386,8 @@ public sealed partial class LauncherCompositor : INativeScene
             if (existing.Roll is { } rolling)
                 _gl.DeleteTexture(rolling.Texture);
             existing.Roll = null;
-            if (_bigType && existing.Sprite.Text is { } before && sprite.Text is { } after &&
+            // Within a run of presses (a held direction, quick taps; M47 B11) a count swaps in place rather than rolling again.
+            if (_bigType && !_bt.InRun && existing.Sprite.Text is { } before && sprite.Text is { } after &&
                 BigTypeMotion.Rolls(before.Text, after.Text, _bt.HoldStill))
                 existing.Roll = (existing.Texture, existing.Sprite.Image, before, now);
             else
@@ -817,6 +826,9 @@ public sealed partial class LauncherCompositor : INativeScene
             // Big Type's ring (M47 B5): one timed path from where it was drawn to where its target is now, then a breath at rest.
             var at = TargetOnScreen(_target);
             var ring = _bt.Ring(new BigTypeRing(at.X, at.Y, _target.Width, _target.Height, _target.Radius), now, out var ringOpacity, out var moving);
+            // The probe's ring trace (M47 B11, "ring"): where the ring is drawn and where its target is, each frame.
+            if (ProbeRing)
+                LastRing = FormattableString.Invariant($"ring t={now:0.0} at={ring.X:0.0},{ring.Y:0.0},{ring.Width:0.0},{ring.Height:0.0} target={at.X:0.0},{at.Y:0.0},{_target.Width:0.0},{_target.Height:0.0} moving={moving}");
             animating |= moving;
             opacity *= ringOpacity;
             (x, y, w, h, radius) = (ring.X, ring.Y, ring.Width, ring.Height, ring.Radius);
