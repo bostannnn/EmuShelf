@@ -135,6 +135,22 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
       On the Stage the name, the console's name, the two lines under it, the clock and the hints
       take the ink and veil the showing backdrop needs (`legibility`, baked per backdrop in
       `legibility.json`): white, or the console's colour mixed toward `InkToward`.
+    - **The backdrops** (owner, 2026-11-15, on `backdrop-review.html`; built in M47 B13): under Big Type
+      each console shows **one** animation and nothing rotates: NES `nes-stars`, Super Nintendo `tiles`,
+      Game Boy Color `gbc-attr`, Game Boy Advance `gba-iso`, GameCube `gc-fur`, Nintendo DS `ds-dots`, Wii
+      `wii-pointer-v2`, Mega Drive `md-pipe-v2`, Dreamcast `dc-sea-v2`, PlayStation `tide`, PlayStation 2
+      `ps2-orbs-v3`, PSP `psp-ribbon` (new to the app), PlayStation 3 `ps3-sheet`, Arcade `arc-vector-v3`,
+      Steam `steam-mesh`; the 3DS keeps today's three, rotating, while new ones are designed. **Recent** has its
+      own, `arc-checker`; Settings, Activity and the other tiles keep the backdrop showing (a default for them is
+      being designed). Where the owner chose it, an animation is **recoloured toward its console's ground**:
+      the colour laid over it with CSS `mix-blend-mode: color` at the chosen pull (0.5 to 1), done in the
+      backdrop's output pass (`BackdropRecolour` is the reference). Pixels are kept, crisp, where they are the
+      console's character (NES, SNES, GBC, GBA, DS, Mega Drive, PlayStation, Arcade, Recent's checker: the
+      console's own size in whole screen pixels, a 256-wide frame at 8 with its edges cropped); everywhere else
+      the animation is drawn larger, sharp, as the Thor's GPU allows. The table, pulls and sizes are tokens.js
+      `backdrops` and `BigTypeBackdrops`; the ink and veil were baked again for these (`legibility.json`
+      `bigType`). Dreamcast's ground became sea blue `#0E7AB5` so its blue sea could stay as it is. Today's
+      look keeps its rotating lists (`KnownSystems` `Backdrops`, M45 H7b), sizes and colours.
     - **The Stage:** the name fitted into `DisplayName.fitBox` (smaller beside a game's medium), at
       most three lines, bottom-left; the console's name top left; battery and clock top right; the
       line and the second line under the name; the button hints bottom right as outlined circles; a

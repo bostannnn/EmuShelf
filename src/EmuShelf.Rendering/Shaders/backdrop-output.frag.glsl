@@ -20,6 +20,35 @@ uniform float uCrop;
 // only inside, with a one-pixel soft edge, while w is 1. All zero (unset) shows all of it, as before.
 uniform vec4 uClip;
 
+#ifdef BACKDROP_BIGTYPE
+// Big Type (M47 B13; this program is compiled with BACKDROP_BIGTYPE defined, today's look without it, from the text it always had).
+// uZoom: the share of the frame shown across each axis, about its middle (a crisp frame shown at the whole scale above the Stage's);
+// 1, 1 shows all of it. uRowScale: the frame's rows per row of its console's own size, so a sharp frame's interlace keeps its
+// console's line pitch. uPull and uGround: the recolour (backdrop-review.html's tint, mix-blend-mode: color at the pull's opacity,
+// as BackdropRecolour does); a pull of 0 leaves the colour alone.
+uniform vec2 uZoom;
+uniform float uRowScale;
+uniform float uPull;
+uniform vec3 uGround;
+
+// W3C Compositing and Blending Level 1: Lum, ClipColor, SetLum, and the "color" blend B(Cb, Cs) = SetLum(Cs, Lum(Cb)).
+float blendLum(vec3 c) { return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b; }
+
+vec3 blendClipColor(vec3 c)
+{
+    float l = blendLum(c);
+    float n = min(c.r, min(c.g, c.b));
+    float x = max(c.r, max(c.g, c.b));
+    if (n < 0.0)
+        c = vec3(l) + (c - vec3(l)) * l / (l - n);
+    if (x > 1.0)
+        c = vec3(l) + (c - vec3(l)) * (1.0 - l) / (x - l);
+    return c;
+}
+
+vec3 blendColor(vec3 backdrop, vec3 source) { return blendClipColor(source + vec3(blendLum(backdrop) - blendLum(source))); }
+#endif
+
 in vec2 vNdc;
 out vec4 fragColor;
 
@@ -29,6 +58,9 @@ void main()
 {
     vec2 uv = vNdc * 0.5 + 0.5;
     uv.x = (uCrop * 0.5) + (uv.x * (1.0 - uCrop));
+#ifdef BACKDROP_BIGTYPE
+    uv = vec2(0.5) + (uv - vec2(0.5)) * uZoom;
+#endif
     vec2 p = uv * uRes;
     ivec2 last = ivec2(uRes) - 1;
     ivec2 cell = clamp(ivec2(floor(p)), ivec2(0), last);
@@ -70,7 +102,11 @@ void main()
         colour *= mix(1.0, 0.45, smoothstep(0.42, 0.58, 1.0 - within.y));
     }
 
+#ifdef BACKDROP_BIGTYPE
+    if (uInterlace > 0.0 && ((int(floor(float(row) / uRowScale)) + int(uFrame)) & 1) == 1)
+#else
     if (uInterlace > 0.0 && ((row + int(uFrame)) & 1) == 1)
+#endif
         colour *= 1.0 - uInterlace;
 
     if (uBloom > 0.0)
@@ -79,5 +115,12 @@ void main()
     float opacity = uOpacity;
     if (uClip.w > 0.5)
         opacity *= clamp(uClip.z - distance(gl_FragCoord.xy, uClip.xy) + 0.5, 0.0, 1.0);
+#ifdef BACKDROP_BIGTYPE
+    vec3 shown = min(colour, vec3(1.0));
+    if (uPull > 0.0)
+        shown = mix(shown, blendColor(shown, uGround), uPull);
+    fragColor = vec4(shown * opacity, opacity);
+#else
     fragColor = vec4(min(colour, vec3(1.0)) * opacity, opacity);
+#endif
 }

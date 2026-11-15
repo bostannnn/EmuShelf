@@ -644,8 +644,17 @@ internal sealed partial class HandheldNativeStageFeed
         _backdropSent = _stage?.Backdrop;
         _backdropSentOnce = true;
         _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated,
-            Drift: _stage?.IsDrift == true, WipeOriginX: WipeOriginX()));
+            Drift: _stage?.IsDrift == true, WipeOriginX: WipeOriginX(), Ground: BigTypeGround(_stage?.Backdrop)));
     }
+
+    /// <summary>
+    /// The colour Big Type recolours the backdrop's animations toward (M47 B13): the backdrop's own colour, which under Big Type is the
+    /// console's ground (or Recent's); null in today's look.
+    /// </summary>
+    private static System.Numerics.Vector3? BigTypeGround(HandheldBackdrop? backdrop) =>
+        HandheldTokens.IsBigType && backdrop is { } shown
+            ? new System.Numerics.Vector3(shown.Color.R / 255f, shown.Color.G / 255f, shown.Color.B / 255f)
+            : null;
 
     /// <summary>
     /// Where a Big Type wipe grows from across the Stage canvas (M47 B6): the Launcher's focused tile, its canvas centred under the

@@ -12,10 +12,17 @@ vec2 pointer(float s)
 void main()
 {
     vec2 p = pixelTopLeft(gl_FragCoord);
-    float y = floor(p.y), t = uTime, W = uRes.x, H = uRes.y;
+    float y = pixelIndex(p.y), t = uTime, W = uRes.x, H = uRes.y;
     vec3 colour = mix(rgb(250.0, 251.0, 252.0), rgb(224.0, 228.0, 233.0), y / (H - 1.0));
+#ifdef BACKDROP_SHARP
+    // Big Type (M47 B13; the owner: "make gradient more smooth"): the pinstripe (every fourth row 1.2% darker), which the recolour
+    // turns into clear lines across the gradient, is left out, and the gentle gradient's 8-bit steps are broken with a half-step
+    // ordered dither, so it reads as one smooth sweep. (Its band two fifths down was the bloom: see BigTypeBackdrops.)
+    colour += (bayer(gl_FragCoord.x, gl_FragCoord.y) - 0.47) / 255.0;
+#else
     if (jmod(y, 4.0) == 0.0)
         colour *= vec3(0.988, 0.99, 0.992);
+#endif
     vec2 at = pointer(t);
     float spacing = W / 40.0;
     vec2 cell = floor(p / spacing);

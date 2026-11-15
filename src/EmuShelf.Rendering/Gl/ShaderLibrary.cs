@@ -40,6 +40,18 @@ public static class ShaderLibrary
         GlslDialect dialect,
         int majorVersion = 3,
         int minorVersion = 3,
+        params string[] includes) => LoadWithDefines(name, dialect, majorVersion, minorVersion, [], includes);
+
+    /// <summary>
+    /// <see cref="Load"/> with <c>#define</c>s after the version and precision lines, for a variant of a shader (M47 B13: Big Type's
+    /// backdrops). With no defines the text is exactly what <see cref="Load"/> gives.
+    /// </summary>
+    public static string LoadWithDefines(
+        string name,
+        GlslDialect dialect,
+        int majorVersion,
+        int minorVersion,
+        IReadOnlyList<string> defines,
         params string[] includes)
     {
         var builder = new StringBuilder();
@@ -59,6 +71,11 @@ public static class ShaderLibrary
         {
             var supports330 = majorVersion > 3 || (majorVersion == 3 && minorVersion >= 3);
             builder.AppendLine(supports330 ? "#version 330 core" : "#version 150");
+        }
+
+        foreach (var define in defines)
+        {
+            builder.AppendLine("#define " + define);
         }
 
         foreach (var include in includes)

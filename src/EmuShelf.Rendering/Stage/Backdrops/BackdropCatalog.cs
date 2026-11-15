@@ -309,6 +309,16 @@ public static class BackdropCatalog
             // Three crests, 80 segments each, drawn three times (the line and its glow above and below).
             new("backdrop-psp-field-lines.vert", "backdrop-color.frag", 3 * 80 * 2 * 3, BackdropPrimitive.Lines, BackdropBlend.Additive),
         ], new BackdropOutput(Smooth: true, Ghost: 0.25f)),
+        // M47 B13: Big Type's PSP animation (the owner chose it on backdrop-review.html); today's look does not show it.
+        new("psp-ribbon", 320, 180,
+        [
+            BackdropPass.Fullscreen("backdrop-psp-ribbon-bg.frag"),
+            // Each ribbon (60 quads at 32%), then its two edges (60 stroked segments each, added), as the prototype draws them.
+            new("backdrop-psp-ribbon.vert", "backdrop-color.frag", 360, Blend: BackdropBlend.Alpha),
+            new("backdrop-psp-ribbon-edges.vert", "backdrop-psp-ribbon-edges.frag", 720, Blend: BackdropBlend.Additive),
+            new("backdrop-psp-ribbon.vert", "backdrop-color.frag", 360, Blend: BackdropBlend.Alpha, First: 360),
+            new("backdrop-psp-ribbon-edges.vert", "backdrop-psp-ribbon-edges.frag", 720, Blend: BackdropBlend.Additive, First: 720),
+        ], new BackdropOutput(Smooth: true, Ghost: 0.25f)),
         new("ps3-sheet", 480, 270,
         [
             BackdropPass.Fullscreen("backdrop-ps3-bg.frag"),

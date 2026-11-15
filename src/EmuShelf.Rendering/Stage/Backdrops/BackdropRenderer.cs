@@ -10,14 +10,52 @@ namespace EmuShelf.Rendering.Stage.Backdrops;
 /// </summary>
 public sealed class BackdropInstance
 {
-    internal BackdropInstance(BackdropSpec spec, float startMilliseconds, float clockOffsetSeconds)
+    internal BackdropInstance(BackdropSpec spec, float startMilliseconds, float clockOffsetSeconds, BackdropLook look = default)
     {
         Spec = spec;
         StartMilliseconds = startMilliseconds;
         ClockOffsetSeconds = clockOffsetSeconds;
+        Look = look;
+        Width = spec.Width;
+        Height = spec.Height;
+        Smooth = spec.Output.Smooth;
+        if (look.BigType && BigTypeBackdrops.Find(spec.Id) is { } entry)
+        {
+            BigType = entry;
+            (Width, Height) = BigTypeBackdrops.DrawSize(entry, spec);
+            Smooth = entry.Upscale == BackdropUpscale.Sharp;
+            if (entry.Upscale == BackdropUpscale.Crisp)
+                Zoom = BigTypeBackdrops.CrispShown(Width, Height);
+        }
     }
 
     public BackdropSpec Spec { get; }
+
+    /// <summary>The look it is drawn for: today's (the catalog's size, no recolour) or Big Type's (M47 B13).</summary>
+    public BackdropLook Look { get; }
+
+    /// <summary>Big Type's entry for it, when it is drawn for Big Type and Big Type shows it; null otherwise.</summary>
+    public BigTypeBackdrop? BigType { get; }
+
+    /// <summary>The size its frame is drawn at: the console's own (the catalog's), or Big Type's draw size.</summary>
+    public int Width { get; }
+
+    public int Height { get; }
+
+    /// <summary>Draw pixels per prototype pixel across (the shaders' <c>uPixel</c>): 1 unless a sharp Big Type frame is drawn larger.</summary>
+    public float Pixel => Width / (float)Spec.Width;
+
+    /// <summary>Linear upscaling onto the Stage (the console's finish; under Big Type, sharp frames only).</summary>
+    internal bool Smooth { get; }
+
+    /// <summary>The share of the frame shown across each axis (a crisp Big Type frame at a whole scale larger than the Stage).</summary>
+    internal System.Numerics.Vector2 Zoom { get; } = System.Numerics.Vector2.One;
+
+    /// <summary>How far it is recoloured toward <see cref="BackdropLook.Ground"/> (0: as it is).</summary>
+    internal float Pull => BigType?.Pull ?? 0f;
+
+    /// <summary>The bloom's threshold: the console's finish, or Big Type's own where its entry sets one.</summary>
+    internal float BloomThreshold => BigType?.BloomThreshold ?? Spec.Output.BloomThreshold;
 
     public string Id => Spec.Id;
 
@@ -27,9 +65,12 @@ public sealed class BackdropInstance
     internal float ClockOffsetSeconds { get; }
 
     /// <summary>Each pass's program, resolved once at the start (no lookups per step).</summary>
-    internal GlProgram[] Programs { get; init; } = [];
+    internal GlProgram[] Programs { get; set; } = [];
 
-    internal GlProgram? FinishProgram { get; init; }
+    internal GlProgram? FinishProgram { get; set; }
+
+    /// <summary>The output pass's program: today's, or Big Type's (zoom, interlace pitch, recolour).</summary>
+    internal GlProgram? OutputProgram { get; set; }
 
     /// <summary>The last 30 Hz step drawn; -1 before the first.</summary>
     internal long Step { get; set; } = -1;
@@ -54,6 +95,9 @@ public sealed class BackdropInstance
     internal Target? BloomNear { get; set; }
 
     internal Target? BloomFar { get; set; }
+
+    /// <summary>A sharp frame averaged down to its console's size before the bloom, so the glow keeps its size and softness.</summary>
+    internal Target? BloomReduce { get; set; }
 
     /// <summary>What the output pass shows: the finished frame, its ghosted / persisted copy, or the scene.</summary>
     internal Target? Shown => History is { } history ? history[HistoryIndex] : Finished ?? Scene;
@@ -84,6 +128,11 @@ public sealed class BackdropRenderer : IDisposable
     private GlProgram? _history;
     private GlProgram? _bright;
     private GlProgram? _output;
+    private GlProgram? _bigTypeOutput;
+
+    // M47 B13: the defines a Big Type backdrop's programs are compiled with (backdrop-common.glsl, backdrop-output.frag).
+    private const string SharpDefine = "BACKDROP_SHARP 1";
+    private const string BigTypeDefine = "BACKDROP_BIGTYPE 1";
 
     public BackdropRenderer(GL gl, GlslDialect dialect, int majorVersion, int minorVersion)
     {
@@ -99,21 +148,28 @@ public sealed class BackdropRenderer : IDisposable
     /// failure is logged once and remembered).
     /// </summary>
     /// <param name="clockOffsetSeconds">Where the motion starts; by default a little way in, varied per start.</param>
-    public BackdropInstance? Start(string id, float now, float? clockOffsetSeconds = null)
+    /// <param name="look">Today's look (the default) or Big Type's, which draws the animations it shows at its own size and recolours
+    /// them toward the look's ground (M47 B13).</param>
+    public BackdropInstance? Start(string id, float now, float? clockOffsetSeconds = null, BackdropLook look = default)
     {
         if (BackdropCatalog.Find(id) is not { } spec || _failed.Contains(id))
             return null;
-        GlProgram[] programs;
-        GlProgram? finishProgram;
+        // Offset first: the instance's size (and so whether its programs are the sharp variant) does not depend on it.
+        var offset = clockOffsetSeconds ?? 4f + ((uint)HashCode.Combine(id, (int)now) % 1000) / 100f;
+        var instance = new BackdropInstance(spec, now, offset, look);
+        var sharp = instance.Pixel > 1f;
+        string[] defines = sharp ? [SharpDefine] : [];
         try
         {
-            _output ??= Compile("fullscreen.vert", "backdrop-output.frag");
+            instance.OutputProgram = look.BigType
+                ? _bigTypeOutput ??= Compile("fullscreen.vert", "backdrop-output.frag", [BigTypeDefine])
+                : _output ??= Compile("fullscreen.vert", "backdrop-output.frag");
             if (spec.Output.Ghost > 0 || spec.Output.Persist > 0)
                 _history ??= Compile("fullscreen.vert", "backdrop-history.frag");
             if (spec.Output.BloomThreshold > 0)
                 _bright ??= Compile("fullscreen.vert", "backdrop-bright.frag");
-            programs = spec.Passes.Select(pass => Program(pass.Vertex, pass.Fragment)!).ToArray();
-            finishProgram = spec.Finish is { } finish ? Program("fullscreen.vert", finish) : null;
+            instance.Programs = spec.Passes.Select(pass => Program(pass.Vertex, pass.Fragment, defines)!).ToArray();
+            instance.FinishProgram = spec.Finish is { } finish ? Program("fullscreen.vert", finish, defines) : null;
         }
         catch (Exception ex)
         {
@@ -122,9 +178,8 @@ public sealed class BackdropRenderer : IDisposable
             Console.Error.WriteLine($"[EmuShelf] Backdrop '{id}' is unavailable; the era motif stays: {ex.Message}");
             return null;
         }
-        // Each start begins a little way into the motion, so a backdrop never opens on the same frame.
-        var offset = clockOffsetSeconds ?? 4f + ((uint)HashCode.Combine(id, (int)now) % 1000) / 100f;
-        return new BackdropInstance(spec, now, offset) { Programs = programs, FinishProgram = finishProgram };
+        // Each start begins a little way into the motion (the offset above), so a backdrop never opens on the same frame.
+        return instance;
     }
 
     /// <summary>Renders the backdrop's next 30 Hz step if the clock has reached it. Leaves the framebuffer unbound.</summary>
@@ -171,6 +226,11 @@ public sealed class BackdropRenderer : IDisposable
             program.Set("uSteps", (float)elapsed);
             program.Set("uPrevious", 0);
             program.Set("uHasPrevious", instance.HasPreviousScene ? 1f : 0f);
+            if (instance.Pixel > 1f)
+            {
+                program.Set("uPixel", instance.Pixel);
+                program.Set("uPointRound", pass.Primitive == BackdropPrimitive.Points ? 1f : 0f);
+            }
             if (pass.DepthTest)
             {
                 _gl.Enable(EnableCap.DepthTest);
@@ -218,6 +278,8 @@ public sealed class BackdropRenderer : IDisposable
             finishing.Set("uTime", seconds);
             finishing.Set("uRes", resolution);
             finishing.Set("uScene", 0);
+            if (instance.Pixel > 1f)
+                finishing.Set("uPixel", instance.Pixel);
             Bind(0, scene.Texture);
             _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
@@ -248,8 +310,21 @@ public sealed class BackdropRenderer : IDisposable
         {
             var shown = instance.Shown!;
             _bright!.Use();
+            if (instance.BloomReduce is { } reduce)
+            {
+                // A sharp frame is first averaged down to its console's size, so the glow is the one the console's frame gives.
+                _bright.Set("uSource", 0);
+                _bright.Set("uThreshold", -1f);
+                _gl.BindFramebuffer(FramebufferTarget.Framebuffer, reduce.Framebuffer);
+                _gl.Viewport(0, 0, reduce.Width, reduce.Height);
+                Bind(0, shown.Texture);
+                _bright.Set("uSourceSize", new Vector2(shown.Width, shown.Height));
+                _bright.Set("uTargetSize", new Vector2(reduce.Width, reduce.Height));
+                _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
+                shown = reduce;
+            }
             _bright.Set("uSource", 0);
-            _bright.Set("uThreshold", spec.Output.BloomThreshold);
+            _bright.Set("uThreshold", instance.BloomThreshold);
             _gl.BindFramebuffer(FramebufferTarget.Framebuffer, near.Framebuffer);
             _gl.Viewport(0, 0, near.Width, near.Height);
             Bind(0, shown.Texture);
@@ -281,28 +356,37 @@ public sealed class BackdropRenderer : IDisposable
         if (instance.Shown is not { } shown || opacity <= 0f)
             return;
         var output = instance.Spec.Output;
-        _output!.Use();
+        var program = instance.OutputProgram!;
+        program.Use();
         _gl.BindVertexArray(_vao);
         Bind(0, shown.Texture);
-        _output.Set("uSource", 0);
-        _output.Set("uRes", new Vector2(shown.Width, shown.Height));
-        _output.Set("uOpacity", opacity);
-        _output.Set("uCrop", Math.Clamp(crop, 0f, 0.9f));
-        _output.Set("uClip", clip);
-        _output.Set("uSmooth", output.Smooth ? 1f : 0f);
-        _output.Set("uLevels", output.Bits > 0 ? (float)((1 << output.Bits) - 1) : 0f);
-        _output.Set("uDither", output.Dither);
-        _output.Set("uGrid", (float)output.Grid);
-        _output.Set("uComposite", output.Composite ? 1f : 0f);
-        _output.Set("uInterlace", output.Interlace);
-        _output.Set("uFrame", (float)(instance.Step & 1));
+        program.Set("uSource", 0);
+        program.Set("uRes", new Vector2(shown.Width, shown.Height));
+        program.Set("uOpacity", opacity);
+        program.Set("uCrop", Math.Clamp(crop, 0f, 0.9f));
+        program.Set("uClip", clip);
+        program.Set("uSmooth", instance.Smooth ? 1f : 0f);
+        if (instance.Look.BigType)
+        {
+            program.Set("uZoom", instance.Zoom);
+            program.Set("uRowScale", instance.Height / (float)instance.Spec.Height);
+            program.Set("uPull", instance.Pull);
+            program.Set("uGround", instance.Look.Ground);
+        }
+
+        program.Set("uLevels", output.Bits > 0 ? (float)((1 << output.Bits) - 1) : 0f);
+        program.Set("uDither", output.Dither);
+        program.Set("uGrid", (float)output.Grid);
+        program.Set("uComposite", output.Composite ? 1f : 0f);
+        program.Set("uInterlace", output.Interlace);
+        program.Set("uFrame", (float)(instance.Step & 1));
         var bloom = instance.BloomNear is not null ? output.BloomAmount : 0f;
-        _output.Set("uBloom", bloom);
+        program.Set("uBloom", bloom);
         // Without bloom the glow samplers still need a texture bound; the frame itself stands in, unread.
         Bind(1, bloom > 0 ? instance.BloomNear!.Texture : shown.Texture);
         Bind(2, bloom > 0 ? instance.BloomFar!.Texture : shown.Texture);
-        _output.Set("uBloomNear", 1);
-        _output.Set("uBloomFar", 2);
+        program.Set("uBloomNear", 1);
+        program.Set("uBloomFar", 2);
         _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
         _gl.ActiveTexture(TextureUnit.Texture0);
     }
@@ -319,8 +403,9 @@ public sealed class BackdropRenderer : IDisposable
         Delete(instance.Finished);
         Delete(instance.BloomNear);
         Delete(instance.BloomFar);
+        Delete(instance.BloomReduce);
         instance.Scenes = instance.History = null;
-        instance.Finished = instance.BloomNear = instance.BloomFar = null;
+        instance.Finished = instance.BloomNear = instance.BloomFar = instance.BloomReduce = null;
     }
 
     public void Dispose()
@@ -331,33 +416,34 @@ public sealed class BackdropRenderer : IDisposable
         _history?.Dispose();
         _bright?.Dispose();
         _output?.Dispose();
+        _bigTypeOutput?.Dispose();
         _gl.DeleteVertexArray(_vao);
     }
 
-    private GlProgram? Program(string vertex, string fragment)
+    private GlProgram? Program(string vertex, string fragment, string[] defines)
     {
-        var key = vertex + "|" + fragment;
+        var key = vertex + "|" + fragment + "|" + string.Join(",", defines);
         if (!_programs.TryGetValue(key, out var program))
         {
-            program = Compile(vertex, fragment);
+            program = Compile(vertex, fragment, defines);
             _programs[key] = program;
         }
         return program;
     }
 
-    private GlProgram Compile(string vertex, string fragment) => GlProgram.Create(
+    private GlProgram Compile(string vertex, string fragment, string[]? defines = null) => GlProgram.Create(
         _gl,
-        ShaderLibrary.Load(vertex, _dialect, _major, _minor, "backdrop-common"),
-        ShaderLibrary.Load(fragment, _dialect, _major, _minor, "backdrop-common"),
-        fragment);
+        ShaderLibrary.LoadWithDefines(vertex, _dialect, _major, _minor, defines ?? [], "backdrop-common"),
+        ShaderLibrary.LoadWithDefines(fragment, _dialect, _major, _minor, defines ?? [], "backdrop-common"),
+        defines is { Length: > 0 } ? fragment + " (" + string.Join(", ", defines) + ")" : fragment);
 
     private void EnsureTargets(BackdropInstance instance)
     {
         if (instance.Scenes is not null)
             return;
         var spec = instance.Spec;
-        var width = (uint)spec.Width;
-        var height = (uint)spec.Height;
+        var width = (uint)instance.Width;
+        var height = (uint)instance.Height;
         var depth = spec.Passes.Any(pass => pass.DepthTest);
         instance.Scenes = spec.Feedback
             ? [CreateTarget(width, height, depth), CreateTarget(width, height, depth)]
@@ -368,8 +454,11 @@ public sealed class BackdropRenderer : IDisposable
             instance.History = [CreateTarget(width, height, false), CreateTarget(width, height, false)];
         if (spec.Output.BloomThreshold > 0)
         {
-            var nearWidth = Math.Max(1u, width / 4);
-            var nearHeight = Math.Max(1u, height / 4);
+            // The glow is sized from the console's own frame, whatever size this one is drawn at.
+            if (width != spec.Width || height != spec.Height)
+                instance.BloomReduce = CreateTarget((uint)spec.Width, (uint)spec.Height, false);
+            var nearWidth = Math.Max(1u, (uint)spec.Width / 4);
+            var nearHeight = Math.Max(1u, (uint)spec.Height / 4);
             instance.BloomNear = CreateTarget(nearWidth, nearHeight, false);
             instance.BloomFar = CreateTarget(Math.Max(1u, nearWidth / 3), Math.Max(1u, nearHeight / 3), false);
         }

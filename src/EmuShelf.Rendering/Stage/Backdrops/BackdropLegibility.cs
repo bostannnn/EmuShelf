@@ -62,6 +62,15 @@ public static class BackdropLegibility
     /// <summary>Every baked backdrop, by id.</summary>
     public static IReadOnlyDictionary<string, BackdropInk> All => Table;
 
+    /// <summary>
+    /// Big Type's answer for a backdrop it shows (M47 B13: baked again over each animation recoloured and at its draw size, legibility.json
+    /// <c>bigType</c>); today's answer for any other id, and <see cref="Fallback"/> for null or an unknown one.
+    /// </summary>
+    public static BackdropInk ForBigType(string? id) => id is not null && BigTypeTable.TryGetValue(id, out var ink) ? ink : For(id);
+
+    /// <summary>Every backdrop baked for Big Type, by id.</summary>
+    public static IReadOnlyDictionary<string, BackdropInk> BigTypeAll => BigTypeTable;
+
     private static StageZoneInk Dark(float veil) => new(true, veil);
 
     private static StageZoneInk White(float veil) => new(false, veil);
@@ -124,5 +133,30 @@ public static class BackdropLegibility
         ["steam-wall-v2"] = new("steam", White(0.28f), White(0.25f), White(0.25f)),
         ["wii-pointer-v2"] = new("wii", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
         ["wii-tiles"] = new("wii", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+    };
+
+    // M47 B13: baked again with the stress sheet's rule over each animation recoloured as Big Type shows it (legibility.json bigType); a test
+    // holds the two equal. The inks and veils came out as today's for every animation both looks show; psp-ribbon is new.
+    private static readonly Dictionary<string, BackdropInk> BigTypeTable = new(StringComparer.Ordinal)
+    {
+        ["3ds-floorwave"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["3ds-tapwave"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["3ds-tiles"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["arc-checker"] = new("recent", Dark(0.28f), White(0.25f), Dark(0.25f)),
+        ["arc-vector-v3"] = new("arcade", White(0.28f), White(0.25f), White(0.25f)),
+        ["dc-sea-v2"] = new("dreamcast", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["ds-dots"] = new("nds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["gba-iso"] = new("gba", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["gbc-attr"] = new("gbc", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["gc-fur"] = new("gamecube", White(0.38f), White(0.25f), White(0.29f)),
+        ["md-pipe-v2"] = new("megadrive", Dark(0.41f), Dark(0.35f), Dark(0.25f)),
+        ["nes-stars"] = new("nes", White(0.28f), White(0.25f), White(0.25f)),
+        ["ps2-orbs-v3"] = new("playstation2", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["ps3-sheet"] = new("playstation3", White(0.28f), White(0.25f), White(0.25f)),
+        ["psp-ribbon"] = new("psp", White(0.28f), White(0.25f), White(0.25f)),
+        ["steam-mesh"] = new("steam", White(0.28f), White(0.25f), White(0.25f)),
+        ["tide"] = new("playstation", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["tiles"] = new("snes", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        ["wii-pointer-v2"] = new("wii", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
     };
 }

@@ -14,6 +14,7 @@ using EmuShelf.App.Services;
 using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Launching;
 using EmuShelf.Core.Settings;
+using EmuShelf.Rendering.Stage.Backdrops;
 
 namespace EmuShelf.App.ViewModels;
 
@@ -1492,11 +1493,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void ShowFolderStage(HandheldFolderSource source, string subtitle)
     {
-        // A platform's folder sits on its own backdrop; yours and Recent on the soft tile grid in their colour.
+        // A platform's folder sits on its own backdrop; yours and Recent on the soft tile grid in their colour. Under Big Type Recent has
+        // an animation of its own (M47 B13: the arcade checker, recoloured to Recent's colour).
         ShowStage(HandheldStageKind.Folder, source.Name, subtitle,
             backdrop: source.Platform is { } platform ? BackdropFor(platform)
                 : HandheldTokens.IsBigType && HandheldTokens.LauncherColour(source) is { } ground
-                    ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge)
+                    ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge,
+                        source.Kind == HandheldFolderKind.Recent ? BigTypeBackdrops.IdsFor(BigTypeBackdrops.Recent) : null)
                     : FolderBackdrop(source.AccentColor));
         Stage.Monogram = source.Monogram;
         Stage.FolderGlyph = source.Kind switch
@@ -1517,10 +1520,14 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     internal static HandheldBackdrop? FolderBackdrop(string color) =>
         HandheldTokens.ColourOf(color) is { } parsed ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
 
-    /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
+    /// <summary>
+    /// The era motif for a system's folder and games, in its colour, with its animated backdrops: today's rotating list, or under Big Type
+    /// the one Big Type shows (M47 B13, <see cref="BigTypeBackdrops"/>); null for an unknown system.
+    /// </summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
         HandheldTokens.ConsoleColour(platform) is { } color
-            ? new HandheldBackdrop(color, platform!.Era, platform.Backdrops)
+            ? new HandheldBackdrop(color, platform!.Era,
+                HandheldTokens.IsBigType ? BigTypeBackdrops.IdsFor(platform.SystemId) ?? platform.Backdrops : platform.Backdrops)
             : null;
 
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)

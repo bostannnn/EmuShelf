@@ -101,9 +101,11 @@ public interface IProbedScene
 /// </summary>
 /// <remarks><paramref name="Drift"/>: sent by the idle drift (M45 H6d), which is not navigation, so it never wakes a
 /// resting backdrop. <paramref name="WipeOriginX"/> (M47 B6, Big Type): where on the Stage canvas a system change's wipe grows from
-/// (<see cref="BigType.BigTypeMotion.WipeOrigin"/>); null grows it from the middle.</remarks>
+/// (<see cref="BigType.BigTypeMotion.WipeOrigin"/>); null grows it from the middle. <paramref name="Ground"/> (M47 B13, Big Type): the
+/// colour, sRGB from 0 to 1, its animations are recoloured toward (<see cref="Backdrops.BigTypeBackdrops"/>): the console's ground, or
+/// Recent's; today's look ignores it.</remarks>
 public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false,
-    float? WipeOriginX = null) : StageCommand
+    float? WipeOriginX = null, Vector3? Ground = null) : StageCommand
 {
     public override string? RetainKey => "backdrop";
 }
