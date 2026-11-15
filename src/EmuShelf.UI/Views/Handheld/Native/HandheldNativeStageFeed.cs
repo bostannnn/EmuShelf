@@ -646,6 +646,10 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!_active)
             return;
+        // Big Type (M47 B11): no backdrop yet (a start, before the first focus has its own) is not the plain grey: the native Stage
+        // keeps the one it has, or at a start shows its ground, the Launcher's colour, with white type, until the first one comes.
+        if (HandheldTokens.IsBigType && _stage?.Backdrop is null)
+            return;
         _backdropSent = _stage?.Backdrop;
         _backdropSentOnce = true;
         _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated,

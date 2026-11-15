@@ -56,6 +56,54 @@ public partial class HandheldShellViewModelTests
             shell.Dispose();
         });
 
+        // ---- No backdrop yet: never the plain grey ----
+
+        [AvaloniaFact]
+        public Task NoBackdropYet_TheNativeStageIsNotSentThePlainGrey_TodaysLookStillIs() => BigType(async () =>
+        {
+            var bigType = await BackdropsSentWithNone();
+            Assert.DoesNotContain(bigType, command => command.Animated is null);
+            HandheldTokens.Use(HandheldLook.Classic);
+            var classic = await BackdropsSentWithNone();
+            Assert.Contains(classic, command => command.Animated is null);
+        });
+
+        // The backdrop commands the native Stage gets when the Stage has no backdrop of its own (as at a start, before the first focus).
+        private static async Task<System.Collections.Generic.List<EmuShelf.Rendering.Stage.StageBackdropCommand>> BackdropsSentWithNone()
+        {
+            var screen = new RecordingNativeScreen();
+            var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 2));
+            var view = new EmuShelf.App.Views.HandheldStageView(screen, pinnedNarrow: null) { DataContext = shell };
+            var window = new Avalonia.Controls.Window { Content = view, Width = 1920, Height = 1080 };
+            window.Show();
+            try
+            {
+                shell.Stage.Backdrop = null;
+                for (var i = 0; i < 4; i++)
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(20);
+                }
+                screen.Posted.Clear();
+                shell.Stage.Backdrop = null;
+                // Hidden and shown again (a swap, the screen coming back): everything is sent again.
+                view.IsVisible = false;
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                view.IsVisible = true;
+                for (var i = 0; i < 4; i++)
+                {
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    await Task.Delay(20);
+                }
+                return screen.Posted.OfType<EmuShelf.Rendering.Stage.StageBackdropCommand>().ToList();
+            }
+            finally
+            {
+                window.Close();
+                shell.Dispose();
+            }
+        }
+
         [AvaloniaFact]
         public async Task IdleDrift_TodaysLook_ADirectionOnlyWakesIt()
         {
