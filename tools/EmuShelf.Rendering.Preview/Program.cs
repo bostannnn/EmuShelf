@@ -142,6 +142,13 @@ if (args.Contains("--stage-letters"))
     return;
 }
 
+// The Stage compositor's model view: each real medium rising, at rest, showing its back, flipping, turned and swinging back (M47 B12).
+if (args.Contains("--stage-model"))
+{
+    Environment.ExitCode = StageModelCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-model");
+    return;
+}
+
 // The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
 if (args.Contains("--stage-resume"))
 {

@@ -236,6 +236,27 @@
       <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageNarrowMediumFrameWidth}" />
       <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNarrowMediumFrameHeight}" />
     </Style>
+    <!-- M47 B12: the model view's medium and cover, in the middle of the wide Stage or of the narrow one. -->
+    <Style Selector="controls|Media3DControl#BtModelMedium">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageModelFrameMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageModelFrameWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageModelFrameHeight}" />
+    </Style>
+    <Style Selector="Border#BtModelCover">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageModelCoverMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageModelCoverWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageModelCoverHeight}" />
+    </Style>
+    <Style Selector="Grid.btnarrow controls|Media3DControl#BtModelMedium">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowModelFrameMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageNarrowModelFrameWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNarrowModelFrameHeight}" />
+    </Style>
+    <Style Selector="Grid.btnarrow Border#BtModelCover">
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.StageNarrowModelCoverMargin}" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.StageNarrowModelCoverWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.StageNarrowModelCoverHeight}" />
+    </Style>
     <Style Selector="Grid.btnarrow vh|HandheldBigTypeLaunchTitle#BtLaunchTitle">
       <Setter Property="MaxLineWidth" Value="{x:Static vm:HandheldTokens.StageNarrowLaunchTitleMaxWidth}" />
     </Style>
@@ -514,6 +535,32 @@
         the Avalonia Stage runs no backdrop shader, and over the pictured fallback the rule gives white.
       -->
       <Panel x:Name="BigTypeStage" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+        <!--
+          The model view (M47 B12, proposals.html): LB or RB on a game in a folder shows its medium alone in the middle of the Stage,
+          its floor's shadow under it; a platform with no authored medium stands its flat cover in the same place. HandheldStageMotion
+          poses all three every frame from BigTypeModelMotion (the native Stage does the same itself); the medium and the cover are laid
+          out at the model's size, so nothing is drawn larger than it was rendered.
+        -->
+        <Panel x:Name="BtModel" IsHitTestVisible="False">
+          <Image x:Name="BtModelFloor" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top" Stretch="Fill" />
+          <controls:Media3DControl x:Name="BtModelMedium" IsVisible="False" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                   Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}" Accent="{Binding Stage.MediumAccent}" />
+          <Border x:Name="BtModelCover" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasModelCover}"
+                  HorizontalAlignment="Left" VerticalAlignment="Top">
+            <Panel>
+              <Border IsVisible="{Binding Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageModelCoverRadius}" ClipToBounds="True"
+                      HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Image Source="{Binding Stage.Art}" Stretch="Uniform" />
+              </Border>
+              <Border IsVisible="{Binding !Stage.HasArt}" CornerRadius="{x:Static vm:HandheldTokens.StageModelCoverRadius}" Background="{x:Static vm:HandheldTokens.StageNoCoverFill}"
+                      Padding="{x:Static vm:HandheldTokens.StageModelNoCoverPadding}">
+                <TextBlock Text="{Binding Stage.Title}" FontSize="{x:Static vm:HandheldTokens.StageModelNoCoverTitle}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                           LineHeight="{x:Static vm:HandheldTokens.StageModelNoCoverTitleLineHeight}" Foreground="{x:Static vm:HandheldTokens.StageBigTypeInk}" TextWrapping="Wrap"
+                           TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center" />
+              </Border>
+            </Panel>
+          </Border>
+        </Panel>
         <controls:Media3DControl x:Name="BtMedium" IsVisible="{Binding Stage.HasBigTypeMedium}"
                                  HorizontalAlignment="Left" VerticalAlignment="Top"
                                  Shell="{Binding Stage.Medium}" Cover="{Binding Stage.Art}" Accent="{Binding Stage.MediumAccent}"
@@ -542,7 +589,7 @@
         </Border>
 
         <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
-                                Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
+                                Text="{Binding Stage.Name}" IsVisible="{Binding Stage.ShowsBigTypeName}"
                                 TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
                                 HorizontalAlignment="Left" VerticalAlignment="Bottom" />
 
@@ -666,7 +713,14 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldHint">
               <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGlyphGap}">
-                <Border Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
+                <!-- A key of more than one letter (RB, RS) is a rounded key (M47 B12, proposals.html's .hint i.sh). -->
+                <Border IsVisible="{Binding IsWide}" MinWidth="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}"
+                        CornerRadius="{x:Static vm:HandheldTokens.StageHintKeyCorner}" Padding="{x:Static vm:HandheldTokens.StageHintKeyPadding}"
+                        BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{Binding $parent[ItemsControl].Foreground}" VerticalAlignment="Center">
+                  <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <Border IsVisible="{Binding !IsWide}" Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
                         BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{Binding $parent[ItemsControl].Foreground}" VerticalAlignment="Center">
                   <Panel>
                     <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"

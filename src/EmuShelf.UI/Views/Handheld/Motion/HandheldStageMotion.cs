@@ -81,6 +81,7 @@ internal sealed partial class HandheldStageMotion
     {
         if (ReferenceEquals(shell, _shell))
             return;
+        AttachModel(_shell, shell);
         if (_shell is { } old)
         {
             old.StageChanging -= OnStageChanging;

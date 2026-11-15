@@ -1038,7 +1038,10 @@ public partial class HandheldShellViewModelTests
         await DesignPairAsync(rig, "sheet-pinned-game", "Y actions sheet on a game pinned to home");
         Press(shell, GamepadAction.Cancel);
 
-        // The second (empty) page of home.
+        // The second (empty) page of home. Under Big Type RB on a pinned game switches it to the model view (M47 B12), so the page is
+        // turned from the tile beside it (the user folder); today's look turns it from the game, as it always has.
+        if (HandheldTokens.IsBigType)
+            FocusHome(shell, 10);
         Press(shell, GamepadAction.NextPlatform);
         await DesignPairAsync(rig, "home-page-2-empty", "Home page 2 (empty slots), turned with RB");
         Press(shell, GamepadAction.PreviousPlatform);

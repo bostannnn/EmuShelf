@@ -60,10 +60,10 @@ internal sealed partial class HandheldNativeStageFeed
         }
     }
 
-    // The narrow Stage's takeover grows from its own case (M47 B11); null is the wide Stage's.
-    private Vector2? TakeoverOrigin => IsBigTypeNarrow && HandheldTokens.StageTakeoverCentre(narrow: true) is var at
-        ? new Vector2((float)at.X, (float)at.Y)
-        : null;
+    // M47 B12: from the model view's medium or the name's middle (GameTakeoverOrigin); otherwise the narrow Stage's grows from its own
+    // case's place (M47 B11), and null is the wide Stage's.
+    private Vector2? TakeoverOrigin => GameTakeoverOrigin() ??
+        (IsBigTypeNarrow && HandheldTokens.StageTakeoverCentre(narrow: true) is var at ? new Vector2((float)at.X, (float)at.Y) : null);
 
     private static Vector3 Colour(HandheldPlayViewModel play) => new(play.Colour.R / 255f, play.Colour.G / 255f, play.Colour.B / 255f);
 

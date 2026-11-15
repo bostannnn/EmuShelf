@@ -266,6 +266,13 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                 break;
             case StageInputCommand:
                 _lastInput = now;
+                _model?.Touch(now);
+                break;
+            case StageModelCommand model:
+                ApplyModel(model, now);
+                break;
+            case StageModelHoldCommand hold:
+                ApplyModelHold(hold, now);
                 break;
             case StageBackdropCommand backdrop when _bigType:
                 ApplyBigTypeBackdrop(backdrop, now);
@@ -323,7 +330,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                     _folder = centre.Folder is { } art ? new FolderArtState2D(_gl, art, centre.FolderState) : null;
                 }
                 Replace(ref _plate, centre.Plate, repeat: false);
-                SetMedium(centre.Medium);
+                SetCentreMedium(centre.Medium);
                 if (centre.Pop)
                     _popStart = now;
                 break;
@@ -608,6 +615,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         }
         var fit = FitCanvas(surfaceWidth, surfaceHeight);
         _fit = fit;
+        PoseModel(now);
         if (_medium is not null && (_mediumDirty || _coverDirty))
             RenderMedium(fit.Scale);
         Section("medium");
@@ -737,7 +745,11 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         foreach (var layer in _hero)
             DrawLayer(layer, content, 1f, 0, 0);
 
-        if (_medium is { } medium && _mediumTexture != 0)
+        if (DrawModel(now, ref animating))
+        {
+            // Big Type's model view (M47 B12) is the centre while it shows.
+        }
+        else if (_medium is { } medium && _mediumTexture != 0)
         {
             // The FBO's first row is the bottom of the picture. It pops about its own middle: the canvas's middle in today's
             // look, where the medium's box is centred on it; its corner's middle in Big Type's.
@@ -835,7 +847,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         animating |= DrawTakeover(now, fit);
         LastSections = _sections?.ToString();
         _drawnDeep = _backdrop?.Deep;
-        _probeTag = _bigType ? ProbeTagOf(lettersMoving, wiping && _beneath.Count > 0) : null;
+        _probeTag = _bigType ? ModelProbeTag(ProbeTagOf(lettersMoving, wiping && _beneath.Count > 0), now) : null;
         _gl.BindVertexArray(0);
         _gl.BindTexture(TextureTarget.Texture2D, 0);
         return animating;
@@ -1633,6 +1645,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
 
     public void Dispose()
     {
+        DisposeModel();
         DeleteBackdrop(_backdrop);
         DeleteBackdrop(_leavingBackdrop);
         _backdrop = _leavingBackdrop = null;
