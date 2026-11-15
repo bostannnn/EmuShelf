@@ -5,8 +5,11 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
+using EmuShelf.App.Views;
 using EmuShelf.Core.Handheld;
 using EmuShelf.Rendering.Stage.BigType;
 using Xunit;
@@ -647,6 +650,81 @@ public partial class HandheldShellViewModelTests
             Assert.Equal(1, bumps);
             Press(shell, GamepadAction.Cancel);
         });
+
+        [Fact]
+        public Task XSwaps_OnlyWhereXSwapsTheScreens() => BigType(async () =>
+        {
+            var (library, _, shell) = await HomeAsync();
+            Assert.True(shell.XSwaps);
+            // A keyboard (X is Done), and back.
+            FocusHome(shell, 8);
+            Press(shell, GamepadAction.Confirm);
+            Assert.NotNull(shell.Naming);
+            Assert.False(shell.XSwaps);
+            Press(shell, GamepadAction.Cancel);
+            Assert.True(shell.XSwaps);
+            // A sheet, the Start menu, Search (a panel's keyboard), a held tile: none of them swaps on X.
+            FocusHome(shell, 0);
+            Press(shell, GamepadAction.Actions);
+            Assert.False(shell.XSwaps);
+            Press(shell, GamepadAction.Cancel);
+            Press(shell, GamepadAction.Menu);
+            Assert.False(shell.XSwaps);
+            Press(shell, GamepadAction.Cancel);
+            Assert.True(shell.XSwaps);
+            shell.SearchDebounce = TimeSpan.Zero;
+            RunMenuRow(shell, "Search");
+            Assert.False(shell.XSwaps);
+            Press(shell, GamepadAction.Cancel);
+            Assert.Null(shell.Panel);
+            Assert.True(shell.XSwaps);
+            shell.StartMove();
+            Assert.False(shell.XSwaps);
+            Press(shell, GamepadAction.Cancel);
+            Assert.True(shell.XSwaps);
+            // In a folder and on the dock X swaps.
+            Press(shell, GamepadAction.Confirm);
+            Assert.NotNull(shell.OpenFolder);
+            Assert.True(shell.XSwaps);
+            _ = library;
+        });
+
+        [AvaloniaFact]
+        public async Task TheSwapCorner_GoesWhileAKeyboardIsUp_AndComesBack_AndTodaysLookHasNone()
+        {
+            HandheldTokens.Use(HandheldLook.BigType);
+            Window? window = null;
+            try
+            {
+                var (_, _, shell) = await HomeAsync();
+                var launcher = new HandheldLauncherView(null, pinnedWide: false) { DataContext = shell };
+                window = new Window { Content = launcher, Width = 1240, Height = 1080 };
+                window.Show();
+                await SettleAsync();
+                var corner = launcher.FindControl<Control>("BtSwap")!;
+                Assert.True(corner.IsEffectivelyVisible);
+                FocusHome(shell, 8);
+                Press(shell, GamepadAction.Confirm);
+                await SettleAsync();
+                Assert.False(corner.IsEffectivelyVisible);
+                Press(shell, GamepadAction.Cancel);
+                await SettleAsync();
+                Assert.True(corner.IsEffectivelyVisible);
+            }
+            finally
+            {
+                window?.Close();
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+            // Today's look draws no corner at all (its X hint lives elsewhere), keyboard or not.
+            var (_, _, classic) = await HomeAsync();
+            var today = new HandheldLauncherView(null, pinnedWide: false) { DataContext = classic };
+            var classicWindow = new Window { Content = today, Width = 1240, Height = 1080 };
+            classicWindow.Show();
+            await SettleAsync();
+            Assert.False(today.FindControl<Control>("BtCorners")!.IsEffectivelyVisible);
+            classicWindow.Close();
+        }
 
         [Fact]
         public async Task TodaysLook_KeepsItsOwnMoveMode()

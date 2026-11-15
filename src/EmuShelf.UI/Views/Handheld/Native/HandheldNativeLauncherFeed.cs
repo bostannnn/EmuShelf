@@ -363,6 +363,9 @@ internal sealed class HandheldNativeLauncherFeed
             case nameof(HandheldShellViewModel.IsLauncherOverlayOpen):
                 UpdateActive();
                 break;
+            case nameof(HandheldShellViewModel.XSwaps):
+                Schedule();
+                break;
             case nameof(HandheldShellViewModel.TitlePage):
                 WatchTitle(_shell?.TitlePage);
                 Schedule();
@@ -600,7 +603,9 @@ internal sealed class HandheldNativeLauncherFeed
         {
             // Taking the screen back under Big Type (M47 B9), the ground is already the colour the Avalonia Launcher flooded to.
             SyncGround(shell, instant: repictured || _catchUpPending || _landFocus);
-            Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
+            // The Swap corner only while X swaps (M47 B9): during a launch it goes, as on the Avalonia Launcher.
+            if (shell.XSwaps)
+                Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
             if (screen.IsPageCountShown)
                 Static("bt-page", screen.PageCountText, present, () => Text(Sprite("bt-page", HandheldStageShots.Shot(_btPage, _canvas), LauncherGroup.Dock), _btPage));
         }

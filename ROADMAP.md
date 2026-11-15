@@ -3153,6 +3153,12 @@ falls back to the emulator and says so.
       its home exactly as it started (Settings, Recent, PS2, Activity). **Not seen on any device:** the Thor at all (colour, feel, frame
       times), Edit title / Settings / scraper keyboards, a rename's colours, the symbol pages, a hardware keyboard, held still, and a
       launch from a Search hit. Renders, recordings and strips: `m47-b9-renders` in the build sessions' notes.
+      **Review fix (2026-11-15):** the Launcher's "X Swap" corner showed under a keyboard while X was Done; it now shows only while X
+      really swaps (`XSwaps`: the grid, a folder, its header, the dock), on both Launchers, and goes under sheets, the menu, Settings,
+      panels, keyboards, a held tile, a launch and Big Type's unseen Title page. Classic byte-identical on all 158 frames; two Big Type
+      renders identical; 32 Big Type bottom frames differ from f47f67c, each only in the corner (every sheet, menu, Settings, panel and
+      keyboard frame). Checked on the emulator (the Thor was not on adb): the corner at home, gone under naming, Search and a held tile,
+      back after each; home left as found.
 - [ ] **B10 — Make it the look.** A reduced-motion setting beside the system one; the owner's ear on the sounds
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
       motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the

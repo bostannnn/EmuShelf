@@ -15052,6 +15052,14 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   picked up, and its ground flashed the old colour and flooded again after a folder was made (taking the screen back under Big Type, both
   now land on what the Avalonia Launcher showed); a keyboard closing straight into another (naming, then Search) left forever (found in
   a render). Colour, feel and frame times on the Thor's panels are the owner's to judge when the Thor is back.
+- **The "X Swap" corner tells the truth (the orchestrating session's review).** The Launcher's corner said "X Swap" under a keyboard while
+  the Stage said "X Done" (or Search's "X Show") and X did not swap. The shell now says when X swaps (`XSwaps`): only on the grid, a
+  folder, its header and the dock with nothing over them. A sheet (the Y sheet, "Which screen?", Put in), the Start menu, Settings and
+  setup, a panel (Search, cover search, achievements, Activity, the scrapers, Edit title) and every keyboard, a held tile, a launch or a
+  game, and Big Type's unseen Title page (B8's "A plays", which only waits) take X for something else or swallow it, and the corner goes
+  there on both Launchers (the native one drops its picture during a launch). It goes and comes back at once, as the page corner does
+  under a panel (`PlaceCorner`); held still the same. The companion draws no Swap corner, so it needed nothing. Whether X should swap while
+  typing, as the mock's does, is the owner's to decide.
 - **Found and left:** today's sounds for typing are unchanged (a key typed sounds confirm; the mock's are move for a letter and back for
   Delete): the sounds are B10's. There is no touch-only way to cancel a keyboard (B does it). A hardware keyboard typing does not move
   the ring. After a game played from a Search hit you are on home, not back in Search.

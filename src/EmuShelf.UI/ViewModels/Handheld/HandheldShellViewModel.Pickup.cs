@@ -179,3 +179,31 @@ public partial class HandheldShellViewModel
         BtLine = MovingLine;
     }
 }
+
+/// <summary>
+/// Whether X swaps the screens now (M47 B9, after the orchestrating session's review): only on the grid, a folder, its header and the dock,
+/// with nothing over them. A sheet (the Y sheet, "Which screen?", Put in), the Start menu, Settings (and setup), a panel and every keyboard
+/// (where X is Done, or Search's Show), a held tile, a launch or a game, and Big Type's unseen Title page all take X for something else or
+/// swallow it. The Big Type Launcher's "X Swap" corner shows only while this is true, so it never promises what X will not do.
+/// </summary>
+public partial class HandheldShellViewModel
+{
+    [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+    public partial bool XSwaps { get; private set; } = true;
+
+    private bool ComputeXSwaps() =>
+        CompanionScreen is not { OwnsPad: true } && Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null &&
+        !IsMoving && Playing is null &&
+        // Today's Title page swaps on X from its buttons; Big Type's is never drawn and only waits to play.
+        (TitlePage is not { } title || (HandheldTokens.IsClassic && title.State == HandheldTitleState.Buttons));
+
+    protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        base.OnPropertyChanged(e);
+        if (e.PropertyName is nameof(Settings) or nameof(Panel) or nameof(IsMenuOpen) or nameof(Naming) or nameof(Sheet) or nameof(IsMoving)
+            or nameof(Playing) or nameof(TitlePage) or nameof(Hints))
+        {
+            XSwaps = ComputeXSwaps();
+        }
+    }
+}

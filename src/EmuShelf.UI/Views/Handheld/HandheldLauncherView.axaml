@@ -1079,7 +1079,8 @@
       -->
       <Panel x:Name="BtCorners" Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Margin="{x:Static vm:HandheldTokens.DockCornerMargin}"
              Height="{x:Static vm:HandheldTokens.DockTile}" VerticalAlignment="Bottom">
-        <StackPanel x:Name="BtSwap" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
+        <!-- Only while X really swaps the screens (M47 B9): a sheet, a list, a keyboard, a held tile or a launch takes X for something else. -->
+        <StackPanel x:Name="BtSwap" IsVisible="{Binding $parent[UserControl].((vm:HandheldShellViewModel)DataContext).XSwaps, FallbackValue=True}" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
                     Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}">
           <Border Width="{x:Static vm:HandheldTokens.DockCornerGlyph}" Height="{x:Static vm:HandheldTokens.DockCornerGlyph}" CornerRadius="{x:Static vm:HandheldTokens.DockCornerGlyphRadius}"
                   BorderBrush="{x:Static vm:HandheldTokens.OnColour}" BorderThickness="{x:Static vm:HandheldTokens.DockCornerGlyphStroke}" VerticalAlignment="Center">
