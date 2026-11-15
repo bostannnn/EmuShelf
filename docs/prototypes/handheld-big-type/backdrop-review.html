@@ -1,0 +1,251 @@
+<title>Backdrop Review</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..800&family=M+PLUS+Rounded+1c:wght@700;900&display=swap">
+<style>
+/* Layout: console by console. Every animation is a card: today on the left, what I propose on the right, one line of why, three answers. */
+:root{
+  --bg:#F2F1F6; --fg:#17162B; --mute:#5F5D78; --line:#D8D6E4; --card:#FFFFFF; --accent:#5247C8; --on-accent:#FFFFFF; --bad:#B3261E; --ok:#1B7A4B;
+  --disp:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Arial Rounded MT Bold',system-ui,sans-serif;
+  --text:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF; --on-accent:#14122B; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF; --on-accent:#14122B; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark }
+
+body{background:var(--bg);color:var(--fg);font:400 1rem/1.5 var(--text);padding-block:28px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:1180px;margin:0 auto;display:grid;gap:40px}
+h1,h2,h3{font-family:var(--disp);font-weight:900;letter-spacing:-.01em;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.2rem,6vw,3.4rem);line-height:1}
+h2{font-size:1.5rem;line-height:1.1}
+h3{font-size:1.05rem;font-weight:700;font-family:var(--text);letter-spacing:0}
+p{margin:0}
+.eyebrow{font:600 .78rem/1.3 var(--text);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.lede{font-size:1.1rem;max-width:44rem}
+.mute{color:var(--mute)}
+header.top{display:grid;gap:14px}
+.status{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;font-size:.95rem}
+.status b{font-variant-numeric:tabular-nums}
+.save{color:var(--mute)} .save.ok{color:var(--ok)} .save.bad{color:var(--bad)}
+.btn{font:600 .9rem/1 var(--text);color:var(--fg);background:var(--card);border:1.5px solid var(--line);border-radius:9px;padding:.65rem .85rem;cursor:pointer}
+.btn:hover{border-color:var(--mute)}
+.btn:focus-visible,.ch:focus-visible,textarea:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.jump{display:flex;flex-wrap:wrap;gap:6px}
+.jump a{display:inline-grid;place-items:center;min-width:46px;height:28px;padding:0 9px;border-radius:7px;color:#fff;font:900 .78rem/1 var(--disp);text-decoration:none}
+.jump a:focus-visible{outline:2px solid var(--fg);outline-offset:2px}
+
+.con{display:grid;gap:14px;scroll-margin-top:16px}
+.conh{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding-bottom:10px;border-bottom:2px solid var(--fg)}
+.conh .sw{display:inline-grid;place-items:center;min-width:54px;height:32px;padding:0 10px;border-radius:8px;color:#fff;font:900 .95rem/1 var(--disp)}
+.conh .cnt{color:var(--mute);font-size:.92rem}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,440px),1fr));gap:22px 20px}
+.card{display:grid;gap:10px;min-width:0;align-content:start}
+.pics{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pics.one{grid-template-columns:1fr 1fr}
+.pics figure{margin:0;display:grid;gap:5px;min-width:0}
+.pics figcaption{font:700 .7rem/1.2 var(--text);letter-spacing:.05em;text-transform:uppercase;color:var(--mute)}
+.pics figure.new figcaption{color:var(--accent)}
+.frame{border-radius:8px;overflow:hidden}
+.pic{position:relative;aspect-ratio:16/9;isolation:isolate;background:#22212e}
+.pic canvas{position:absolute;inset:0;width:100%;height:100%}
+.pic canvas.pixel{image-rendering:pixelated}
+.pic .tint{position:absolute;inset:0;mix-blend-mode:color}
+.pic .mono{position:absolute;left:6%;bottom:6%;font:900 1.7rem/.9 var(--disp);letter-spacing:-.02em;color:#fff;text-shadow:0 1px 10px rgba(10,10,30,.4)}
+.gr{height:12px}
+.sug{font-size:.94rem;color:var(--mute)}
+.sug b{color:var(--fg);font-weight:700}
+.sug .gap{white-space:nowrap}
+.choose{display:flex;flex-wrap:wrap;gap:6px}
+.ch{font:600 .86rem/1 var(--text);color:var(--fg);background:var(--card);border:1.5px solid var(--line);border-radius:8px;padding:.58rem .7rem;cursor:pointer}
+.ch:hover{border-color:var(--mute)}
+.ch .s{font:700 .62rem/1 var(--text);letter-spacing:.05em;text-transform:uppercase;color:var(--accent);margin-left:6px}
+.ch[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.ch[aria-pressed="true"] .s{color:var(--on-accent)}
+textarea{width:100%;box-sizing:border-box;min-height:2.5rem;resize:vertical;font:400 .92rem/1.4 var(--text);color:var(--fg);background:transparent;border:1.5px solid var(--line);border-radius:9px;padding:.5rem .65rem}
+textarea::placeholder{color:var(--mute)}
+.addh{font:700 .74rem/1.2 var(--text);letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+#copyout{font:500 .82rem/1.45 ui-monospace,Menlo,monospace;min-height:8rem}
+.end{display:grid;gap:10px}
+a{color:var(--accent)}
+@media (prefers-reduced-motion:no-preference){ .ch{transition:background-color .15s,border-color .15s,color .15s} }
+</style>
+
+<main>
+  <header class="top">
+    <p class="eyebrow">EmuShelf · Handheld mode on the Thor · Big Type</p>
+    <h1>Backdrop review</h1>
+    <p class="lede">Every animation, console by console. On the left it is as it is today; on the right is what I propose. Under each, pick <b>Leave it</b>, <b>Recolour</b> or <b>Change it</b>. The strip under a picture is the console's colour on the bottom screen.</p>
+    <p class="mute" style="max-width:44rem">Recolour keeps the animation's shapes, motion and light and dark, and moves its colour to the console's. Change it means you do not want that animation, recoloured or not: say what you would rather see in the note and I draw a new one for that place. Where a console has few animations I also propose ones to add. Sharpness is a separate question on the decisions page.</p>
+    <div class="status"><span><b id="ndone">0 of 0</b> answered</span><span id="tally" class="mute"></span><span class="save" id="save" role="status">Opening your saved answers…</span></div>
+    <div class="status"><button class="btn" type="button" id="acceptall">Accept my suggestion for every one I have not answered</button></div>
+    <nav class="jump" id="jump" aria-label="Consoles"></nav>
+  </header>
+
+  <div id="consoles" style="display:grid;gap:48px"><p class="mute">Drawing the animations…</p></div>
+
+  <section class="end">
+    <h2>Anything else about the animations</h2>
+    <textarea id="note-all" rows="3" placeholder="Anything that applies to all of them, or an idea for a console"></textarea>
+    <div class="status"><button class="btn" type="button" id="copy">Copy all my answers</button><span class="mute" id="copymsg">Only needed if the page says it could not save.</span></div>
+    <textarea id="copyout" readonly hidden aria-label="Your answers as text"></textarea>
+  </section>
+</main>
+
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+
+/* ---------- the consoles, their colours, and what each rotates through today ---------- */
+const CONS=[['nes','NES','NES','#7C5F50',['nes-flow','nes-stars','nes-meta','nes-raster']],['snes','SNES','Super Nintendo','#91408C',['runway','snes-mosaic-v2','snes-lake-v2','tiles']],
+ ['gbc','GBC','Game Boy Color','#2A7D52',['gbc-attr','gbc-bands','gbc-sheen-v2','gbc-confetti-v2']],['gba','GBA','Game Boy Advance','#7648A8',['gba-corridor-v2','gba-iso']],
+ ['gamecube','GC','GameCube','#5548C8',['gc-caustics','gc-cubes-v3','gc-fur','gc-lens']],['nds','DS','Nintendo DS','#6272B8',['ds-ripples','ds-ripplefloor-v2','ds-dots','ds-flip']],
+ ['wii','Wii','Wii','#198098',['wii-pointer-v2','wii-tiles']],['3ds','3DS','Nintendo 3DS','#C0446E',['3ds-tiles','3ds-floorwave','3ds-tapwave']],
+ ['megadrive','MD','Mega Drive','#175A4F',['md-speed-v3','md-planes','md-pipe-v2']],['dreamcast','DC','Dreamcast','#B8521E',['dc-fog-v3','dc-sea-v2','dc-checker']],
+ ['playstation','PS1','PlayStation','#6B6F7E',['field','tide','frames','ps1-terrace-v2','ps1-pipe']],['playstation2','PS2','PlayStation 2','#2B5BC7',['ps2-towers','ps2-trails-v3','ps2-sea','ps2-orbs-v3']],
+ ['psp','PSP','PSP','#3D3D48',['psp-field-v2']],['playstation3','PS3','PlayStation 3','#262E7A',['ps3-sheet','ps3-wire','ps3-twin']],
+ ['arcade','ARC','Arcade','#A8372E',['arc-vector-v3','arc-bulbs-v2','arc-checker','arc-plating']],['steam','Steam','Steam','#30587F',['steam-wall-v2','steam-mesh','steam-grid-v2']]];
+
+/* ---------- what I propose for each: keep, recolour (how far toward the console's colour), or change to a drawn spare ---------- */
+/*PROPOSALS*/
+const R=(pull,why)=>({do:'recolour',pull,why}),K=why=>({do:'keep',why});
+const GBCWHY='Several colours are the point of a Game Boy Color, so it keeps them under a green cast instead of turning all green.';
+const DSWHY='Its field is white, so only the marks and shadows move to the console’s colour.';
+const P={
+ 'nes-flow':R(1,'Blue blocks under a brown console. In the console’s colour it reads like the grey-brown machine itself.'),
+ 'nes-stars':R(.7,'A navy night sky. Pulled most of the way, so it stays a night sky, only warmer.'),
+ 'nes-meta':R(.8,'Pastel lavender and teal blocks.'),
+ 'nes-raster':R(1,'A blue raster floor.'),
+ 'runway':R(.7,'Pale lavender, a cooler purple than the console’s.'),
+ 'snes-mosaic-v2':R(.5,'Many colours on purpose, so it is only leaned toward the console’s.'),
+ 'snes-lake-v2':R(.7,'Lavender water and sky, cooler than the console’s purple.'),
+ 'tiles':R(.5,'Many colours on purpose, so it is only leaned toward the console’s.'),
+ 'gbc-attr':R(.55,GBCWHY),'gbc-bands':R(.55,GBCWHY),'gbc-sheen-v2':R(.55,GBCWHY),'gbc-confetti-v2':R(.55,GBCWHY),
+ 'gba-corridor-v2':R(.7,'A pale lavender corridor; close, and pulled the rest of the way.'),
+ 'gba-iso':R(.6,'Lavender blocks; close, and pulled the rest of the way.'),
+ 'gc-caustics':K('Already the console’s indigo.'),'gc-cubes-v3':K('Already the console’s indigo.'),'gc-fur':K('Already the console’s indigo.'),'gc-lens':K('Already the console’s indigo.'),
+ 'ds-ripples':R(1,DSWHY),'ds-ripplefloor-v2':R(1,DSWHY),'ds-dots':R(1,DSWHY),'ds-flip':R(1,DSWHY),
+ 'wii-pointer-v2':R(1,'White, like the console. Its cyan marks move to the console’s teal.'),
+ 'wii-tiles':R(1,'White, like the console. Its cyan lines move to the console’s teal.'),
+ '3ds-tiles':R(.85,'White tiles with red and cyan accents. All the accents become the console’s raspberry.'),
+ '3ds-floorwave':R(.85,'White tiles with red and cyan accents. All the accents become the console’s raspberry.'),
+ '3ds-tapwave':R(.85,'White tiles with red and cyan accents. All the accents become the console’s raspberry.'),
+ 'md-speed-v3':R(1,'Blue under a green console. This is the one you pointed out.'),
+ 'md-planes':R(1,'Blue and teal dither planes; moved fully to the console’s green.'),
+ 'md-pipe-v2':R(1,'A blue checker tube; moved fully to the console’s green.'),
+ 'dc-fog-v3':R(.5,'White blocks with orange already in them. Only the peach sky is leaned in.'),
+ 'dc-sea-v2':R(1,'A blue sea under an orange console, the furthest of all 53. Recoloured it becomes a sunset sea. If that is wrong for Dreamcast, choose Change it.'),
+ 'dc-checker':R(.7,'Its checker is orange already; the blue sky is warmed.'),
+ 'field':K('Muted grey-green, close to the console’s grey.'),'tide':K('Muted grey-green, close to the console’s grey.'),'frames':K('Pale grey rings, close to the console’s grey.'),
+ 'ps1-terrace-v2':K('Muted textures, close to the console’s grey.'),'ps1-pipe':K('Muted textures, close to the console’s grey.'),
+ 'ps2-towers':K('One of the PS2 set you approved, and already blue.'),'ps2-trails-v3':K('One of the PS2 set you approved, and already blue.'),'ps2-sea':K('One of the PS2 set you approved, and already blue.'),
+ 'ps2-orbs-v3':K('One of the PS2 set you approved. It is lavender more than blue, but close.'),
+ 'psp-field-v2':R(.6,'A violet wave under a graphite console. Pulled most of the way; fully grey it goes flat.'),
+ 'ps3-sheet':K('Already the console’s deep blue.'),'ps3-wire':K('Already the console’s deep blue.'),'ps3-twin':K('Already the console’s deep blue.'),
+ 'arc-vector-v3':R(1,'Green vectors on black under a red console. In red it reads as a red vector monitor.'),
+ 'arc-bulbs-v2':K('Warm bulbs on dark red; already the console’s colour.'),
+ 'arc-checker':R(1,'A green checker under a pink sky.'),
+ 'arc-plating':R(.8,'Steel with cyan lights; the lights turn red.'),
+ 'steam-wall-v2':K('Already the console’s steel blue.'),'steam-mesh':K('Already the console’s steel blue.'),'steam-grid-v2':K('Already the console’s steel blue, with a few violet tiles.')
+};
+const SPARE=' Drawn in the earlier study and not picked then.';
+const ADD={
+ psp:[{id:'psp-ribbon',pull:.6,why:'PSP has only one animation. This is its menu wave as glass ribbons.'+SPARE},{id:'psp-tiles',pull:.3,why:'A piano-black floor whose seams light up. It is graphite already, like the console.'+SPARE}],
+ gba:[{id:'gba-voxel-v2',pull:.7,why:'GBA has only two. Terraced hills, drawn the way the GBA faked 3D.'+SPARE},{id:'gba-twist-v2',pull:.7,why:'A twisting hall, the GBA’s rotating-floor trick.'+SPARE}],
+ wii:[{id:'wii-stripes-v2',pull:1,why:'Wii has only two. A slow pinstripe drape, white like the console.'+SPARE}]
+};
+/*END PROPOSALS*/
+
+/* ---------- state ---------- */
+const state={};try{Object.assign(state,JSON.parse(localStorage.getItem('bt-bdreview')||'{}'));}catch(e){}
+let db=null;const pending={},busy={};
+function setSave(t,c){const s=$('save');s.textContent=t;s.className='save'+(c?' '+c:'');}
+function keep(){try{localStorage.setItem('bt-bdreview',JSON.stringify(state));}catch(e){}}
+async function flush(id){if(!db||busy[id]||!pending[id])return;busy[id]=true;
+ while(pending[id]){pending[id]=false;try{await db.doc('backdrops/'+id).set(Object.assign({},state[id]||{},{at:new Date().toISOString()}));setSave('Saved','ok');}
+  catch(e){setSave('Could not save here. Use “Copy all my answers” at the bottom and paste them to me.','bad');}}busy[id]=false;}
+function put(id,patch){state[id]=Object.assign({},state[id],patch);keep();counts();if(db){pending[id]=true;setSave('Saving…');flush(id);}}
+const timers={};function noteInput(id,el){clearTimeout(timers[id]);timers[id]=setTimeout(()=>put(id,{note:el.value.trim()}),700);}
+
+/* ---------- drawing ---------- */
+const cards=[];   // {id,con,layers:[...],copies:[[src,dst]],el,visible}
+const tc=document.createElement('canvas');tc.width=32;tc.height=18;const tx=tc.getContext('2d',{willReadFrequently:true});
+const toLab=c=>{const [r,g,b]=c.map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);}),f=t=>t>.008856?Math.cbrt(t):7.787*t+16/116,
+ x=f((.4124*r+.3576*g+.1805*b)/.95047),y=f(.2126*r+.7152*g+.0722*b),z=f((.0193*r+.1192*g+.9505*b)/1.08883);return [116*y-16,500*(x-y),200*(y-z)];};
+function meanOf(cv){tx.drawImage(cv,0,0,32,18);const d=tx.getImageData(0,0,32,18).data;let r=0,g=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];}const n=d.length/4;return [r/n,g/n,b/n];}
+function layerOf(id){const B=window.Backdrops,v=B.VARIANTS.find(x=>x.id===id);if(!v)return null;const cv=document.createElement('canvas'),L=B.makeLayer(cv);
+ try{B.prepare(L,v,6);for(let i=0;i<8;i++){L.time=6+i/3;B.render(L,1/30);}}catch(e){return null;}return L;}
+function mirror(L){const c=document.createElement('canvas');c.width=L.canvas.width;c.height=L.canvas.height;if(L.canvas.classList.contains('pixel'))c.className='pixel';c.getContext('2d').drawImage(L.canvas,0,0);return c;}
+const WORD={keep:'Leave it',recolour:'Recolour',change:'Change it'};
+function proposalFor(id,gap){if(P[id])return P[id];return gap>28?{do:'recolour',pull:1,why:''}:gap>=14?{do:'recolour',pull:.6,why:''}:{do:'keep',why:''};}
+function pic(canvas,mono,colour,tint,label,cls){return `<figure class="${cls||''}"><div class="frame"><div class="pic" data-slot="${label}">${tint?`<div class="tint" style="background:${colour};opacity:${tint}"></div>`:''}<span class="mono">${esc(mono)}</span></div><div class="gr" style="background:${colour}"></div></div><figcaption>${label}</figcaption></figure>`;}
+function buildCard(c,id,extra){const L=layerOf(id);if(!L)return null;const B=window.Backdrops,gl=toLab(rgb(c[3])),ml=toLab(meanOf(L.canvas)),gap=Math.hypot(ml[1]-gl[1],ml[2]-gl[2]);
+ const p=extra||proposalFor(id,gap),card={id:(extra?'add-':'')+id,con:c[0],layers:[L],copies:[],sug:extra?'add':p.do,name:L.v.name,visible:false};
+ const el=document.createElement('article');el.className='card';el.id='c-'+card.id;card.el=el;
+ let right='',newLayer=null,newName='';
+ if(extra){right='';}
+ else if(p.do==='recolour')right=pic(null,c[1],c[3],p.pull,'Proposed · recoloured','new');
+ else if(p.do==='change'){newLayer=layerOf(p.to);newName=newLayer?newLayer.v.name:p.to;right=pic(null,c[1],c[3],p.pull||0,'Proposed · '+esc(newName),'new');}
+ const leftLabel=extra?'New · '+esc(L.v.name):p.do==='keep'?'Today, and it stays':'Today';
+ el.innerHTML=`<div class="pics${right?'':' one'}">${pic(null,c[1],c[3],extra?(p.pull||0):0,leftLabel,extra?'new':'')}${right}</div>
+  <h3>${esc(L.v.name)}${extra?'':` <span class="mute" style="font-weight:400">· ${id}</span>`}</h3>
+  <p class="sug"><b>${extra?'Add it.':p.do==='keep'?'Leave it.':p.do==='recolour'?'Recolour.':'Change it to '+esc(newName)+'.'}</b> ${p.why||''} ${extra?'':`<span class="gap">(${Math.round(gap)} from the console’s colour)</span>`}</p>
+  <div class="choose">${extra?['add','skip'].map(v=>`<button class="ch" type="button" id="ch-${card.id}-${v}" data-id="${card.id}" data-v="${v}" aria-pressed="false">${v==='add'?'Add it':'Do not add'}${v==='add'?'<span class="s">Suggested</span>':''}</button>`).join('')
+   :['keep','recolour','change'].map(v=>`<button class="ch" type="button" id="ch-${card.id}-${v}" data-id="${card.id}" data-v="${v}" aria-pressed="false">${WORD[v]}${v===p.do?'<span class="s">Suggested</span>':''}</button>`).join('')}</div>
+  <textarea id="note-${card.id}" rows="1" placeholder="Note (optional)" aria-label="A note on ${esc(L.v.name)}"></textarea>`;
+ const slots=el.querySelectorAll('.pic');slots[0].prepend(L.canvas);
+ if(slots[1]){if(newLayer){slots[1].prepend(newLayer.canvas);card.layers.push(newLayer);}else{const m=mirror(L);slots[1].prepend(m);card.copies.push([L.canvas,m]);}}
+ el.querySelectorAll('.ch').forEach(b=>b.onclick=()=>{const cur=(state[card.id]||{}).choice;put(card.id,{choice:cur===b.dataset.v?null:b.dataset.v});paint();});
+ el.querySelector('textarea').oninput=e=>noteInput(card.id,e.target);
+ cards.push(card);return el;}
+
+async function build(){const B=window.Backdrops,root=$('consoles');if(!B){root.innerHTML='<p class="mute">The animations did not load here, so there is nothing to review.</p>';return;}
+ root.innerHTML='';$('jump').innerHTML=CONS.map(c=>`<a href="#con-${c[0]}" style="background:${c[3]}">${c[1]}</a>`).join('');
+ const io='IntersectionObserver' in window?new IntersectionObserver(es=>es.forEach(e=>{const c=cards.find(x=>x.el===e.target);if(c)c.visible=e.isIntersecting;}),{rootMargin:'120px'}):null;
+ for(const c of CONS){const sec=document.createElement('section');sec.className='con';sec.id='con-'+c[0];
+  sec.innerHTML=`<div class="conh"><span class="sw" style="background:${c[3]}">${c[1]}</span><h2>${c[2]}</h2><span class="cnt">${c[4].length} today${(ADD[c[0]]||[]).length?`, ${ADD[c[0]].length} more proposed`:''}</span></div><div class="cards"></div>`;
+  const row=sec.querySelector('.cards');root.appendChild(sec);
+  for(const id of c[4]){const el=buildCard(c,id);if(el){row.appendChild(el);if(io)io.observe(el);else cards[cards.length-1].visible=true;}}
+  for(const a of (ADD[c[0]]||[])){const el=buildCard(c,a.id,a);if(el){row.appendChild(el);if(io)io.observe(el);else cards[cards.length-1].visible=true;}}
+  paint();await new Promise(r=>setTimeout(r,0));}
+ paint();}
+
+/* only what is on screen moves, a few at a time */
+let last=0,turn=0;
+function frame(now){requestAnimationFrame(frame);if(RM||document.hidden||!window.Backdrops){last=0;return;}if(now-last<50)return;const dt=last?Math.min((now-last)/1000,.2):.05;last=now;
+ const vis=cards.filter(c=>c.visible);if(!vis.length)return;const n=Math.min(vis.length,5);
+ for(let i=0;i<n;i++){const c=vis[(turn+i)%vis.length];c.layers.forEach(L=>{L.time+=dt*vis.length/n;try{window.Backdrops.render(L,1/30);}catch(e){}});c.copies.forEach(([s,d])=>{try{d.getContext('2d').drawImage(s,0,0);}catch(e){}});}
+ turn=(turn+n)%vis.length;}
+requestAnimationFrame(frame);
+
+function counts(){const main=cards.length,done=cards.filter(c=>(state[c.id]||{}).choice).length;$('ndone').textContent=`${done} of ${main}`;
+ const t={keep:0,recolour:0,change:0,add:0};cards.forEach(c=>{const v=(state[c.id]||{}).choice;if(t[v]!==undefined)t[v]++;});
+ $('tally').textContent=done?`${t.keep} left as they are · ${t.recolour} recoloured · ${t.change} changed${t.add?` · ${t.add} added`:''}`:'';}
+function paint(){document.querySelectorAll('.ch').forEach(b=>b.setAttribute('aria-pressed',String((state[b.dataset.id]||{}).choice===b.dataset.v)));
+ document.querySelectorAll('textarea[id^="note-"]').forEach(t=>{const v=(state[t.id.slice(5)]||{}).note||'';if(document.activeElement!==t&&t.value!==v)t.value=v;});counts();}
+function asText(){const L=[];cards.forEach(c=>{const s=state[c.id]||{};if(s.choice||s.note)L.push(`${c.con} / ${c.name} (${c.id}) -> ${s.choice||'(open)'}${s.note?'  | note: '+s.note:''}`);});
+ const o=(state.all||{}).note;if(o)L.push('All: '+o);return L.join('\n');}
+
+$('acceptall').onclick=()=>{cards.forEach(c=>{if(!(state[c.id]||{}).choice)put(c.id,{choice:c.sug});});paint();};
+$('note-all').oninput=()=>noteInput('all',$('note-all'));
+$('copy').onclick=()=>{const t=$('copyout');t.value=asText();t.hidden=false;const ok=()=>{$('copymsg').textContent='Copied. Paste it to me in the chat.';};
+ try{navigator.clipboard.writeText(t.value).then(ok,()=>{t.focus();t.select();$('copymsg').textContent='Select the text below and copy it.';});}catch(e){t.focus();t.select();$('copymsg').textContent='Select the text below and copy it.';}};
+
+(function load(srcs){if(!srcs.length){build();return;}const s=document.createElement('script');s.src=srcs[0];
+ s.onload=()=>{if(!window.Backdrops){load(srcs.slice(1));return;}build();};s.onerror=()=>load(srcs.slice(1));document.head.appendChild(s);})(['backdrops.js','../handheld-mode/backdrops-motion-study/backdrops.js']);
+
+const use=window.claude&&window.claude.use?window.claude.use('db'):Promise.resolve(null);
+let timedOut=false;const timer=setTimeout(()=>{timedOut=true;if(db===null){db=false;setSave('Could not reach the page’s store. Your answers are kept in this browser; use “Copy all my answers” at the bottom.','bad');}},10000);
+Promise.resolve(use).then(async d=>{if(timedOut)return;
+ if(!d){clearTimeout(timer);db=false;setSave('This view cannot save for you. Your answers are kept in this browser; use “Copy all my answers” at the bottom.','bad');return;}
+ try{const snap=await d.collection('backdrops').get();clearTimeout(timer);if(timedOut)return;
+  snap.docs.forEach(doc=>{const v=doc.data()||{};state[doc.id]={choice:v.choice??null,note:v.note||''};});db=d;keep();paint();$('note-all').value=(state.all||{}).note||'';
+  setSave(snap.empty?'Ready. Answers save as you click.':'Your saved answers are loaded.','ok');}
+ catch(e){clearTimeout(timer);db=false;setSave('Could not open the page’s store. Your answers are kept in this browser; use “Copy all my answers” at the bottom.','bad');}
+}).catch(()=>{clearTimeout(timer);db=false;setSave('This view cannot save for you. Use “Copy all my answers” at the bottom.','bad');});
+})();
+</script>
