@@ -81,7 +81,9 @@ public sealed partial class HandheldShellViewModel
     /// </summary>
     private bool CanDrift => _idleEnabled && !_disposed && !HoldsStill && IsLoaded && !CompanionOwnsPad &&
         (_companion is null || _companion.Overlay == SecondScreenOverlayKind.None) &&
-        Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null && _move is null && TitlePage is null;
+        Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null && _move is null && TitlePage is null &&
+        // M47 B12: the model view is the Stage showing itself (its showcase, then its own rest after a minute), not a Stage to drift.
+        !Stage.IsModelView;
 
     private async Task StartDriftAsync()
     {

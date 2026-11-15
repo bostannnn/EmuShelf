@@ -17,6 +17,9 @@ public sealed partial class StageCompositor
         public uint TitleTexture { get; } = titleTexture;
         public float Start { get; } = start;
         public float EndStart { get; set; } = float.NaN;
+
+        /// <summary>Where the colour's circle grows from (M47 B12: the model view's medium, or the middle of the name).</summary>
+        public Vector2 Origin { get; init; } = new(BigTypeLaunchMotion.TakeoverX, BigTypeLaunchMotion.TakeoverY);
     }
 
     private TakeoverState? _takeover;
@@ -44,7 +47,10 @@ public sealed partial class StageCompositor
         if (_takeover is { } old && old.TitleTexture != 0)
             _gl.DeleteTexture(old.TitleTexture);
         var texture = command.Title is { } title ? Upload(title.Atlas, repeat: false) : 0u;
-        _takeover = new TakeoverState(colour, command.Title, texture, start);
+        _takeover = new TakeoverState(colour, command.Title, texture, start)
+        {
+            Origin = command.Origin ?? new Vector2(BigTypeLaunchMotion.TakeoverX, BigTypeLaunchMotion.TakeoverY),
+        };
         if (command.Ending)
             _takeover.EndStart = float.NegativeInfinity;
     }
@@ -117,7 +123,7 @@ public sealed partial class StageCompositor
         if (radius <= 0f)
             return animating;
         _clip0 = radius >= BigTypeLaunchMotion.TakeoverRadius ? default
-            : Circle(BigTypeLaunchMotion.TakeoverX, BigTypeLaunchMotion.TakeoverY, radius, inside: true);
+            : Circle(takeover.Origin.X, takeover.Origin.Y, radius, inside: true);
         _clip1 = _clip2 = default;
         if (_takeoverWhite == 0)
             _takeoverWhite = Upload(new StagePixels(1, 1, [255, 255, 255, 255], IsBgra: false), repeat: false);

@@ -487,6 +487,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 // X swaps the screens (M45 H5); the selection, an open folder and its scroll go along.
                 _ = SwapScreensAsync();
                 return true;
+            // M47 B12: on a focused game (home or a folder) LB and RB switch between the name and the model; elsewhere on home they
+            // still turn the page.
+            case GamepadAction.NextPlatform or GamepadAction.PreviousPlatform when CanSwitchGameView:
+                SwitchGameView();
+                return true;
             case GamepadAction.NextPlatform when OpenFolder is null:
                 TurnPage(1);
                 return true;
@@ -1301,6 +1306,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         SyncTyping();
         TakeBigTypeListText();
         UpdateStageCore();
+        ApplyModelView();
         ApplyBigTypeListText();
         if (_lineMessage is { } message)
             Stage.Line = message;
@@ -1763,6 +1769,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         if (OpenFolder is { } folder)
         {
+            if (AddGameViewHints())
+                return;
             if (folder.SelectedTile is { } selected)
             {
                 _nextHints.Add(new HandheldHint("A", selected.IsApp ? "Open" : "Play"));
@@ -1771,6 +1779,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _nextHints.Add(new HandheldHint("B", "Back"));
             return;
         }
+        // M47 B12: a game pinned to home has the game hints (and RB for the other view).
+        if (AddGameViewHints())
+            return;
         var focused = HomeSlotAt(HomeIndex);
         _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? IsLibraryEmpty ? "Add games" : "New folder" : "Open"));
         _nextHints.Add(new HandheldHint("Y", "More"));

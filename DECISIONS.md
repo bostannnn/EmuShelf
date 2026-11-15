@@ -15130,3 +15130,77 @@ byte-identical before and after.
   count's `SizeChanged`, a layout pass late, and the native feed keyed its picture by the name alone, so the Thor kept the old fit. The
   heading now takes the room its column gives it (`FitsRoom`, folder header only, so no other heading changes), the feed keys the picture
   and letters by the fitted size, and the heading's `FitChanged` makes the feed sync again.
+
+## 2026-11-15 — M47 B12: the model view on LB and RB (Big Type)
+
+The owner used Big Type on the Thor and found the game's 3D medium out of place beside the big name ("3D models looks weird with
+chosen big-type style, like it is unnecessary"), then approved splitting them ("I want only model on rb/lb, not big type + model", "Yes,
+keep the small line", "I like one big-type mode and separate model - approve"). Built under Big Type only from
+`docs/prototypes/handheld-big-type/proposals.html`'s first section, whose code defines the behaviour; today's look (Classic) is unchanged.
+
+- **Two views of a game.** The name view (the default) is the big name alone, fitted to the whole `DisplayName.fitBox` (no medium, no
+  cover beside it). The model view is the medium alone in the middle of the Stage at `ModelScale` of its old size (the proposal's
+  `.case.big`: its box `ModelRight` from the right, `ModelTop` from the top, which is the middle across), its floor's shadow under it
+  (`ModelFloor…`), no big name: the line is the game's name and the second line its play time, achievements and emulator (the proposal's
+  `meta` and `meta2`). Hints: A Play, B Back, RS Turn, RB Name (no RS for a flat cover, which cannot turn); the name view's gain RB
+  Model. A key of two letters is drawn as the proposal's rounded key (`HintKey`), everywhere Big Type shows one.
+- **Home: the owner's decision (15 November 2026: "Switch the view").** LB and RB already turned home's page under both looks
+  (`TurnPage`, and the Controls table), so B12 first stopped and asked, and was first built in folders only. The owner then chose to
+  switch the view on home too: with a pinned game focused and nothing over it LB and RB switch the name and the model exactly as in a
+  folder; with anything else focused on home (a console's or a user folder, the Settings or Activity tile, an empty slot, the dock) they
+  turn the page as before, with the bump at the last page. While a pinned game is focused the page turns only from the d-pad at the
+  grid's left and right edges, which it always did from any tile; the Launcher's page count (1 / 2) is unchanged. The rule is one
+  condition, `HandheldShellViewModel.CanSwitchGameView`: under Big Type a game is focused, on home or in a folder, with nothing over it.
+  The hints on home are the folder's less B Back (B does nothing on home): A Play, Y More, RB Model; in the model view A Play, RS Turn,
+  RB Name.
+- **Where the choice lives.** Kept across home and folders: it shows whenever a game is focused and steps aside for anything that is
+  not one (a folder tile, the header, an empty slot), coming back when the focus returns to a game; a fresh start begins in the name
+  view (B12's choice, awaiting the owner: the choice is not saved). Over a sheet, the menu, Settings, a panel or a keyboard the Stage is the
+  name view (the proposal shows the model only "with nothing over it"); the Y sheet still opens from the model view though its hint is
+  gone, as the proposal's hint row has no Y.
+- **The motion is one shared state.** `BigTypeModelMotion` (pure functions of time: the rise's place and fade, the turn in and the
+  flips on the Flip curve, the showcase, the float and the shade, the swing back, the floor's shadow as pixels) and `BigTypeModelState`
+  (when each move started), kept by the native Stage (`StageCompositor.ModelView.cs`) and the Avalonia Stage
+  (`HandheldStageMotion.Model.cs`), each asked for the pose every frame. The shell posts nothing per frame: the native feed tells the
+  Stage once per change (`StageModelCommand`: rise, flip forward or back, leave) and the stick's turn as it changes
+  (`StageModelHoldCommand`); the old sway's clock does not run for the model. Every move starts from the pose on screen: a flip on a
+  flip adds half a turn to the turn still showing (kept within a whole turn), the stick takes hold of the pose it finds, letting go swings
+  back from where it was left the short way round, a leave during the rise goes back from where it got to.
+- **The proposal's numbers, doubled.** Rise: from the old corner beside the name, 380 px lower and at 0.8 of its size there, to the
+  middle over 550 ms on `cubic-bezier(.2,1.4,.3,1)`, clear to whole over 250 ms (CSS ease), turning in from −250° over 950 ms on the Flip
+  curve `cubic-bezier(.2,1.3,.3,1)`. Leaving: the same way back; the name's letters land as `LetterIn` (rising: the switch is not a move).
+  Flip: ±180° over 720 ms, the way you moved (right or down forward). Float: 6 px down to 12 up, 4.6 s each way, the shadow to 0.9 and
+  0.7 with it. Showcase every 15 s: (4°, 32°) drifting to (2°, 14°) by 36%, held to 50%, then once all the way round. Swing back:
+  620 ms. Held still: at (4°, 32°), no float or turn, every change at once, the stick still turns it and letting go puts it back at once
+  (the proposal's reduced motion). It rests like the backdrop: the first showcase turn to end a minute after the last touch is the last,
+  the float eases out over StageRest's 2 s, and a press wakes both from rest (the app's rule, "at rest nothing is posted").
+- **The turn's direction** was checked on the native renders: the renderer's yaw is the CSS rotateY the same way round, so at rest the
+  case shows its spine on the left as the proposal's does (today's beside-the-name rest showed the opening side).
+- **A wide medium is set smaller** (the app's own `ModelMaxWidth`, 720): at 1.36× the SNES cartridge reached the battery's text in the
+  Mac renders, and on the Thor, whose clock is 12-hour ("6:51 PM", wider than the design's "18:00"), the PS1 jewel case's corner touched
+  the battery too; `FitScale` takes the model's bounds (its width and depth at any turn) and scales it to fit. Keep cases and the DS and
+  3DS cards are unchanged; a jewel case is set about a sixth smaller, a cartridge more.
+- **The veil.** The proposal drops the left veil in the model view; the legibility rule (decision 16) still lays ink and veil for the
+  text that is there, so the left veil now lies behind what the left zone shows, the label and the two lines (flat to the widest of them
+  plus `LeftVeilPastName`), not a name's box. The ink and the veil's strength stay the baked left-zone answer per backdrop: it was
+  measured over the whole left zone, which contains the lines, so it is at least as strong as they need.
+- **The launch from either view (awaiting the owner).** From the model view the medium bumps as the tile arrives and the colour's circle
+  grows from its middle; from the name view there is no case, so nothing bumps and the circle grows from the middle of the name (its
+  box's middle across, its lines' middle up; `StageTakeoverCommand.Origin`).
+- **Where the old arrangement's pieces live now.** A missing file: the name view dims the name and its line says "File not found"; the
+  model view's second line says it. A game without a cover: the medium wears its blank front; with no medium, the no-cover card stands
+  in the model's place. A multi-disc game's disc: the name view's second line ("disc 1 of 3"); A asks which disc as before (B8's disc
+  row on the Launcher). The screen question on A: unchanged (the Launcher's sheet). Cover search: its case stays beside the name wearing
+  the candidate (B7), the only medium beside a name now. Search's hits and a held tile: the name view.
+- **The idle drift waits while the model shows (B12's choice, awaiting the owner).** On the Thor the drift (decision 14) took the
+  Stage 15 s after the last press, exactly when the proposal's second full turn would come, and the native Stage left the medium drawn
+  over the drift's fan art (its hero path never told the Stage the model had gone). The model view is the Stage showing itself (the
+  showcase, then its own rest after a minute), so `CanDrift` now waits while it shows; and every centre the feed sends tells a model
+  that has gone to leave.
+- **The leave goes after the name.** Held still, switching back to the name drew one frame with neither medium nor name on the Thor:
+  the model's leave reached the Stage a frame before the name's letters. The feed posts the leave after the flush's name.
+- **Kept apart from B11.** New files and partial classes; the shared methods gained one-line hooks only (the shell's dispatch, hints,
+  `UpdateStage`, `CanDrift` and the stick; the native feed's centre, name, veils, takeover and property switch; the compositor's `Apply`,
+  `Draw` and `Dispose`; the Avalonia Stage motion's `Attach` and the launch clip). The narrow Stage (the model centred on the small screen
+  with nothing overlapping) and B11's rule that a held direction never restarts or stacks a move (for the flip between games) wait for
+  B11 to be merged into the design branch.

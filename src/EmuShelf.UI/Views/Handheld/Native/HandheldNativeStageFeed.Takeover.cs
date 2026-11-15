@@ -69,7 +69,10 @@ internal sealed partial class HandheldNativeStageFeed
             HandheldStageShots.ToCanvas(title, default, _canvas) is { } at)
             _takeoverTitle = title.Letters(at);
         var elapsed = (float)Stopwatch.GetElapsedTime(play.Started).TotalMilliseconds;
-        _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, elapsed, Ending: play.IsEnding, Animate: _shell?.HoldsStill != true));
+        _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, elapsed, Ending: play.IsEnding, Animate: _shell?.HoldsStill != true)
+        {
+            Origin = TakeoverOrigin(),
+        });
         SendTakeoverStatus(play);
     }
 

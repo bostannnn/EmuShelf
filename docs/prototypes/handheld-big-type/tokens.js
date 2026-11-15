@@ -52,6 +52,9 @@ window.BT_TOKENS = {
     InGameRecentWhen:   { size: 32,  weight: 700, opacity: 0.7 },   // when it was unlocked
     // B9, the mock's keyboard (its inline sizes, doubled): the note under the keyboard's heading ("It lands on the slot you picked.").
     KeyboardNote:       { size: 36,  weight: 700, lineHeight: 1.3, opacity: 0.75 },
+    // M47 B12, proposals.html (approved 2026-11-15; its .hint i.sh): a hint whose key is more than one letter (RB, RS) is a rounded
+    // key, at least HintGlyph.size wide, its letters `padding` px in from each side, its corners `radius`.
+    HintKey:            { padding: 14, radius: 18 },
   },
 
   // The Stage, 1920x1080. Text sits in the four corners.
@@ -67,6 +70,18 @@ window.BT_TOKENS = {
     // The launch (B8, the mock's .launch): the title's lines centred, at most LaunchTitleMaxWidth wide, LaunchTitleLineHeight of its
     // size apart, the status LaunchGap under it; the block in the middle of the Stage.
     LaunchTitleMaxWidth: 1600, LaunchTitleLineHeight: 0.92, LaunchGap: 36,
+    // The model view (proposals.html, approved 2026-11-15; M47 B12): LB or RB on a game shows its medium alone, no big name (the
+    // game's name is the line). The medium's box (MediumWidth x MediumHeight) sits ModelRight from the Stage's right edge and
+    // ModelTop from its top, which centres it across the Stage, grown ModelScale about its middle. Its floor's shadow lies under it
+    // (the proposal's .case.big .floor, in the box's own units before the scale): from ModelFloorLeft of the box's width outside
+    // its left edge to ModelFloorRight outside its right, its bottom ModelFloorBottom px under the box's, ModelFloorHeight high,
+    // blurred ModelFloorBlur px, in ModelFloorColour.
+    ModelRight: 764, ModelTop: 216, ModelScale: 1.36,
+    ModelFloorLeft: 0.04, ModelFloorRight: 0.10, ModelFloorBottom: 56, ModelFloorHeight: 44, ModelFloorBlur: 20,
+    ModelFloorColour: 'rgba(8,8,20,0.3)',
+    // The app's own (the proposal draws only a portrait case): a medium wider than ModelMaxWidth at any turn (a jewel case, a landscape
+    // cartridge) is set smaller to fit it, so it stays clear of the battery and the clock (a 12-hour clock, "6:51 PM", reaches further left).
+    ModelMaxWidth: 720,
   },
 
   // The Launcher, 1240x1080.
@@ -266,6 +281,22 @@ window.BT_TOKENS = {
     Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22, shakeBack: 18, shakeSettle: 12 },   // an error shakes -22, +18, -12, 0
     InGameRest: { afterMs: 9000, fadeMs: 1200 },
     SessionAchievementBar: { ms: 800, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },   // B8: the mock's .pbar transition
+    // The model view (proposals.html, approved 2026-11-15; M47 B12). Arriving (ModelIn), the medium rises from its old place beside
+    // the name, `drop` px lower and at fromScale of its size there, to the middle over ms on its easing, clear to whole over fadeMs
+    // (CSS ease), turning in from turnDeg degrees over turnMs on turnEasing; going, it drops back the same way and the name's letters
+    // land as LetterIn. A change of game is one flip into the next medium (ModelFlip: from turnDeg the way you moved, over ms on its
+    // easing). At rest it floats (ModelFloat: from `from` px to `to` px and back, msEach way, CSS ease-in-out, in the box's units; its
+    // shadow to shadeScale and shadeOpacity with it) and shows itself (ModelShowcase, every periodMs: from pitchDeg / yawDeg it
+    // drifts to holdPitchDeg / holdYawDeg by driftAt of the period on driftEasing, holds to turnAt, then turns once all the way round
+    // on turnEasing back to where it started). The stick turns it from the pose it has reached; let go, it swings back to the
+    // showcase's start over ModelSwing.ms on its easing. Held still: at that pose, no float, no turn, every change at once.
+    ModelIn:       { ms: 550, easing: 'cubic-bezier(.2, 1.4, .3, 1)', fadeMs: 250, drop: 380, fromScale: 0.8,
+                     turnDeg: -250, turnMs: 950, turnEasing: 'cubic-bezier(.2, 1.3, .3, 1)' },
+    ModelFlip:     { ms: 720, turnDeg: 180, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },
+    ModelFloat:    { msEach: 4600, from: 6, to: -12, shadeScale: 0.9, shadeOpacity: 0.7 },
+    ModelShowcase: { periodMs: 15000, pitchDeg: 4, yawDeg: 32, driftAt: 0.36, holdPitchDeg: 2, holdYawDeg: 14, turnAt: 0.5,
+                     driftEasing: 'cubic-bezier(.45, 0, .3, 1)', turnEasing: 'cubic-bezier(.5, 0, .25, 1)' },
+    ModelSwing:    { ms: 620, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

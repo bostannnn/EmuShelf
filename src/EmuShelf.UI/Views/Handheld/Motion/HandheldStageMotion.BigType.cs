@@ -34,6 +34,10 @@ internal sealed partial class HandheldStageMotion
                 _shakeStart = Stopwatch.GetTimestamp();
                 RequestBigTypeFrame();
                 break;
+            case nameof(HandheldShellViewModel.HoldsStill):
+                // The model view (M47 B12) stands at rest, or gets going again.
+                RequestModelFrame();
+                break;
         }
     }
 
@@ -79,8 +83,10 @@ internal sealed partial class HandheldStageMotion
         {
             var since = Since(play.Started);
             var radius = BigTypeLaunchMotion.TakeoverRadiusAt(since, still);
+            // M47 B12: from the model view's medium, or from the name's middle (there is no case beside it any more).
+            var origin = TakeoverOrigin();
             launch.Clip = radius >= BigTypeLaunchMotion.TakeoverRadius ? null
-                : new EllipseGeometry(new Rect(BigTypeLaunchMotion.TakeoverX - radius, BigTypeLaunchMotion.TakeoverY - radius, radius * 2, radius * 2));
+                : new EllipseGeometry(new Rect(origin.X - radius, origin.Y - radius, radius * 2, radius * 2));
             var fade = play.IsEnding ? BigTypeLaunchMotion.LaunchFade(Since(play.EndingSince), still) : 1f;
             launch.Opacity = Math.Round(fade, 3);
             var (scale, rise) = BigTypeLaunchMotion.CaseBump(since, still);

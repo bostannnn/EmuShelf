@@ -150,6 +150,9 @@ public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetter
 {
     public override string? RetainKey => "takeover";
     public override StageCommand ForReplay() => this with { Animate = false };
+
+    /// <summary>Where the circle grows from (M47 B12); null: the case's middle beside the name (tokens.js <c>takeoverX</c>, <c>takeoverY</c>).</summary>
+    public Vector2? Origin { get; init; }
 }
 
 /// <summary>The takeover's status line (white; M47 B8): a new picture rolls the characters that changed. Null takes it away.</summary>

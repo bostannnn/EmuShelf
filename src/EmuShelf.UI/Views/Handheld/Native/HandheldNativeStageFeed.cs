@@ -114,7 +114,7 @@ internal sealed partial class HandheldNativeStageFeed
 
         // The Avalonia Stage only lends its pieces now: its own backdrop never draws, and its medium neither
         // draws nor follows the pose (each pose would still ask Avalonia for a frame).
-        foreach (var name in new[] { "Medium", "BtMedium" })
+        foreach (var name in new[] { "Medium", "BtMedium", "BtModelMedium" })
         {
             var medium = Find(name);
             medium.IsVisible = false;
@@ -150,6 +150,9 @@ internal sealed partial class HandheldNativeStageFeed
             var bigTypeMedium = Find("BtMedium");
             bigTypeMedium.ClearValue(StyledElement.DataContextProperty);
             bigTypeMedium.Bind(Visual.IsVisibleProperty, new Avalonia.Data.Binding("Stage.HasBigTypeMedium"));
+            // The model view's medium (M47 B12): HandheldStageMotion shows and poses it again.
+            Find("BtModelMedium").ClearValue(StyledElement.DataContextProperty);
+            _motion.IsOnScreen = true;
             UpdateActive();
         };
     }
@@ -313,6 +316,8 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!_active || IsPaused || _stage is not { } stage)
             return;
+        if (OnModelProperty(stage, e.PropertyName))
+            return;
         switch (e.PropertyName)
         {
             case nameof(HandheldStageViewModel.Backdrop):
@@ -325,7 +330,8 @@ internal sealed partial class HandheldNativeStageFeed
                     _backdropSettle.Start();
                 break;
             case nameof(HandheldStageViewModel.MediumPoseVersion):
-                if (stage.HasMedium)
+                // The model view's medium (M47 B12) is posed by the native Stage itself.
+                if (stage.HasMedium && !stage.IsModelView)
                     _host.Post(new StageMediumPoseCommand((float)stage.MediumYaw, (float)stage.MediumPitch, stage.MediumPoseIsSway));
                 break;
             case nameof(HandheldStageViewModel.Art):
@@ -450,13 +456,14 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!HandheldTokens.IsBigType)
             return;
-        var key = $"{stage.HasBigTypeName}|{stage.Name}|{stage.NameBoxWidth}|{stage.NameOpacity}|{stage.IsTyped}";
+        // The model view (M47 B12) has no big name: its letters leave, and land again when the name view comes back.
+        var key = $"{stage.ShowsBigTypeName}|{stage.Name}|{stage.NameBoxWidth}|{stage.NameOpacity}|{stage.IsTyped}";
         if (key == _nameSent)
             return;
         var first = _nameSent is null;
         _nameSent = key;
         var started = System.Diagnostics.Stopwatch.GetTimestamp();
-        var letters = stage.HasBigTypeName && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } at
+        var letters = stage.ShowsBigTypeName && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } at
             ? _bigTypeName.Letters(at)
             : null;
         // The frame probe (R1's measurement) ties the Stage's frames to the name that arrived: its lines, letters and atlas.
@@ -491,7 +498,8 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!HandheldTokens.IsBigType)
             return;
-        var flatEnd = BigTypeVeil.LeftFlatEnd((float)HandheldTokens.StageNameLeft, (float)stage.NameBoxWidth);
+        // M47 B12: the model view's left veil lies behind its two lines, not a name's box.
+        var flatEnd = ModelVeilFlatEnd(stage) ?? BigTypeVeil.LeftFlatEnd((float)HandheldTokens.StageNameLeft, (float)stage.NameBoxWidth);
         var key = FormattableString.Invariant($"{flatEnd}|{CanvasWidth}");
         if (key == _veilsSent)
             return;
@@ -504,6 +512,9 @@ internal sealed partial class HandheldNativeStageFeed
 
     private void SendCentre(HandheldStageViewModel stage, bool pop)
     {
+        // M47 B12: whatever takes the centre (the idle drift's hero too), a model view that has gone is told to leave.
+        if (HandheldTokens.IsBigType && !stage.IsModelView)
+            SendModel(stage);
         // A Title page crossfades in and out rather than popping from the centre, as on the Avalonia Stage.
         var fade = pop && (stage.Kind == HandheldStageKind.Hero || _lastKind == HandheldStageKind.Hero);
         if (pop)
@@ -563,7 +574,14 @@ internal sealed partial class HandheldNativeStageFeed
     /// </summary>
     private void SendBigTypeCentre(HandheldStageViewModel stage, bool pop, bool fade)
     {
-        if (stage.HasMedium && stage.Medium is { } shell)
+        // M47 B12: the model view's medium stands in the middle; the corner beside the name is empty.
+        if (SendModel(stage))
+        {
+            _host.Post(new StageCentreCommand(null, null, null, pop, FadeIn: fade));
+            return;
+        }
+        // Beside the name only cover search's case (M47 B7), wearing the candidate.
+        if (stage.HasBigTypeMedium && stage.Medium is { } shell)
         {
             var accent = MediaShellRenderer.ToLinear(stage.MediumAccent.R / 255f, stage.MediumAccent.G / 255f, stage.MediumAccent.B / 255f);
             var frame = HandheldTokens.StageMediumFrame(CanvasWidth);
