@@ -46,6 +46,14 @@ public sealed record AppSettings
     public HandheldLook HandheldLook { get; init; } = HandheldLook.Classic;
 
     /// <summary>
+    /// Handheld mode (M47 B10): the app's own reduced-motion switch, beside the system's. When on, Handheld mode holds still
+    /// whatever the system says (every move arrives in place at once; the backdrop and the medium's sway hold a still
+    /// frame), as it does under battery saver or the system's own setting; either one is enough. Off by default. Read by
+    /// the Big Type look only, the one whose Settings shows the row.
+    /// </summary>
+    public bool HandheldReduceMotion { get; init; }
+
+    /// <summary>
     /// Android only: when true, EmuShelf force-stops the launched emulator's process the moment EmuShelf
     /// returns to the foreground, so a heavy emulator does not linger in the background draining the battery.
     /// Defaults on because that drain is the whole reason for the option; a user who wants the emulator kept

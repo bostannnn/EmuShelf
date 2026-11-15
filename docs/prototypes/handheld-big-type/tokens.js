@@ -74,6 +74,7 @@ window.BT_TOKENS = {
     HomeColumns: 5, HomeRows: 4, HomeLeft: 108, HomeTop: 44, HomePitch: 212,
     FolderRows: 3, FolderColumnsVisible: 4, FolderLeft: 162, FolderTop: 208, FolderPitch: 236,
     HeaderLeft: 162, HeaderTop: 40, HeaderHeight: 136,
+    HeaderGap: 32,   // B10: the folder's name and its count stay this far apart (the mock's .fhead gap); a long name is set smaller to keep it
     DockBottom: 32, DockGap: 24,
     RowPitch: 88, RowPitchPanel: 92, RowPitchSettings: 104, PanelRowsVisible: 7,
     // The lists (the mock's openSheet, openSettings and openPanel, B7). A row is its pitch less RowGap high, its value RowValueGap

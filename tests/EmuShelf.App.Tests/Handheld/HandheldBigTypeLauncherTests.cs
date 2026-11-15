@@ -88,6 +88,8 @@ public class HandheldBigTypeLauncherTokenTests
             Assert.Equal(Number(tokens, "HeaderLeft"), HandheldTokens.HeaderMargin.Left);
             Assert.Equal(Number(tokens, "HeaderTop"), HandheldTokens.HeaderMargin.Top);
             Assert.Equal(Number(tokens, "HeaderHeight"), HandheldTokens.HeaderHeight);
+            Assert.Equal(Number(tokens, "HeaderGap"), HandheldTokens.HeaderGap);
+            Assert.Equal(HandheldTokens.HeaderGap, HandheldTokens.HeaderCountMargin.Left);
             // The dock sits DockBottom from the edge (its bar is a button's height, 32 above the canvas's bottom).
             Assert.Equal(Number(tokens, "DockBottom"), HandheldTokens.DockCornerMargin.Bottom);
             Assert.Equal(HandheldTokens.DockTile, HandheldTokens.DockBarHeight);

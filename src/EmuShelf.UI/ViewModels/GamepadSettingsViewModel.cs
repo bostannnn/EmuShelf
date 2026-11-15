@@ -291,6 +291,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     // Handheld mode's interface sounds (M45 H6d): a Display row only when Handheld mode builds this projection.
     private readonly GamepadSettingsSwitch? _handheldSounds;
+    // Handheld mode's own reduced-motion switch (M47 B10): a Display row only when the Big Type look builds this projection.
+    private readonly GamepadSettingsSwitch? _handheldReduceMotion;
     private readonly IRelayCommand _requestUsageAccessCommand;
     private bool _usageAccessGranted;
     private bool _usageAccessRead;
@@ -749,10 +751,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SetupWizardOptions? setup = null,
         Func<Task>? runSetup = null,
         IAppUsageAccess? usageAccess = null,
-        GamepadSettingsSwitch? handheldSounds = null)
+        GamepadSettingsSwitch? handheldSounds = null,
+        GamepadSettingsSwitch? handheldReduceMotion = null)
     {
         _settings = settings;
         _handheldSounds = handheldSounds;
+        _handheldReduceMotion = handheldReduceMotion;
         _usageAccess = usageAccess;
         // The grant is made on Android's own screen; the answer is read again on return (RefreshDeviceState).
         _requestUsageAccessCommand = new RelayCommand(() => _usageAccess?.RequestGrant());
@@ -2255,6 +2259,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 "a soft tone as you move, open, close, confirm and go back · Handheld mode",
                 sounds.Get(),
                 sounds.Set) with { ExcludeFromParity = true };
+        }
+        if (_handheldReduceMotion is { } still)
+        {
+            yield return ToggleRow(
+                "display.reduce-motion",
+                "Reduce motion",
+                "everything arrives in place at once and the backdrop holds still · Android's own setting does this too",
+                still.Get(),
+                still.Set) with { ExcludeFromParity = true };
         }
     }
 

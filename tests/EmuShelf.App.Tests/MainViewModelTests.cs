@@ -5586,6 +5586,75 @@ public class MainViewModelTests : IDisposable
     /// process-wide tokens that look, so this runs apart from every other test and puts today's look back (M47 B7: left in Big Type,
     /// it made later tests that read the look fail, depending on their order).
     /// </summary>
+    /// <summary>
+    /// M47 B10: Handheld mode's own reduced-motion switch. Under Big Type, Settings → Display offers it; on, Handheld mode holds
+    /// still at once with the system's switch off, and it survives a restart in the portable settings file. Today's look offers
+    /// no row and does not read it.
+    /// </summary>
+    [Collection(nameof(EmuShelf.App.Tests.Handheld.HandheldTokenLookCollection))]
+    public class ReduceMotionSwitch
+    {
+        [AvaloniaFact]
+        public async Task UnderBigType_TheSwitchHoldsStillAtOnce_AndSurvivesARestart()
+        {
+            using var tests = new MainViewModelTests();
+            try
+            {
+                var settings = new StubSettingsService();
+                settings.Save(settings.Load() with { HandheldLook = HandheldLook.BigType });
+                Assert.False(settings.Load().HandheldReduceMotion); // off by default
+
+                var vm = tests.CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
+                var shell = Assert.IsType<HandheldShellViewModel>(vm.Handheld);
+                Assert.False(shell.ReduceMotion);
+                Assert.False(shell.HoldsStill);
+
+                var row = Assert.IsType<GamepadSettingsSwitch>(vm.HandheldReduceMotionSwitch());
+                row.Set(true);
+                Assert.True(shell.ReduceMotion);
+                Assert.True(shell.HoldsStill); // at once, with no restart
+                await vm.HandheldSettingsSaved;
+                Assert.True(settings.Load().HandheldReduceMotion);
+
+                // A restart: Handheld mode reads it back and holds still from the start.
+                var again = tests.CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
+                var shellAgain = Assert.IsType<HandheldShellViewModel>(again.Handheld);
+                Assert.True(shellAgain.ReduceMotion);
+                Assert.True(shellAgain.HoldsStill);
+
+                // Off again, and remembered.
+                Assert.IsType<GamepadSettingsSwitch>(again.HandheldReduceMotionSwitch()).Set(false);
+                Assert.False(shellAgain.HoldsStill);
+                await again.HandheldSettingsSaved;
+                Assert.False(settings.Load().HandheldReduceMotion);
+            }
+            finally
+            {
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+        }
+
+        [AvaloniaFact]
+        public void TodaysLook_OffersNoRow_AndASavedSwitchDoesNotHoldItStill()
+        {
+            using var tests = new MainViewModelTests();
+            try
+            {
+                var settings = new StubSettingsService();
+                settings.Save(settings.Load() with { HandheldReduceMotion = true });
+                var vm = tests.CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
+                var shell = Assert.IsType<HandheldShellViewModel>(vm.Handheld);
+                Assert.Equal(HandheldLook.Classic, shell.Look);
+                Assert.Null(vm.HandheldReduceMotionSwitch());
+                Assert.False(shell.HoldsStill);
+            }
+            finally
+            {
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+        }
+    }
+
     [Collection(nameof(EmuShelf.App.Tests.Handheld.HandheldTokenLookCollection))]
     public class SavedLook
     {

@@ -300,7 +300,8 @@ internal sealed partial class HandheldLauncherMotion
 
     private void OnBumped(HandheldDirection direction)
     {
-        if (!_onScreen)
+        // Held still under Big Type (M47 B10, the mock's bump returns under reduced motion), the wall is not nudged.
+        if (!_onScreen || (HandheldTokens.IsBigType && Still))
             return;
         _bumpDirection = direction;
         _bumpStart = null; // stamped on the next frame

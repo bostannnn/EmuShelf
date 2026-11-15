@@ -246,6 +246,9 @@ public sealed partial class LauncherCompositor : INativeScene
                     launching.LaunchBigType = launch.BigType;
                 }
                 break;
+            // Held still under Big Type (M47 B10, the mock's bump returns under reduced motion), the wall is not nudged.
+            case LauncherBumpCommand when _bt.HoldStill:
+                break;
             case LauncherBumpCommand bump:
                 _bump = new Vector2(bump.DirectionX, bump.DirectionY);
                 _bumpStart = now;

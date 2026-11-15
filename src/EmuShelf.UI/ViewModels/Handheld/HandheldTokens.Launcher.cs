@@ -209,6 +209,12 @@ public static partial class HandheldTokens
 
     public static Thickness HeaderCountMargin { get; private set; }
 
+    /// <summary>
+    /// How far apart a folder's name and its count stay (<c>launcher.HeaderGap</c>, the mock's <c>.fhead</c> gap, M47 B10): the count's
+    /// left margin under Big Type, and a long name is set smaller to keep it.
+    /// </summary>
+    public static double HeaderGap { get; private set; }
+
     /// <summary>A dock button's glyph (the mock's 20 px at half scale).</summary>
     public static double GlyphDock { get; private set; }
 
@@ -292,6 +298,7 @@ public static partial class HandheldTokens
         HeadingSpacing = 0;
         HeaderNameShotMargin = new Thickness(-24, -24, -24, -10);
         HeaderCountMargin = new Thickness(16, 0, 0, 14);
+        HeaderGap = 16;
         CornerMark = 48;
         CornerMarkRadius = new CornerRadius(14);
         CornerMarkMargin = new Thickness(0, -12, -12, 0);
@@ -348,6 +355,9 @@ public static partial class HandheldTokens
         DockBarFill = Brushes.Transparent;
         DockBarEdge = Brushes.Transparent;
         DockBarHeight = 88;
+
+        HeaderGap = 32;
+        HeaderCountMargin = new Thickness(HeaderGap, 0, 0, 14);
 
         // type
         FolderHeading = 100;

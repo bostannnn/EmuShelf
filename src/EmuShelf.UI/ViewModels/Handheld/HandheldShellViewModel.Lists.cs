@@ -189,9 +189,21 @@ public partial class HandheldShellViewModel
 /// <summary>What the Big Type Stage says about a list's focused row (M47 B7): where, the row, its value, and more.</summary>
 public readonly record struct HandheldListStageText(string Label, string Name, string Line, string Facts)
 {
-    /// <summary>From a card: the value is the line when there is one (its description then under it), else the description is.</summary>
-    public static HandheldListStageText Of(string where, string title, string? value, string? description, string? status) =>
-        string.IsNullOrEmpty(value)
+    /// <summary>
+    /// From a card: the value is the line when there is one (its description then under it), else the description is. Each is one line
+    /// on the Stage (M47 B10): a description of several lines (Activity's game: its plays, then when it was first and last played) gives
+    /// its first line to the line, after the value, and the rest to the second line, so neither runs into the other.
+    /// </summary>
+    public static HandheldListStageText Of(string where, string title, string? value, string? description, string? status)
+    {
+        var lines = (description ?? string.Empty).Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (lines.Length > 1)
+        {
+            var first = string.IsNullOrEmpty(value) ? lines[0] : $"{value} · {lines[0]}";
+            return new(where, title, first, string.Join(" · ", lines.Skip(1)));
+        }
+        return string.IsNullOrEmpty(value)
             ? new(where, title, description ?? string.Empty, status ?? string.Empty)
             : new(where, title, value, string.IsNullOrEmpty(description) ? status ?? string.Empty : description);
+    }
 }

@@ -3163,3 +3163,32 @@ falls back to the emulator and says so.
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
       motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the
       old look.
+      **First part built 2026-11-15 (B10a); not ticked. Waiting for the owner:** making Big Type the default, carrying out
+      D5 (removing today's look), the sounds, and the week of use. Nothing of those was done. (Choices in `DECISIONS.md`
+      2026-11-15 "M47 B10a".) **Built, under Big Type only:** the app's own **Reduce motion** switch in Settings → Display, after
+      Sounds ("everything arrives in place at once and the backdrop holds still · Android's own setting does this too"), off by
+      default, saved as `AppSettings.HandheldReduceMotion` in the portable `Settings/` folder; it joins the system's say in
+      `HoldsStill` (either one is enough), so every B5–B9 move takes its held-still form at once on the Avalonia screens and both
+      native compositors, with no restart; the edge bump gained a held-still form (none). **The sweep:** the app's messages are
+      the Stage's line under the name (the mock's toast: an error shakes and holds `Message.errorHoldMs`, work running holds,
+      a long one runs to two lines), today's pill left only where the Stage has no name; a folder's name keeps `HeaderGap` (new
+      in tokens.js) from its count; Activity's game page no longer draws its two lines of facts over the line. Left, with sizes,
+      in the decision: the companion's All apps, badge grid and photo viewer; the drift's fan-art hero; the dock app's colour
+      sweep; the native Stage's grey ground before the first backdrop; the empty library; the edge bump's numbers, the screen
+      swap and the medium's sway. **Documents:** `HANDHELD-MODE.md` decision 16 and the motion spec describe Big Type, behind
+      `HandheldLook` (default Classic), today's text kept and marked superseded. **Verified on macOS:** Classic at the final code
+      is byte-identical to Classic at the starting commit `4eafe18` on all 158 frames; two Big Type renders of the final code are
+      byte-identical; 6 of 158 Big Type frames differ from the starting render (the three message frames' tops, Activity's game
+      top, and Settings › Display's two bottoms with the new row). New tests: `HandheldShellViewModelTests+AppReduceMotion` (B5–B9's
+      holding-still tests asked by the switch instead of the device: the sway, the drift, both native screens and the Avalonia
+      Launcher, a launch and the companion, either one enough, both off), `MainViewModelTests+ReduceMotionSwitch` (at once, saved,
+      read back after a restart; Classic offers no row and ignores a saved one), `+BigTypeSweep`, the Display row. `dotnet build`
+      and the full `dotnet test` passed three times running after the last change. **Emulator check, not the Thor** (the Thor was
+      not on adb; `emushelf-b3`, `-no-snapshot-save`, Release build without AOT, `adb install -r`): Classic as before (Display
+      has no new row; a notice is today's pill); under `bigtype` the row shows Off, A turns it on (saved `true` in
+      `Settings/settings.json`), and over the same four home presses the Launcher changed in 1–2 frames per press and the Stage in
+      2–4 (held still) against 6–7 per press and a moving Stage with it off; turned back off (saved `false`); "Sounds off" rolled
+      onto the line and back with no pill (Sounds turned back on). Left there: this build, `debug.emushelf.look` `bigtype`, home
+      as found (Settings, Recent, PS2, Activity). **Not seen on any device:** the Thor at all (B9's first Thor pass included), the
+      system's own reduced-motion switch with this build, a failed launch's message, a long folder name. Renders and recordings:
+      `m47-b10a-renders` in the build sessions' notes.

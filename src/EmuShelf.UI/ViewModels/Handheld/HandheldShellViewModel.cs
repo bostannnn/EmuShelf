@@ -182,11 +182,35 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     });
 
     /// <summary>
-    /// The device asks for stillness (M45 H7c): battery saver is on, or the system's reduced-motion setting. The Stage's
-    /// idle motion (the animated backdrop, the medium's sway) holds a still frame while this is set.
+    /// Handheld mode holds still (M45 H7c): the device asks for it (battery saver, or the system's reduced-motion setting),
+    /// or, under Big Type, the app's own switch does (<see cref="ReduceMotion"/>, M47 B10); either one is enough. The Stage's
+    /// idle motion (the animated backdrop, the medium's sway) holds a still frame while this is set, and every Big Type move
+    /// takes its held-still form.
     /// </summary>
     [ObservableProperty]
     public partial bool HoldsStill { get; private set; }
+
+    // What the device said at the last read (DeviceStatus.HoldsStill).
+    private bool _deviceHoldsStill;
+    private bool _reduceMotion;
+
+    /// <summary>
+    /// The app's own reduced-motion switch (M47 B10, Settings → Display under Big Type): holds still whether or not the system
+    /// asks. Remembered through <see cref="SaveReduceMotion"/>. Today's look shows no row for it and does not read it, so a
+    /// switch it cannot turn off never holds it still.
+    /// </summary>
+    public bool ReduceMotion
+    {
+        get => _reduceMotion;
+        set
+        {
+            if (SetProperty(ref _reduceMotion, value))
+                ApplyHoldsStill();
+        }
+    }
+
+    /// <summary>Remembers <see cref="ReduceMotion"/> for the next start; set by the app.</summary>
+    public Action<bool>? SaveReduceMotion { get; set; }
 
     /// <summary>The app's current status message (a launch in progress, a failure), shown on the Stage.</summary>
     [ObservableProperty]
@@ -338,23 +362,33 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         BatteryText = status.BatteryPercent is { } percent ? $"{percent}%" : null;
         IsCharging = status.IsCharging;
         IsWifiConnected = status.IsWifiConnected;
-        if (status.HoldsStill != HoldsStill)
+        _deviceHoldsStill = status.HoldsStill;
+        ApplyHoldsStill();
+    }
+
+    // The device's say or the app's switch (Big Type only): either one holds still, and the change takes effect at once.
+    private void ApplyHoldsStill()
+    {
+        var still = _deviceHoldsStill || (_reduceMotion && HandheldTokens.IsBigType);
+        if (still == HoldsStill)
+            return;
+        HoldsStill = still;
+        _medium.HoldsStill = still;
+        // A game's companion already up follows too (it reads the say when a launch starts).
+        if (Playing is not null && CompanionScreen is { } companion)
+            companion.HoldsStill = still;
+        // The sway's timer stops once the sway has eased to a stop (or at once, if it was already at rest).
+        UpdateMediumTimer();
+        // The idle drift holds too: a drift on the Stage gives way to what is selected, and none starts until the
+        // say is lifted, when the fifteen seconds start again.
+        if (still)
         {
-            HoldsStill = status.HoldsStill;
-            _medium.HoldsStill = status.HoldsStill;
-            // The sway's timer stops once the sway has eased to a stop (or at once, if it was already at rest).
-            UpdateMediumTimer();
-            // The idle drift holds too: a drift on the Stage gives way to what is selected, and none starts until the
-            // device's say is lifted, when the fifteen seconds start again.
-            if (status.HoldsStill)
-            {
-                _idleTimer?.Stop();
-                StopDrift(refreshStage: true);
-            }
-            else
-            {
-                ArmIdle();
-            }
+            _idleTimer?.Stop();
+            StopDrift(refreshStage: true);
+        }
+        else
+        {
+            ArmIdle();
         }
     }
 
