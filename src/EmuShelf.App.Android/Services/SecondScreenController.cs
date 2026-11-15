@@ -284,6 +284,9 @@ internal sealed class SecondScreenController
             _runningGameTitle = null;
             _navigation = _navigation.ReturnToBrowse();
             ResetAchievementTarget();
+            // Big Type (M47 B8): the companion's parts leave before the shelf comes back (the mock's endPlay).
+            if (_viewModel?.Handheld is { IsPlaying: true } handheld)
+                _ = handheld.EndPlayAsync();
             UpdateHandheldSurface();
             // If a game had taken Screen-2, swap the companion back before touching its overlay/spotlight,
             // so the restored surface renders on the second screen it now owns again.
@@ -1410,13 +1413,36 @@ internal sealed class SecondScreenController
     private void UpdateHandheldSurface()
     {
         var handheld = _viewModel?.Handheld;
+        WatchHandheldPlay(handheld);
         var presentation = _presentation;
-        var showHandheld = handheld is not null && presentation is not null && _runningGameId is null &&
+        // Big Type (M47 B8): when the game ends the companion stays while its parts leave; the shelf comes back after.
+        var leaving = handheld?.Playing is { IsEnding: true };
+        var showHandheld = handheld is not null && presentation is not null && _runningGameId is null && !leaving &&
             presentation.Model.Overlay == SecondScreenOverlayKind.None;
         // The main display's Handheld screen gives way while the companion sits over it (a game on Screen-2). Where
         // the two Handheld screens go (and the swap, M45 H5) is HandheldScreenHost's.
-        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen,
-            inGame: _runningGameId is not null);
+        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen && !leaving,
+            inGame: _runningGameId is not null || leaving);
+    }
+
+    private HandheldShellViewModel? _watchedHandheld;
+
+    // The Handheld shell's play (M47 B8): its end (parts leaving, then gone) changes which surface shows.
+    private void WatchHandheldPlay(HandheldShellViewModel? handheld)
+    {
+        if (ReferenceEquals(handheld, _watchedHandheld))
+            return;
+        if (_watchedHandheld is { } old)
+            old.PropertyChanged -= HandheldPlayChanged;
+        _watchedHandheld = handheld;
+        if (handheld is not null)
+            handheld.PropertyChanged += HandheldPlayChanged;
+    }
+
+    private void HandheldPlayChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(HandheldShellViewModel.Playing) && sender is HandheldShellViewModel { Playing: null })
+            UpdateHandheldSurface();
     }
 
     private void DetachDisplayManager()

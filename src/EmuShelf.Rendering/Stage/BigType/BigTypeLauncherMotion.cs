@@ -93,7 +93,29 @@ public sealed class BigTypeLauncherMotion
         }
         _from = drawn;
         _moveStart = now;
+        _popFrom = BigTypeMotion.PopFromScale;
     }
+
+    /// <summary>
+    /// The ring pops in where its target is, from <paramref name="from"/> times its size, whatever it did before (M47 B8: on a folder's
+    /// first game, tokens.js <c>RingPop.folderFromScale</c>). Held still it simply lands.
+    /// </summary>
+    public void PopIn(float now, float from)
+    {
+        _moveStart = Never;
+        if (HoldStill)
+        {
+            _popStart = Never;
+            _landed = now;
+            _drawn = null;
+            return;
+        }
+        _popStart = now;
+        _popFrom = from;
+        _landed = now + BigTypeMotion.PopMilliseconds;
+    }
+
+    private float _popFrom = BigTypeMotion.PopFromScale;
 
     /// <summary>
     /// Where to draw the ring now, given where its target is now (it rides a sliding page), and how opaque; <paramref name="moving"/>
@@ -117,7 +139,7 @@ public sealed class BigTypeLauncherMotion
         var sincePop = now - _popStart;
         if (sincePop < BigTypeMotion.PopMilliseconds)
         {
-            var (scale, fade) = BigTypeMotion.Pop(sincePop);
+            var (scale, fade) = BigTypeMotion.Pop(sincePop, _popFrom);
             at = at.Scaled(scale);
             opacity = fade;
             moving = true;

@@ -29,7 +29,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// The Title page and the launch flight still draw on the Avalonia Stage: the feed hands the screen back while
 /// a Title page is open.
 /// </summary>
-internal sealed class HandheldNativeStageFeed
+internal sealed partial class HandheldNativeStageFeed
 {
     private const float CentreAreaHeight = 920;
     private const float WideMediumWidth = 1400;
@@ -291,6 +291,13 @@ internal sealed class HandheldNativeStageFeed
                 break;
             case nameof(HandheldShellViewModel.LauncherGround):
                 SendInk();
+                break;
+            // Big Type (M47 B8): the launch's takeover, and an error shaking the line.
+            case nameof(HandheldShellViewModel.Playing):
+                OnPlayingChanged();
+                break;
+            case nameof(HandheldShellViewModel.LineShakes) when _active && !IsPaused:
+                _host.Post(new StageShakeCommand("bt-line"));
                 break;
             case nameof(HandheldShellViewModel.IsSwapped) when _active && !IsPaused:
                 // A Stage that follows the swap moved to the other canvas: every piece sits somewhere new.
@@ -604,6 +611,9 @@ internal sealed class HandheldNativeStageFeed
     /// <summary>The launch: the cover card lands on the top screen, then zooms into the emulator (native).</summary>
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
+        // Big Type (M47 B8): the takeover is sent when the shell's play begins (OnPlayingChanged).
+        if (HandheldTokens.IsBigType)
+            return;
         if (!_active || IsPaused || page.Cover is not { } cover)
             return;
         var width = (float)HandheldTokens.LaunchCardWidth;

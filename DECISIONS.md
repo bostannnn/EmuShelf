@@ -14876,3 +14876,89 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   runs in `HandheldTokenLookCollection` (apart from every other test) and puts today's look back.
 - **Not built, for the owner or later steps:** Settings opens with its rows focused, as before B7 (the mock opens on the rail); the
   Stage changes as a list closes rather than after its rows have gone.
+
+## 2026-11-15 — M47 B8: folders, the launch and the in-game companion
+
+- **Big Type only; today's look is unchanged.** Classic's 158 design frames are byte-identical before and after. Every number is
+  tokens.js's; the mock's inline ones were added there first (below), the shared maths is `BigTypeFolderMotion` and `BigTypeLaunchMotion`
+  (`EmuShelf.Rendering/Stage/BigType`), used by the native screens and the Avalonia ones alike.
+- **tokens.js gained the mock's inline numbers**, as the rule asks: `FolderOut` (push 56 a cell, toScale .55, openedScale 1.7 after 70 ms,
+  at most 6 steps, the folder showing after 370 ms: the mock's `fallAway` and `openFolder`), `FolderDeal` (fromScale .55, at most 8 steps,
+  the ring 230 ms after the folder shows), `FolderClose` and `FolderPopIn` (the mock's `closeFolder` and `popIn`), `RingPop` (B5's page
+  pop 1.25, and a folder's first game 1.3), the launch's (`Launch`: flight curve and scale, out 340 px past the top, the case's bump at
+  270 ms, the takeover at 430 ms from the case's middle 1484, 516 to 2200 px on its curve, the title from 0.8 em, the grid gone in 280 ms,
+  the companion built at 710 ms), `InGameIn`, `InGameTab`, `InGameOut`, `UnlockLine`, the bar's easing, the error's shake (−22, +18, −12),
+  `type.LaunchStatus`, `InGameTitle`, `InGameTab`, `InGameStatLabel`, `InGameRecent(When)`, `stage.LaunchTitleMaxWidth/LineHeight/Gap`
+  and an `ingame` block of the companion's places (all the mock's, doubled). The mock's frozen-numbers list names the new block (one line
+  of `index.html`; nothing it does changed). **One mapping differs from the brief's words:** tokens.js already had `FolderOut` at 250 ms
+  and 20 ms a tile, which are the mock's `fallAway` numbers (home's tiles falling away as a folder opens), not its `closeFolder` (200 ms,
+  16 ms); the mock's code wins, so `FolderOut` is the fall-away and the games dropping out on closing are the new `FolderClose`.
+- **Opening and closing a folder on the native Launcher, carried across without new pictures.** `LauncherZoomCommand` under Big Type
+  starts a folder move in `LauncherCompositor` (`LauncherCompositor.BigTypeMoves.cs`) instead of today's zoom: each sprite's pose (offset,
+  scale about its own middle, opacity) is worked out where it is drawn, from its `Cell` (B5's), the opened tile's cell, the folder's
+  first column. Home's sprites fall away from their own resting pose (lift, push) to the target, as a Web Animation from its underlying
+  transform does; at 370 ms home goes and the folder's games deal in by column + row; the folder's header shows with them. **The name's
+  letters land natively:** the folder name is now `HandheldBigTypeHeading` (B7's, fitted as `setHead`), and the feed sends its letters as
+  one atlas (`LauncherLettersCommand`, the B6 atlas builder moved to `HandheldLetterAtlas` and shared); the compositor draws them a quad
+  each on `HeadingIn` in the name's place until they have landed, then the pictured name again. **The count rolls in from nothing** when
+  the folder shows (a roll with an empty old text: B5's roll, no new drawing). **The ring** hides through the move and pops in from 1.3
+  (`BigTypeLauncherMotion.PopIn`) 230 ms after the folder shows; closing, it lands on the folder's tile 130 ms after home is back.
+  Closing: the folder's sprites (kept, as today's zoom keeps them) drop by `FolderClose`, the closer to the top left the later; at 300 ms
+  they go and home's tiles pop in around the folder's tile. Nothing of it needs the Avalonia Launcher. The Avalonia Launcher does the same
+  where it has the screen (the desktop; `HandheldLauncherMotion.Folder.cs`), posing each tile's container, with a closing folder's games
+  and header pictured where they were (as today's zoom pictures the page).
+- **Column + row are counted in the folder's window** (from its first visible column), for the deal and the drop alike. The mock counts
+  absolute columns but only ever opens a folder at column 0; a folder closed while scrolled would otherwise drop every game at once.
+- **A on a game plays (D1), through the Title page's route, which Big Type never draws.** `OpenOrPlay`: Big Type opens the page with
+  `playWhenReady` (details, the screen's question, save sync and the launch lead all as before) and `ShowsTitlePage` is false, so neither
+  Launcher nor the native feed draws the page, the Stage stays on the game (its facts are B4's second line), and its hints give way to the
+  launch's. While the page waits for its details, B lets the press go and nothing else does anything. A launch that fails closes the page
+  (there is no page to return to); the app's own status line says why.
+- **"Which screen?" is a sheet in B7's style** (the mock's `startGame`): kicker "Play", rows "Top screen", "Bottom screen", "Always the
+  top for <console>", and **one row the mock does not have, "Always the bottom for <console>"**, because today's chooser can remember
+  either screen and nothing it does may be dropped. B closes it and the launch with it (`HandheldSheetViewModel.Cancelled`). Choosing a
+  row waits for the sheet's rows to leave (`SheetOut.holdMs`, the mock's `closeSheet` before `launch`) before the launch begins, so both
+  screens start the launch together on the device.
+- **The disc is a row of the Y sheet that cycles where it is** (decision D1; the mock's cycle row): "Disc", its value "2 of 3" as its
+  note, which the Stage's line shows while it is focused; A takes the next disc, saves it as the disc the game starts on, and the sheet
+  stays (`HandheldSheetItemViewModel.KeepsOpen`). B7's sheet rows draw no value at their right (the mock's `.rv`); the value is on the
+  Stage's line only. Today's look keeps "Choose disc…".
+- **A missing file does not launch** (the mock's `startGame`): the ring bumps and the Stage's line says "Could not find the file · Y for
+  more", shaking once (`Message.shake…`, native `StageShakeCommand`), held `errorHoldMs`, or until the next press. **The text is not the
+  mock's** ("Y to locate it"): the app has no Locate yet; its Y sheet holds what it can do (remove, edit, scrape).
+- **The launch.** The shell's `Playing` (`HandheldPlayViewModel`) lives from the press until the shelf is back. Launcher: the focused tile
+  flies up and out through the hinge (`LauncherLaunchCommand.BigType`; the Avalonia Launcher the same), the ring hides, at 430 ms the ground
+  floods to the in-game colour from the tile (the shell's ground, so both Launchers and the companion agree) and the grid, its header
+  with it, goes in 280 ms (`LauncherPlayCommand`); the dock row stays, as in the mock. Stage: the case bumps at 270 ms, and at 430 ms the
+  console's colour takes the Stage over through a circle from the case, the title's letters land in it at `LaunchTitle`'s size for its
+  length and the status rolls under it. Native: `StageTakeoverCommand` (colour, the title's atlas, timed from the press) and
+  `StageTakeoverStatusCommand` (the status pictured, rolling on B5's roll), drawn over everything inside the circle (`uClip0`, B6's); the
+  Avalonia Stage the same with a clip and its own letters (`HandheldBigTypeLaunchTitle`, lines broken between words, not inside one as
+  the mock's inline letters can be). **The status comes from the app's steps:** "Starting <emulator>…" from the press, "Syncing saves…"
+  while the pre-launch save sync blocks (`SetLaunchSaveSync`), "Running in <emulator>" (with "Disc n · ") once the launch went through,
+  "Achievement unlocked · a / n" for `UnlockLine.holdMs` when the companion's set gains one. The emulator starts at `companionAtMs` (710 ms,
+  was the lead's 660) under Big Type.
+- **The harness's launching frame catches the launch at a fixed moment again: at rest.** The pending launch holds it; the frame is the
+  takeover complete, the title landed, "Starting DuckStation…", the grid gone. Two renders are byte-identical.
+- **The companion** (`HandheldCompanionView`'s `BtBody`, Big Type only): "Now playing", the title fitted to 1080, the tabs Session,
+  Achievements and Photos (left and right or the shoulders; past either end nothing; a tab's body slides in from the side moved to), the
+  session's time "m:ss" counting each second in `SessionTimer`, the total ("52 h 0 min", the play log's time before plus this session) and
+  the achievements in `InGameStat`, the figure in `InGameFigure` with the three latest unlocks, six photos of the game, the bar on its
+  curve. Its parts rise in from 0, 55 ms apart, and drop out when the game ends while the Stage's colour fades; 340 ms later the ground
+  floods back from the middle and the tiles pop in, the ring 130 ms after. It rests to 0.28 after 9 s (`InGameRest`) and the first press
+  only wakes it. On the device the companion arrives without today's slide (the Launcher has already flooded to its colour) and stays
+  until its parts have left (`SecondScreenController` ends the play before handing the display back). Its clock is now the shell's.
+- **What today's companion does that the mock has no place for, all kept and reachable:** the dock (All apps, the five pinned apps, Y
+  to change or clear a slot) sits in the dock row in the Launcher's dock style; A on Achievements opens every badge (today's grid, with its
+  filters and refresh); A on Photos opens the photo viewer (today's, with video and fetch); Y on an empty Photos tab fetches artwork; All
+  apps is today's drawer. The mock's corner "B to shelf" is **"Quit to shelf"**: in the app B does not end a game, the emulator does.
+- **Holding still** (`HoldsStill`): nothing travels and nothing waits. Opening, the folder is there with the ring; closing, home is;
+  the tile is gone, the colour and the title are there at once; the companion's parts are in place and it simply dims. The mock still
+  runs its fall-away, drop and flight under reduced motion (only its arrivals check `RM`); B7's precedent (a closing list simply goes)
+  was followed for the departures too.
+- **Found on the emulator and fixed:** a launch from the "Which screen?" sheet came while the Avalonia Launcher still had the screen
+  (the sheet's rows leaving), so the native Launcher never flew the tile; the feed now sends the launch on its next sync.
+- **Not built / found and not fixed:** the app's own messages (a launch that fails, a scan) still use today's toast at the top of the
+  Stage, not the line (only B8's own messages use the line); a pinned game's launch from home and the swapped screens' launch were not
+  seen on a device; the in-game companion on the 16:9 screen (a game on the bottom screen) lays the same parts on its 1920 canvas (the tabs and the
+  corner at its right edge); the mock draws no wide companion, so this is the owner's to judge.

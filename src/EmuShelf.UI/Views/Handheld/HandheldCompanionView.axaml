@@ -3,6 +3,7 @@
              xmlns:vm="using:EmuShelf.App.ViewModels"
              xmlns:controls="using:EmuShelf.App.Controls"
              xmlns:ai="using:Avalonia.Input"
+             xmlns:vh="using:EmuShelf.App.Views.Handheld"
              x:Class="EmuShelf.App.Views.HandheldCompanionView"
              x:DataType="vm:HandheldCompanionViewModel">
 
@@ -296,6 +297,75 @@
     <Style Selector="Grid#DrawerLayer.light Border.ring">
       <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicCompanionRingGlowLight}" />
     </Style>
+    <!-- ===== Big Type (M47 B8) ===== -->
+    <Style Selector="TextBlock.bt-label">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.InGameLabel}" />
+      <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.InGameLabelLine}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.InGameLabelOpacity}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+    </Style>
+    <Style Selector="TextBlock.bt-tab">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.InGameTab}" />
+      <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.InGameTabLine}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.InGameTabRestOpacity}" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="{x:Static vm:HandheldTokens.InGameTabFade}" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="TextBlock.bt-tab.on">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="TextBlock.bt-stat">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.InGameStat}" />
+      <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.InGameStatLine}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightDisplay}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+    <Style Selector="TextBlock.bt-stat-label">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.InGameStatLabel}" />
+      <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.InGameStatLabelLine}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.InGameStatLabelOpacity}" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.InGameStatLabelMargin}" />
+    </Style>
+    <Style Selector="TextBlock.bt-corner">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.DockCorner}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
+    </Style>
+    <Style Selector="Panel.bt-dock Border.bt-dock-face">
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.TileRest}" />
+    </Style>
+    <Style Selector="Panel.bt-dock PathIcon">
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+    </Style>
+    <Style Selector="Panel.bt-dock.focused Border.bt-dock-face">
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.TileFocus}" />
+    </Style>
+    <Style Selector="Panel.bt-dock.focused PathIcon">
+      <Setter Property="Foreground" Value="{Binding $parent[UserControl].((vm:HandheldCompanionViewModel)DataContext).InGameBrush, FallbackValue={x:Null}}" />
+    </Style>
+    <Style Selector="Panel.bt-dock Border.bt-ring">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Panel.bt-dock.focused Border.bt-ring">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+    <Style Selector="Panel.bt-dock.focused">
+      <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.InGameDockFocusTransform}" />
+    </Style>
   </UserControl.Styles>
 
   <Panel x:Name="Root">
@@ -309,12 +379,140 @@
         </RadialGradientBrush>
       </Border.Background>
     </Border>
+    <!-- Big Type (M47 B8): the in-game colour, the console's mixed toward the dark, letterbox included. -->
+    <Border Background="{Binding InGameBrush}" IsVisible="{Binding ShowsBigTypeBody}" />
 
     <Viewbox Stretch="Uniform" ClipToBounds="False">
       <Grid x:Name="Canvas" Width="1240" Height="1080" ClipToBounds="False">
 
+        <!--
+          ===================== Big Type (M47 B8): the companion while a game runs, as type on the in-game colour =====================
+          The mock's in-game screen: Now playing, the title, three tabs, the session's time (or the achievements figure, or six photos),
+          the bar; the dock row keeps today's dock (All apps and the pinned apps) in the Launcher's dock style. Each part arrives and
+          leaves on HandheldCompanionMotion's clock; the whole rests to InGameRestOpacity.
+        -->
+        <Panel x:Name="BtBody" IsVisible="{Binding ShowsBigTypeBody}" RenderOptions.TextRenderingMode="Antialias" ClipToBounds="False">
+          <TextBlock x:Name="BtKicker" Classes="bt-label" Text="Now playing" Margin="{x:Static vm:HandheldTokens.InGameKickerMargin}" />
+          <Viewbox x:Name="BtTitle" Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.InGameTitleMaxWidth}"
+                   HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameTitleMargin}">
+            <TextBlock Text="{Binding InGameTitle}" FontSize="{x:Static vm:HandheldTokens.InGameTitle}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
+                       LineHeight="{x:Static vm:HandheldTokens.InGameTitleLine}"
+                       Foreground="{x:Static vm:HandheldTokens.OnColour}" LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" />
+          </Viewbox>
+          <StackPanel x:Name="BtTabs" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.InGameTabsGap}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                      Margin="{x:Static vm:HandheldTokens.InGameTabsMargin}">
+            <TextBlock Classes="bt-tab" Classes.on="{Binding IsSessionTab}" Text="Session" Tapped="OnSessionTabTapped" />
+            <TextBlock Classes="bt-tab" Classes.on="{Binding IsAchievementsTab}" Text="Achievements" Tapped="OnAchievementsTabTapped" />
+            <TextBlock Classes="bt-tab" Classes.on="{Binding IsPhotosTab}" Text="Photos" Tapped="OnPhotosTabTapped" />
+          </StackPanel>
+
+          <!-- Session: the time so far, "this session", the total and the achievements. -->
+          <Panel x:Name="BtSession" IsVisible="{Binding IsSessionTab}">
+            <vh:HandheldRollingText Text="{Binding SessionTime}" FontSize="{x:Static vm:HandheldTokens.SessionTimer}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
+                                    LineHeight="{x:Static vm:HandheldTokens.SessionTimerLine}"
+                                    Foreground="{x:Static vm:HandheldTokens.OnColour}" FontFeatures="+tnum" LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}"
+                                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameTimerMargin}" />
+            <TextBlock Classes="bt-label" Text="this session" Margin="{x:Static vm:HandheldTokens.InGameLabelMargin}" />
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameStatsMargin}">
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.InGameStatGap}">
+                <vh:HandheldRollingText Classes="bt-stat" Text="{Binding TotalTime}" />
+                <TextBlock Classes="bt-stat-label" Text="in total" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.InGameStatGap}" IsVisible="{Binding HasAchievementSet}">
+                <vh:HandheldRollingText Classes="bt-stat" Text="{Binding ProgressCount}" />
+                <TextBlock Classes="bt-stat-label" Text="achievements" />
+              </StackPanel>
+            </Grid>
+          </Panel>
+
+          <!-- Achievements: the figure, "unlocked", the three latest. A opens every badge (today's grid). -->
+          <Panel x:Name="BtAchievements" IsVisible="{Binding IsAchievementsTab}">
+            <vh:HandheldRollingText Text="{Binding ProgressCount}" IsVisible="{Binding HasAchievementSet}" FontSize="{x:Static vm:HandheldTokens.InGameFigure}"
+                                    LineHeight="{x:Static vm:HandheldTokens.InGameFigureLine}"
+                                    FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}" Foreground="{x:Static vm:HandheldTokens.OnColour}" FontFeatures="+tnum"
+                                    LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameFigureMargin}" />
+            <TextBlock Classes="bt-label" Text="{Binding UnlockedText}" Margin="{x:Static vm:HandheldTokens.InGameFigureLabelMargin}" />
+            <ItemsControl ItemsSource="{Binding RecentUnlocks}" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameRecentMargin}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:AchievementRowViewModel">
+                  <Grid ColumnDefinitions="*,Auto" Height="{x:Static vm:HandheldTokens.InGameRecentHeight}" VerticalAlignment="Top">
+                    <TextBlock Text="{Binding Title}" FontSize="{x:Static vm:HandheldTokens.InGameRecent}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                               LineHeight="{x:Static vm:HandheldTokens.InGameRecentLine}"
+                               Foreground="{x:Static vm:HandheldTokens.OnColour}" TextTrimming="CharacterEllipsis" VerticalAlignment="Top" />
+                    <TextBlock Grid.Column="1" Text="{Binding EarnedText}" FontSize="{x:Static vm:HandheldTokens.InGameRecentWhen}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}"
+                               LineHeight="{x:Static vm:HandheldTokens.InGameRecentWhenLine}"
+                               Foreground="{x:Static vm:HandheldTokens.OnColour}" Opacity="{x:Static vm:HandheldTokens.InGameRecentWhenOpacity}" VerticalAlignment="Top"
+                               Margin="{x:Static vm:HandheldTokens.InGameRecentWhenMargin}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Panel>
+
+          <!-- Photos: six, two rows of three; A opens the viewer (today's). -->
+          <Panel x:Name="BtPhotos" IsVisible="{Binding IsPhotosTab}">
+            <ItemsControl ItemsSource="{Binding Shots}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameShotsMargin}"
+                          Width="{x:Static vm:HandheldTokens.InGameShotsWidth}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel ItemWidth="{x:Static vm:HandheldTokens.InGameShotPitchX}" ItemHeight="{x:Static vm:HandheldTokens.InGameShotPitchY}" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:HandheldCompanionShotViewModel">
+                  <Border Width="{x:Static vm:HandheldTokens.InGameShotWidth}" Height="{x:Static vm:HandheldTokens.InGameShotHeight}" CornerRadius="{x:Static vm:HandheldTokens.InGameShotCorner}"
+                          ClipToBounds="True" Background="{x:Static vm:HandheldTokens.TileRest}" HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <Panel>
+                      <Image Source="{Binding Image}" Stretch="UniformToFill" IsVisible="{Binding HasImage}" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Play}" Width="{x:Static vm:HandheldTokens.InGameShotGlyph}" Height="{x:Static vm:HandheldTokens.InGameShotGlyph}"
+                                Foreground="{x:Static vm:HandheldTokens.OnColour}" IsVisible="{Binding IsVideo}" />
+                    </Panel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="bt-label" Text="{Binding ShotsText}" Margin="{x:Static vm:HandheldTokens.InGameShotsLabelMargin}" />
+          </Panel>
+
+          <!-- The achievements bar: white over white at BarTrackOpacity, its fill stretching on SessionAchievementBar. -->
+          <Border x:Name="BtBar" Height="{x:Static vm:HandheldTokens.ProgressHeight}" CornerRadius="{x:Static vm:HandheldTokens.InGameBarCorner}" ClipToBounds="True"
+                  Background="{x:Static vm:HandheldTokens.InGameBarTrack}" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameBarMargin}" IsVisible="{Binding HasAchievementSet}">
+            <Border x:Name="BtBarFill" HorizontalAlignment="Left" Width="0" CornerRadius="{x:Static vm:HandheldTokens.InGameBarCorner}" Background="{x:Static vm:HandheldTokens.OnColour}" />
+          </Border>
+
+          <!-- The dock row: today's dock (All apps, the five pinned apps) as the Launcher's dock buttons, and the way back in the corner. -->
+          <ItemsControl x:Name="BtDock" ItemsSource="{Binding DockItems}" HorizontalAlignment="Center" VerticalAlignment="Bottom" ClipToBounds="False"
+                        Margin="{x:Static vm:HandheldTokens.InGameDockMargin}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockGap}" ClipToBounds="False" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HandheldCompanionDockItemViewModel">
+                <Panel Classes="bt-dock" Classes.focused="{Binding IsFocused}" Width="{x:Static vm:HandheldTokens.DockTile}" Height="{x:Static vm:HandheldTokens.DockTile}"
+                       Background="Transparent" ai:InputElement.IsHoldingEnabled="True" Tapped="OnDockItemTapped" Holding="OnDockItemHolding">
+                  <Border Classes="bt-dock-face" CornerRadius="{x:Static vm:HandheldTokens.DockRadius}">
+                    <Panel>
+                      <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="{x:Static vm:HandheldTokens.GlyphDock}" Height="{x:Static vm:HandheldTokens.GlyphDock}" IsVisible="{Binding IsAllApps}" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="{x:Static vm:HandheldTokens.GlyphDock}" Height="{x:Static vm:HandheldTokens.GlyphDock}" IsVisible="{Binding Slot.IsEmpty, FallbackValue=False}" />
+                      <Border CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon, FallbackValue=False}">
+                        <Image Source="{Binding Slot.Icon}" Stretch="Uniform" />
+                      </Border>
+                    </Panel>
+                  </Border>
+                  <Border Classes="bt-ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusDock}" Margin="{x:Static vm:HandheldTokens.RingOutsetDock}"
+                          BorderBrush="{x:Static vm:HandheldTokens.OnColour}" BorderThickness="{x:Static vm:HandheldTokens.InGameRingThickness}" />
+                </Panel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <TextBlock x:Name="BtWayBack" Classes="bt-corner" Text="{x:Static vm:HandheldTokens.InGameWayBack}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                     Margin="{x:Static vm:HandheldTokens.InGameCornerMargin}" />
+        </Panel>
+
         <!-- ===================== The companion while a game runs ===================== -->
-        <Grid x:Name="Body" RowDefinitions="*,144" IsVisible="{Binding IsGameRunning}" ClipToBounds="False">
+        <Grid x:Name="Body" RowDefinitions="*,144" IsVisible="{Binding ShowsClassicBody}" ClipToBounds="False">
           <Grid.RenderTransform>
             <TranslateTransform />
           </Grid.RenderTransform>
@@ -836,7 +1034,7 @@
       After a few seconds alone the companion dims to a faint cover and title, easy on a panel prone to burn-in. It takes
       the waking touch (only while it is up), so the first touch never lands on whatever is under the finger.
     -->
-    <Panel x:Name="RestLayer" Classes.on="{Binding IsResting}" Background="{x:Static vm:HandheldTokens.CompanionRestGround}" Tapped="OnRestTapped">
+    <Panel x:Name="RestLayer" Classes.on="{Binding ShowsClassicRest}" Background="{x:Static vm:HandheldTokens.CompanionRestGround}" Tapped="OnRestTapped">
       <Viewbox Stretch="Uniform">
         <Panel x:Name="RestCanvas" Width="1240" Height="1080">
           <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="24">

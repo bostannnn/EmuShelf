@@ -955,6 +955,12 @@ public partial class HandheldShellViewModelTests
     private static async Task DesignOpenTitleAsync(HandheldShellViewModel shell, string title)
     {
         DesignFocusFolder(shell, DesignIndexIn(shell, title));
+        // Big Type has no Title page (M47 B8, A plays): its frames show the game focused in the grid, its facts on the Stage.
+        if (HandheldTokens.IsBigType)
+        {
+            shell.SettleStage();
+            return;
+        }
         Press(shell, GamepadAction.Confirm);
         Assert.True(shell.IsTitleOpen);
         for (var i = 0; i < 100 && shell.TitlePage!.Details is null; i++)
@@ -1104,6 +1110,12 @@ public partial class HandheldShellViewModelTests
             return;
         using var rig = await DesignRigAsync();
         var shell = rig.Shell;
+        if (HandheldTokens.IsBigType)
+        {
+            await DesignTitlesBigTypeAsync(rig);
+            await DesignCompanionAsync(rig);
+            return;
+        }
 
         DesignOpenHome(shell, 1);
         await DesignOpenTitleAsync(shell, "Okami");
@@ -1153,7 +1165,77 @@ public partial class HandheldShellViewModelTests
         await DesignPairAsync(rig, "title-launching", "Launching: the cover and progress while the emulator starts");
         launch.SetResult(true);
         await DesignSettleAsync();
+        await DesignCompanionAsync(rig);
+    }
 
+    /// <summary>
+    /// The Title page's frames under Big Type (M47 B8), which has no Title page: A on a game plays. Each frame keeps its name and shows
+    /// where that moment now is: the game focused in the grid with its facts on the Stage (the page's facts), its Y sheet (the page's
+    /// buttons and its disc), the "Which screen?" sheet (the screen chooser), and the launch at rest (held by a pending launch).
+    /// </summary>
+    private static async Task DesignTitlesBigTypeAsync(DesignRig rig)
+    {
+        var shell = rig.Shell;
+        DesignOpenHome(shell, 1);
+        await DesignOpenTitleAsync(shell, "Okami");
+        await DesignPairAsync(rig, "title-fanart", "Big Type: Okami focused, its facts under its name (no Title page)");
+        Press(shell, GamepadAction.Actions);
+        Assert.NotNull(shell.Sheet);
+        var achievements = shell.Sheet!.Items.ToList().FindIndex(item => item.Label == "Achievements");
+        Press(shell, GamepadAction.NavigateDown, Math.Max(0, achievements));
+        await DesignPairAsync(rig, "title-achievements-button-focused", "Big Type: Okami's Y sheet, Achievements focused");
+        Press(shell, GamepadAction.Cancel);
+        Press(shell, GamepadAction.Actions);
+        await DesignPairAsync(rig, "title-actions-sheet", "Big Type: Okami's Y sheet (Play first)");
+        Press(shell, GamepadAction.Cancel);
+        await DesignOpenTitleAsync(shell, "Shadow of the Colossus");
+        await DesignPairAsync(rig, "title-fanart-logo", "Big Type: Shadow of the Colossus focused");
+        await DesignOpenTitleAsync(shell, "Ico");
+        await DesignPairAsync(rig, "title-cover-fallback", "Big Type: Ico focused");
+        await DesignOpenTitleAsync(shell, "Katamari Damacy");
+        await DesignPairAsync(rig, "title-no-cover", "Big Type: a game with no cover focused");
+        DesignCloseAll(shell);
+
+        DesignOpenHome(shell, 4);
+        await DesignOpenTitleAsync(shell, "Final Fantasy VII");
+        await DesignPairAsync(rig, "title-multi-disc", "Big Type: Final Fantasy VII focused, its disc in the facts");
+        Press(shell, GamepadAction.Actions);
+        var disc = shell.Sheet!.Items.ToList().FindIndex(item => item.Label.StartsWith("Disc", StringComparison.Ordinal) || item.Label.StartsWith("Choose disc", StringComparison.Ordinal));
+        Press(shell, GamepadAction.NavigateDown, Math.Max(0, disc));
+        await DesignPairAsync(rig, "title-disc-chooser", "Big Type: the disc as a row of the Y sheet");
+        Press(shell, GamepadAction.Cancel);
+
+        // A on a console set to ask: the "Which screen?" sheet.
+        await DesignOpenTitleAsync(shell, "Metal Gear Solid");
+        Press(shell, GamepadAction.Confirm);
+        for (var i = 0; i < 100 && shell.Sheet is null; i++)
+            await Task.Delay(10);
+        Assert.Equal("Which screen?", shell.Sheet!.Title);
+        await DesignPairAsync(rig, "title-screen-chooser", "Big Type: Which screen? as a sheet, Top screen focused");
+        Press(shell, GamepadAction.NavigateDown);
+        await DesignPairAsync(rig, "title-screen-chooser-bottom-focused", "Big Type: Which screen?, Bottom screen focused");
+        Press(shell, GamepadAction.Cancel);
+        Assert.Null(shell.TitlePage);
+
+        // Launching: held by a pending launch; the frame is the launch at rest (the takeover has covered the Stage, the title landed).
+        await DesignOpenTitleAsync(shell, "Final Fantasy VII");
+        var launch = new TaskCompletionSource<bool>();
+        rig.Data.Library.PendingLaunch = launch;
+        Press(shell, GamepadAction.Confirm);
+        for (var i = 0; i < 100 && shell.TitlePage is not { IsLaunching: true }; i++)
+            await Task.Delay(10);
+        Assert.True(shell.TitlePage!.IsLaunching);
+        Assert.NotNull(shell.Playing);
+        await DesignPairAsync(rig, "title-launching", "Big Type: the launch at rest, the takeover in the console's colour, the grid gone");
+        launch.SetResult(true);
+        await DesignSettleAsync();
+    }
+
+    /// <summary>The companion while the game runs (the Big Type look shows its own: the tabs, as the mock).</summary>
+    private static async Task DesignCompanionAsync(DesignRig rig)
+    {
+        var shell = rig.Shell;
+        var bigType = HandheldTokens.IsBigType;
         var companion = shell.CompanionScreen!;
         rig.Data.Companion.IsGameRunning = true;
         rig.Data.Companion.Overlay = SecondScreenOverlayKind.Achievements;
@@ -1162,16 +1244,31 @@ public partial class HandheldShellViewModelTests
         window.Show();
         try
         {
+            if (bigType)
+            {
+                // Big Type (M47 B8): the companion opens on Session; the frames keep their names, each on its tab.
+                companion.StepTab(1);
+            }
             await DesignDumpAsync((window, "handheld-companion-ingame-achievements-bottom",
                 "Companion (in game, bottom screen): now playing, achievement ring, recent unlocks, dock"));
             companion.Dispatch(GamepadAction.NextPlatform);
+            if (bigType)
+                companion.Wake();
             await DesignDumpAsync((window, "handheld-companion-ingame-photos-bottom", "Companion (in game): Photos tab (screenshots)"));
             companion.Dispatch(GamepadAction.PreviousPlatform);
             companion.Dispatch(GamepadAction.Confirm);
+            if (bigType)
+                companion.Wake();
             await DesignDumpAsync((window, "handheld-companion-ingame-badges-bottom", "Companion (in game): the full badge grid"));
             companion.Dispatch(GamepadAction.Cancel);
+            if (bigType)
+                companion.StepTab(-1);
             companion.Dispatch(GamepadAction.NavigateDown);
-            await DesignDumpAsync((window, "handheld-companion-ingame-dock-bottom", "Companion (in game): dock focused"));
+            // Big Type rests after 9 s (tokens.js InGameRest): each frame is of the companion lit, as a press leaves it.
+            if (bigType)
+                companion.Wake();
+            await DesignDumpAsync((window, "handheld-companion-ingame-dock-bottom",
+                bigType ? "Companion (in game): the Session tab, the dock focused" : "Companion (in game): dock focused"));
             companion.Dispatch(GamepadAction.NavigateUp);
 
             // The game ends: All apps over the Launcher in its light look, with the Stage beside it.

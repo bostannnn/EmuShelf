@@ -195,12 +195,15 @@ public static class BigTypeMotion
         1f + ((BreathScale - 1f) * alive * Swing(sinceLanded, BreathPeriodMilliseconds));
 
     /// <summary>The ring's pop on arriving at another page: its scale and opacity <paramref name="since"/> ms in.</summary>
-    public static (float Scale, float Opacity) Pop(float since)
+    public static (float Scale, float Opacity) Pop(float since) => Pop(since, PopFromScale);
+
+    /// <summary>The ring's pop from <paramref name="from"/> times its size (M47 B8: a folder's first game pops it from 1.3).</summary>
+    public static (float Scale, float Opacity) Pop(float since, float from)
     {
         if (since >= PopMilliseconds)
             return (1f, 1f);
         var e = Land(Math.Max(0f, since) / PopMilliseconds);
-        return (PopFromScale + ((1f - PopFromScale) * e), Math.Clamp(e, 0f, 1f));
+        return (from + ((1f - from) * e), Math.Clamp(e, 0f, 1f));
     }
 
     // ---- The lift, the neighbours and the bob ----

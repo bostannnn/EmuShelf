@@ -13,7 +13,7 @@ namespace EmuShelf.Rendering.Stage;
 /// in position, size and radius, drawn as rounded-rect bands, over its breathing glow), the edge bump, and
 /// the folder's Zoom through. Nothing is laid out or blurred here.
 /// </summary>
-public sealed class LauncherCompositor : INativeScene
+public sealed partial class LauncherCompositor : INativeScene
 {
     private readonly GL _gl;
     private readonly GlProgram _sprites;
@@ -121,6 +121,7 @@ public sealed class LauncherCompositor : INativeScene
         public FolderArtState PendingState { get; set; } = FolderArtState.Closed;
         public float LaunchStart { get; set; } = float.NegativeInfinity;
         public bool LaunchDown { get; set; }
+        public bool LaunchBigType { get; set; }
         public float LiftFrom { get; set; } = 1f;
         public float LiftTo { get; set; } = 1f;
         public float LiftStart { get; set; } = float.NegativeInfinity;
@@ -198,6 +199,15 @@ public sealed class LauncherCompositor : INativeScene
                 _folderOpen = folder.Open;
                 _bt.HopGrid = folder.Open ? LauncherGroup.Folder : LauncherGroup.Home;
                 break;
+            case LauncherZoomCommand zoom when _bigType:
+                ApplyBigTypeFolder(zoom, now);
+                break;
+            case LauncherPlayCommand play:
+                ApplyPlay(play, now);
+                break;
+            case LauncherLettersCommand letters:
+                ApplyLetters(letters, now);
+                break;
             case LauncherZoomCommand zoom:
                 _zoomOpening = zoom.Open;
                 _zoomStart = now;
@@ -233,6 +243,7 @@ public sealed class LauncherCompositor : INativeScene
                 {
                     launching.LaunchStart = now;
                     launching.LaunchDown = launch.Downward;
+                    launching.LaunchBigType = launch.BigType;
                 }
                 break;
             case LauncherBumpCommand bump:
@@ -249,7 +260,10 @@ public sealed class LauncherCompositor : INativeScene
                 }
                 else if (to != (_waves.Count > 0 ? _waves[^1].Colour : _groundTo.Value))
                 {
-                    _waves.Add(new FloodWave(to, now));
+                    _waves.Add(new FloodWave(to, now)
+                    {
+                        Origin = ground.FromMiddle ? new Vector2(_layout.CanvasWidth / 2f, _layout.CanvasHeight / 2f) : null,
+                    });
                 }
                 break;
         }
@@ -337,6 +351,9 @@ public sealed class LauncherCompositor : INativeScene
             {
                 BigType = _bigType,
             };
+            // A folder opening (M47 B8): its count rolls in from nothing as the folder shows (the mock's roll(fcount, n)).
+            if (FolderCountRollStart(sprite, now) is { } rollStart)
+                state.Roll = (0, sprite.Image, new StageText([]), rollStart);
             if (sprite.Id == _focused && sprite.Liftable)
             {
                 state.LiftFrom = state.LiftTo = sprite.LiftTo;
@@ -484,7 +501,7 @@ public sealed class LauncherCompositor : INativeScene
         var flooding = _waves.Count > 0 && DrawFlood(now, sx, sy, surfaceHeight);
         animating |= flooding;
         _probeTag = flooding ? "flood" : null;
-        var zoom = Zoom(now);
+        var zoom = _bigType ? BigTypeZoom(now) : Zoom(now);
         animating |= zoom.Animating;
 
         // A Title page covers everything under it with its own opaque background.
@@ -507,7 +524,9 @@ public sealed class LauncherCompositor : INativeScene
         DrawGroup(LauncherGroup.Background, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
         DrawGroup(LauncherGroup.Home, now, zoom.HomeOpacity, 1f, Vector2.Zero, _layout.HomeClip, sx, sy, surfaceHeight, zoom);
         DrawGroup(LauncherGroup.Dots, now, zoom.HomeOpacity, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
-        if (_closing.Count > 0)
+        if (_bigType)
+            DrawBigTypeFolder(now, zoom, sx, sy, surfaceHeight);
+        else if (_closing.Count > 0)
         {
             if (zoom.Animating && !_zoomOpening)
                 DrawSprites(_closing, now, zoom.SheetOpacity, zoom.SheetScale, _zoomOrigin, _layout.FolderClip, sx, sy, surfaceHeight);
@@ -517,14 +536,14 @@ public sealed class LauncherCompositor : INativeScene
                 _closing = [];
             }
         }
-        if (_folderOpen || (zoom.Animating && _zoomOpening))
+        if (!_bigType && (_folderOpen || (zoom.Animating && _zoomOpening)))
             DrawGroup(LauncherGroup.Folder, now, zoom.SheetOpacity, zoom.SheetScale, _zoomOrigin, _layout.FolderClip, sx, sy, surfaceHeight);
         DrawGroup(LauncherGroup.Dock, now, 1f, 1f, Vector2.Zero, null, sx, sy, surfaceHeight);
 
         animating |= DrawSelector(now);
         animating |= _live.Values.Any(s => now - s.LiftStart < s.LiftMilliseconds || s.Folder?.IsAnimating(now) == true || s.Roll is not null);
         if (_bigType)
-            animating |= _bt.IsMoving(now, hops: !zoom.Animating);
+            animating |= _bt.IsMoving(now, hops: !zoom.Animating) || LettersMoving(now);
 
         _gl.Disable(EnableCap.ScissorTest);
         _gl.BindVertexArray(0);
@@ -611,7 +630,15 @@ public sealed class LauncherCompositor : INativeScene
             var lift = sprite.Liftable ? state.Lift(now) : 1f;
             var spriteOpacity = opacity;
             var sinceLaunch = float.IsNegativeInfinity(state.LaunchStart) ? float.NaN : now - state.LaunchStart;
-            if (sinceLaunch >= 0 && sinceLaunch < LaunchMilliseconds)
+            if (_bigType)
+            {
+                // M47 B8: a folder opening or closing, the launch's flight and the shelf coming back pose each tile.
+                if (!BigTypePose(state, now, sinceLaunch, ref offset, ref lift, ref spriteOpacity))
+                    continue;
+                if (DrawLetters(state, now, spriteOpacity))
+                    continue;
+            }
+            else if (sinceLaunch >= 0 && sinceLaunch < LaunchMilliseconds)
             {
                 var (launchScale, launchY, launchOpacity) = Launch(sinceLaunch / LaunchMilliseconds);
                 lift *= launchScale;
@@ -770,6 +797,9 @@ public sealed class LauncherCompositor : INativeScene
         _breathing = false;
         if (!_selectorShown || _target is null)
             return false;
+        // Big Type's moves (M47 B8): the ring waits while the grid moves, then pops in or simply lands.
+        if (_bigType && BigTypeRingWaits(now))
+            return true;
         var animating = false;
         var hidden = now - _hiddenSince;
         var opacity = 1f;
@@ -860,6 +890,7 @@ public sealed class LauncherCompositor : INativeScene
     {
         DeleteAll(_live.Values);
         DeleteAll(_closing);
+        DisposeLetters();
         _live.Clear();
         _closing.Clear();
         if (_glowTexture != 0)

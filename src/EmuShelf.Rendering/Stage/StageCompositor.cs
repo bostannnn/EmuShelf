@@ -20,7 +20,7 @@ namespace EmuShelf.Rendering.Stage;
 /// Not thread-safe: the host applies commands and draws on its render thread. <paramref name="requestRender"/>
 /// may be called from any thread (a shell finished loading).
 /// </remarks>
-public sealed class StageCompositor : INativeScene, IProbedScene
+public sealed partial class StageCompositor : INativeScene, IProbedScene
 {
     /// <summary>The Stage's canvas on the 16:9 screen; the backdrops are drawn at this size.</summary>
     public const float WideCanvasWidth = 1920f;
@@ -387,6 +387,15 @@ public sealed class StageCompositor : INativeScene, IProbedScene
                 }
                 break;
             }
+            case StageTakeoverCommand takeover:
+                ApplyTakeover(takeover, now);
+                break;
+            case StageTakeoverStatusCommand status:
+                ApplyTakeoverStatus(status, now);
+                break;
+            case StageShakeCommand shake:
+                _shakes[shake.Key] = now;
+                break;
             case StageInkCommand ink:
                 _ink = ink;
                 // The dark ink belongs to what is on top; a backdrop that has gone beneath a wipe keeps the one it was drawn with.
@@ -730,8 +739,10 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         {
             // The FBO's first row is the bottom of the picture. It pops about its own middle: the canvas's middle in today's
             // look, where the medium's box is centred on it; its corner's middle in Big Type's.
-            DrawQuad(_mediumTexture, medium.X, medium.Y, medium.Width, medium.Height, content,
-                centreScale, medium.X + (medium.Width / 2f), medium.Y + (medium.Height / 2f), new Vector4(0, 1, 1, 0));
+            // Big Type's launch bumps the case as the tile arrives (M47 B8).
+            var (bump, rise) = CaseBump(now, ref animating);
+            DrawQuad(_mediumTexture, medium.X, medium.Y - rise, medium.Width, medium.Height, content,
+                centreScale * bump, medium.X + (medium.Width / 2f), medium.Y - rise + (medium.Height / 2f), new Vector4(0, 1, 1, 0));
         }
         else if (_folder is { } folder)
         {
@@ -743,7 +754,11 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         {
             // Big Type's centre is a flat cover in its corner (or a card): it pops about its own middle.
             if (_ink is not null)
-                DrawLayer(art, content, centreScale, art.Image.X + (art.Image.Width / 2f), art.Image.Y + (art.Image.Height / 2f));
+            {
+                var (bump, rise) = CaseBump(now, ref animating);
+                DrawQuad(art.Texture, art.Image.X, art.Image.Y - rise, art.Image.Width, art.Image.Height, content, centreScale * bump,
+                    art.Image.X + (art.Image.Width / 2f), art.Image.Y - rise + (art.Image.Height / 2f), new Vector4(0, 0, 1, 1));
+            }
             else
                 DrawLayer(art, content, centreScale, _canvasWidth / 2f, StageCurves.CentrePivotY);
         }
@@ -808,12 +823,14 @@ public sealed class StageCompositor : INativeScene, IProbedScene
                 if (rolling is not null && rolling.TryGetValue(key, out var pieces))
                     DrawRoll(chrome, _rolls[key].Old, pieces, tint, fit);
                 else
-                    DrawLayer(chrome, 1f, 1f, 0, 0, tint: tint);
+                    DrawLayer(chrome, 1f, 1f, 0, 0, ShakeOf(key, now, ref animating), tint: tint);
             }
         }
         Clip(null);
 
         Section("chrome");
+        // Big Type's launch (M47 B8): the takeover over everything.
+        animating |= DrawTakeover(now, fit);
         LastSections = _sections?.ToString();
         _drawnDeep = _backdrop?.Deep;
         _probeTag = _bigType ? ProbeTagOf(lettersMoving, wiping && _beneath.Count > 0) : null;
@@ -1622,6 +1639,7 @@ public sealed class StageCompositor : INativeScene, IProbedScene
         ReplaceHero(null);
         DeleteLayers(_leavingHero);
         Replace(ref _fly, null, false);
+        DisposeTakeover();
         foreach (var state in _beneath)
             DeleteBackdrop(state);
         _beneath.Clear();

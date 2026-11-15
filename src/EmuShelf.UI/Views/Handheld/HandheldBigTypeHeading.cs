@@ -106,6 +106,23 @@ public sealed class HandheldBigTypeHeading : Control
         RequestFrame();
     }
 
+    /// <summary>
+    /// The heading as the native Launcher draws it (M47 B8: a folder's name landing on the native Launcher): one atlas of its distinct
+    /// letters and each letter's place, the control's top left at <paramref name="origin"/> on the Launcher's canvas. Null with no text.
+    /// </summary>
+    internal BigTypeLetters? Letters(Point origin)
+    {
+        if (Layout is not { } fitted || string.IsNullOrEmpty(Text))
+            return null;
+        var placed = new List<HandheldLetterAtlas.Placed>(fitted.Letters.Count);
+        for (var i = 0; i < fitted.Letters.Count; i++)
+            placed.Add(new HandheldLetterAtlas.Placed(fitted.Letters[i].Text, fitted.Letters[i].Origin, i));
+        return HandheldLetterAtlas.Build(Text, placed, fitted.Typeface, fitted.Size, origin);
+    }
+
+    /// <summary>Whether the letters are still landing (the native feed pictures the heading whole once they have).</summary>
+    internal bool IsArriving => _arrival is not null;
+
     protected override Size MeasureOverride(Size availableSize) =>
         Layout is { } fitted ? new Size(fitted.Width, fitted.LineHeight) : default;
 

@@ -37,7 +37,9 @@ public partial class HandheldShellViewModel
     private void UpdateGround()
     {
         // Settings has its own colour while it is open (M47 B7, the mock's focusSet: SETC); closing it, the focus's comes back.
-        Color? colour = HandheldTokens.IsBigType && Settings is not null ? HandheldTokens.AppGround : Zone switch
+        // While a game runs (M47 B8, the mock's launch) the Launcher is the in-game colour from the takeover until the shelf comes back.
+        Color? colour = Playing is { IsTakenOver: true } play ? play.InGameColour
+            : HandheldTokens.IsBigType && Settings is not null ? HandheldTokens.AppGround : Zone switch
         {
             HandheldZone.Grid when OpenFolder is { } folder => folder.SelectedTile switch
             {
@@ -51,6 +53,7 @@ public partial class HandheldShellViewModel
         };
         if (colour is { } ground && ground != LauncherGround)
         {
+            MiddleFloodGround = _returningFromPlay ? ground : null;
             LauncherGround = ground;
             LauncherGroundBrush = HandheldTokens.GroundBrush(ground);
         }

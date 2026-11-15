@@ -283,6 +283,13 @@ internal sealed partial class HandheldLauncherMotion
                     OnFolderOpening(folder);
                 WatchFolder(folder);
                 break;
+            // Big Type (M47 B8): the game ended and its parts have left; home's tiles pop in around the focused one.
+            case nameof(HandheldShellViewModel.Playing) when _shell?.Playing is null && _gridMove is { Kind: GridMoveKind.Launch }:
+                if (_onScreen)
+                    ReturnBigType();
+                else
+                    EndGridMove();
+                break;
         }
         UpdateLists();
         if (e.PropertyName == nameof(HandheldShellViewModel.LauncherGroundBrush))
@@ -372,6 +379,12 @@ internal sealed partial class HandheldLauncherMotion
         _folderOrigin = HomeSlotCentre(folder) ?? new Point(PageWidth / 2, 400);
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): home's tiles fall away, the games deal in; no zoom.
+        if (HandheldTokens.IsBigType)
+        {
+            OpenFolderBigType(folder);
+            return;
+        }
         HideSelector();
         var ease = HandheldMotion.ZoomEase();
         if (HomeSlotContainer(folder) is { } slot)
@@ -407,6 +420,12 @@ internal sealed partial class HandheldLauncherMotion
         ++_zoom;
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): the games drop out, home's tiles pop back in; no zoom.
+        if (HandheldTokens.IsBigType)
+        {
+            CloseFolderBigType(folder);
+            return;
+        }
         HideSelector();
         var origin = HomeSlotCentre(folder) ?? _folderOrigin;
         var page = Ghost(_folderPage);
@@ -516,6 +535,12 @@ internal sealed partial class HandheldLauncherMotion
     {
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): the focused tile flies up through the hinge and the grid goes as the takeover starts.
+        if (HandheldTokens.IsBigType)
+        {
+            LaunchBigType();
+            return;
+        }
         Dispatcher.UIThread.Post(() =>
         {
             var total = HandheldMotion.PressMilliseconds + HandheldMotion.LaunchLiftMilliseconds;
@@ -573,6 +598,7 @@ internal sealed partial class HandheldLauncherMotion
             moving |= StepArrivals();
             moving |= StepUnder();
             moving |= StepGround();
+            moving |= StepGridMove();
             // The neighbours' push before the ring: the tile the focus lands on may still be settling back from its own push, and the
             // ring must take its target from where the tile is this frame, or it rests a fraction of a pixel off (M47 B7).
             moving |= StepPushes();

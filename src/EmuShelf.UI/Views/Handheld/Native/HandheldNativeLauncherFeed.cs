@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System;
 using System.Collections.Generic;
 using System.Collections.Specialized;
@@ -64,6 +65,7 @@ internal sealed class HandheldNativeLauncherFeed
     // Big Type's parts (M47 B3): the folder's name and count, the dock row's corners.
     private readonly Control _btBackShot;
     private readonly Control _btFolderCount;
+    private readonly HandheldBigTypeHeading _btFolderName;
     private readonly Control _btSortShot;
     private readonly Control _btSwap;
     private readonly Control _btPage;
@@ -158,6 +160,7 @@ internal sealed class HandheldNativeLauncherFeed
         _launchProgress = Find("LaunchProgress");
         _btBackShot = Find("BtBackShot");
         _btFolderCount = Find("BtFolderCount");
+        _btFolderName = (HandheldBigTypeHeading)Find("BtFolderName");
         _btSortShot = Find("BtSortShot");
         _btSwap = Find("BtSwap");
         _btPage = Find("BtPage");
@@ -367,6 +370,13 @@ internal sealed class HandheldNativeLauncherFeed
                 WatchFolder(folder);
                 Schedule();
                 break;
+            // Big Type (M47 B8): the game ended and the companion's parts have left: the shelf comes back.
+            case nameof(HandheldShellViewModel.Playing) when _shell?.Playing is null && _playSent:
+                _playSent = false;
+                if (_active && !IsPaused)
+                    _host.Post(new LauncherPlayCommand(false, Animate: _shell?.HoldsStill != true));
+                Schedule();
+                break;
             default:
                 Schedule();
                 break;
@@ -418,9 +428,34 @@ internal sealed class HandheldNativeLauncherFeed
     // The cover lifts off once its picture is on the native side (the next sync sends it, then the lift).
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
+        // Big Type (M47 B8): the focused tile flies up through the hinge, and the grid goes as the Stage's takeover starts.
+        if (HandheldTokens.IsBigType)
+        {
+            // A launch while the Avalonia Launcher has the screen (a sheet's rows leaving) is sent when the native one has it again.
+            if (_active && !IsPaused)
+                SendPlay();
+            return;
+        }
         _launchPending = true;
         Schedule();
     }
+
+    // Whether the native side was told a game launched (it is told when the shelf comes back).
+    private bool _playSent;
+
+    // The launch (M47 B8): the focused tile flies, the grid goes as the takeover starts.
+    private void SendPlay()
+    {
+        if (_playSent || _shell is not { Playing: { IsEnding: false } })
+            return;
+        if (_focusSent?.SpriteId is { } tile)
+            _host.Post(new LauncherLaunchCommand(tile, Downward: IsWide, BigType: true));
+        _host.Post(new LauncherPlayCommand(true, Animate: _shell.HoldsStill != true));
+        _playSent = true;
+    }
+
+    // The folder's name whose letters were sent (M47 B8).
+    private string? _lettersSent;
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) => Schedule();
 
@@ -455,7 +490,12 @@ internal sealed class HandheldNativeLauncherFeed
         _host.Post(new LauncherZoomCommand(true, id, (float)origin.X, (float)origin.Y));
         _host.Post(new LauncherFolderCommand(true));
         _folderOpenSent = true;
+        _folderOpenedAt = Stopwatch.GetTimestamp();
+        _lettersSent = null;
     }
+
+    // When the last folder opened on this Launcher (its name's letters land only then, not on a catch-up).
+    private long? _folderOpenedAt;
 
     private void OnFolderClosing(HandheldFolderViewModel folder)
     {
@@ -466,6 +506,11 @@ internal sealed class HandheldNativeLauncherFeed
         _host.Post(new LauncherZoomCommand(false, id, (float)origin.X, (float)origin.Y));
         _host.Post(new LauncherFolderCommand(false));
         _folderOpenSent = false;
+        if (_lettersSent is not null)
+        {
+            _lettersSent = null;
+            _host.Post(new LauncherLettersCommand("f-back", null, 0f, Animate: false));
+        }
     }
 
     // What the native side was last told about an open folder (a hidden Launcher catches up without the zoom).
@@ -583,6 +628,17 @@ internal sealed class HandheldNativeLauncherFeed
                 SnapColumn: _tracksSent is null || columnJump || shell.OpenFolder?.IsResorting == true));
             _tracksSent = tracks;
         }
+        // Big Type (M47 B8): a launch that came while the Avalonia Launcher had the screen; a shelf that came back meanwhile.
+        if (HandheldTokens.IsBigType)
+        {
+            if (shell.Playing is not null)
+                SendPlay();
+            else if (_playSent)
+            {
+                _playSent = false;
+                _host.Post(new LauncherPlayCommand(false, Animate: false));
+            }
+        }
         // Catching up (shown again for a swap, or a new shape): the selector and the lift are already where the focus
         // is when the screen comes into view, rather than gliding from where they were before it was hidden.
         SyncFocus(instant: repictured || _catchUpPending, pop: paged && HandheldTokens.IsBigType);
@@ -663,8 +719,9 @@ internal sealed class HandheldNativeLauncherFeed
             return;
         var flood = _groundSent is not null && !instant && !shell.HoldsStill;
         _groundSent = colour;
-        // The compositor writes sRGB values straight out, as the view's brush does.
-        _host.Post(new LauncherGroundCommand(colour.R / 255f, colour.G / 255f, colour.B / 255f, flood));
+        // The compositor writes sRGB values straight out, as the view's brush does. The shelf coming back after a game floods from the
+        // middle (M47 B8, the mock's endPlay).
+        _host.Post(new LauncherGroundCommand(colour.R / 255f, colour.G / 255f, colour.B / 255f, flood, FromMiddle: shell.MiddleFloodGround == colour));
     }
 
     /// <summary>The ring for the look: today's three bands, or Big Type's one white band of <c>shape.RingStroke</c>.</summary>
@@ -854,6 +911,14 @@ internal sealed class HandheldNativeLauncherFeed
         {
             // The name is Back's place and the sort's value sits in the dock row's corner: the ring frames them, nothing lifts.
             Liftable("f-back", folder.Name, _btBackShot, LauncherGroup.Folder, LauncherTrack.None, 0, present, lift: 1f);
+            // Its letters land as it opens (M47 B8): the native side draws them in the name's place until they have.
+            if (_lettersSent != folder.Name && _btFolderName.Layout is not null &&
+                HandheldStageShots.ToCanvas(_btFolderName, default, _canvas) is { } nameAt)
+            {
+                _lettersSent = folder.Name;
+                _host.Post(new LauncherLettersCommand("f-back", _btFolderName.Letters(nameAt), (float)HandheldTokens.HeadingInFromEm,
+                    Animate: !shell.HoldsStill && _folderOpenedAt is { } opened && Stopwatch.GetElapsedTime(opened).TotalMilliseconds < 1000));
+            }
             Static("f-count", folder.CountNumber, present,
                 () => Text(Sprite("f-count", HandheldStageShots.Shot(_btFolderCount, _canvas), LauncherGroup.Folder), _btFolderCount));
             if (folder.CanSort)
@@ -908,7 +973,8 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void SyncTitle(HandheldShellViewModel shell, HashSet<string> present)
     {
-        if (shell.TitlePage is not { } page)
+        // Big Type has no Title page to draw (M47 B8): the page is only the launch's state.
+        if (!shell.ShowsTitlePage || shell.TitlePage is not { } page)
         {
             if (_sent.ContainsKey("t-bg"))
                 _host.Post(new LauncherProgressCommand(null));

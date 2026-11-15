@@ -138,6 +138,29 @@ public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, St
 /// arrives from its top edge.</remarks>
 public sealed record StageLaunchCommand(StageImage? Cover, bool FromAbove = false) : StageCommand;
 
+/// <summary>
+/// The launch's takeover under the Big Type look (M47 B8, the mock's <c>.launch</c>): <paramref name="Colour"/> (straight sRGB, 0 to 1)
+/// takes the Stage over through a circle from the case (<see cref="BigType.BigTypeLaunchMotion.TakeoverRadiusAt"/>), and the title's
+/// letters (<paramref name="Title"/>, white) land in it, timed from the press that launched, <paramref name="Elapsed"/> ms before the
+/// command. With <paramref name="Ending"/> the game ended: it fades. A null colour takes it away; without <paramref name="Animate"/> (a
+/// replay, holding still) it is simply there.
+/// </summary>
+public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true)
+    : StageCommand
+{
+    public override string? RetainKey => "takeover";
+    public override StageCommand ForReplay() => this with { Animate = false };
+}
+
+/// <summary>The takeover's status line (white; M47 B8): a new picture rolls the characters that changed. Null takes it away.</summary>
+public sealed record StageTakeoverStatusCommand(StageImage? Image, BigType.StageText? Text) : StageCommand
+{
+    public override string? RetainKey => "takeover-status";
+}
+
+/// <summary>An error on the Stage's line (M47 B8, the mock's <c>toast</c> with <c>error</c>): the chrome <paramref name="Key"/> shakes once.</summary>
+public sealed record StageShakeCommand(string Key) : StageCommand;
+
 /// <summary>The big folder's flap: closed, peeking or open; it glides there unless told not to.</summary>
 public sealed record StageFolderStateCommand(FolderArtState State, bool Animate) : StageCommand
 {

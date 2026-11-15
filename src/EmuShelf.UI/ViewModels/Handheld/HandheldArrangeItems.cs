@@ -13,9 +13,25 @@ namespace EmuShelf.App.ViewModels;
 public sealed partial class HandheldSheetItemViewModel(string label, string? note, Action run) : ObservableObject
 {
     public string Label { get; } = label;
-    public string? Note { get; } = note;
+
+    /// <summary>The row's note (the Big Type Stage's line while it is focused); a cycling row changes it (M47 B8, the disc).</summary>
+    public string? Note
+    {
+        get => _note;
+        set
+        {
+            if (SetProperty(ref _note, value))
+                OnPropertyChanged(nameof(HasNote));
+        }
+    }
+
+    private string? _note = note;
+
     public bool HasNote => !string.IsNullOrEmpty(Note);
     internal Action Run { get; } = run;
+
+    /// <summary>A on it does its work in place and the sheet stays (M47 B8: the disc row cycles, as the mock's cycle rows do).</summary>
+    public bool KeepsOpen { get; init; }
 
     /// <summary>A row that takes something away for good (Remove from library): drawn in the warning colour.</summary>
     public bool IsDestructive { get; init; }
@@ -47,6 +63,10 @@ public sealed partial class HandheldSheetViewModel : ObservableObject
     /// sheet (Y), the sheet's title for any other (Add to folder, a confirmation).
     /// </summary>
     public string? Kicker { get; set; }
+
+    /// <summary>What B (or Back) closing the sheet also does, beyond closing it (M47 B8: the screen chooser's sheet drops its launch).</summary>
+    public Action? Cancelled { get; init; }
+
     public bool HasSubtitle => !string.IsNullOrEmpty(Subtitle);
 
     /// <summary>What the sheet acts on, beside its title (as in the mockup): a game's cover (owned elsewhere)…</summary>

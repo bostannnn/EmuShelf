@@ -622,6 +622,23 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </Border>
+
+      <!--
+        Big Type (M47 B8, the mock's launch): the console's colour takes the Stage over through a circle from the case (HandheldStageMotion
+        clips it), the title's letters land in it and the status line rolls under it. Over everything else; it fades when the game ends.
+      -->
+      <Panel x:Name="BtLaunch" IsVisible="{Binding IsPlaying}" IsHitTestVisible="False">
+        <Border x:Name="BtLaunchColour" Background="{Binding Playing.ColourBrush, FallbackValue={x:Null}}" />
+        <StackPanel x:Name="BtLaunchBlock" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{x:Static vm:HandheldTokens.LaunchGap}">
+          <vh:HandheldBigTypeLaunchTitle x:Name="BtLaunchTitle" RenderOptions.TextRenderingMode="Antialias" HorizontalAlignment="Center"
+                                         Text="{Binding Playing.Title, FallbackValue={x:Null}}" Started="{Binding Playing.Started, FallbackValue=0}" />
+          <Border x:Name="BtLaunchStatusShot" RenderOptions.TextRenderingMode="Antialias" HorizontalAlignment="Center" Padding="{x:Static vm:HandheldTokens.StageShotPadding}"
+                  Margin="{x:Static vm:HandheldTokens.LaunchStatusShotMargin}">
+            <vh:HandheldRollingText x:Name="BtLaunchStatus" Text="{Binding Playing.Status, FallbackValue={x:Null}}" FontSize="{x:Static vm:HandheldTokens.LaunchStatus}"
+                                    FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.LaunchStatusInk}" FontFeatures="+tnum" />
+          </Border>
+        </StackPanel>
+      </Panel>
     </Grid>
   </Viewbox>
   </Panel>
