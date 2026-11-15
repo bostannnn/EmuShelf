@@ -990,7 +990,7 @@
           <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
             <!-- M47 B8: the name's letters land as the folder opens (the mock's lettersIn(fname, .9)); set smaller to fit as setHead does. -->
             <vh:HandheldBigTypeHeading x:Name="BtFolderName" Text="{Binding OpenFolder.Name, FallbackValue={x:Null}}" Size="{x:Static vm:HandheldTokens.FolderHeading}"
-                                       MaxTextWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}"
+                                       MaxTextWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" FitsRoom="True" FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}"
                                        FromEm="{x:Static vm:HandheldTokens.HeadingInFromEm}" Foreground="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Left" />
             <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
           </Panel>

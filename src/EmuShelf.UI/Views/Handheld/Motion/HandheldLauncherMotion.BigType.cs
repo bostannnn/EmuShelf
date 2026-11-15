@@ -150,6 +150,9 @@ internal sealed partial class HandheldLauncherMotion
         }
         _selectorShift.X = ring.X + bump.X;
         _selectorShift.Y = ring.Y + bump.Y;
+        // A ring that moves while it breathes (riding a sliding page or column, a bump) breathes again about where it now is.
+        if (_breathing && BreathCentre() is { } centre && (Math.Abs(centre.X - _breathCentre.X) > 0.5 || Math.Abs(centre.Y - _breathCentre.Y) > 0.5))
+            StopBreath();
         if (!moving && !_breathing)
             StartBreath();
         _ringMoving = moving;
@@ -159,15 +162,27 @@ internal sealed partial class HandheldLauncherMotion
     // The breath: 1 → 1.03 → 1 every 2.2 s about the ring's middle, on the compositor, for what is left of the minute.
     private void StartBreath()
     {
-        if (!_selectorShown || double.IsNaN(_selector.Width) || double.IsNaN(_selector.Height))
+        if (BreathCentre() is not { } centre)
             return;
         _breathing = true;
+        _breathCentre = centre;
         if (!_onScreen || Still || HalfCycles(BigTypeMotion.BreathPeriodMilliseconds) is not { } count)
             return;
-        var size = new Point(_selector.Width / 2, _selector.Height / 2);
-        HandheldComposition.Swing(_selector, "Scale", size, new Vector3D(1, 1, 1),
+        HandheldComposition.Swing(_selector, "Scale", centre, new Vector3D(1, 1, 1),
             new Vector3D(BigTypeMotion.BreathScale, BigTypeMotion.BreathScale, 1), BigTypeMotion.BreathPeriodMilliseconds / 2, count, EaseInOut);
     }
+
+    private Point _breathCentre;
+
+    /// <summary>
+    /// The ring's middle where the compositor scales it (M47 B10a, found on the Thor): the compositor applies a visual's Scale about its
+    /// CenterPoint after the control's RenderTransform, so the centre is the selector's shift plus half its size, not half its size.
+    /// Half its size scaled the ring about the Launcher's top left, and the ring drifted 3% of its place away from its key (on the Thor,
+    /// 15–30 px down and right while the Avalonia Launcher had the screen: keyboards, sheets, Settings, panels).
+    /// </summary>
+    internal Point? BreathCentre() => !_selectorShown || double.IsNaN(_selector.Width) || double.IsNaN(_selector.Height)
+        ? null
+        : new Point(_selectorShift.X + (_selector.Width / 2), _selectorShift.Y + (_selector.Height / 2));
 
     private void StopBreath()
     {

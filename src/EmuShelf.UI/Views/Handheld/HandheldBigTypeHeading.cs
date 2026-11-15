@@ -42,6 +42,14 @@ public sealed class HandheldBigTypeHeading : Control
     public static readonly StyledProperty<double> FromEmProperty =
         AvaloniaProperty.Register<HandheldBigTypeHeading, double>(nameof(FromEm), BigTypeListMotion.HeadingInFromEm);
 
+    /// <summary>
+    /// Also fit the width its parent gives it when that is less than <see cref="MaxTextWidth"/> (M47 B10a: a folder's name beside its
+    /// count, which keeps <c>HeaderGap</c> from it). Fitted in the measure pass itself, so whatever pictures the heading after layout
+    /// (the native Launcher's feed) sees the fit, not the one a pass before.
+    /// </summary>
+    public static readonly StyledProperty<bool> FitsRoomProperty =
+        AvaloniaProperty.Register<HandheldBigTypeHeading, bool>(nameof(FitsRoom));
+
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         AvaloniaProperty.Register<HandheldBigTypeHeading, IBrush?>(nameof(Foreground), Brushes.White);
 
@@ -56,6 +64,13 @@ public sealed class HandheldBigTypeHeading : Control
     public double MaxTextWidth { get => GetValue(MaxTextWidthProperty); set => SetValue(MaxTextWidthProperty, value); }
     public double SpacingEm { get => GetValue(SpacingEmProperty); set => SetValue(SpacingEmProperty, value); }
     public double FixedSpacing { get => GetValue(FixedSpacingProperty); set => SetValue(FixedSpacingProperty, value); }
+    public bool FitsRoom { get => GetValue(FitsRoomProperty); set => SetValue(FitsRoomProperty, value); }
+
+    /// <summary>Raised when the size the heading is drawn at changes (a fit to new room), so a picture of it can be taken again.</summary>
+    public event EventHandler? FitChanged;
+
+    private double _room = double.PositiveInfinity;
+    private double? _fittedSize;
     public double FromEm { get => GetValue(FromEmProperty); set => SetValue(FromEmProperty, value); }
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
 
@@ -123,8 +138,24 @@ public sealed class HandheldBigTypeHeading : Control
     /// <summary>Whether the letters are still landing (the native feed pictures the heading whole once they have).</summary>
     internal bool IsArriving => _arrival is not null;
 
-    protected override Size MeasureOverride(Size availableSize) =>
-        Layout is { } fitted ? new Size(fitted.Width, fitted.LineHeight) : default;
+    protected override Size MeasureOverride(Size availableSize)
+    {
+        var room = FitsRoom && double.IsFinite(availableSize.Width) ? availableSize.Width : double.PositiveInfinity;
+        if (!room.Equals(_room))
+        {
+            _room = room;
+            _fitted = null;
+        }
+        var fitted = Layout;
+        if (fitted?.Size != _fittedSize)
+        {
+            var had = _fittedSize is not null;
+            _fittedSize = fitted?.Size;
+            if (had)
+                FitChanged?.Invoke(this, EventArgs.Empty);
+        }
+        return fitted is not null ? new Size(fitted.Width, fitted.LineHeight) : default;
+    }
 
     public override void Render(DrawingContext context)
     {
@@ -181,8 +212,9 @@ public sealed class HandheldBigTypeHeading : Control
         using (var natural = new TextLayout(Text, typeface, size, null, letterSpacing: Spacing(size)))
         {
             var width = natural.WidthIncludingTrailingWhitespace;
-            if (width > MaxTextWidth && width > 0)
-                size = Math.Floor(size * MaxTextWidth / width * 100) / 100;
+            var most = Math.Min(MaxTextWidth, _room);
+            if (width > most && width > 0)
+                size = Math.Floor(size * most / width * 100) / 100;
         }
         var spacing = Spacing(size);
         var lineHeight = HandheldTokens.HeadingLineShare * size;

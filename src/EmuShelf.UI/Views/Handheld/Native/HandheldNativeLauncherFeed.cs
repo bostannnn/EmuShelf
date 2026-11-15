@@ -161,6 +161,8 @@ internal sealed class HandheldNativeLauncherFeed
         _btBackShot = Find("BtBackShot");
         _btFolderCount = Find("BtFolderCount");
         _btFolderName = (HandheldBigTypeHeading)Find("BtFolderName");
+        // M47 B10a: the name fits the room its count leaves (HeaderGap); a new fit is pictured again.
+        _btFolderName.FitChanged += (_, _) => Schedule();
         _btSortShot = Find("BtSortShot");
         _btSwap = Find("BtSwap");
         _btPage = Find("BtPage");
@@ -921,12 +923,15 @@ internal sealed class HandheldNativeLauncherFeed
         else
         {
             // The name is Back's place and the sort's value sits in the dock row's corner: the ring frames them, nothing lifts.
-            Liftable("f-back", folder.Name, _btBackShot, LauncherGroup.Folder, LauncherTrack.None, 0, present, lift: 1f);
+            // Keyed by the size it is drawn at as well as its text (M47 B10a): a name set smaller to keep HeaderGap from its count is
+            // pictured, and its letters sent, at that size.
+            var nameKey = FormattableString.Invariant($"{folder.Name}|{_btFolderName.Layout?.Size}");
+            Liftable("f-back", nameKey, _btBackShot, LauncherGroup.Folder, LauncherTrack.None, 0, present, lift: 1f);
             // Its letters land as it opens (M47 B8): the native side draws them in the name's place until they have.
-            if (_lettersSent != folder.Name && _btFolderName.Layout is not null &&
+            if (_lettersSent != nameKey && _btFolderName.Layout is not null &&
                 HandheldStageShots.ToCanvas(_btFolderName, default, _canvas) is { } nameAt)
             {
-                _lettersSent = folder.Name;
+                _lettersSent = nameKey;
                 _host.Post(new LauncherLettersCommand("f-back", _btFolderName.Letters(nameAt), (float)HandheldTokens.HeadingInFromEm,
                     Animate: !shell.HoldsStill && _folderOpenedAt is { } opened && Stopwatch.GetElapsedTime(opened).TotalMilliseconds < 1000));
             }
