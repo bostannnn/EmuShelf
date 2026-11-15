@@ -47,9 +47,6 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 #bd{position:absolute;inset:0;background:#2B5BC7}
 .bdc{position:absolute;inset:0;width:100%;height:100%}
 .bdc.pixel{image-rendering:pixelated}
-/* Trying (not approved): each backdrop layer can be pulled toward its console's colour. The tint takes the layer's hue and saturation and leaves its light and dark alone. */
-.bdl{position:absolute;inset:0;isolation:isolate}
-.bdl .tint{position:absolute;inset:0;mix-blend-mode:color;background:var(--tint,#2B5BC7);opacity:var(--pull,0);transition:opacity .4s}
 .shade{position:absolute;inset:0}
 .kick{position:absolute;left:44px;top:32px;font:700 22px/1.15 var(--ui);font-stretch:100%;color:var(--ink-l);transition:color .4s}
 .sys{position:absolute;right:44px;top:24px;display:flex;align-items:flex-end;gap:16px;color:var(--ink-tr);transition:color .4s}
@@ -75,36 +72,9 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .case .sway{animation:sway 7s ease-in-out infinite alternate}
 @keyframes sway{from{transform:rotateY(32deg) rotateX(4deg)}to{transform:rotateY(14deg) rotateX(1deg)}}
 .case .front{position:absolute;inset:0;border-radius:3px 7px 7px 3px;overflow:hidden;transform:translateZ(14px);--u:2}
-.case .back{position:absolute;inset:0;border-radius:7px 3px 3px 7px;background:#15141f;overflow:hidden;transform:rotateY(180deg) translateZ(14px)}
-.case .spine{position:absolute;left:-14px;top:0;width:28px;height:100%;background:#223;transform:rotateY(-90deg);display:grid;place-items:center;overflow:hidden}
-.case .spine b{writing-mode:vertical-rl;font:700 11px/1 var(--ui);color:#fff;opacity:.92;white-space:nowrap;letter-spacing:.02em}
-.case .edge{position:absolute;right:-14px;top:0;width:28px;height:100%;background:#1b1a27;transform:rotateY(90deg)}
-.case .capt,.case .capb{position:absolute;left:0;width:100%;height:28px;background:#1b1a27}
-.case .capt{top:-14px;transform:rotateX(90deg)}
-.case .capb{bottom:-14px;transform:rotateX(-90deg)}
-.bk{position:absolute;inset:0;padding:13px 12px 11px;display:flex;flex-direction:column;gap:7px;background:linear-gradient(170deg,var(--b),#15141f 72%)}
-.bk .shots{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:3px}
-.bk .shots i{aspect-ratio:4/3;border-radius:2px;background:var(--a);opacity:.88}
-.bk p{margin:0;height:5px;border-radius:2px;background:rgba(255,255,255,.5)}
-.bk p.s{width:60%}
-.bk .bar{margin-top:auto;align-self:flex-end;width:46px;height:22px;background:repeating-linear-gradient(90deg,#fff 0 2px,transparent 2px 4px,#fff 4px 5px,transparent 5px 8px);opacity:.85}
+.case .back{position:absolute;inset:0;border-radius:3px 7px 7px 3px;background:#15141f;transform:translateZ(-14px)}
+.case .spine{position:absolute;left:-14px;top:0;width:28px;height:100%;background:#223;transform:rotateY(-90deg)}
 .case .floor{position:absolute;left:8%;right:-6%;bottom:-30px;height:22px;border-radius:50%;background:rgba(8,8,20,.3);filter:blur(10px)}
-/* Trying (not approved): the case as a view of its own, reached with LB / RB. It takes the Stage and the name steps down beside it. */
-/* The model view. The case stands in the middle of the Stage at 1.3, the name steps down to the bottom left. It rises through the hinge,
-   floats, shows its front for a while, then turns once all the way round so the back and the spine are seen. The stick (a drag here) turns it. */
-.case.big{right:290px;top:112px;transform:scale(1.3);cursor:grab;touch-action:none}
-.case.big.off{transform:translateY(170px) scale(.9);opacity:0}
-.case.big .sway{animation:showcase 15s infinite}
-.case.big .kickr{animation:bob 4.6s ease-in-out infinite alternate}
-.case.big .floor{left:-6%;right:-12%;bottom:-36px;height:26px;animation:shade 4.6s ease-in-out infinite alternate}
-.case.big.held{cursor:grabbing}
-.case.big.held .sway{animation:none}
-@keyframes showcase{0%{transform:rotateX(4deg) rotateY(32deg);animation-timing-function:cubic-bezier(.45,0,.3,1)}
-  36%{transform:rotateX(2deg) rotateY(14deg)}50%{transform:rotateX(2deg) rotateY(14deg);animation-timing-function:cubic-bezier(.5,0,.25,1)}
-  100%{transform:rotateX(4deg) rotateY(-328deg)}}
-@keyframes bob{from{translate:0 3px}to{translate:0 -6px}}
-@keyframes shade{from{scale:1;opacity:1}to{scale:.9;opacity:.7}}
-.hint i.sh{width:auto;padding:0 7px;border-radius:9px}
 .launch{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:18px;clip-path:circle(0px at 742px 258px);color:#fff;text-align:center}
 .launch .lw{font-size:96px;line-height:.92;max-width:800px}
 .launch .lw span{display:inline-block;white-space:pre}
@@ -260,31 +230,6 @@ body{color:var(--fg);font:400 1rem/1.5 var(--page-text);
 .sc.fail .mini,.sc.fail .lmini{outline:3px solid var(--bad);outline-offset:2px}
 .pick{display:inline-flex;align-items:center}
 
-/* ---------- backdrops against their colours ---------- */
-.ac{margin:0 0 34px}
-.ac header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 12px}
-.ac h2{margin:0;font-size:1.15rem}
-.ac .sw{display:inline-grid;place-items:center;min-width:54px;height:34px;padding:0 10px;border-radius:8px;color:#fff;font:900 .95rem/1 'M PLUS Rounded 1c','Arial Rounded MT Bold',sans-serif}
-.ac .hex{color:var(--mute);font:500 .82rem/1 ui-monospace,Menlo,monospace}
-.arow{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:20px 16px}
-.ab{margin:0;min-width:0}
-.apair{display:block;width:100%;padding:0;border:0;border-radius:8px;overflow:hidden;cursor:pointer;background:none;text-align:left}
-.apair:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-.astage{position:relative;aspect-ratio:16/9;isolation:isolate;background:#22212e}
-.astage .aw{position:absolute;left:5%;bottom:5%;font:900 2.7rem/.9 'M PLUS Rounded 1c','Arial Rounded MT Bold',sans-serif;letter-spacing:-.02em}
-.aground{height:30px;display:flex;align-items:center;gap:6px;padding:0 10px}
-.aground i{width:16px;height:16px;border-radius:4px;background:rgba(255,255,255,.17)}
-.aground i:first-child{background:#fff}
-.ab figcaption{margin-top:8px;font-size:.84rem;color:var(--mute);display:grid;gap:6px}
-.ab figcaption b{color:var(--fg);font-weight:600}
-.gapv{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
-.gapv .dot{width:13px;height:13px;border-radius:50%;border:1px solid var(--line);flex:none}
-.gapv.far{color:var(--bad);font-weight:700}
-.verdict{display:flex;gap:6px;flex-wrap:wrap}
-.verdict .btn{padding:.38rem .6rem;font-size:.8rem}
-.picks{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;margin:0 0 26px}
-.picks textarea{flex:1 1 320px;min-width:0;min-height:74px;font:500 .82rem/1.4 ui-monospace,Menlo,monospace;color:var(--fg);background:var(--card);border:1.5px solid var(--line);border-radius:8px;padding:.6rem .7rem}
-
 /* ---------- page chrome ---------- */
 .opts{display:flex;flex-wrap:wrap;gap:10px 22px;justify-content:center;margin-top:18px}
 .opts fieldset{border:0;margin:0;padding:0;display:flex;align-items:center;gap:6px;min-width:0}
@@ -326,10 +271,10 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
 .sw-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:.4rem}
 .sw-list span{font:900 .8rem/1 var(--page-display);color:#fff;padding:.5rem .6rem;border-radius:6px}
 .foot{color:var(--mute);font-size:.86rem;margin-top:2.2rem;max-width:34rem}
-@media (prefers-reduced-motion: reduce){ .tile,.ring,.case,.layer,.scroll,.row,.sw i{transition:none} .tile.f .in,.ring,.case .sway,.case.big .kickr,.case.big .floor{animation:none} .case.big .sway{animation:none;transform:rotateX(4deg) rotateY(32deg)} }
+@media (prefers-reduced-motion: reduce){ .tile,.ring,.case,.layer,.scroll,.row,.sw i{transition:none} .tile.f .in,.ring,.case .sway{animation:none} }
 </style>
 
-<nav class="views" aria-label="Views"><a href="#mock" id="nav-mock" aria-current="page">The mock</a><a href="#stress" id="nav-stress">Stress sheet</a><a href="#backdrops" id="nav-bd">Backdrops</a></nav>
+<nav class="views" aria-label="Views"><a href="#mock" id="nav-mock" aria-current="page">The mock</a><a href="#stress" id="nav-stress">Stress sheet</a></nav>
 <div class="page" id="mockview">
   <div class="stagecol" id="stagecol">
     <div class="device" id="device">
@@ -340,7 +285,7 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
           <div class="shade"></div>
           <div class="kick" id="kick"></div>
           <div class="sys"><span class="batt">76%</span><span class="clock disp" id="clock"></span></div>
-          <div class="case off" id="case"><div class="floor"></div><div class="kickr" id="kickr"><div class="sway"><div class="back" id="back"></div><div class="spine" id="spine"></div><div class="edge"></div><div class="capt"></div><div class="capb"></div><div class="front" id="front"></div></div></div></div>
+          <div class="case off" id="case"><div class="floor"></div><div class="kickr" id="kickr"><div class="sway"><div class="back"></div><div class="spine" id="spine"></div><div class="front" id="front"></div></div></div></div>
           <div class="word disp" id="word"></div>
           <div class="meta" id="meta"></div>
           <div class="meta2" id="meta2"></div>
@@ -383,19 +328,8 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
       <fieldset><legend>Extras</legend>
         <button class="btn" type="button" id="demo" aria-pressed="true">Demo</button>
         <button class="btn" type="button" id="snd" aria-pressed="false">Sound</button></fieldset>
-      <fieldset><legend>Trying · the case</legend>
-        <button class="btn" type="button" id="case-corner" data-case="corner" aria-pressed="true">Beside the name</button>
-        <button class="btn" type="button" id="case-views" data-case="views" aria-pressed="false">Its own view</button>
-        <button class="btn" type="button" id="case-none" data-case="none" aria-pressed="false">No case</button>
-        <button class="btn" type="button" id="case-show">Show the model view</button>
-        <button class="btn" type="button" id="sh-lb" data-sh="LB" hidden>LB</button>
-        <button class="btn" type="button" id="sh-rb" data-sh="RB" hidden>RB</button></fieldset>
-      <fieldset><legend>Trying · backdrop colour</legend>
-        <button class="btn" type="button" id="pull-0" data-pull="0" aria-pressed="true">As today</button>
-        <button class="btn" type="button" id="pull-6" data-pull="0.6" aria-pressed="false">Pulled to the console</button>
-        <button class="btn" type="button" id="pull-10" data-pull="1" aria-pressed="false">The console's hue</button></fieldset>
     </div>
-    <p class="how">It plays itself until you touch it. Then: arrow keys move, <kbd>Enter</kbd> is A, <kbd>Esc</kbd> is B, <kbd>Y</kbd> opens the menu. Or tap a tile, or the pad beside the bottom screen. When the on-screen keyboard is up you can just type. With <b>Its own view</b> chosen, <kbd>Q</kbd> and <kbd>E</kbd> are LB and RB on a game: the case takes the top screen and the name steps down. Drag the case to turn it (the right stick on the device); let go and it swings back. Moving to another game flips it to that game's case.</p>
+    <p class="how">It plays itself until you touch it. Then: arrow keys move, <kbd>Enter</kbd> is A, <kbd>Esc</kbd> is B, <kbd>Y</kbd> opens the menu. Or tap a tile, or the pad beside the bottom screen. When the on-screen keyboard is up you can just type.</p>
   </div>
 
   <div class="notes">
@@ -504,23 +438,6 @@ h2{font:900 1.7rem/1.05 var(--page-display);letter-spacing:-.02em;margin:2.6rem 
 
     <p class="foot">Covers are drawn stand-ins with the title as text. The backdrops are the approved prototypes from the motion study. Menu rows that only close the menu: Sort, Hide from home, Pin, Unpin, Edit title, Remove, the Start menu's Achievements and Desktop mode. The scraper and Edit title use the list drawing shown for Achievements and are not wired separately. A folder you make lasts until the page reloads. Nothing here has been measured on the Thor.</p>
   </div>
-</div>
-
-<div class="stress" id="auditview" hidden>
-  <p class="eyebrow">Big Type · do the backdrops belong to their consoles?</p>
-  <h1>Backdrops against their colours</h1>
-  <p class="lede">Each console's flat colour, the one you approved by hand, beside every backdrop that console rotates through. The backdrops were drawn before the colours were chosen, so nothing ties them together yet.</p>
-  <p class="sub">The dot is the backdrop's own colour, averaged from its pixels over six moments; the number is how far that sits from the console's colour, ignoring how light or dark it is. Under 14 reads as the same family. Over 28 reads as a different colour. Consoles with the furthest backdrop come first. Tap a backdrop to play it.</p>
-  <div class="opts" style="justify-content:flex-start;margin:0 0 14px">
-    <fieldset><legend>Show them</legend>
-      <button class="btn" type="button" id="apull-0" data-pull="0" aria-pressed="true">As today</button>
-      <button class="btn" type="button" id="apull-6" data-pull="0.6" aria-pressed="false">Pulled to the console</button>
-      <button class="btn" type="button" id="apull-10" data-pull="1" aria-pressed="false">The console's hue</button></fieldset>
-  </div>
-  <p class="sub" id="asum">Measuring the backdrops…</p>
-  <div class="picks"><textarea id="apicks" readonly aria-label="Your picks, as text to paste back" placeholder="Mark backdrops Keep, Recolour or Replace and your picks collect here, ready to paste back."></textarea><button class="btn" type="button" id="acopy">Copy picks</button></div>
-  <div id="agrid"></div>
-  <p class="foot">What this page cannot show is sharpness. These are the browser stand-ins of the app's backdrops; the app draws each at a small size on purpose (PSP at 320 × 180, Game Boy Color at 160 × 90) and scales it up. Whether a backdrop should be drawn sharper is judged from the app's own frames, not from here.</p>
 </div>
 
 <div class="stress" id="stressview" hidden>
@@ -632,7 +549,7 @@ const PICKS={"nes":["nes-flow","nes-stars","nes-meta","nes-raster"],"snes":["run
 
 /* ---------- elements and state ---------- */
 const rig=$('rig'),dev=$('device'),top=$('top'),bot=$('bot'),ground=$('ground'),homeEl=$('home'),folderEl=$('folder'),fgrid=$('fgrid'),settingsEl=$('settings'),playEl=$('play'),sheetEl=$('sheet'),ring=$('ring'),bd=$('bd'),caseEl=$('case'),launchEl=$('launch');
-const S={view:'home',hi:1,gi:0,dock:null,sheet:null,set:null,play:null,busy:false,move:null,kb:null,idle:true,gcol:null,fc:'#2B5BC7',deep:'#0f1a36',sx:{home:0,folder:0,kb:0},ring:null,clockOff:0,caseMode:'corner',stageView:'type',pull:0,top:null};
+const S={view:'home',hi:1,gi:0,dock:null,sheet:null,set:null,play:null,busy:false,move:null,kb:null,idle:true,gcol:null,fc:'#2B5BC7',deep:'#0f1a36',sx:{home:0,folder:0,kb:0},ring:null,clockOff:0};
 let tilesH=[],tilesF=[],itemsF=[],dockEls=[],wl=null,soundOn=false;
 const mapH=new Map(),mapF=new Map();
 
@@ -677,14 +594,14 @@ function roll(el,text){text=String(text);if(el._t===text)return;el._t=text;
 const ENTER={R:[.55,0,0],L:[-.55,0,0],U:[0,-.5,0],D:[0,.5,0],open:[0,.95,7],back:[0,-.7,-5],init:[0,.7,5]};
 const EXIT={R:[-.45,0],L:[.45,0],U:[0,.45],D:[0,-.45],open:[0,-.6],back:[0,.6],init:[0,-.4]};
 function fitWord(layer,W,H){let lo=28,hi=420;layer.style.width=W+'px';for(let i=0;i<9;i++){const m=(lo+hi)/2;layer.style.fontSize=m+'px';if(layer.scrollWidth<=W+1&&layer.offsetHeight<=H)lo=m;else hi=m;}layer.style.fontSize=Math.floor(lo)+'px';}
-function setWord(text,dir,W,H=340){
- if(wl&&wl._t===text&&wl._W===W&&(wl._H||340)===H)return;
+function setWord(text,dir,W){
+ if(wl&&wl._t===text&&wl._W===W)return;
  if(wl){const old=wl,ls=[...old.querySelectorAll('.l')],[ex,ey]=EXIT[dir]||EXIT.init,per=Math.min(12,110/ls.length);
   ls.forEach((l,i)=>l.animate([{opacity:1},{transform:`translate(${ex}em,${ey}em)`,opacity:0}],{duration:RM?60:170,delay:RM?0:i*per,easing:EASEIN,fill:'forwards'}));
   setTimeout(()=>old.remove(),RM?70:320);}
- const el=document.createElement('div');el.className='wl';el._t=text;el._W=W;el._H=H;
+ const el=document.createElement('div');el.className='wl';el._t=text;el._W=W;
  text.split(' ').forEach(w=>{const ws=document.createElement('span');ws.className='w';[...w].forEach(ch=>{const s=document.createElement('span');s.className='l';s.textContent=ch;ws.appendChild(s);});el.appendChild(ws);el.appendChild(document.createTextNode(' '));});
- $('word').appendChild(el);fitWord(el,W,H);wl=el;S.vx=vxOf(W);top.style.setProperty('--vx',S.vx*100+'%');
+ $('word').appendChild(el);fitWord(el,W,340);wl=el;S.vx=vxOf(W);top.style.setProperty('--vx',S.vx*100+'%');
  if(RM)return;
  const ls=[...el.querySelectorAll('.l')],[nx,ny,rot]=ENTER[dir]||ENTER.init,per=Math.min(26,300/ls.length),n=ls.length;
  ls.forEach((l,i)=>l.animate([{transform:`translate(${nx}em,${ny}em) rotate(${rot}deg)`,opacity:0},{transform:'none',opacity:1}],{duration:540,delay:90+(dir==='L'?n-1-i:i)*per,easing:SPRING,fill:'backwards'}));}
@@ -727,12 +644,10 @@ function setBackdrop(con,x){
  const n=BD.turn[con]=(BD.turn[con]??-1)+1,v=list[n%list.length];
  const cv=document.createElement('canvas');cv.className='bdc';const L=B.makeLayer(cv);
  try{B.prepare(L,v,3+Math.random()*20);B.render(L,1/30);}catch(e){return;}
- const wrap=document.createElement('div'),tint=document.createElement('div');wrap.className='bdl';tint.className='tint';
- wrap.style.setProperty('--tint',(Object.values(SYS).find(y=>y.bd===con)||{}).c||S.fc);wrap.append(cv,tint);L.wrap=wrap;
- bd.appendChild(wrap);BD.layers.push(L);sampleTone();
- const done=()=>{const i=BD.layers.indexOf(L);BD.layers.splice(0,i).forEach(o=>o.wrap.remove());};
+ bd.appendChild(cv);BD.layers.push(L);sampleTone();
+ const done=()=>{const i=BD.layers.indexOf(L);BD.layers.splice(0,i).forEach(o=>o.canvas.remove());};
  if(BD.layers.length===1||RM){done();return;}
- wrap.animate([{clipPath:`circle(0px at ${x}px 560px)`},{clipPath:`circle(1150px at ${x}px 560px)`}],{duration:760,delay:110,easing:'cubic-bezier(.2,.6,.2,1)',fill:'backwards'}).onfinish=done;}
+ cv.animate([{clipPath:`circle(0px at ${x}px 560px)`},{clipPath:`circle(1150px at ${x}px 560px)`}],{duration:760,delay:110,easing:'cubic-bezier(.2,.6,.2,1)',fill:'backwards'}).onfinish=done;}
 const sc=document.createElement('canvas');sc.width=64;sc.height=36;const sx=sc.getContext('2d',{willReadFrequently:true});
 const GAM=l=>255*(l<=.0031308?12.92*l:1.055*Math.pow(l,1/2.4)-.055);
 function toneStep(canvas,tone,deep,vx){sx.drawImage(canvas,0,0,64,36);const d=sx.getImageData(0,0,64,36).data,dr=rgb(deep),yd=dr[0]*.299+dr[1]*.587+dr[2]*.114;
@@ -775,24 +690,16 @@ function moveRing(a,b,glide){Object.assign(ring.style,px(b));if(!glide||!a||RM)r
  const sq=!same?b:horiz?{left:b.left+5,top:b.top-3,width:b.width-10,height:b.height+6}:{left:b.left-3,top:b.top+5,width:b.width+6,height:b.height-10};
  ring.animate([{...px(a),easing:'cubic-bezier(.3,0,.4,1)'},{...px(u),offset:.38,easing:'cubic-bezier(.3,0,.4,1)'},{...px(sq),offset:.74},px(b)],{duration:300});}
 function setHints(list){const key=list.map(h=>h.join()).join('|'),hb=$('hints');
- if(hb._k!==key){hb._k=key;hb.innerHTML=list.map(([k,l])=>`<span class="hint" data-k="${k}"><i${k.length>1?' class="sh"':''}>${k}</i>${l}</span>`).join('');if(!RM)[...hb.children].forEach((h,i)=>h.animate([{transform:'translateY(14px)',opacity:0},{transform:'none',opacity:1}],{duration:380,delay:i*50,easing:SPRING,fill:'backwards'}));}}
+ if(hb._k!==key){hb._k=key;hb.innerHTML=list.map(([k,l])=>`<span class="hint" data-k="${k}"><i>${k}</i>${l}</span>`).join('');if(!RM)[...hb.children].forEach((h,i)=>h.animate([{transform:'translateY(14px)',opacity:0},{transform:'none',opacity:1}],{duration:380,delay:i*50,easing:SPRING,fill:'backwards'}));}}
 function setTop(d,dir){
- // Trying: the case beside the name (today), as a view of its own on LB / RB, or not at all
- S.top=d;const views=S.caseMode==='views'&&!!d.game&&inGrid(),big=views&&S.stageView==='case',show=!!d.game&&(S.caseMode==='corner'||big);
- roll($('kick'),d.kicker);roll($('meta'),d.meta||'');setHints(big?[['A','Play'],['B','Back'],['RS','Turn'],['RB','Name']]:views?[...d.hints,['RB','Case']]:d.hints);
+ roll($('kick'),d.kicker);roll($('meta'),d.meta||'');setHints(d.hints);
  $('meta')._base=null;if(d.keep)return;
  roll($('meta2'),d.meta2||'');$('word').classList.toggle('dimmed',!!d.missing);
- setWord(d.word,dir,big?380:show?560:680,big?170:340);
- const rose=big&&!caseEl._big;caseEl._big=big;
- caseEl.classList.toggle('off',!show);caseEl.classList.toggle('big',big);
- if(show&&caseEl._g!==d.game){const first=!caseEl._g;caseEl._g=d.game;const h=hash(d.game.t),hue=h%360,a=`hsl(${hue} 40% 47%)`,b=`hsl(${(hue+28)%360} 46% 33%)`;
-  $('front').innerHTML=coverHTML(d.game);$('spine').style.background=b;$('spine').innerHTML=`<b>${esc(d.game.t)}</b>`;
-  $('back').innerHTML=`<div class="bk" style="--a:${a};--b:${b}"><div class="shots"><i></i><i></i></div><p></p><p></p><p class="s"></p><div class="bar"></div></div>`;
-  // beside the name the case kicks round a little; in the model view it rises turning, and a change of game is one whole flip to the next
-  const from=big?(rose||first?-250:dir==='L'?-180:180):(dir==='L'?-70:70);
-  if(!RM)$('kickr').animate([{transform:`rotateY(${from}deg)`},{transform:'rotateY(0deg)'}],{duration:big?(rose||first?950:720):680,easing:'cubic-bezier(.2,1.3,.3,1)'});}
- else if(rose&&!RM)$('kickr').animate([{transform:'rotateY(-250deg)'},{transform:'rotateY(0deg)'}],{duration:950,easing:'cubic-bezier(.2,1.3,.3,1)'});
- if(!show)caseEl._g=null;}
+ setWord(d.word,dir,d.game?560:680);
+ caseEl.classList.toggle('off',!d.game);
+ if(d.game&&caseEl._g!==d.game){caseEl._g=d.game;$('front').innerHTML=coverHTML(d.game);$('spine').style.background=`hsl(${(hash(d.game.t)%360+28)%360} 46% 33%)`;
+  if(!RM)$('kickr').animate([{transform:`rotateY(${dir==='L'?-70:70}deg)`},{transform:'rotateY(0deg)'}],{duration:680,easing:'cubic-bezier(.2,1.3,.3,1)'});}
+ if(!d.game)caseEl._g=null;}
 const GLIDE=d=>'LRUD'.includes(d)||d==='tap';
 function land(rect,d,dir,o){ring.style.borderRadius=o.radius+'px';moveRing(S.ring,rect,o.glide);S.ring=rect;
  if(o.pop&&!RM)ring.animate([{transform:'scale(1.25)',opacity:0},{transform:'scale(1)',opacity:1}],{duration:320,easing:SPRING});
@@ -1145,9 +1052,6 @@ setInterval(tick,1000);
 function key(k){
  if(S.busy)return;
  if(k==='X'){swap();return;}
- if(k==='LB'||k==='RB'){   // Trying: LB / RB change the Stage's view of a game (the name, or its case)
-  if(S.caseMode!=='views'||S.sheet||S.move||!inGrid()||!S.top||!S.top.game)return bump();
-  sfx.move();S.stageView=S.stageView==='case'?'type':'case';setTop(S.top,k==='RB'?'R':'L');pressHint('RB');return;}
  if(S.sheet)return sheetKey(k);
  if(S.move)return moveKey(k);
  if(S.view==='kb')return kbKey(k);
@@ -1180,39 +1084,8 @@ addEventListener('keydown',e=>{
  if(e.key==='Escape'||e.key==='Backspace'){e.preventDefault();userKey('B');return;}
  if(e.key==='y'||e.key==='Y'||e.key==='m'){userKey('Y');return;}
  if(e.key==='x'||e.key==='X'){userKey('X');return;}
- if(e.key==='q'||e.key==='Q'){userKey('LB');return;}
- if(e.key==='e'||e.key==='E'){userKey('RB');return;}
  if((e.key==='Enter'||e.key===' ')&&!(e.target.closest&&e.target.closest('button,a'))){e.preventDefault();userKey('A');}});
 rig.querySelectorAll('.pad button').forEach(b=>b.onclick=()=>{user();key(b.dataset.k);});
-
-/* ---------- trying: the case's three ways, and the backdrops pulled to their console's colour ---------- */
-S.caseMode=store.get('bt-case')||'corner';S.pull=+(store.get('bt-pull')||0)||0;
-function applyTry(){
- document.querySelectorAll('[data-case]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.case===S.caseMode)));
- document.querySelectorAll('[data-sh]').forEach(b=>b.hidden=S.caseMode!=='views');
- document.querySelectorAll('[data-pull]').forEach(b=>b.setAttribute('aria-pressed',String(+b.dataset.pull===S.pull)));
- document.documentElement.style.setProperty('--pull',S.pull);}
-document.querySelectorAll('[data-case]').forEach(b=>b.onclick=()=>{user();S.caseMode=b.dataset.case;S.stageView='type';store.set('bt-case',S.caseMode);applyTry();
- if(S.top&&inGrid()&&!S.sheet&&!S.move&&!S.busy)setTop(S.top,'U');});
-document.querySelectorAll('[data-sh]').forEach(b=>b.onclick=()=>{user();key(b.dataset.sh);});
-// one press plays it: into the PS2 folder, RB to the model view, a full turn, two games along, and back to the name
-$('case-show').onclick=async()=>{user();if(S.busy||S.sheet||S.move)return;S.caseMode='views';S.stageView='type';store.set('bt-case','views');applyTry();
- dev.scrollIntoView({block:'center',behavior:RM?'auto':'smooth'});
- if(S.view==='home'){const i=idx('ps2');if(i<0)return;setFocus(i,'tap');await sleep(600);key('A');await sleep(1500);}
- if(S.view!=='folder')return;if(S.top&&inGrid())setTop(S.top,'U');await sleep(700);
- if(S.stageView!=='case')key('RB');await sleep(9000);if(S.view!=='folder')return;
- key('R');await sleep(2600);if(S.view!=='folder')return;key('R');await sleep(2600);if(S.view!=='folder')return;key('RB');};
-document.querySelectorAll('[data-pull]').forEach(b=>b.onclick=()=>{S.pull=+b.dataset.pull;store.set('bt-pull',String(S.pull));applyTry();});
-applyTry();
-// in its own view the case turns under a finger (the right stick on the device)
-(()=>{let p0=null,cur='',base='';const sw=caseEl.querySelector('.sway'),REST='rotateX(4deg) rotateY(32deg)';
- // it is taken hold of in whatever pose it has reached, and turned from there
- caseEl.addEventListener('pointerdown',e=>{if(!caseEl.classList.contains('big'))return;p0=[e.clientX,e.clientY];try{caseEl.setPointerCapture(e.pointerId);}catch(_){}
-  base=getComputedStyle(sw).transform;if(!base||base==='none')base=REST;cur=base;sw.style.transform=cur;caseEl.classList.add('held');user();pressHint('RS');});
- caseEl.addEventListener('pointermove',e=>{if(!p0)return;const ry=(e.clientX-p0[0])*.9,rx=Math.max(-28,Math.min(28,-(e.clientY-p0[1])*.35));cur=`rotateX(${rx}deg) rotateY(${ry}deg) ${base}`;sw.style.transform=cur;});
- const up=()=>{if(!p0)return;p0=null;const back=()=>{sw.style.transform='';caseEl.classList.remove('held');};
-  if(RM){back();return;}sw.animate([{transform:cur},{transform:REST}],{duration:620,easing:'cubic-bezier(.2,1.3,.3,1)'}).onfinish=back;sw.style.transform=REST;};
- caseEl.addEventListener('pointerup',up);caseEl.addEventListener('pointercancel',up);})();
 
 /* ---------- demo and the Show buttons ---------- */
 let demoOn=false,runId=0;
@@ -1258,7 +1131,7 @@ const SHOWS={
 document.querySelectorAll('[data-show]').forEach(b=>b.onclick=()=>{stopDemo();const id=++runId;if(!matchMedia('(min-width:1180px)').matches)dev.scrollIntoView({behavior:RM?'auto':'smooth',block:'center'});idleKick();play(SHOWS[b.dataset.show],id);});
 
 /* ---------- options ---------- */
-function refit(){fitMonos();if(wl&&!wl._typed)fitWord(wl,wl._W,wl._H||340);}
+function refit(){fitMonos();if(wl&&!wl._typed)fitWord(wl,wl._W,340);}
 $('snd').onclick=()=>{soundOn=!soundOn;syncSound();if(soundOn)sfx.open();};
 
 /* ---------- the frozen numbers, printed from tokens.js ---------- */
@@ -1361,58 +1234,8 @@ $('covers').onchange=e=>{const fs=[...e.target.files].filter(f=>f.type.startsWit
  $('cnote').textContent=`Showing ${fs.length} of your covers. They are read in this browser tab only.`;fillStress();drawStrips();};
 function showStress(tries=0){if(!window.Backdrops){if(tries<40)setTimeout(()=>showStress(tries+1),250);else $('ssum').textContent='The backdrops did not load, so there is nothing to measure.';return;}
  drawStrips();if(ST.done)sizeStress();else runStress();}
-/* ---------- backdrops against their colours: every console's flat colour beside the backdrops it rotates through ---------- */
-const AU={built:false,cards:[],live:null,picks:{}};
-try{AU.picks=JSON.parse(store.get('bt-bdpicks')||'{}')||{};}catch(e){AU.picks={};}
-// sRGB to CIE Lab (D65), for a colour distance the eye would agree with
-const toLab=c=>{const [r,g,b]=c.map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);}),f=t=>t>.008856?Math.cbrt(t):7.787*t+16/116,
- x=f((.4124*r+.3576*g+.1805*b)/.95047),y=f(.2126*r+.7152*g+.0722*b),z=f((.0193*r+.1192*g+.9505*b)/1.08883);return [116*y-16,500*(x-y),200*(y-z)];};
-const auc=document.createElement('canvas');auc.width=32;auc.height=18;const aux=auc.getContext('2d',{willReadFrequently:true});
-function auMean(canvas){aux.drawImage(canvas,0,0,32,18);const d=aux.getImageData(0,0,32,18).data;let r=0,g=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];}const n=d.length/4;return [r/n,g/n,b/n];}
-function auPicksText(){const B=window.Backdrops,rows=Object.entries(AU.picks).filter(([,v])=>v).map(([id,v])=>{const x=B.VARIANTS.find(y=>y.id===id);return `${v}: ${id}${x?` (${x.con}, ${x.name})`:''}`;});
- rows.sort();$('apicks').value=rows.join('\n');}
-function auPlay(card){if(AU.live===card){AU.live=null;return;}AU.live=card;}
-let auLast=0;
-function auFrame(now){requestAnimationFrame(auFrame);const c=AU.live;if(!c||$('auditview').hidden||document.hidden||RM){auLast=0;return;}
- if(now-auLast<33)return;const dt=auLast?Math.min((now-auLast)/1000,.08):1/30;auLast=now;c.L.time+=dt;try{window.Backdrops.render(c.L,1/30);}catch(e){}}
-requestAnimationFrame(auFrame);
-async function showAudit(tries=0){const B=window.Backdrops;
- if(!B){if(tries<40)setTimeout(()=>showAudit(tries+1),250);else $('asum').textContent='The backdrops did not load, so there is nothing to compare.';return;}
- if(AU.built)return;AU.built=true;
- const sys=ALLSYS(),groups=[];
- for(let n=0;n<ORDER.length;n++){const con=ORDER[n],y=sys[n],gl=toLab(rgb(y.c));
-  let list=(PICKS[con]||[]).map(id=>B.VARIANTS.find(v=>v.id===id)).filter(Boolean);if(!list.length)list=B.VARIANTS.filter(v=>v.con===con);
-  const cards=[];
-  for(const v of list){const cv=document.createElement('canvas');cv.className='bdc';const L=B.makeLayer(cv);let sum=[0,0,0],k=0;
-   try{B.prepare(L,v,2);for(let m=0;m<6;m++){L.time=2+m*4.3;B.render(L,1/30);const c=auMean(cv);sum=sum.map((q,i)=>q+c[i]);k++;}L.time=9;B.render(L,1/30);}catch(e){}
-   const mean=k?sum.map(q=>q/k):[128,128,128],ml=toLab(mean),gap=Math.hypot(ml[1]-gl[1],ml[2]-gl[2]);
-   cards.push({v,L,cv,mean,gap,lum:mean[0]*.299+mean[1]*.587+mean[2]*.114});}
-  groups.push({con,y,cards,worst:Math.max(0,...cards.map(c=>c.gap))});
-  if(n%3===2)await new Promise(r=>setTimeout(r,0));}
- groups.sort((a,b)=>b.worst-a.worst);
- const all=groups.flatMap(g=>g.cards),far=all.filter(c=>c.gap>28).length,near=all.filter(c=>c.gap<14).length;
- $('asum').innerHTML=`<b>${far} of ${all.length}</b> backdrops sit far from their console's colour, ${all.length-far-near} drift, and ${near} already read as the same family.`;
- const grid=$('agrid');grid.innerHTML='';
- for(const g of groups){const sec=document.createElement('section');sec.className='ac';
-  sec.innerHTML=`<header><span class="sw" style="background:${g.y.c}">${esc(g.y.m)}</span><h2>${esc(g.y.name)}</h2><span class="hex">${g.y.c}</span></header><div class="arow"></div>`;
-  const row=sec.querySelector('.arow');g.cards.sort((a,b)=>b.gap-a.gap);
-  for(const c of g.cards){const fig=document.createElement('figure');fig.className='ab';
-   const hex='#'+c.mean.map(q=>Math.round(q).toString(16).padStart(2,'0')).join(''),ink=c.lum>150?mix(g.y.c,'#0B0A18',.74):'#fff';
-   fig.innerHTML=`<button class="apair" type="button" aria-label="Play ${esc(c.v.name)}"><div class="astage bdl" style="--tint:${g.y.c}"><div class="tint"></div><b class="aw" style="color:${ink}">${esc(g.y.m)}</b></div><div class="aground" style="background:${g.y.c}"><i></i><i></i><i></i><i></i></div></button>
-<figcaption><span><b>${esc(c.v.name)}</b> · ${c.v.id}</span><span class="gapv${c.gap>28?' far':''}"><span class="dot" style="background:${hex}"></span>${Math.round(c.gap)} away · ${c.gap>28?'a different colour':c.gap<14?'the same family':'drifts'}</span>
-<span class="verdict">${['Keep','Recolour','Replace'].map(w=>`<button class="btn" type="button" data-v="${w}" aria-pressed="${AU.picks[c.v.id]===w}">${w}</button>`).join('')}</span></figcaption>`;
-   fig.querySelector('.astage').prepend(c.cv);
-   fig.querySelector('.apair').onclick=()=>auPlay(c);
-   fig.querySelectorAll('[data-v]').forEach(b=>b.onclick=()=>{AU.picks[c.v.id]=AU.picks[c.v.id]===b.dataset.v?null:b.dataset.v;store.set('bt-bdpicks',JSON.stringify(AU.picks));
-    fig.querySelectorAll('[data-v]').forEach(o=>o.setAttribute('aria-pressed',String(AU.picks[c.v.id]===o.dataset.v)));auPicksText();});
-   row.appendChild(fig);}
-  grid.appendChild(sec);}
- auPicksText();}
-$('acopy').onclick=()=>{const t=$('apicks');const done=()=>{$('acopy').textContent='Copied';setTimeout(()=>$('acopy').textContent='Copy picks',1400);};
- try{navigator.clipboard.writeText(t.value).then(done,()=>{t.focus();t.select();});}catch(e){t.focus();t.select();}};
-function route(){const h=location.hash,st=h==='#stress',au=h==='#backdrops';$('mockview').hidden=st||au;$('stressview').hidden=!st;$('auditview').hidden=!au;
- [['nav-stress',st],['nav-bd',au],['nav-mock',!st&&!au]].forEach(([id,on])=>{if(on)$(id).setAttribute('aria-current','page');else $(id).removeAttribute('aria-current');});
- if(st){stopDemo();showStress();}else if(au){stopDemo();showAudit();}else{fitRig();refit();}}
+function route(){const st=location.hash==='#stress';$('mockview').hidden=st;$('stressview').hidden=!st;$('nav-stress').toggleAttribute('aria-current',st);$('nav-mock').toggleAttribute('aria-current',!st);
+ if(st){$('nav-stress').setAttribute('aria-current','page');stopDemo();showStress();}else{$('nav-mock').setAttribute('aria-current','page');fitRig();refit();}}
 addEventListener('hashchange',route);addEventListener('resize',sizeStress);
 
 /* ---------- boot ---------- */
