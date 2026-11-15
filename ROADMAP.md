@@ -3064,7 +3064,7 @@ checked on the emulator only, so their exits stay open for the owner's look.
       `debug.emushelf.look` `bigtype`. Renders, mock captures, recordings: `m47-b7-renders` in the build sessions' notes.
 - [ ] **B8 — Folders, launch, in-game.** Folders deal their games; the cover leaves through the hinge; the
       companion's session count and achievement roll.
-      **Built 2026-11-15; awaiting the owner's look on the Thor. Checked on the Android emulator only (the owner: "Use the emulator").**
+      **Built 2026-11-15; awaiting the owner's look on the Thor. Checked on the Thor (the owner reconnected it) and, first, on the emulator.**
       (Choices in `DECISIONS.md` 2026-11-15 "M47 B8".) Under Big Type only, from shared maths (`BigTypeFolderMotion`,
       `BigTypeLaunchMotion`) on the native screens and the Avalonia ones: **a folder opens** as the mock's `openFolder` (home's tiles fall
       away from it, the games deal in at 370 ms, the name's letters land, the count rolls in, the ring pops in on the first game) and
@@ -3080,13 +3080,15 @@ checked on the emulator only, so their exits stay open for the owner's look.
       reachable; **the return**: the parts leave, the colour fades, the ground floods back from the middle, the tiles pop in. Held still,
       everything is in place at once. tokens.js gained the mock's inline numbers for all of it. **Verified on macOS:** Classic at the final
       code is byte-identical to Classic at the starting commit `3479cc4` on all 158 frames; two Big Type renders of the final code are
-      byte-identical on all 158; BT_DIFFS of 158 Big Type frames differ from the starting render, each explained in the decision's
-      companion note in the build sessions' notes (`m47-b8-renders`); the Title page's frames keep their names and under Big Type show the
+      byte-identical on all 158; 44 of 158 Big Type frames differ from the starting render (16 folder frames by the folder's name, now
+      the landing heading, a few pixels; the 25 Title-page frames; the 3 in-game companion frames), listed in the build sessions' notes
+      (`m47-b8-renders/bigtype-diff-vs-start.txt`, the final set beside it); the Title page's frames keep their names and under Big Type show the
       game focused with its facts, its Y sheet, "Which screen?" and the launch at rest. New tests: `HandheldBigTypeFolderLaunchMotionTests`
       (tokens.js and every move at fixed moments, held still) and `HandheldShellViewModelTests+BigTypePlay` (A plays with no page drawn and
       the status following the launch and the save sync, the missing file, the screen sheet and its B, today's look still opening the page,
       the launch title's size and lines, the companion's places and tabs). `dotnet build` and `dotnet test` passed three times running
-      (TEST_FIGURES). **Emulator check (not a Thor check; `emushelf-b3`, Release build without AOT, `adb install -r`):** with `bigtype`,
+      (1,407 + 1,665 each time). **Emulator check (first, while the owner had said to use it; `emushelf-b3`, Release build without
+      AOT):** with `bigtype`,
       recordings of both displays caught the PS2 folder opening (home falling away, the games dealing, the name's letters landing, the
       count, the ring popping in) and closing (games dropping, home popping in, the ring back), A on a game of a console set to ask showing
       the "Which screen?" sheet, and the launch from it: the tile flying, the Launcher flooding dark, the grid going, the Stage's circle,
@@ -3095,7 +3097,19 @@ checked on the emulator only, so their exits stay open for the owner's look.
       on the native Launcher. With `classic`: the folder, the Title page, its chooser and the failed launch's message as before; set back
       to `bigtype`. **Not checked on any device:** a launch that runs (so the companion in a game, its tabs, rest and wake, an unlock, and the
       return from a game), a missing file (the emulator's library has none), A on a console that does not ask, holding still, colour,
-      frame times and feel. The Thor was not used.
+      frame times and feel. **Thor check (then; Release AOT, `adb install -r`, uid 10211 kept, 60 Hz untouched, both displays recorded):**
+      with `bigtype`, the GBC folder opened and closed natively as on the emulator; every console on the owner's Thor is set to ask, so
+      A on a game (GBC, GBA, PSP) showed "Which screen?" each time, and a launch that runs straight away could not be seen without
+      changing the owner's settings; "Top screen" from it launched Donald Duck in RetroArch and Bleach in PPSSPP: the sheet's rows left,
+      the tile flew, the Launcher flooded to the in-game colour and its grid went, the Stage's circle, letters and "Starting …" status
+      showed until the emulator covered the top screen, and the companion arrived on the bottom (Now playing, the timer counting each
+      second, the total, 0 / 18 and 0 / 60 achievements, nine photos of the game, the dock, "Quit to shelf"); each tab by touch (keys go
+      to the game), the rest after 9 s and a touch waking it; leaving the game (force-stopping the emulator, nothing saved) the parts
+      left, the colour faded, the ground flooded back and the tiles popped in. Found there and fixed: the companion flashed on the top
+      screen while its parts left, and the Achievements tab kept "Loading achievements…" once the set had loaded (both checked again on
+      the Thor). With `classic`: the folder, the Title page, its chooser cards, a launch with today's companion and the way back as before.
+      Left installed with `debug.emushelf.look` `bigtype`. **Not seen on any device:** a launch with no screen question, a missing file,
+      an unlock while playing, holding still.
 - [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.
 - [ ] **B10 — Make it the look.** A reduced-motion setting beside the system one; the owner's ear on the sounds
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the

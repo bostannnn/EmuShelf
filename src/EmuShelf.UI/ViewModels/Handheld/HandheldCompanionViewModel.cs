@@ -452,6 +452,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(ProgressCount));
         OnPropertyChanged(nameof(ProgressPoints));
         OnPropertyChanged(nameof(AchievementsMessage));
+        OnPropertyChanged(nameof(UnlockedText));
         OnPropertyChanged(nameof(PanelHint));
         OnPropertyChanged(nameof(HasPanelHint));
         RaiseFilterChanged();
@@ -1106,6 +1107,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
                 break;
             case nameof(SecondScreenViewModel.AchievementsStatus):
                 OnPropertyChanged(nameof(AchievementsMessage));
+                OnPropertyChanged(nameof(UnlockedText));
                 break;
             case nameof(SecondScreenViewModel.SelectedAchievement):
             case nameof(SecondScreenViewModel.CanRefresh):

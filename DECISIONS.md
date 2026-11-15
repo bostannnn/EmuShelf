@@ -14957,7 +14957,11 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   runs its fall-away, drop and flight under reduced motion (only its arrivals check `RM`); B7's precedent (a closing list simply goes)
   was followed for the departures too.
 - **Found on the emulator and fixed:** a launch from the "Which screen?" sheet came while the Avalonia Launcher still had the screen
-  (the sheet's rows leaving), so the native Launcher never flew the tile; the feed now sends the launch on its next sync.
+  (the sheet's rows leaving), so the native Launcher never flew the tile; the feed now sends the launch on its next sync. **Found on the
+  Thor and fixed:** while the companion's parts left, the host was told the main display was not Handheld's, so the companion flashed on
+  the top screen; and the Achievements tab's line under the figure kept "Loading achievements…" after the set loaded.
+- **Driving the companion on the Thor:** while a game runs the pad belongs to the emulator, so the companion's tabs were checked by touch
+  (each tab is tappable); the app is told the game ended when its own window has focus again.
 - **Not built / found and not fixed:** the app's own messages (a launch that fails, a scan) still use today's toast at the top of the
   Stage, not the line (only B8's own messages use the line); a pinned game's launch from home and the swapped screens' launch were not
   seen on a device; the in-game companion on the 16:9 screen (a game on the bottom screen) lays the same parts on its 1920 canvas (the tabs and the

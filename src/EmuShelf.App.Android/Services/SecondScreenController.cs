@@ -1421,7 +1421,7 @@ internal sealed class SecondScreenController
             presentation.Model.Overlay == SecondScreenOverlayKind.None;
         // The main display's Handheld screen gives way while the companion sits over it (a game on Screen-2). Where
         // the two Handheld screens go (and the swap, M45 H5) is HandheldScreenHost's.
-        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen && !leaving,
+        HandheldScreenHost.Instance.Update(handheld, presentation, showHandheld, mainShowsHandheld: !_gameOnSecondScreen,
             inGame: _runningGameId is not null || leaving);
     }
 
