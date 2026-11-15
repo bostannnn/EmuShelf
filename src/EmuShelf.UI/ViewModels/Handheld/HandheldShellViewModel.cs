@@ -395,8 +395,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // The first press after the idle drift only wakes the Stage (decision 14).
-        if (WakeOnInput())
+        // The first press after the idle drift only wakes the Stage (decision 14); under Big Type a direction wakes it and moves too
+        // (M47 B11, awaiting the owner: DirectionWakesAndMoves).
+        if (WakeOnInput() && !DirectionWakesAndMoves(action))
         {
             PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
             return true;
@@ -498,6 +499,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return true;
         }
     }
+
+    /// <summary>
+    /// M47 B11 (the session's choice, awaiting the owner; DECISIONS.md "M47 B11"): under Big Type a direction press that ends the idle
+    /// drift also moves the focus, so on the Thor it never reads as a dropped press; any other button still only ends the drift, so A can
+    /// never start a game from an idle screen. Classic keeps decision 14 whole. To undo, return false here.
+    /// </summary>
+    private static bool DirectionWakesAndMoves(GamepadAction action) =>
+        HandheldTokens.IsBigType && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft
+            or GamepadAction.NavigateRight;
 
     /// <summary>
     /// The system Back button. Closes whatever is open (menu, drawer, folder, dock/header focus) and returns
