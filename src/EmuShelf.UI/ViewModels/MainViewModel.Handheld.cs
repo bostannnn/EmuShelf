@@ -103,6 +103,40 @@ public partial class MainViewModel
 
     private Task _handheldSoundsSave = Task.CompletedTask;
 
+    /// <summary>The reduced-motion switch changed (Settings → Display under Big Type, M47 B10): remembered for the next start.</summary>
+    private void SaveHandheldReduceMotion(bool enabled)
+    {
+        if (_settingsService is not { } settings)
+            return;
+        _handheldReduceMotionSave = _handheldReduceMotionSave.ContinueWith(_ =>
+        {
+            try
+            {
+                settings.Update(latest => latest with { HandheldReduceMotion = enabled });
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning("Could not remember the Handheld reduce motion switch.", ex);
+            }
+        }, TaskScheduler.Default);
+    }
+
+    private Task _handheldReduceMotionSave = Task.CompletedTask;
+
+    /// <summary>Waits for the last remembered switch to reach the settings file (tests read it back).</summary>
+    internal Task HandheldSettingsSaved => Task.WhenAll(_handheldSoundsSave, _handheldReduceMotionSave);
+
+    // Settings → Display's Reduce motion row (M47 B10): Big Type only, so today's look keeps its Settings exactly as it was.
+    internal GamepadSettingsSwitch? HandheldReduceMotionSwitch() => Handheld is { } shell && HandheldTokens.IsBigType
+        ? new GamepadSettingsSwitch(() => shell.ReduceMotion, enabled =>
+        {
+            if (shell.ReduceMotion == enabled)
+                return;
+            shell.ReduceMotion = enabled;
+            shell.SaveReduceMotion?.Invoke(enabled);
+        })
+        : null;
+
     // Settings → Display's Sounds row in Handheld mode: the shell's switch, so the menu row and the Settings row agree.
     private GamepadSettingsSwitch? HandheldSoundsSwitch() => Handheld is { } shell
         ? new GamepadSettingsSwitch(() => shell.SoundsEnabled, enabled =>
@@ -158,9 +192,12 @@ public partial class MainViewModel
                 SoundsEnabled = _settingsService?.Load().HandheldSounds ?? true,
                 Look = HandheldLookChoice.Resolve(_settingsService?.Load().HandheldLook ?? HandheldLook.Classic),
                 SaveSounds = SaveHandheldSounds,
+                SaveReduceMotion = SaveHandheldReduceMotion,
             };
             // The tokens take the look's values once, before the Handheld views that read them are built (M47 B1).
             HandheldTokens.Use(handheld.Look);
+            // Read once the tokens know the look: the switch holds still under Big Type only (M47 B10).
+            handheld.ReduceMotion = _settingsService?.Load().HandheldReduceMotion ?? false;
             Handheld = handheld;
             handheld.ShowStatus(StatusText, StatusSeverity);
             AnnounceHandheldUpdate();
@@ -217,7 +254,8 @@ public partial class MainViewModel
                 setup: setup ? BuildSetupWizardOptions() : null,
                 openHotkeys: null,
                 runSetup: setup || !OperatingSystem.IsAndroid() ? null : RunHandheldSetupAgainAsync,
-                handheldSounds: HandheldSoundsSwitch());
+                handheldSounds: HandheldSoundsSwitch(),
+                handheldReduceMotion: HandheldReduceMotionSwitch());
             if (!IsHandheldMode)
             {
                 settings.Dispose();

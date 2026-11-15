@@ -73,6 +73,7 @@ public sealed partial class HandheldShellViewModel
         }
         if (_notice is null)
             SetStatusLine(message, _appStatusGlyph);
+        ShowOnLine(message, _appStatusGlyph, hold: null);
     }
 
     /// <summary>The last notice an edit showed (tests read it; the Stage shows <see cref="StatusMessage"/>).</summary>
@@ -106,6 +107,7 @@ public sealed partial class HandheldShellViewModel
     {
         _notice = text;
         SetStatusLine(text, glyph);
+        ShowOnLine(text, glyph, duration);
         if (_disposed)
             return;
         if (_noticeTimer is null)

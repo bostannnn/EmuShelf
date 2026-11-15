@@ -90,14 +90,15 @@ internal sealed partial class HandheldNativeStageFeed
         _bigTypeName = (HandheldBigTypeName)Find("BtName");
         // Each corner piece is pictured again only when what it says changes (a picture is a GPU round trip). Under Big Type
         // (M47 B4) the pills are gone: the label, the name, the two lines, the status and the hints are each pictured in white
-        // and drawn by the native Stage in their zone's ink; the message keeps today's toast.
-        var message = ("message", Find("MessageShot"), (Func<HandheldShellViewModel, string>)(s => $"{s.HasStatusMessage}|{s.StatusMessage}|{s.StatusGlyph}"),
+        // and drawn by the native Stage in their zone's ink; the app's messages are the line's (M47 B10), and the toast is left only
+        // where the Stage shows no name to say them under.
+        var message = ("message", Find("MessageShot"), (Func<HandheldShellViewModel, string>)(s => $"{s.HasStatusMessage}|{s.StatusMessage}|{s.StatusGlyph}|{s.Stage.HasBigTypeName}"),
             StageInkZone.None);
         _chrome = HandheldTokens.IsBigType
             ?
             [
                 ("bt-label", Find("BtLabelShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Label}", StageInkZone.Left),
-                ("bt-line", Find("BtLineShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Line}", StageInkZone.Left),
+                ("bt-line", Find("BtLineShot"), s => $"{s.Stage.HasBigTypeName}|{s.HasLineMessage}|{s.Stage.Line}", StageInkZone.Left),
                 ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}", StageInkZone.Left),
                 ("bt-status", Find("BtStatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.HasBattery}", StageInkZone.TopRight),
                 ("bt-hints", Find("BtHintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}")), StageInkZone.BottomRight),
@@ -287,6 +288,7 @@ internal sealed partial class HandheldNativeStageFeed
             case nameof(HandheldShellViewModel.StatusMessage):
             case nameof(HandheldShellViewModel.HasStatusMessage):
             case nameof(HandheldShellViewModel.StatusGlyph):
+            case nameof(HandheldShellViewModel.HasLineMessage):
                 Schedule(centre: false, pop: false, chrome: true);
                 break;
             case nameof(HandheldShellViewModel.LauncherGround):

@@ -143,6 +143,11 @@
       <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <!-- The app's messages (M45 H6c): the pill's look, two lines at most, marked by what kind of message it is. -->
+    <!-- Big Type (M47 B10): a message on the line runs to a second line rather than end in an ellipsis (the app's own; see HasLineMessage). -->
+    <Style Selector="TextBlock.message">
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="MaxLines" Value="2" />
+    </Style>
     <Style Selector="Border.toast">
       <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicToastFill}" />
       <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
@@ -496,7 +501,7 @@
         </Border>
         <Border x:Name="BtLineShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
                 Margin="{x:Static vm:HandheldTokens.StageLineShotMargin}" Padding="{x:Static vm:HandheldTokens.StageShotPadding}">
-          <vh:HandheldRollingText x:Name="BtLine" Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum"
+          <vh:HandheldRollingText x:Name="BtLine" Classes.message="{Binding HasLineMessage}" Text="{Binding Stage.Line}" FontSize="{x:Static vm:HandheldTokens.StageLine}" FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{Binding StageInk}" FontFeatures="+tnum"
                                   TextTrimming="CharacterEllipsis" />
         </Border>
         <Border x:Name="BtFactsShot" RenderOptions.TextRenderingMode="Antialias" IsVisible="{Binding Stage.HasBigTypeName}" HorizontalAlignment="Left" VerticalAlignment="Bottom"
@@ -515,9 +520,11 @@
 
       <!--
         The app's messages, which Gamepad mode shows as a toast (M45 H6c): a launch, a sync, a scan, a scrape finished, an
-        update to install, what an edit did; a failure says so in the warning colour with the alert mark.
+        update to install, what an edit did; a failure says so in the warning colour with the alert mark. Big Type (M47 B10) says them on
+        the line under the name instead (the mock's toast); its toast is left only where the Stage shows no name to say them under (a
+        fan-art hero, an empty page). Today's look never has a Big Type name, so its toast is always there.
       -->
-      <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top">
+      <Border x:Name="MessageShot" Classes="shot" HorizontalAlignment="Center" VerticalAlignment="Top" IsVisible="{Binding !Stage.HasBigTypeName}">
       <Border Classes="toast" Classes.error="{Binding IsStatusError}" IsVisible="{Binding HasStatusMessage}">
         <StackPanel Orientation="Horizontal" Spacing="16">
           <PathIcon Data="{Binding StatusGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}" Width="30" Height="30"

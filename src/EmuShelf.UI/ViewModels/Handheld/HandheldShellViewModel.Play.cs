@@ -418,19 +418,64 @@ public partial class HandheldShellViewModel
 
     private string? _lineMessage;
     private DispatcherTimer? _lineTimer;
+    // The app's status or notice the line holds now, if that is what it holds (M47 B10).
+    private string? _lineStatus;
 
     /// <summary>Counts the line's errors: the Stage shakes the line each time it changes (tokens.js <c>Message.shake</c>).</summary>
     [ObservableProperty]
     public partial int LineShakes { get; private set; }
 
+    /// <summary>
+    /// The line holds a message in place of its own text (M47 B10): the Stage lets it run to a second line rather than end it in an
+    /// ellipsis, so a long one (a failed launch's reason) is read whole. The app's own choice: the mock's messages all fit one line.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool HasLineMessage { get; private set; }
+
     /// <summary>The message the Stage's line holds in place of its own text, while it lasts.</summary>
     public string? LineMessage => _lineMessage;
 
     /// <summary>An error on the Stage's line (the mock's <c>toast(text, {error: true})</c>): it shakes, holds <c>errorHoldMs</c>, then the line comes back.</summary>
-    public void ShowLineError(string text)
+    public void ShowLineError(string text) =>
+        PutLineMessage(text, error: true, TimeSpan.FromMilliseconds(BigTypeLaunchMotion.ErrorHoldMilliseconds));
+
+    /// <summary>
+    /// Big Type (M47 B10): the app's messages (<see cref="ShowStatus"/>, <see cref="Announce"/>, an edit's notice) are the line under
+    /// the name, as the mock's <c>toast</c>: the line rolls to the message and back. A failure shakes and holds <c>Message.errorHoldMs</c>;
+    /// something still running (the working mark) holds until the app replaces or clears it, as the mock's <c>{hold: true}</c>; anything
+    /// else holds <c>Message.holdMs</c>, or as long as its caller asked. A press moves on, as before. While a game launches or runs the
+    /// launch's own steps are the takeover's status, so only a failure takes the line. Today's look keeps its toast.
+    /// </summary>
+    private void ShowOnLine(string? text, HandheldGlyph glyph, TimeSpan? hold)
+    {
+        if (!HandheldTokens.IsBigType)
+            return;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            // The app cleared its message: if the line still holds it, the line's own text comes back.
+            if (_lineStatus is not null && _lineMessage == _lineStatus)
+            {
+                DropLineMessage();
+                UpdateStage();
+            }
+            _lineStatus = null;
+            return;
+        }
+        var error = glyph == HandheldGlyph.Alert;
+        if (Playing is not null && !error)
+            return;
+        _lineStatus = text;
+        PutLineMessage(text, error, glyph == HandheldGlyph.Working
+            ? null
+            : hold ?? TimeSpan.FromMilliseconds(error ? BigTypeLaunchMotion.ErrorHoldMilliseconds : BigTypeLaunchMotion.HoldMilliseconds));
+    }
+
+    private void PutLineMessage(string text, bool error, TimeSpan? hold)
     {
         _lineMessage = text;
-        LineShakes++;
+        HasLineMessage = true;
+        if (error)
+            LineShakes++;
         Stage.Line = text;
         if (_disposed)
             return;
@@ -441,11 +486,15 @@ public partial class HandheldShellViewModel
             {
                 _lineTimer?.Stop();
                 _lineMessage = null;
+                _lineStatus = null;
+                HasLineMessage = false;
                 UpdateStage();
             };
         }
         _lineTimer.Stop();
-        _lineTimer.Interval = TimeSpan.FromMilliseconds(BigTypeLaunchMotion.ErrorHoldMilliseconds);
+        if (hold is not { } lasts)
+            return;
+        _lineTimer.Interval = lasts;
         _lineTimer.Start();
     }
 
@@ -456,5 +505,7 @@ public partial class HandheldShellViewModel
             return;
         _lineTimer?.Stop();
         _lineMessage = null;
+        _lineStatus = null;
+        HasLineMessage = false;
     }
 }

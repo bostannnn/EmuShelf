@@ -15063,3 +15063,60 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
 - **Found and left:** today's sounds for typing are unchanged (a key typed sounds confirm; the mock's are move for a letter and back for
   Delete): the sounds are B10's. There is no touch-only way to cancel a keyboard (B does it). A hardware keyboard typing does not move
   the ring. After a game played from a Search hit you are on home, not back in Search.
+
+## 2026-11-15 — M47 B10a: Big Type's own Reduce motion switch, the app's messages on the line, and the documents
+
+The first part of B10 ("Make it the look"): what does not need the owner's eyes or ears. Big Type is **not** the default, today's
+look (Classic) is **not** removed (D5) and **no sound changed**; those wait for the owner. Classic's 158 design frames are
+byte-identical before and after.
+
+- **The switch is one more reason in the one funnel.** Every Big Type move from B5 to B9 already has a held-still form chosen by
+  `HandheldShellViewModel.HoldsStill`, which reaches the Avalonia views directly and the native compositors as `StageMotionCommand`
+  and `LauncherMotionCommand`. So the switch adds no maths: `HoldsStill = device's say || (ReduceMotion && Big Type)`, recomputed the
+  moment either changes (`ApplyHoldsStill`), which is what makes it take effect at once on both screens with no restart. A game's
+  companion already up follows it too (before, it read the say only when a launch started).
+- **Words and place.** Settings → Display, after Sounds: **"Reduce motion"**, its line "everything arrives in place at once and the
+  backdrop holds still · Android's own setting does this too" (row `display.reduce-motion`). Display is where the mode's look and
+  sound already are; "Reduce motion" is the name people know from their phones. Under Big Type the Stage names the row and its line
+  says On or Off (B7's rule for a switch), so the label has to carry the meaning on its own. The mock has no such row; its Display has
+  "Idle motion", which only stops the idle hop. That is a different thing and was not built.
+- **Big Type only, and read only by Big Type.** The row is offered only when the look is Big Type (`HandheldReduceMotionSwitch`), and the
+  shell reads the saved value under Big Type only. Today's look has no row for it, and a switch a look cannot show is a switch it
+  cannot turn off, so it must not hold that look still; it also keeps Classic byte-identical. When D5 is carried out the condition goes.
+- **Saved like the Sounds switch**, as `AppSettings.HandheldReduceMotion` (off by default) in the portable `Settings/settings.json`,
+  written off the UI thread, and read when Handheld mode starts, once the tokens know the look.
+- **The edge bump had no held-still form; now it has.** Under Big Type, held still, a press into a wall no longer nudges the ring, on
+  the native Launcher (`LauncherBumpCommand` ignored) and the Avalonia one, as the mock's `bump` returns under reduced motion. Its
+  distance and timing are still today's (7% over 300 ms; the mock's is 18 px over 220 ms), listed below.
+- **The app's messages are the line under the name (the mock's `toast`).** Under Big Type, `ShowStatus`, `Announce` and an edit's notice
+  roll the Stage's line to the message and back, through the same path as B8's `ShowLineError`: a failure shakes and holds
+  `Message.errorHoldMs`; work still running (the working mark) holds until the app replaces or clears it, as the mock's `{hold: true}`;
+  anything else holds `Message.holdMs` or as long as its caller asked (the update notice's 10 s); a press moves on. While a game launches
+  or runs only a failure takes the line (the takeover says the launch's own steps). Today's toast is hidden wherever the Stage has a Big
+  Type name, and **kept where it has none** (the idle drift's fan-art hero, an empty page), so no message is ever lost. The view model's
+  `StatusMessage` is unchanged, so Gamepad mode and today's look read the same thing. No sound was added (the mock plays open for a
+  message and bump for an error): sounds wait for the owner.
+- **A long message runs to a second line** rather than ending in an ellipsis (`HasLineMessage` sets the line's `message` class:
+  wrapping, two lines at most). The app's own choice: the mock's messages all fit one line, but the app's failures do not ("Could not
+  start NetherSX2: the emulator is not installed. Choose one in Settings → Emulators."). It grows up from the line's place; its first
+  line's em box stays under the name's box (only the leading reaches past it), and the second line under it keeps its place.
+- **A folder's name keeps the mock's gap from its count.** tokens.js gained `launcher.HeaderGap` (32, the mock's `.fhead` gap of 16 at
+  half scale). Under Big Type it is the count's left margin, and the view sets the name's `MaxTextWidth` to what the count leaves, never
+  more than `HeaderNameMaxWidth`, so "Game Boy Advance" beside 106 is set smaller instead of touching it. A name that fits is unchanged.
+- **Activity's game page: one line each.** Its card's description is two lines (plays; first and last played), which in the Stage's
+  one-line second line grew up over the line ("2h" drawn on "Played 1 time"). `HandheldListStageText.Of` now gives a description of
+  several lines its first line on the line, after the value, and the rest on the second line, joined with " · ". Nothing is dropped.
+- **The design harness's Settings carries the switch under Big Type**, so the Display frames show the row (off).
+- **The documents.** `HANDHELD-MODE.md` decision 16 now describes Big Type and says it is behind `HandheldLook`, default Classic, with D5
+  not yet carried out; the original text is kept, marked superseded. The motion spec has a Big Type section (the rules, every move with
+  its tokens, what is still today's under Big Type, and holding still with both reasons) before today's, which is kept and marked as the
+  default until Big Type is made it.
+- **Swept and left** (no answer in the mock, or larger than a fix): the companion's All apps drawer, badge grid and photo viewer, and the
+  dark background behind them over the Launcher (today's look; the mock draws none of them); the idle drift's fan-art hero (today's
+  hero page); the Stage's colour "sweep" circle behind a focused dock app or the Start menu (today's app sweep); the native Stage's
+  start-up ground before the first console backdrop (today's grey gradient, on Settings, Activity, an app or an empty slot after a
+  start; small to send no backdrop, but the ink over the bare ground needs checking); the empty library (the mock's three questions and
+  a climbing count are not built; the app shows "No games yet" and Add games); Settings' "A SAVE" / "A RESCAN" values in capitals and
+  long descriptions ending in an ellipsis on the Stage (B7's rule); the panels' pictures (a scraper's preview, a badge) not shown on the
+  Stage; the edge bump's distance and timing, the screen swap (X) and the medium's sway (the mock's `MediumSway` is not used), all still
+  today's motion.
