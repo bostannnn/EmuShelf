@@ -140,8 +140,8 @@ public class StageBackdropCatalogTests
     public void EverySystem_RotatesThroughTheOwnersPicks()
     {
         Assert.Equal(53, KnownSystems.All.Sum(system => system.Backdrops!.Count));
-        // The 53, and Big Type's psp-ribbon (M47 B13).
-        Assert.Equal(54, BackdropCatalog.All.Count);
+        // The 53, and Big Type's own (M47 B13): psp-ribbon, 3ds-screen and lift-off.
+        Assert.Equal(56, BackdropCatalog.All.Count);
     }
 }
 

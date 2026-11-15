@@ -71,7 +71,10 @@ internal static class BackdropPreview
     /// for Recent's), on a 1920 × 1080 frame: `--backdrops --bigtype [--out dir] [--times …] [--only id,id] [--sharp-width w]`
     /// (w: the Thor's <c>debug.emushelf.bdsize</c> override, 0 for the console's own size). Writes <c>owner-id-Ns.png</c> per moment.
     /// </summary>
-    public static void RunBigType(GL gl, string outputDirectory, float[] times, IReadOnlyCollection<string>? only, string? sharpWidth)
+    /// <param name="colourHex">`--colour #RRGGBB`: every backdrop drawn from (or recoloured toward) this colour instead of its owner's (M47 B13:
+    /// the default background in any colour it can take).</param>
+    public static void RunBigType(GL gl, string outputDirectory, float[] times, IReadOnlyCollection<string>? only, string? sharpWidth,
+        string? colourHex = null)
     {
         const int width = BigTypeBackdrops.StageWidth, height = BigTypeBackdrops.StageHeight;
         if (sharpWidth is { } value)
@@ -86,7 +89,7 @@ internal static class BackdropPreview
         using var renderer = new BackdropRenderer(gl, GlslDialect.Desktop, 3, 3);
         foreach (var (owner, backdrops) in BigTypeBackdrops.All)
         {
-            var ground = Ground(owner);
+            var ground = colourHex is { } hex ? Hex(hex) : Ground(owner);
             foreach (var entry in backdrops.Where(entry => only is null || only.Contains(entry.Id)))
             {
                 var instance = renderer.Start(entry.Id, 0f, clockOffsetSeconds: 0f, new BackdropLook(true, ground))
@@ -119,8 +122,14 @@ internal static class BackdropPreview
     /// <summary>A console's Big Type ground (KnownSystems), or Recent's (tokens.js <c>colour.Recent</c>), as sRGB from 0 to 1.</summary>
     internal static System.Numerics.Vector3 Ground(string owner)
     {
-        var hex = owner == BigTypeBackdrops.Recent ? "#39465F"
+        // Recent's slate; the default background in Settings' indigo (tokens.js colour.Settings), one of the colours it takes.
+        var hex = owner == BigTypeBackdrops.Recent ? "#39465F" : owner == BigTypeBackdrops.Default ? "#4A43B8"
             : EmuShelf.Integrations.Systems.KnownSystems.All.Single(system => system.Id == owner).GroundColor!;
+        return Hex(hex);
+    }
+
+    private static System.Numerics.Vector3 Hex(string hex)
+    {
         int Channel(int at) => Convert.ToInt32(hex.Substring(at, 2), 16);
         return new System.Numerics.Vector3(Channel(1) / 255f, Channel(3) / 255f, Channel(5) / 255f);
     }

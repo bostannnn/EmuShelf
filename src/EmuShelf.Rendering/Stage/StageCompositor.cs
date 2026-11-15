@@ -423,6 +423,14 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             // A move within the same system: its backdrops keep running; only the pictured fallback changes, and goes up if drawn.
             DeleteLayers(top);
             top.Backdrop = same;
+            // M47 B13: the default background moving between two items of different colours stays one backdrop changing colour, over
+            // the Launcher's flood (at once when the device holds still). Its text's dark ink follows the ink command, as always.
+            if (command.Ground is { } ground && ground != top.Look.Ground)
+            {
+                top.Look = top.Look with { Ground = ground };
+                top.Animated?.SetGround(ground, _backdropClock, _holdStill);
+                top.Previous?.SetGround(ground, _backdropClock, _holdStill);
+            }
             return;
         }
         if (command.Backdrop is not { } next)
@@ -1274,8 +1282,8 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         /// <summary>The dark ink its text is drawn in (the console's colour taken toward near-black).</summary>
         public Vector3 Deep { get; set; } = Vector3.One;
 
-        /// <summary>The look its animations are drawn for (M47 B13): Big Type's, with the colour they are recoloured toward.</summary>
-        public BackdropLook Look { get; init; }
+        /// <summary>The look its animations are drawn for (M47 B13): Big Type's, with the colour they are recoloured toward (or drawn from).</summary>
+        public BackdropLook Look { get; set; }
     }
 
     private BackdropState Upload(StageBackdrop backdrop) => new(backdrop)

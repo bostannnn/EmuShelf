@@ -16,6 +16,7 @@ public sealed class BackdropInstance
         StartMilliseconds = startMilliseconds;
         ClockOffsetSeconds = clockOffsetSeconds;
         Look = look;
+        _groundFrom = _groundTo = look.Ground;
         Width = spec.Width;
         Height = spec.Height;
         Smooth = spec.Output.Smooth;
@@ -53,6 +54,32 @@ public sealed class BackdropInstance
 
     /// <summary>How far it is recoloured toward <see cref="BackdropLook.Ground"/> (0: as it is).</summary>
     internal float Pull => BigType?.Pull ?? 0f;
+
+    /// <summary>
+    /// The colour a backdrop drawn from a colour is drawn in (M47 B13, the shaders' <c>uColour</c>): <see cref="BackdropLook.Ground"/> at
+    /// the start, then eased to each new one over the Launcher's flood (<see cref="SetGround"/>), so one running backdrop changes colour.
+    /// </summary>
+    public System.Numerics.Vector3 GroundAt(float now)
+    {
+        if (now >= _groundSince + EmuShelf.Rendering.Stage.BigType.BigTypeMotion.FloodMilliseconds)
+            return _groundTo;
+        var p = EmuShelf.Rendering.Stage.BigType.BigTypeMotion.FloodEase(Math.Clamp((now - _groundSince) / EmuShelf.Rendering.Stage.BigType.BigTypeMotion.FloodMilliseconds, 0f, 1f));
+        return System.Numerics.Vector3.Lerp(_groundFrom, _groundTo, p);
+    }
+
+    /// <summary>A new colour for a running backdrop: eased from the one on screen, or at once when the device holds still.</summary>
+    public void SetGround(System.Numerics.Vector3 ground, float now, bool instantly = false)
+    {
+        if (ground == _groundTo)
+            return;
+        _groundFrom = instantly ? ground : GroundAt(now);
+        _groundTo = ground;
+        _groundSince = now;
+    }
+
+    private System.Numerics.Vector3 _groundFrom;
+    private System.Numerics.Vector3 _groundTo;
+    private float _groundSince = float.NegativeInfinity;
 
     /// <summary>The bloom's threshold: the console's finish, or Big Type's own where its entry sets one.</summary>
     internal float BloomThreshold => BigType?.BloomThreshold ?? Spec.Output.BloomThreshold;
@@ -168,8 +195,8 @@ public sealed class BackdropRenderer : IDisposable
                 _history ??= Compile("fullscreen.vert", "backdrop-history.frag");
             if (spec.Output.BloomThreshold > 0)
                 _bright ??= Compile("fullscreen.vert", "backdrop-bright.frag");
-            instance.Programs = spec.Passes.Select(pass => Program(pass.Vertex, pass.Fragment, defines)!).ToArray();
-            instance.FinishProgram = spec.Finish is { } finish ? Program("fullscreen.vert", finish, defines) : null;
+            instance.Programs = spec.Passes.Select(pass => Program(pass.Vertex, pass.Fragment, defines, spec.Include)!).ToArray();
+            instance.FinishProgram = spec.Finish is { } finish ? Program("fullscreen.vert", finish, defines, spec.Include) : null;
         }
         catch (Exception ex)
         {
@@ -231,6 +258,8 @@ public sealed class BackdropRenderer : IDisposable
                 program.Set("uPixel", instance.Pixel);
                 program.Set("uPointRound", pass.Primitive == BackdropPrimitive.Points ? 1f : 0f);
             }
+            if (instance.Look.BigType)
+                program.Set("uColour", instance.GroundAt(now));
             if (pass.DepthTest)
             {
                 _gl.Enable(EnableCap.DepthTest);
@@ -280,6 +309,8 @@ public sealed class BackdropRenderer : IDisposable
             finishing.Set("uScene", 0);
             if (instance.Pixel > 1f)
                 finishing.Set("uPixel", instance.Pixel);
+            if (instance.Look.BigType)
+                finishing.Set("uColour", instance.GroundAt(now));
             Bind(0, scene.Texture);
             _gl.DrawArrays(PrimitiveType.Triangles, 0, 3);
         }
@@ -372,6 +403,7 @@ public sealed class BackdropRenderer : IDisposable
             program.Set("uRowScale", instance.Height / (float)instance.Spec.Height);
             program.Set("uPull", instance.Pull);
             program.Set("uGround", instance.Look.Ground);
+            program.Set("uBloomWide", output.BloomWide);
         }
 
         program.Set("uLevels", output.Bits > 0 ? (float)((1 << output.Bits) - 1) : 0f);
@@ -420,22 +452,27 @@ public sealed class BackdropRenderer : IDisposable
         _gl.DeleteVertexArray(_vao);
     }
 
-    private GlProgram? Program(string vertex, string fragment, string[] defines)
+    private GlProgram? Program(string vertex, string fragment, string[] defines, string? include = null)
     {
-        var key = vertex + "|" + fragment + "|" + string.Join(",", defines);
+        var key = vertex + "|" + fragment + "|" + string.Join(",", defines) + "|" + include;
         if (!_programs.TryGetValue(key, out var program))
         {
-            program = Compile(vertex, fragment, defines);
+            program = Compile(vertex, fragment, defines, include);
             _programs[key] = program;
         }
         return program;
     }
 
-    private GlProgram Compile(string vertex, string fragment, string[]? defines = null) => GlProgram.Create(
-        _gl,
-        ShaderLibrary.LoadWithDefines(vertex, _dialect, _major, _minor, defines ?? [], "backdrop-common"),
-        ShaderLibrary.LoadWithDefines(fragment, _dialect, _major, _minor, defines ?? [], "backdrop-common"),
-        defines is { Length: > 0 } ? fragment + " (" + string.Join(", ", defines) + ")" : fragment);
+    private GlProgram Compile(string vertex, string fragment, string[]? defines = null, string? include = null)
+    {
+        // Today's backdrops include backdrop-common alone, exactly as before; a backdrop of Big Type's may add its own file (M47 B13).
+        string[] includes = include is null ? ["backdrop-common"] : ["backdrop-common", include];
+        return GlProgram.Create(
+            _gl,
+            ShaderLibrary.LoadWithDefines(vertex, _dialect, _major, _minor, defines ?? [], includes),
+            ShaderLibrary.LoadWithDefines(fragment, _dialect, _major, _minor, defines ?? [], includes),
+            defines is { Length: > 0 } ? fragment + " (" + string.Join(", ", defines) + ")" : fragment);
+    }
 
     private void EnsureTargets(BackdropInstance instance)
     {

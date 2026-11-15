@@ -181,9 +181,8 @@ public static class BackdropLegibility
     // holds the two equal. The inks and veils came out as today's for every animation both looks show; psp-ribbon is new.
     private static readonly Dictionary<string, BackdropInk> BigTypeTable = new(StringComparer.Ordinal)
     {
-        ["3ds-floorwave"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
-        ["3ds-tapwave"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
-        ["3ds-tiles"] = new("3ds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
+        // Through the screen: a fixed white with these veils, measured (the rule changes ink between moments on the left and the hints).
+        ["3ds-screen"] = new("3ds", Changes(0.5f), White(0.4f), Changes(0.5f)),
         ["arc-checker"] = new("recent", Dark(0.28f), White(0.25f), Dark(0.25f)),
         ["arc-vector-v3"] = new("arcade", White(0.28f), White(0.25f), White(0.25f)),
         ["dc-sea-v2"] = new("dreamcast", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
@@ -191,6 +190,8 @@ public static class BackdropLegibility
         ["gba-iso"] = new("gba", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
         ["gbc-attr"] = new("gbc", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
         ["gc-fur"] = new("gamecube", White(0.38f), White(0.25f), White(0.29f)),
+        // Lift-off is drawn in whatever colour is focused: baked in every colour a ground can be, all with this answer.
+        ["lift-off"] = new("default", White(0.28f), White(0.25f), White(0.25f)),
         ["md-pipe-v2"] = new("megadrive", Dark(0.41f), Dark(0.35f), Dark(0.25f)),
         ["nes-stars"] = new("nes", White(0.28f), White(0.25f), White(0.25f)),
         ["ps2-orbs-v3"] = new("playstation2", Dark(0.28f), Dark(0.25f), Dark(0.25f)),

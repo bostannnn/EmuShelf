@@ -1487,8 +1487,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.AppIcon = null;
         Stage.IsDrift = false;
         // Set once per change, never cleared first: the view crossfades only when colour or era really change. In the Big Type
-        // look something with no backdrop of its own (an app, an empty slot, the dock) keeps the one showing, as the mock does.
-        Stage.Backdrop = backdrop ?? (HandheldTokens.IsBigType ? Stage.Backdrop : null);
+        // look something with no backdrop of its own shows the default background in the Launcher's colour (M47 B13), except inside a
+        // console's folder and on a game's own panel, which keep the console's backdrop showing.
+        Stage.Backdrop = backdrop ?? (HandheldTokens.IsBigType ? NoPlatformBackdrop(kind) : null);
         Stage.Medium = null;
         Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
         Stage.Glyph = kind switch
@@ -1511,8 +1512,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Folder, source.Name, subtitle,
             backdrop: source.Platform is { } platform ? BackdropFor(platform)
                 : HandheldTokens.IsBigType && HandheldTokens.LauncherColour(source) is { } ground
-                    ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge,
-                        source.Kind == HandheldFolderKind.Recent ? BigTypeBackdrops.IdsFor(BigTypeBackdrops.Recent) : null)
+                    ? source.Kind == HandheldFolderKind.Recent
+                        ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge, BigTypeBackdrops.IdsFor(BigTypeBackdrops.Recent))
+                        : DefaultBackdrop(ground)
                     : FolderBackdrop(source.AccentColor));
         Stage.Monogram = source.Monogram;
         Stage.FolderGlyph = source.Kind switch
@@ -1528,6 +1530,26 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     private long _stageGameId = -1;
+
+    /// <summary>
+    /// Big Type's default background (M47 B13): Lift-off, drawn in <paramref name="colour"/>. The same list every time, so the native Stage
+    /// keeps it running and only changes its colour from one such item to the next.
+    /// </summary>
+    internal static HandheldBackdrop DefaultBackdrop(Color colour) =>
+        new(colour, EmuShelf.Core.Systems.SystemEra.Cartridge, BigTypeBackdrops.IdsFor(BigTypeBackdrops.Default));
+
+    /// <summary>Whether the Stage shows the default background (so a new Launcher colour recolours it).</summary>
+    private bool ShowsDefaultBackdrop =>
+        Stage.Backdrop is { Animated: { } ids } && ReferenceEquals(ids, BigTypeBackdrops.IdsFor(BigTypeBackdrops.Default));
+
+    /// <summary>
+    /// What Big Type shows behind a focus that brings no backdrop: the default background in the Launcher's colour, except inside a
+    /// console's folder (its header, an app tile there) and on a panel opened over a game, which keep the backdrop showing.
+    /// </summary>
+    private HandheldBackdrop? NoPlatformBackdrop(HandheldStageKind kind) =>
+        OpenFolder?.Source.Platform is not null || (kind == HandheldStageKind.Panel && Settings is null)
+            ? Stage.Backdrop
+            : DefaultBackdrop(LauncherGround);
 
     /// <summary>The backdrop behind your folders and Recent: the tile grid, in the folder's colour (as in the mockup).</summary>
     internal static HandheldBackdrop? FolderBackdrop(string color) =>

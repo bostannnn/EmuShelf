@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Avalonia.Media;
 using Avalonia.Threading;
 using EmuShelf.App.Services;
 using EmuShelf.Core.Handheld;
@@ -926,7 +927,10 @@ public sealed partial class HandheldShellViewModel
             return;
         Stage.Title = naming.Name;
         Stage.AccentBrush = naming.ColorBrush;
-        Stage.Backdrop = FolderBackdrop(naming.Color);
+        // Big Type (M47 B13): your folder's default background, in the colour the Launcher gives the one you are choosing.
+        Stage.Backdrop = HandheldTokens.IsBigType && HandheldTokens.ColourOf(naming.Color) is { } chosen
+            ? DefaultBackdrop(Color.FromUInt32(EmuShelf.Core.Handheld.HandheldGround.Derive(chosen.ToUInt32() | 0xFF000000)))
+            : FolderBackdrop(naming.Color);
         // "B Delete" or "B Cancel" depends on whether anything is typed (the field takes a hardware keyboard too).
         UpdateHints();
     }

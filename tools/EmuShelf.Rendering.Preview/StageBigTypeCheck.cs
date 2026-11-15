@@ -165,6 +165,8 @@ internal static class StageBigTypeCheck
                 }
                 var frame = Read(gl, framebuffer, Width, Height);
                 PngWriter.Write(Path.Combine(outputDirectory, $"{owner}-{entry.Id}.png"), Width, Height, frame);
+                if (owner == BigTypeBackdrops.Default)
+                    failures += ColourChange(gl, compositor, framebuffer, outputDirectory, ground, end);
                 var answer = BackdropLegibility.ForBigType(entry.Id);
                 foreach (var block in Blocks)
                 {
@@ -183,6 +185,47 @@ internal static class StageBigTypeCheck
         BigTypeBackdrops.SharpWidthOverride = null;
         Console.WriteLine(failures == 0 ? $"Wrote the Big Type Stage frames to {outputDirectory}." : $"{failures} ink check(s) FAILED.");
         return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// The default background moving to an item of another colour (M47 B13): the same list with a new ground must keep the running
+    /// backdrop (no new start) and ease its colour over the Launcher's flood. Writes the frames at 320 ms and 700 ms.
+    /// </summary>
+    private static int ColourChange(GL gl, StageCompositor compositor, uint framebuffer, string outputDirectory, Vector3 from, float at)
+    {
+        var rose = new Vector3(0xB1, 0x5A, 0x7F) / 255f; // a folder's colour as Big Type darkens it
+        var starts = 0;
+        compositor.BackdropStarted += _ => starts++;
+        var grey = new StagePixels(1, 1, [0x40, 0x40, 0x40, 255], IsBgra: false);
+        var pictured = new StageBackdrop(new StageImage(grey, 0, 0, 1920, 1080), null, null, null, Vector2.Zero, 0, 0);
+        compositor.Apply(new StageInkCommand(rose, BigTypeVeil.Deep(rose * 255f) / 255f), at);
+        compositor.Apply(new StageBackdropCommand(pictured, BigTypeBackdrops.IdsFor(BigTypeBackdrops.Default), Ground: rose), at);
+        Vector3 Mean(byte[] frame)
+        {
+            var sum = Vector3.Zero;
+            for (var y = 0; y < Height; y += 40)
+                for (var x = 960; x < Width; x += 40)
+                    sum += Pixel(frame, Width, x, y);
+            return sum / ((Height / 40) * ((Width - 960) / 40));
+        }
+        var failures = 0;
+        Vector3? before = null;
+        foreach (var after in new[] { 320f, 700f })
+        {
+            for (var now = at; now <= at + after; now += 1000f / 60f)
+                compositor.Draw(now, Width, Height);
+            var frame = Read(gl, framebuffer, Width, Height);
+            PngWriter.Write(Path.Combine(outputDirectory, $"default-lift-off-to-rose-{after:0}ms.png"), Width, Height, frame);
+            var mean = Mean(frame);
+            Console.WriteLine($"  colour change +{after:0} ms: right half's mean {Hex(mean)} (from {Hex(from)} toward {Hex(rose)})");
+            if (before is { } earlier && Vector3.Distance(mean, earlier) < 1f / 255f)
+                failures++;
+            before = mean;
+            at += after;
+        }
+        var ok = starts == 0 && failures == 0;
+        Console.WriteLine($"  {(ok ? "ok  " : "FAIL")} the default background changed colour without restarting ({starts} new start(s))");
+        return ok ? 0 : 1;
     }
 
     private static void Feed(StageCompositor compositor, StageInkCommand ink, string? backdropId, float canvas, Vector3? recolour = null)

@@ -310,11 +310,13 @@ window.BT_TOKENS = {
 };
 
 // M47 B13: the animated backdrops the Big Type look shows (the owner's choices of 15 November 2026 on backdrop-review.html), one
-// per console and nothing rotating, except the 3DS, which keeps today's three while new ones are designed; and Recent's own. Today's
+// per console and nothing rotating (the 3DS's is "Through the screen", ideas-3ds.js, chosen in part 2); Recent's own; and the
+// default background, "Lift-off" (ideas-bg.js), for everything focused without a platform other than Recent. Today's
 // look keeps its rotating lists (KnownSystems Backdrops) and the catalog's sizes. The app's BigTypeBackdrops holds the same table.
-//   owner: the console's id (colour.consoles), or 'recent' (colour.Recent).
+//   owner: the console's id (colour.consoles), 'recent' (colour.Recent), or 'default' (drawn in the focused item's colour).
 //   pull: how far it is recoloured toward that colour, 0 to 1: a layer of the colour with mix-blend-mode: color at this opacity
-//         (the review page's .tint), applied in the backdrop's output pass. 0 shows it as it is.
+//         (the review page's .tint), applied in the backdrop's output pass. 0 shows it as it is; 3ds-screen and lift-off are drawn
+//         from the colour they are given, so they need none.
 //   size: the size its frame is drawn at, in pixels. upscale: 'crisp' keeps the console's own size and shows it in whole pixels
 //         (a 256-wide frame at 8, its edges cropped); 'sharp' draws it this large so no stair-steps or soft upscaling show, the
 //         largest the Thor's GPU allowed without worse frame pacing (measured, M47 B13: the largest whose worst frame
@@ -329,9 +331,7 @@ window.BT_TOKENS.backdrops = [
   { owner: 'gamecube', id: 'gc-fur', pull: 0, size: [400, 225], upscale: 'sharp' },
   { owner: 'nds', id: 'ds-dots', pull: 1, size: [256, 144], upscale: 'crisp' },
   { owner: 'wii', id: 'wii-pointer-v2', pull: 1, size: [640, 360], upscale: 'sharp', bloomThreshold: 251 },
-  { owner: '3ds', id: '3ds-tiles', pull: 0, size: [1920, 1080], upscale: 'sharp' },
-  { owner: '3ds', id: '3ds-floorwave', pull: 0, size: [1920, 1080], upscale: 'sharp' },
-  { owner: '3ds', id: '3ds-tapwave', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+  { owner: '3ds', id: '3ds-screen', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'megadrive', id: 'md-pipe-v2', pull: 1, size: [320, 180], upscale: 'crisp' },
   { owner: 'dreamcast', id: 'dc-sea-v2', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'playstation', id: 'tide', pull: 0, size: [320, 180], upscale: 'crisp' },
@@ -341,4 +341,5 @@ window.BT_TOKENS.backdrops = [
   { owner: 'arcade', id: 'arc-vector-v3', pull: 1, size: [320, 180], upscale: 'crisp' },
   { owner: 'steam', id: 'steam-mesh', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'recent', id: 'arc-checker', pull: 1, size: [320, 180], upscale: 'crisp' },
+  { owner: 'default', id: 'lift-off', pull: 0, size: [1920, 1080], upscale: 'sharp' },
 ];

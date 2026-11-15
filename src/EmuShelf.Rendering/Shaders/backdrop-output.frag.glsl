@@ -30,6 +30,8 @@ uniform vec2 uZoom;
 uniform float uRowScale;
 uniform float uPull;
 uniform vec3 uGround;
+// The far glow's share of the bloom (0.9 for every backdrop but those that say otherwise).
+uniform float uBloomWide;
 
 // W3C Compositing and Blending Level 1: Lum, ClipColor, SetLum, and the "color" blend B(Cb, Cs) = SetLum(Cs, Lum(Cb)).
 float blendLum(vec3 c) { return 0.3 * c.r + 0.59 * c.g + 0.11 * c.b; }
@@ -109,8 +111,13 @@ void main()
 #endif
         colour *= 1.0 - uInterlace;
 
+#ifdef BACKDROP_BIGTYPE
+    if (uBloom > 0.0)
+        colour += texture(uBloomNear, uv).rgb * uBloom + texture(uBloomFar, uv).rgb * uBloom * uBloomWide;
+#else
     if (uBloom > 0.0)
         colour += texture(uBloomNear, uv).rgb * uBloom + texture(uBloomFar, uv).rgb * uBloom * 0.9;
+#endif
 
     float opacity = uOpacity;
     if (uClip.w > 0.5)

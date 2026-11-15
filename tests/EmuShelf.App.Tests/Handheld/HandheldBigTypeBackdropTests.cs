@@ -115,6 +115,9 @@ public class HandheldBigTypeBackdropTests
         { "arcade", "arc-vector-v3", 1f },
         { "steam", "steam-mesh", 0f },
         { BigTypeBackdrops.Recent, "arc-checker", 1f },
+        // Part 2 (the owner, 16 November 2026): drawn from the colour they are given, so no recolour.
+        { "3ds", "3ds-screen", 0f },
+        { BigTypeBackdrops.Default, "lift-off", 0f },
     };
 
     [Theory]
@@ -128,18 +131,53 @@ public class HandheldBigTypeBackdropTests
     }
 
     [Fact]
-    public void The3ds_KeepsTodaysThree_AsTheyAre()
+    public void The3ds_ShowsOnlyThroughTheScreen_AndTodaysLookKeepsItsThree()
     {
-        var threeDs = KnownSystems.All.Single(system => system.Id == "3ds");
-        Assert.Equal(threeDs.Backdrops!, BigTypeBackdrops.IdsFor("3ds")!);
-        Assert.All(BigTypeBackdrops.IdsFor("3ds")!, id => Assert.Equal(0f, BigTypeBackdrops.Find(id)!.Pull));
+        Assert.Equal(["3ds-screen"], BigTypeBackdrops.IdsFor("3ds")!);
+        Assert.Equal(BackdropUpscale.Sharp, BigTypeBackdrops.Find("3ds-screen")!.Upscale);
+        Assert.Equal(["3ds-tiles", "3ds-floorwave", "3ds-tapwave"], KnownSystems.All.Single(system => system.Id == "3ds").Backdrops!);
+        Assert.Null(BigTypeBackdrops.Find("3ds-tiles"));
+    }
+
+    [Fact]
+    public void TheDefaultBackground_IsLiftOff_DrawnSharp_AndRecentKeepsItsChecker()
+    {
+        Assert.Equal(["lift-off"], BigTypeBackdrops.IdsFor(BigTypeBackdrops.Default)!);
+        Assert.Equal(BackdropUpscale.Sharp, BigTypeBackdrops.Find("lift-off")!.Upscale);
+        Assert.Equal(["arc-checker"], BigTypeBackdrops.IdsFor(BigTypeBackdrops.Recent)!);
+        // Lift-off's passes share its own file, and only its passes do.
+        Assert.Equal("backdrop-lift-off-common", BackdropCatalog.Find("lift-off")!.Include);
+        Assert.All(BackdropCatalog.All.Where(spec => spec.Id != "lift-off"), spec => Assert.Null(spec.Include));
+        foreach (var pass in BackdropCatalog.Find("lift-off")!.Passes)
+            Assert.Contains("void main()", ShaderLibrary.LoadWithDefines(pass.Fragment, GlslDialect.Es300, 3, 0, ["BACKDROP_SHARP 1"],
+                "backdrop-common", "backdrop-lift-off-common"));
+    }
+
+    [Fact]
+    public void ANewColour_EasesOverTheFlood_InTheSameRunningBackdrop()
+    {
+        var spec = BackdropCatalog.Find("lift-off")!;
+        var indigo = new Vector3(0x4A, 0x43, 0xB8) / 255f;
+        var rose = new Vector3(0xB1, 0x5A, 0x7F) / 255f;
+        var running = new BackdropInstance(spec, 0f, 0f, new BackdropLook(true, indigo));
+        Assert.Equal(indigo, running.GroundAt(1_000f));
+
+        running.SetGround(rose, 1_000f);
+        var halfway = running.GroundAt(1_000f + (EmuShelf.Rendering.Stage.BigType.BigTypeMotion.FloodMilliseconds / 2f));
+        Assert.True(halfway.X > indigo.X && halfway.X < rose.X, $"{halfway}");
+        Assert.Equal(rose, running.GroundAt(1_000f + EmuShelf.Rendering.Stage.BigType.BigTypeMotion.FloodMilliseconds));
+
+        // Held still (reduced motion): at once.
+        running.SetGround(indigo, 5_000f, instantly: true);
+        Assert.Equal(indigo, running.GroundAt(5_000f));
     }
 
     [Fact]
     public void EveryKnownSystem_HasABigTypeList_AndNothingElseDoes()
     {
         var owners = BigTypeBackdrops.All.Select(row => row.Owner).ToList();
-        Assert.Equal(KnownSystems.All.Select(system => system.Id).Append(BigTypeBackdrops.Recent).Order(), owners.Order());
+        Assert.Equal(KnownSystems.All.Select(system => system.Id).Append(BigTypeBackdrops.Recent).Append(BigTypeBackdrops.Default).Order(),
+            owners.Order());
         Assert.Null(BigTypeBackdrops.IdsFor("settings"));
         Assert.Null(BigTypeBackdrops.IdsFor(null));
     }
@@ -352,6 +390,42 @@ public partial class HandheldShellViewModelTests
             Assert.Equal("Recent", shell.Stage.Title);
             Assert.Equal(["arc-checker"], shell.Stage.Backdrop!.Animated!);
             Assert.Equal(Color.Parse("#39465F"), shell.Stage.Backdrop.Color);
+        });
+
+        [AvaloniaFact]
+        public Task UnderBigType_SettingsAndActivity_ShowTheDefaultBackground_AsOneBackdrop() => BigType(async () =>
+        {
+            var shell = await CreateAsync(new FakeLibrary().WithPlatform("playstation2", 2));
+
+            // The platform, Recent, then Settings and Activity (M46 P4).
+            Press(shell, GamepadAction.NavigateRight, 2);
+            Assert.Equal(HandheldStageKind.SettingsTile, shell.Stage.Kind);
+            var settings = shell.Stage.Backdrop!;
+            Assert.Equal(["lift-off"], settings.Animated!);
+            Assert.Equal(HandheldTokens.AppGround, settings.Color);
+
+            Press(shell, GamepadAction.NavigateRight);
+            Assert.Equal(HandheldStageKind.ActivityTile, shell.Stage.Kind);
+            // The same list instance: the native Stage keeps the one backdrop running and changes only its colour.
+            Assert.Same(settings.Animated, shell.Stage.Backdrop!.Animated);
+            Assert.Equal(shell.LauncherGround, shell.Stage.Backdrop.Color);
+
+            // An empty slot after them has no platform either: the default background, in the colour the Launcher keeps.
+            Press(shell, GamepadAction.NavigateRight);
+            Assert.Equal(HandheldStageKind.EmptySlot, shell.Stage.Kind);
+            Assert.Same(settings.Animated, shell.Stage.Backdrop!.Animated);
+            Assert.Equal(shell.LauncherGround, shell.Stage.Backdrop.Color);
+        });
+
+        [AvaloniaFact]
+        public Task UnderBigType_AConsolesFolderHeader_KeepsTheConsolesBackdrop() => BigType(async () =>
+        {
+            var shell = await CreateAsync(new FakeLibrary().WithPlatform("playstation2", 3));
+            Press(shell, GamepadAction.Confirm);
+            Assert.True(shell.IsFolderOpen);
+            Press(shell, GamepadAction.NavigateUp);
+            Assert.Equal(HandheldStageKind.Header, shell.Stage.Kind);
+            Assert.Equal(["ps2-orbs-v3"], shell.Stage.Backdrop!.Animated!);
         });
 
         [AvaloniaFact]

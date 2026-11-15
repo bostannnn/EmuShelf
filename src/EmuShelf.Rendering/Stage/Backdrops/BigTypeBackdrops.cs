@@ -42,6 +42,12 @@ public static class BigTypeBackdrops
     /// <summary>The key of Recent's backdrop (Recent has no platform).</summary>
     public const string Recent = "recent";
 
+    /// <summary>
+    /// The key of the default background (M47 B13, part 2): everything focused without a platform other than Recent (Settings,
+    /// Activity, your folders, the dock and its menu, an empty slot), drawn in that item's colour.
+    /// </summary>
+    public const string Default = "default";
+
     /// <summary>The Stage's canvas, which a crisp frame is scaled to fill in whole pixels.</summary>
     public const int StageWidth = 1920;
 
@@ -63,12 +69,9 @@ public static class BigTypeBackdrops
         // Wii's background gradient (250 down to 224) crossed its bloom threshold (240) two fifths of the way down, so the top clipped to
         // white and ended in a hard band; just above the gradient's brightest row only the pointer glows (the owner's "more smooth").
         ("wii", [new("wii-pointer-v2", 1f, 640, 360, BackdropUpscale.Sharp, BloomThreshold: 251f / 255f)]),
-        ("3ds",
-        [
-            new("3ds-tiles", 0f, 1920, 1080, BackdropUpscale.Sharp),
-            new("3ds-floorwave", 0f, 1920, 1080, BackdropUpscale.Sharp),
-            new("3ds-tapwave", 0f, 1920, 1080, BackdropUpscale.Sharp),
-        ]),
+        // The owner, of the 3DS's three: "I don't like all 3ds one"; of ten new ideas, "1 or 2 is great (probably 2)": Through the
+        // screen, drawn from the console's colour (no recolour).
+        ("3ds", [new("3ds-screen", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         ("megadrive", [new("md-pipe-v2", 1f, 320, 180, BackdropUpscale.Crisp)]),
         ("dreamcast", [new("dc-sea-v2", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         ("playstation", [new("tide", 0f, 320, 180, BackdropUpscale.Crisp)]),
@@ -78,6 +81,9 @@ public static class BigTypeBackdrops
         ("arcade", [new("arc-vector-v3", 1f, 320, 180, BackdropUpscale.Crisp)]),
         ("steam", [new("steam-mesh", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         (Recent, [new("arc-checker", 1f, 320, 180, BackdropUpscale.Crisp)]),
+        // "Settings and activity and other menus don't have background", then of ten ideas "2 or 3 (probably 3)": Lift-off, drawn from
+        // the focused item's colour.
+        (Default, [new("lift-off", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
     ];
 
     private static readonly Dictionary<string, string[]> IdsByOwner =

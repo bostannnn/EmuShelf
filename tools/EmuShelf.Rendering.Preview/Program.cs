@@ -110,7 +110,8 @@ if (args.Contains("--backdrops"))
     var moments = (ArgumentValue("--times") ?? "3,8,14").Split(',').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
     var onlyIds = ArgumentValue("--only")?.Split(',');
     if (args.Contains("--bigtype"))
-        BackdropPreview.RunBigType(gl, ArgumentValue("--out") ?? "artifacts/backdrops-bigtype", moments, onlyIds, ArgumentValue("--sharp-width"));
+        BackdropPreview.RunBigType(gl, ArgumentValue("--out") ?? "artifacts/backdrops-bigtype", moments, onlyIds, ArgumentValue("--sharp-width"),
+            ArgumentValue("--colour"));
     else
         BackdropPreview.Run(gl, ArgumentValue("--out") ?? "artifacts/backdrops", moments, onlyIds);
     return;
