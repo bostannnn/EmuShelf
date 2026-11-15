@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
@@ -467,6 +468,68 @@ public partial class HandheldShellViewModelTests
             // The in-game colour: the console's mixed 64% toward #0B0A18 (PS2's #2B5BC7).
             var ps2InGame = HandheldTokens.InGameGround(Avalonia.Media.Color.Parse("#2B5BC7"));
             Assert.Equal(Avalonia.Media.Color.FromRgb(23, 39, 87), ps2InGame);
+        }
+
+        /// <summary>
+        /// The mock sets the companion's lines at line-height 1.15 and clips none: descenders draw below the line box (found by the
+        /// orchestrating session in B8's frames, where a TextBlock's own clip cut p, y and g flat). Each line is rendered and must have
+        /// ink below its box, the title too when it shrinks to fit.
+        /// </summary>
+        [AvaloniaFact]
+        public void TheCompanionsLines_ShowTheirDescenders_PastTheirLineBox()
+        {
+            HandheldTokens.Use(HandheldLook.BigType);
+            try
+            {
+                var model = new SecondScreenViewModel();
+                var companion = new HandheldCompanionViewModel(model) { HoldsStill = true };
+                companion.SetNowPlaying(new HandheldGameEntry(1, "Mary-Kate and Ashley: Pocket Planner, the Typography Quest", "ps1", "PlayStation",
+                    null, 3, TimeSpan.FromHours(13), true), "PlayStation");
+                model.IsGameRunning = true;
+                var view = new HandheldCompanionView(false) { DataContext = companion };
+                var window = new Window { Content = view, Width = 1240, Height = 1080 };
+                window.Show();
+                Assert.True(companion.StepTab(1) && companion.StepTab(1)); // Photos: "No photos of this game yet"
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+                var body = view.FindControl<Control>("BtBody")!;
+                foreach (var text in body.GetVisualDescendants().OfType<TextBlock>())
+                    Assert.False(text.ClipToBounds, $"\"{text.Text}\" clips to its line box");
+
+                using var frame = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(1240, 1080));
+                frame.Render(window);
+                var pixels = new byte[1240 * 1080 * 4];
+                var handle = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+                frame.CopyPixels(new PixelRect(0, 0, 1240, 1080), handle.AddrOfPinnedObject(), pixels.Length, 1240 * 4);
+                handle.Free();
+                // White type (some at 0.75) on the dark ground: ink in the rows just below a line's box, across its width.
+                bool InkBelow(Control line)
+                {
+                    var topLeft = line.TranslatePoint(default, window)!.Value;
+                    var bottomRight = line.TranslatePoint(new Point(line.Bounds.Width, line.Bounds.Height), window)!.Value;
+                    for (var y = (int)Math.Ceiling(bottomRight.Y) + 1; y < Math.Min(1080, (int)bottomRight.Y + 12); y++)
+                    {
+                        for (var x = (int)topLeft.X; x < Math.Min(1240, (int)bottomRight.X); x++)
+                        {
+                            var i = ((y * 1240) + x) * 4;
+                            if (pixels[i] > 150 && pixels[i + 1] > 150 && pixels[i + 2] > 150)
+                                return true;
+                        }
+                    }
+                    return false;
+                }
+                var kicker = view.FindControl<Control>("BtKicker")!;
+                var title = view.FindControl<Viewbox>("BtTitle")!.GetVisualDescendants().OfType<TextBlock>().Single();
+                var photos = view.FindControl<Control>("BtPhotos")!.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text!.Contains("photos"));
+                Assert.True(InkBelow(kicker), "Now playing's descenders are cut");
+                Assert.True(InkBelow(title), "the shrunk title's descenders are cut");
+                Assert.True(InkBelow(photos), "the photos label's descenders are cut");
+                window.Close();
+            }
+            finally
+            {
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
         }
 
         [AvaloniaFact]

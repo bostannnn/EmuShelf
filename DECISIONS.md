@@ -14960,6 +14960,12 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   (the sheet's rows leaving), so the native Launcher never flew the tile; the feed now sends the launch on its next sync. **Found on the
   Thor and fixed:** while the companion's parts left, the host was told the main display was not Handheld's, so the companion flashed on
   the top screen; and the Achievements tab's line under the figure kept "Loading achievements…" after the set loaded.
+- **The companion's text was clipped at its descenders (found by the orchestrating session, fixed):** an Avalonia `TextBlock` clips to
+  its own box, and at the mock's 1.15 line box this face's descenders fall below it, so p, y and g were cut flat ("Now playing", the
+  title, "4 photos from this game"), on the Thor too. The mock clips none of its lines, so the companion's text no longer clips to its
+  box (`Panel#BtBody TextBlock`, the title's Viewbox); every top stays where tokens.js puts it. A rolling text's pieces are still cut to
+  their own cells while they roll; none of the companion's rolling texts (the time, the totals, the figures) has a descender. A headless
+  test renders the companion with a long title that shrinks and finds ink below each line's box.
 - **Driving the companion on the Thor:** while a game runs the pad belongs to the emulator, so the companion's tabs were checked by touch
   (each tab is tappable); the app is told the game ended when its own window has focus again.
 - **Not built / found and not fixed:** the app's own messages (a launch that fails, a scan) still use today's toast at the top of the

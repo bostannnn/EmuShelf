@@ -3107,7 +3107,8 @@ checked on the emulator only, so their exits stay open for the owner's look.
       to the game), the rest after 9 s and a touch waking it; leaving the game (force-stopping the emulator, nothing saved) the parts
       left, the colour faded, the ground flooded back and the tiles popped in. Found there and fixed: the companion flashed on the top
       screen while its parts left, and the Achievements tab kept "Loading achievements…" once the set had loaded (both checked again on
-      the Thor). With `classic`: the folder, the Title page, its chooser cards, a launch with today's companion and the way back as before.
+      the Thor); after the orchestrating session's review, the companion's descenders were cut by each line's own clip (fixed, and seen
+      whole on the Thor). With `classic`: the folder, the Title page, its chooser cards, a launch with today's companion and the way back as before.
       Left installed with `debug.emushelf.look` `bigtype`. **Not seen on any device:** a launch with no screen question, a missing file,
       an unlock while playing, holding still.
 - [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.

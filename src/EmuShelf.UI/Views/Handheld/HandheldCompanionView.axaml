@@ -298,6 +298,14 @@
       <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicCompanionRingGlowLight}" />
     </Style>
     <!-- ===== Big Type (M47 B8) ===== -->
+    <!--
+      The mock sets every line at line-height 1.15 and clips none of them; a TextBlock clips to its own box, and this face's
+      descenders fall below a 1.15 box, so the companion's text draws past its box as the mock's does (the tops stay put).
+      A rolling text's pieces are still cut to their own cells while they roll.
+    -->
+    <Style Selector="Panel#BtBody TextBlock">
+      <Setter Property="ClipToBounds" Value="False" />
+    </Style>
     <Style Selector="TextBlock.bt-label">
       <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.InGameLabel}" />
       <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.InGameLabelLine}" />
@@ -393,7 +401,7 @@
         -->
         <Panel x:Name="BtBody" IsVisible="{Binding ShowsBigTypeBody}" RenderOptions.TextRenderingMode="Antialias" ClipToBounds="False">
           <TextBlock x:Name="BtKicker" Classes="bt-label" Text="Now playing" Margin="{x:Static vm:HandheldTokens.InGameKickerMargin}" />
-          <Viewbox x:Name="BtTitle" Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.InGameTitleMaxWidth}"
+          <Viewbox x:Name="BtTitle" ClipToBounds="False" Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.InGameTitleMaxWidth}"
                    HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.InGameTitleMargin}">
             <TextBlock Text="{Binding InGameTitle}" FontSize="{x:Static vm:HandheldTokens.InGameTitle}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
                        LineHeight="{x:Static vm:HandheldTokens.InGameTitleLine}"
