@@ -15130,3 +15130,87 @@ byte-identical before and after.
   count's `SizeChanged`, a layout pass late, and the native feed keyed its picture by the name alone, so the Thor kept the old fit. The
   heading now takes the room its column gives it (`FitsRoom`, folder header only, so no other heading changes), the feed keys the picture
   and letters by the fitted size, and the heading's `FitChanged` makes the feed sync again.
+
+## 2026-11-15 — M47 B13: Big Type's own backdrops, recoloured to the console, sharp or crisp
+
+- **The owner's choices** (15 November 2026, every one of the 53 animations answered on `backdrop-review.html`, each shown as it is
+  beside a recoloured version). After using Big Type on the Thor the owner had said the colours and the animations did not match ("MD
+  is green, but animation is more blue-ish") and that some were pixelated ("PSP is very pixelated"). On the first card: "let's remove
+  it and keep only 1 view for nes". So under Big Type each console shows **one** animation and nothing rotates: NES `nes-stars`
+  (recoloured, pull 0.7), Super Nintendo `tiles` (0.5), Game Boy Color `gbc-attr` (0.55), Game Boy Advance `gba-iso` (0.6), GameCube
+  `gc-fur` (as it is), Nintendo DS `ds-dots` (1), Wii `wii-pointer-v2` (1; "make gradient more smooth"), Mega Drive `md-pipe-v2` (1),
+  Dreamcast `dc-sea-v2` (as it is), PlayStation `tide`, PlayStation 2 `ps2-orbs-v3`, PSP `psp-ribbon` (new to the app, 0.6; "but make
+  it less pixelated"), PlayStation 3 `ps3-sheet`, Arcade `arc-vector-v3` (1), Steam `steam-mesh`. The **3DS keeps today's three**,
+  rotating, while new ones are designed. **Recent** gets `arc-checker`, recoloured fully to Recent's colour: the owner liked it and
+  chose Recent for it. Settings, Activity and the other tiles keep the backdrop showing (a default for them is being designed).
+  **Dreamcast's ground became sea blue `#0E7AB5`** ("maybe keep blue and change dreamcast color? Brown is terrible", then "Sea blue"),
+  so its blue sea stays as it is; it is 18.3 (CIE76) from Steam's colour, which the owner was told, above the floor of 18. Classic's
+  Dreamcast accent stays orange. **Sharpness** (the owner's rule): drawn sharp where pixels are not the point (PSP, PS2, PS3, Wii,
+  GameCube, Dreamcast, 3DS, Steam); visible pixels kept, crisp, where they are the console's character (NES, SNES, GBC, GBA, DS, Mega
+  Drive, PlayStation, Arcade, Recent's checker).
+- **One table for Big Type, beside today's.** `BigTypeBackdrops` (Rendering) holds, per console id and `recent`: the animation id,
+  the pull, the draw size, crisp or sharp, and Wii's own bloom threshold; tokens.js mirrors it as a new `backdrops` block, and a test
+  holds the two equal. Today's look keeps `KnownSystems`' `Backdrops` lists, the catalog's sizes and its colours: the UI side sends
+  Big Type's list only under Big Type (`BackdropFor`), and the compositor starts an animation with a `BackdropLook` (Big Type and the
+  ground colour, carried on `StageBackdropCommand.Ground`) only on its Big Type path. Chosen over a second list on `GameSystem`, so Core
+  is untouched and Recent, which has no platform, lives in the same table.
+- **The recolour is the review page's tint, exactly:** CSS `mix-blend-mode: color` of the ground over the animation at an opacity equal
+  to the pull, i.e. W3C Compositing's "color" blend (`SetLum(Cs, Lum(Cb))` with `ClipColor`) mixed with the pixel by the pull, in sRGB
+  values as the browser blends. `BackdropRecolour` is the reference, tested against values worked out by hand from the specification;
+  `backdrop-output.frag` does the same as the last step of the output pass (after the finish and the bloom, before the opacity and the
+  wipe's circle), one cheap step. Compared with the review page's pictures (the prototypes drawn with the page's `.tint` rule in
+  headless Chrome, at the same moment): mean colour within 0.0 to 1.4 ΔE for every animation; Wii 2.5, on purpose (below).
+- **Today's look compiles exactly what it did.** Big Type's shader changes are compile-time: a sharp frame's programs are built with
+  `BACKDROP_SHARP` defined, Big Type's output pass with `BACKDROP_BIGTYPE` (`ShaderLibrary.LoadWithDefines`); without them the text the
+  compiler sees, after the preprocessor, is today's token for token. A first attempt with run-time `uPixel > 1` branches moved single
+  texels of `gc-fur` and `gc-caustics` (the driver folded the changed functions differently), so it was dropped. Checked on the desktop's
+  GL: all 159 of today's backdrop frames (53 backdrops × 3 moments) byte-identical before and after.
+- **Sharp:** the frame is drawn at Big Type's size while `uRes` stays the console's, so every shape keeps its place and size: coverage
+  helpers keep a one-draw-pixel edge, `pixelIndex` stops snapping gradients to the prototype's rows, `ps3-sheet`'s one-pixel particles
+  become round dots of one prototype pixel's area, PSP's one-pixel strokes are quads with the prototype's coverage. The bloom is taken
+  from the frame averaged back down to the console's size, so the glow keeps its size and softness; PS2's interlace keeps its line pitch.
+  **Crisp:** the console's own size, nearest sampling at the smallest whole scale that fills the Stage (×6 for 320 wide, ×12 for GBC, ×8
+  for GBA; NES and DS, 256 wide, at ×8 with 64 and 36 px cropped each side, as a TV's overscan). Arcade and Recent's checker were
+  linearly upscaled before; crisp, they are now whole pixels with their scanlines.
+- **Draw sizes, measured on the Thor** with the app's probe (a new `rest` value logs the frames a resting Stage draws for the backdrop's
+  30 Hz steps, which `1` never logged) and a new measurement switch, `debug.emushelf.bdsize` (every sharp backdrop at one width, 0 for
+  the console's size; read once at start, cleared afterwards). Each size was a run through all fifteen of the owner's consoles and
+  Recent, a warm pass then a measured one. The rule: the largest size whose worst GPU frame through a wipe stays within today's worst
+  (3.0 ms, Super Nintendo's, at the old sizes); frame intervals at rest stayed at about 40 ms p95 (30 Hz steps) at every size.
+  | Animation | Chosen | At rest (GPU per frame, old → chosen) | Wipe worst (old → chosen) | The next size up |
+  |---|---|---|---|---|
+  | `gc-fur` | 400 × 225 | 1.42 → 1.82 ms | 2.48 → 2.85 ms | 480: 2.18 ms rest, 3.23 wipe (960: 6.3 / 7.3; 1920: 21.6 / 22.6) |
+  | `wii-pointer-v2` | 640 × 360 | 1.49 → 1.98 ms | 1.88 → 3.19 ms* | 960: 3.16 / 3.73 (1920: 9.7 / 13.5) |
+  | `3ds-*` | 1920 × 1080 | 0.75 → 1.19 ms | 1.77 → 2.27 ms | none larger |
+  | `dc-sea-v2` | 1920 × 1080 | 0.71 → 0.88 ms | 2.26 → 2.85 ms (GameCube's fur beneath) | none larger |
+  | `ps2-orbs-v3` | 1920 × 1080 | 0.82 → 1.12 ms | 1.90 → 2.55 ms | none larger |
+  | `psp-ribbon` | 1920 × 1080 | 0.90 → 1.22 ms | 1.87 → 2.54 ms | none larger |
+  | `steam-mesh` | 1920 × 1080 | 0.69 → 0.87 ms | 1.51 → 1.87 ms | none larger |
+  | `ps3-sheet` | 1440 × 810 | not measured: PS3 is not in the owner's library | | a cautious step up |
+
+  \* Wii's own wipe peaked at 2.46 ms in the run where everything was 640 wide; in the final run, wiping in over the 3DS at full size,
+  3.19 ms, 0.18 ms over today's worst. Missed vsyncs during wipes were as scattered before as after (0 to 14 per wipe at the old sizes),
+  so they do not separate the sizes. GameCube's fur and Wii's pointer field are per-pixel shaders whose cost grows with the area; at
+  their chosen sizes they are still softer than the rest (the fur most).
+- **Wii's "make gradient more smooth":** two causes, both fixed under Big Type only. The background gradient (250 down to 224) crossed
+  the bloom threshold (240) two fifths of the way down, so the top clipped to white and ended in a hard band, which the recolour turned
+  into white against teal: Big Type's Wii blooms above 251, so only the pointer glows. And its pinstripe (every fourth row 1.2% darker)
+  became clear lines once recoloured: Big Type leaves it out and dithers the gradient's 8-bit steps by half a step.
+- **`psp-ribbon` ported** from `backdrops.js` `pspRibbon` the way the others were: the two-stop gradient, two ribbons of 60 quads at 32%
+  (Gouraud from the darker upper edge to the paler lower one, perspective-correct, no depth), each followed by its two edges (60 white
+  segments at 40%, added, with gSeg's coverage), 320 × 180 with PSP's ghosting. In the catalog for Big Type only.
+- **Legibility re-baked** (`legibility.json` `bigType`, `BackdropLegibility.ForBigType`) with the stress sheet's own rule, run in
+  headless Chrome (index.html's `toneStep` and `contrastOf`, exposed in memory, the file unchanged) over each prototype recoloured with
+  the review page's tint at the stress sheet's eight moments, and checked over the app's own frames at the same moments. The harness
+  first reproduced R2's answers for eight of today's backdrops (same inks, veils within 0.02). **No ink or veil changed** from today's
+  answers for the animations both looks show; `psp-ribbon` is new (white, resting veils). Every one holds the stress sheet's 3.0, on the
+  prototypes and on the app's frames (the lowest, Recent's checker, 3.17 on the app). Today's `backdrops` answers are untouched.
+- **What the macOS design render shows:** none of the 158 Big Type frames changed (two renders of the final code byte-identical to each
+  other and to the render before B13), because the headless Stage pictures the era motif and never runs the native shaders; the design
+  set's library has no Dreamcast. Classic's 158 are byte-identical to the render before B13. The Stage frames are made on request by
+  `dotnet run --project tools/EmuShelf.Rendering.Preview -- --stage-b13 [--out dir] [--at seconds]`: the real compositor under Big
+  Type, one full-size frame per console (all three for the 3DS) and Recent, with the veils and stand-ins for the text in the baked ink
+  (each checked); `--backdrops --bigtype` draws the animations alone.
+- **Touches other sessions' files lightly:** `HandheldNativeStageFeed.SendBackdrop` (one argument), `StageCompositor` (the look on four
+  starts, Big Type's ink lookup), `BackdropLegibility` (a second table), `NativeSceneSurface`'s probe (the `rest` value). B11 changed
+  `SendBackdrop` and `BackdropLegibility` too, on its own branch.

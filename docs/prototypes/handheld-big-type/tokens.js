@@ -293,7 +293,8 @@ window.BT_TOKENS = {
 //         (the review page's .tint), applied in the backdrop's output pass. 0 shows it as it is.
 //   size: the size its frame is drawn at, in pixels. upscale: 'crisp' keeps the console's own size and shows it in whole pixels
 //         (a 256-wide frame at 8, its edges cropped); 'sharp' draws it this large so no stair-steps or soft upscaling show, the
-//         largest the Thor's GPU allowed without worse frame pacing (measured, M47 B13).
+//         largest the Thor's GPU allowed without worse frame pacing (measured, M47 B13: the largest whose worst frame
+//         through a wipe stayed within today's worst, 3.0 ms on the GPU; PS3, not in the owner's library, a cautious step).
 //   bloomThreshold: Big Type's own, 0 to 255, where it differs from the console's finish (Wii: only the pointer glows, so the
 //         background gradient no longer clips to white in a band; the owner: "make gradient more smooth").
 window.BT_TOKENS.backdrops = [
@@ -301,9 +302,9 @@ window.BT_TOKENS.backdrops = [
   { owner: 'snes', id: 'tiles', pull: 0.5, size: [320, 180], upscale: 'crisp' },
   { owner: 'gbc', id: 'gbc-attr', pull: 0.55, size: [160, 90], upscale: 'crisp' },
   { owner: 'gba', id: 'gba-iso', pull: 0.6, size: [240, 135], upscale: 'crisp' },
-  { owner: 'gamecube', id: 'gc-fur', pull: 0, size: [960, 540], upscale: 'sharp' },
+  { owner: 'gamecube', id: 'gc-fur', pull: 0, size: [400, 225], upscale: 'sharp' },
   { owner: 'nds', id: 'ds-dots', pull: 1, size: [256, 144], upscale: 'crisp' },
-  { owner: 'wii', id: 'wii-pointer-v2', pull: 1, size: [1920, 1080], upscale: 'sharp', bloomThreshold: 251 },
+  { owner: 'wii', id: 'wii-pointer-v2', pull: 1, size: [640, 360], upscale: 'sharp', bloomThreshold: 251 },
   { owner: '3ds', id: '3ds-tiles', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: '3ds', id: '3ds-floorwave', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: '3ds', id: '3ds-tapwave', pull: 0, size: [1920, 1080], upscale: 'sharp' },
@@ -312,7 +313,7 @@ window.BT_TOKENS.backdrops = [
   { owner: 'playstation', id: 'tide', pull: 0, size: [320, 180], upscale: 'crisp' },
   { owner: 'playstation2', id: 'ps2-orbs-v3', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'psp', id: 'psp-ribbon', pull: 0.6, size: [1920, 1080], upscale: 'sharp' },
-  { owner: 'playstation3', id: 'ps3-sheet', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+  { owner: 'playstation3', id: 'ps3-sheet', pull: 0, size: [1440, 810], upscale: 'sharp' },
   { owner: 'arcade', id: 'arc-vector-v3', pull: 1, size: [320, 180], upscale: 'crisp' },
   { owner: 'steam', id: 'steam-mesh', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'recent', id: 'arc-checker', pull: 1, size: [320, 180], upscale: 'crisp' },

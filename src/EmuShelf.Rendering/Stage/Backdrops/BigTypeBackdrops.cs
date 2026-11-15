@@ -47,18 +47,22 @@ public static class BigTypeBackdrops
 
     public const int StageHeight = 1080;
 
-    // The draw sizes: crisp ones keep their console's size; sharp ones are drawn as large as the Thor's GPU allowed (measured, M47 B13).
+    // The draw sizes: crisp ones keep their console's size; sharp ones are drawn as large as the Thor's GPU allowed (measured with the
+    // frame probe, M47 B13): the largest whose worst frame through a wipe stayed within today's worst (3.0 ms on the GPU, at the old
+    // sizes). GameCube's fur and Wii's pointer field are per-pixel shaders: 480 and 960 wide cost 3.2 and 3.7 ms. The geometry ones
+    // cost a few tenths of a millisecond at the Stage's full size. PS3 is not in the owner's library, so it was not measured: a
+    // cautious step up.
     private static readonly (string Owner, BigTypeBackdrop[] Backdrops)[] Table =
     [
         ("nes", [new("nes-stars", 0.7f, 256, 144, BackdropUpscale.Crisp)]),
         ("snes", [new("tiles", 0.5f, 320, 180, BackdropUpscale.Crisp)]),
         ("gbc", [new("gbc-attr", 0.55f, 160, 90, BackdropUpscale.Crisp)]),
         ("gba", [new("gba-iso", 0.6f, 240, 135, BackdropUpscale.Crisp)]),
-        ("gamecube", [new("gc-fur", 0f, 960, 540, BackdropUpscale.Sharp)]),
+        ("gamecube", [new("gc-fur", 0f, 400, 225, BackdropUpscale.Sharp)]),
         ("nds", [new("ds-dots", 1f, 256, 144, BackdropUpscale.Crisp)]),
         // Wii's background gradient (250 down to 224) crossed its bloom threshold (240) two fifths of the way down, so the top clipped to
         // white and ended in a hard band; just above the gradient's brightest row only the pointer glows (the owner's "more smooth").
-        ("wii", [new("wii-pointer-v2", 1f, 1920, 1080, BackdropUpscale.Sharp, BloomThreshold: 251f / 255f)]),
+        ("wii", [new("wii-pointer-v2", 1f, 640, 360, BackdropUpscale.Sharp, BloomThreshold: 251f / 255f)]),
         ("3ds",
         [
             new("3ds-tiles", 0f, 1920, 1080, BackdropUpscale.Sharp),
@@ -70,7 +74,7 @@ public static class BigTypeBackdrops
         ("playstation", [new("tide", 0f, 320, 180, BackdropUpscale.Crisp)]),
         ("playstation2", [new("ps2-orbs-v3", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         ("psp", [new("psp-ribbon", 0.6f, 1920, 1080, BackdropUpscale.Sharp)]),
-        ("playstation3", [new("ps3-sheet", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
+        ("playstation3", [new("ps3-sheet", 0f, 1440, 810, BackdropUpscale.Sharp)]),
         ("arcade", [new("arc-vector-v3", 1f, 320, 180, BackdropUpscale.Crisp)]),
         ("steam", [new("steam-mesh", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         (Recent, [new("arc-checker", 1f, 320, 180, BackdropUpscale.Crisp)]),

@@ -3237,3 +3237,19 @@ falls back to the emulator and says so.
       to run, not reproduced). Classic's naming on the Thor as before. The presses taken as "first press only wakes" after 15 s idle
       are today's behaviour in both looks (M45 decision 14, the idle drift); one was under Classic in the first pass. Home, Sounds
       and Reduce motion left as found, `bigtype`, this build installed.
+- [ ] **B13 — The owner's backdrop choices, under Big Type.** One animation per console (the 3DS keeps its three), recoloured toward
+      the console's ground where chosen, drawn sharp or crisp by the owner's rule; Recent's own `arc-checker`; Dreamcast's ground sea
+      blue `#0E7AB5`; Wii's gradient smoothed; `psp-ribbon` ported. (Choices and words in `DECISIONS.md` 2026-11-15 "M47 B13".)
+      **Built:** `BigTypeBackdrops` (tokens.js `backdrops`), the recolour in the output pass (`BackdropRecolour` is the tested
+      reference; the app's frames match the review page's tint within 0.0–1.4 ΔE mean, Wii 2.5 on purpose), Big Type's shader
+      variants behind defines, Big Type's legibility (`legibility.json` `bigType`: no ink or veil changed, `psp-ribbon` new, every
+      one ≥ 3.0 on the prototypes and on the app's frames), `--stage-b13` (one full-size Stage frame per console and Recent).
+      **Draw sizes measured on the Thor** (probe `rest`, `debug.emushelf.bdsize`): `gc-fur` 400 × 225, `wii-pointer-v2` 640 × 360, the
+      3DS three, `dc-sea-v2`, `ps2-orbs-v3`, `psp-ribbon`, `steam-mesh` 1920 × 1080; `ps3-sheet` 1440 × 810 unmeasured (not in the
+      library). Wipes' worst GPU frame 1.87–2.85 ms, Wii 3.19 ms against today's worst 3.0. **Verified:** Classic's 158 design frames and
+      159 desktop-GL backdrop frames byte-identical; two Big Type renders byte-identical; `dotnet build` and the full `dotnet test` three
+      times running. **Thor (2026-11-15, Release AOT, `adb install -r`, 60 Hz, no system setting changed):** every console of the
+      owner's library and Recent in its one animation and colour, text readable, NES's pixels whole 8 × 8, PSP's ribbons sharp, Wii's
+      gradient smooth; GameCube's fur still soft at the size the GPU allows. Classic as before. Home, swap, Sounds and Reduce motion as
+      found (files byte-identical), `bigtype`, this build installed. Evidence: `m47-b13-renders` in the build sessions' notes.
+      Built, awaiting the owner's look.
