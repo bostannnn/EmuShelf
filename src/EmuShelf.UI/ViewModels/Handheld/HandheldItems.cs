@@ -781,7 +781,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
     [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
     [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
-    [NotifyPropertyChangedFor(nameof(NameBoxWidth))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth), nameof(NarrowNameBoxWidth))]
     [NotifyPropertyChangedFor(nameof(ShowsSettingCard))]
     [NotifyPropertyChangedFor(nameof(ShowsPanelCard))]
     public partial HandheldStageKind Kind { get; set; }
@@ -847,7 +847,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
     [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
     [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
-    [NotifyPropertyChangedFor(nameof(NameBoxWidth))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth), nameof(NarrowNameBoxWidth))]
     public partial Bitmap? Fanart { get; set; }
 
     /// <summary>The game's logo over the fan art; without one the hero sets the title in type.</summary>
@@ -1055,7 +1055,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     /// name. Owned by the panel's view models.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth), nameof(HasMedium), nameof(HasBigTypeMedium))]
+    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth), nameof(NarrowNameBoxWidth), nameof(HasMedium), nameof(HasBigTypeMedium))]
     public partial Avalonia.Media.Imaging.Bitmap? ListCover { get; set; }
 
     public bool HasListCover => HandheldTokens.IsBigType && ListCover is not null && Kind == HandheldStageKind.Panel;
@@ -1067,7 +1067,13 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium;
 
     /// <summary>The name's box: narrower when a game's medium or cover stands beside it.</summary>
-    public double NameBoxWidth => IsGame || HasListCover ? HandheldTokens.StageNameWidthBesideMedium : HandheldTokens.StageNameWidth;
+    public double NameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: false);
+
+    /// <summary>The name's box on the narrow screen (the screens swapped, M47 B11): its own widths, beside a medium or not.</summary>
+    public double NarrowNameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: true);
+
+    /// <summary>A game's medium or cover (or a panel's candidate cover) stands beside the name.</summary>
+    public bool IsNameBesideMedium => IsGame || HasListCover;
 
     public double NameOpacity => IsPlaceholder ? HandheldTokens.PlaceholderOpacity : IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }

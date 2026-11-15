@@ -105,6 +105,27 @@ internal static class StageBigTypeCheck
             compositor.Dispose();
         }
 
+        // The narrow screen with the Stage laid out for it (M47 B11): a 1240 canvas fills the surface, no bands, the backdrop's middle
+        // to its top and bottom edges, the text where the canvas puts it, unscaled.
+        {
+            const int narrow = 1240;
+            var (framebuffer, colour) = Target(gl, narrow, Height);
+            var compositor = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }) { TargetFramebuffer = framebuffer };
+            Feed(compositor, ink, "ps2-towers", narrow);
+            for (var now = 0f; now < 1_500f; now += BackdropCatalog.StepMilliseconds)
+                compositor.Draw(now, narrow, Height);
+            var frame = Read(gl, framebuffer, narrow, Height);
+            PngWriter.Write(Path.Combine(outputDirectory, "bigtype-narrow-laid-out.png"), narrow, Height, frame);
+            Check("narrow, laid out: the top edge is the backdrop, not the ground", !Close(Pixel(frame, narrow, 620, 2), ground, 6f / 255f));
+            Check("narrow, laid out: …and the bottom edge", !Close(Pixel(frame, narrow, 620, Height - 3), ground, 6f / 255f));
+            var label = Blocks[0];
+            Check("narrow, laid out: the label is where the canvas puts it, in the dark ink",
+                Close(Pixel(frame, narrow, label.X + (label.W / 2), label.Y + (label.H / 2)), deep));
+            gl.DeleteFramebuffer(framebuffer);
+            gl.DeleteRenderbuffer(colour);
+            compositor.Dispose();
+        }
+
         Console.WriteLine(failures == 0 ? "All Big Type Stage checks passed." : $"{failures} Big Type Stage check(s) FAILED.");
         return failures == 0 ? 0 : 1;
     }

@@ -22,6 +22,10 @@ public sealed class BigTypeLauncherMotion
     private BigTypeRing? _drawn;
     private BigTypeRing _from;
     private float _moveStart = Never;
+
+    // M47 B11: a move that arrives while the ring is still on its way glides from where and how fast it is (BigTypeRingGlide).
+    private BigTypeRingGlide? _glide;
+    private BigTypeRing? _lastTarget;
     private float _popStart = Never;
     private float _landed = Never;
 
@@ -63,7 +67,17 @@ public sealed class BigTypeLauncherMotion
     public int HopFirstColumn { get; set; }
 
     /// <summary>A press or a touch.</summary>
-    public void Input(float now) => LastInput = now;
+    public void Input(float now)
+    {
+        InputBefore = LastInput;
+        LastInput = now;
+    }
+
+    /// <summary>The press before the last (NaN before the second).</summary>
+    public float InputBefore { get; private set; } = float.NaN;
+
+    /// <summary>The last press came within a run of the one before (a held direction, quick taps; M47 B11).</summary>
+    public bool InRun => BigTypeMotion.InRun(LastInput - InputBefore);
 
     /// <summary>How much of the resting motion is alive now (1 for a minute after a press, then easing to 0).</summary>
     public float Alive(float now) => BigTypeMotion.Alive(now - LastInput, HoldStill);
@@ -80,6 +94,7 @@ public sealed class BigTypeLauncherMotion
         if (_drawn is not { } drawn || instant || HoldStill)
         {
             _moveStart = _popStart = Never;
+            _glide = null;
             _landed = now;
             _drawn = null;
             return;
@@ -87,13 +102,55 @@ public sealed class BigTypeLauncherMotion
         if (pop)
         {
             _moveStart = Never;
+            _glide = null;
             _popStart = now;
             _landed = now + BigTypeMotion.PopMilliseconds;
             return;
         }
+        // M47 B11: the ring is still on its way (a held direction, a quick tap): it does not set off again from rest, and it never
+        // stretches over a ring that is already stretched. It glides on from where it is drawn and how fast it is going, keeping its
+        // own size, toward the new target; when no further move comes it settles with the mock's squash (BigTypeRingGlide).
+        // Still popping in on another page: it glides on from the ring as drawn, its pop's size easing away (not stretched over it).
+        if (_lastTarget is { } popping && now - _popStart < BigTypeMotion.PopMilliseconds)
+        {
+            _glide = new BigTypeRingGlide(now, drawn, default, popping);
+            _moveStart = _popStart = Never;
+            return;
+        }
+        if (_lastTarget is { } leaving && RingMoving(now))
+        {
+            // From where the ring is at this moment on its way (not the last frame's ring, a frame behind), and how fast it goes.
+            var velocity = RingVelocity(leaving, now);
+            _glide = new BigTypeRingGlide(now, RingPathAt(leaving, now), velocity, leaving);
+            _moveStart = Never;
+            return;
+        }
+        _glide = null;
         _from = drawn;
         _moveStart = now;
         _popFrom = BigTypeMotion.PopFromScale;
+    }
+
+    // Whether the ring is between targets now: on its path, or gliding.
+    private bool RingMoving(float now) =>
+        now - _moveStart < BigTypeMotion.RingMilliseconds || (_glide is { } glide && !glide.Settled(now));
+
+    // How fast the ring's edges move now (px per ms, as a ring of rates), from its path or its glide, the breath and the pop left out.
+    private BigTypeRing RingVelocity(BigTypeRing target, float now)
+    {
+        const float h = 1f;
+        var a = RingPathAt(target, now - h);
+        var b = RingPathAt(target, now);
+        return new BigTypeRing((b.X - a.X) / h, (b.Y - a.Y) / h, (b.Width - a.Width) / h, (b.Height - a.Height) / h, (b.Radius - a.Radius) / h);
+    }
+
+    // Where the path or the glide has the ring at a moment, for the target given.
+    private BigTypeRing RingPathAt(BigTypeRing target, float now)
+    {
+        if (_glide is { } glide)
+            return glide.At(target, now);
+        var since = now - _moveStart;
+        return since < BigTypeMotion.RingMilliseconds ? BigTypeMotion.RingAt(_from, target, Math.Max(0f, since) / BigTypeMotion.RingMilliseconds) : target;
     }
 
     /// <summary>
@@ -103,6 +160,7 @@ public sealed class BigTypeLauncherMotion
     public void PopIn(float now, float from)
     {
         _moveStart = Never;
+        _glide = null;
         if (HoldStill)
         {
             _popStart = Never;
@@ -125,9 +183,23 @@ public sealed class BigTypeLauncherMotion
     {
         opacity = 1f;
         moving = false;
+        _lastTarget = target;
         var at = target;
         var sinceMove = now - _moveStart;
-        if (sinceMove < BigTypeMotion.RingMilliseconds)
+        if (_glide is { } glide)
+        {
+            if (!glide.Settled(now))
+            {
+                at = glide.At(target, now);
+                moving = true;
+            }
+            else
+            {
+                _landed = Math.Max(_landed, glide.Start + BigTypeRingGlide.Milliseconds);
+                _glide = null;
+            }
+        }
+        else if (sinceMove < BigTypeMotion.RingMilliseconds)
         {
             at = BigTypeMotion.RingAt(_from, target, sinceMove / BigTypeMotion.RingMilliseconds);
             moving = true;

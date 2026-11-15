@@ -395,8 +395,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // The first press after the idle drift only wakes the Stage (decision 14).
-        if (WakeOnInput())
+        // The first press after the idle drift only wakes the Stage (decision 14); under Big Type a direction wakes it and moves too
+        // (M47 B11, the owner's decision: DirectionWakesAndMoves).
+        if (WakeOnInput() && !DirectionWakesAndMoves(action))
         {
             PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
             return true;
@@ -498,6 +499,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return true;
         }
     }
+
+    /// <summary>
+    /// M47 B11 (the owner's decision, 15 November 2026, "A direction also moves"; DECISIONS.md "M47 B11"): under Big Type a direction
+    /// press that ends the idle drift also moves the focus, so on the Thor it never reads as a dropped press; A, B, X and Y still only end
+    /// the drift, so A can never start a game from an idle screen. Classic keeps decision 14 whole. To undo, return false here.
+    /// </summary>
+    private static bool DirectionWakesAndMoves(GamepadAction action) =>
+        HandheldTokens.IsBigType && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft
+            or GamepadAction.NavigateRight;
 
     /// <summary>
     /// The system Back button. Closes whatever is open (menu, drawer, folder, dock/header focus) and returns
@@ -1258,8 +1268,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
     public void SettleStage()
     {
-        if (IsStagePending)
-            UpdateStage();
+        if (!IsStagePending)
+            return;
+        // A held direction's Stage lands as a single press's (M47 B11: QuickChange is off until the next press).
+        _stageSettledSincePress = true;
+        UpdateStage();
     }
 
     private TimeSpan? StageDelay()

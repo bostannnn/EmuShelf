@@ -19,6 +19,16 @@ public static class BigTypeVeil
     /// <summary>How much of the screen's width the left veil takes to fade out (tokens.js <c>LeftVeilFade</c>).</summary>
     public const float Fade = 0.24f;
 
+    /// <summary>
+    /// The width the mock's shapes are drawn for: the 16:9 Stage's. The text keeps its size on the narrow Stage (the screens swapped,
+    /// M47 B11), so the veils behind it keep theirs too: a narrower canvas takes the patches' radii and the left veil's fade from this
+    /// width, anchored to its own corners and edges, rather than shrinking them with it.
+    /// </summary>
+    public const float ShapeWidth = 1920f;
+
+    // The width a canvas's veil shapes are measured against: its own, or the 16:9 Stage's when it is narrower.
+    private static float Shaped(float canvasWidth) => Math.Max(canvasWidth, ShapeWidth);
+
     /// <summary>The dark ink: the console's colour mixed this far toward <see cref="InkToward"/> (tokens.js <c>InkMix</c>).</summary>
     public const float InkMix = 0.74f;
 
@@ -46,12 +56,12 @@ public static class BigTypeVeil
 
     /// <summary>The left veil's coverage at <paramref name="x"/> (canvas pixels).</summary>
     public static float LeftAlpha(float x, float flatEnd, float canvasWidth) =>
-        x <= flatEnd ? 1f : Math.Max(0f, 1f - ((x - flatEnd) / (Fade * canvasWidth)));
+        x <= flatEnd ? 1f : Math.Max(0f, 1f - ((x - flatEnd) / (Fade * Shaped(canvasWidth))));
 
     /// <summary>A corner patch's coverage at (<paramref name="x"/>, <paramref name="y"/>) on a canvas of the given size.</summary>
     public static float CornerAlpha(Corner corner, float x, float y, float canvasWidth, float canvasHeight)
     {
-        var dx = (x - (corner.CentreX * canvasWidth)) / (corner.RadiusX * canvasWidth);
+        var dx = (x - (corner.CentreX * canvasWidth)) / (corner.RadiusX * Shaped(canvasWidth));
         var dy = (y - (corner.CentreY * canvasHeight)) / (corner.RadiusY * canvasHeight);
         var d = MathF.Sqrt((dx * dx) + (dy * dy));
         return d <= corner.Flat ? 1f : d >= 1f ? 0f : 1f - ((d - corner.Flat) / (1f - corner.Flat));
@@ -63,12 +73,12 @@ public static class BigTypeVeil
         switch (zone)
         {
             case StageInkZone.Left:
-                return (0f, 0f, Math.Min(canvasWidth, flatEnd + (Fade * canvasWidth)), canvasHeight);
+                return (0f, 0f, Math.Min(canvasWidth, flatEnd + (Fade * Shaped(canvasWidth))), canvasHeight);
             case StageInkZone.TopRight:
             case StageInkZone.BottomRight:
             {
                 var c = zone == StageInkZone.TopRight ? TopRight : BottomRight;
-                var rx = c.RadiusX * canvasWidth;
+                var rx = c.RadiusX * Shaped(canvasWidth);
                 var ry = c.RadiusY * canvasHeight;
                 var x0 = Math.Max(0f, (c.CentreX * canvasWidth) - rx);
                 var y0 = Math.Max(0f, (c.CentreY * canvasHeight) - ry);

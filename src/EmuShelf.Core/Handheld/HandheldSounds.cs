@@ -17,6 +17,12 @@ public enum HandheldSound
 
     /// <summary>B stepped back out of a sheet, the menu, a panel or the dock.</summary>
     Back,
+
+    /// <summary>The Big Type look (M47 B11, the mock's <c>sfx.bump</c>): a wall, or an error on the Stage's line.</summary>
+    Bump,
+
+    /// <summary>The Big Type look (M47 B11, the mock's <c>sfx.launch</c>): a game launching, a rising run of four.</summary>
+    Launch,
 }
 
 /// <summary>Plays Handheld mode's interface sounds. The Android head plays them; elsewhere they are silent.</summary>
@@ -48,7 +54,10 @@ public static class HandheldSoundSynth
     // How far the fall goes before the tone stops (−80 dB), as the mockup's exponentialRampToValueAtTime(.0001).
     private const double Floor = 0.0001;
 
-    private readonly record struct Tone(double Frequency, double Start, double Duration, bool Triangle, double Volume);
+    private readonly record struct Tone(double Frequency, double Start, double Duration, bool Triangle, double Volume, bool Square = false);
+
+    // The mock's levels are Web Audio gains (.05 for its five sounds); these sounds are about four times that here.
+    private const double MockGain = 4.0;
 
     /// <summary>The tones of each sound: a high tick to move, a rising fifth to open, a falling one to close.</summary>
     private static Tone[] TonesOf(HandheldSound sound) => sound switch
@@ -58,6 +67,11 @@ public static class HandheldSoundSynth
         HandheldSound.Close => [new(880, 0, 0.07, false, 0.22), new(587, 0.06, 0.10, false, 0.22)],
         HandheldSound.Confirm => [new(1046, 0, 0.05, true, 0.2), new(1568, 0.04, 0.09, true, 0.2)],
         HandheldSound.Back => [new(587, 0, 0.05, true, 0.2), new(440, 0.045, 0.08, true, 0.2)],
+        // M47 B11, the mock's own: bump is blip(180, .05, 'square', .018); launch is blip(f, .13, 'triangle', .05, i × .07) up
+        // C5, E5, G5, C6.
+        HandheldSound.Bump => [new(180, 0, 0.05, false, 0.018 * MockGain, Square: true)],
+        HandheldSound.Launch => [new(523, 0, 0.13, true, 0.05 * MockGain), new(659, 0.07, 0.13, true, 0.05 * MockGain),
+            new(784, 0.14, 0.13, true, 0.05 * MockGain), new(1047, 0.21, 0.13, true, 0.05 * MockGain)],
         _ => [],
     };
 
@@ -77,7 +91,8 @@ public static class HandheldSoundSynth
                 var t = (double)i / SampleRate;
                 var envelope = t < Attack ? t / Attack : Math.Exp(fall * (t - Attack));
                 var phase = (tone.Frequency * t) % 1;
-                var wave = tone.Triangle ? 1 - (4 * Math.Abs(phase - 0.5)) : Math.Sin(2 * Math.PI * phase);
+                var wave = tone.Square ? (phase < 0.5 ? 1.0 : -1.0)
+                    : tone.Triangle ? 1 - (4 * Math.Abs(phase - 0.5)) : Math.Sin(2 * Math.PI * phase);
                 samples[first + i] += wave * envelope * tone.Volume;
             }
         }

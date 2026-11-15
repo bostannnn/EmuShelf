@@ -718,6 +718,25 @@ internal sealed partial class HandheldLauncherMotion
         }
         if (_bumpStart is not { } start)
             return default;
+        // Big Type's bump is the mock's (M47 B11): the ring goes 18 px toward the wall and back in 220 ms, whatever its size.
+        if (HandheldTokens.IsBigType)
+        {
+            var since = (float)(_now - start).TotalMilliseconds;
+            if (since >= EmuShelf.Rendering.Stage.BigType.BigTypeMotion.BumpMilliseconds)
+            {
+                _bumpStart = null;
+                return default;
+            }
+            var by = EmuShelf.Rendering.Stage.BigType.BigTypeMotion.Bump(since);
+            moving = true;
+            return _bumpDirection switch
+            {
+                HandheldDirection.Left => new Vector(-by, 0),
+                HandheldDirection.Right => new Vector(by, 0),
+                HandheldDirection.Up => new Vector(0, -by),
+                _ => new Vector(0, by),
+            };
+        }
         var progress = (_now - start).TotalMilliseconds / HandheldMotion.BumpMilliseconds;
         if (progress >= 1)
         {

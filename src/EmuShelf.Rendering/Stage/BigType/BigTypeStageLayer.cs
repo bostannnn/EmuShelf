@@ -26,6 +26,10 @@ internal sealed class BigTypeStageLayer : IDisposable
     /// <summary>The name showing (null when there is none), for the letters' hop.</summary>
     public BigTypeLetters? Name => _name?.Name;
 
+    /// <summary>
+    /// A new name. A quick one (<see cref="StageNameCommand.Quick"/>: its press came within a run of the one before; M47 B11) follows in
+    /// the short form and the names already leaving go at once.
+    /// </summary>
     public void Apply(StageNameCommand command, float now)
     {
         // M47 B9: a typed word stays one layer. Its next state replaces it in place (its own letters move); typing beginning sends the
@@ -49,12 +53,22 @@ internal sealed class BigTypeStageLayer : IDisposable
             _name = new NameState(word, SpriteTextures.Upload(_gl, word.Atlas, repeat: false), command.Entrance, now) { Typed = typed };
             return;
         }
+        // M47 B11: a name that comes within a run of the last one (a held direction, quick taps) follows in a short form, and the
+        // names already leaving go at once, so a run never queues a landing per tile or stacks names on the Stage.
+        var run = command.Animate && command.Quick && _name is { Typed: null };
+        if (run)
+        {
+            foreach (var leaving in _leaving)
+                _gl.DeleteTexture(leaving.Texture);
+            _leaving.Clear();
+        }
         if (_name is { } current)
         {
             if (command.Animate)
             {
                 current.Start = now;
                 current.Exit = command.Entrance;
+                current.QuickExit = run;
                 _leaving.Add(current);
             }
             else
@@ -70,7 +84,7 @@ internal sealed class BigTypeStageLayer : IDisposable
         }
         _name = command.Name is { } name
             ? new NameState(name, SpriteTextures.Upload(_gl, name.Atlas, repeat: false), command.Entrance,
-                command.Animate ? now : float.NegativeInfinity)
+                command.Animate ? now : float.NegativeInfinity) { Quick = run }
             : null;
     }
 
@@ -82,6 +96,7 @@ internal sealed class BigTypeStageLayer : IDisposable
             var leaving = _leaving[i];
             var gone = leaving.UpExit
                 ? BigTypeTypingMotion.NameOutMilliseconds(leaving.Name.Letters.Count, holdStill)
+                : leaving.QuickExit ? BigTypeMotion.RunDepartureMilliseconds(holdStill)
                 : BigTypeMotion.DepartureMilliseconds(leaving.Name.Letters.Count, holdStill);
             if (now - leaving.Start >= gone)
             {
@@ -95,6 +110,7 @@ internal sealed class BigTypeStageLayer : IDisposable
     /// <summary>Whether the showing name's letters are still landing.</summary>
     public bool Arriving(float now, bool holdStill) =>
         _name is { } name && now - name.Start < (name.Typed is { } typed ? TypedMilliseconds(name, typed, holdStill)
+            : name.Quick ? BigTypeMotion.RunArrivalMilliseconds(holdStill)
             : BigTypeMotion.ArrivalMilliseconds(name.Name.Letters.Count, holdStill));
 
     // How long a typed word's change moves: its new letters landing, its deleted one falling, its size easing.
@@ -124,6 +140,7 @@ internal sealed class BigTypeStageLayer : IDisposable
                     continue;
                 var leave = leaving.UpExit
                     ? BigTypeTypingMotion.NameOut(letter.Order, now - leaving.Start, holdStill)
+                    : leaving.QuickExit ? BigTypeMotion.DepartInRun(leaving.Exit, now - leaving.Start, holdStill)
                     : BigTypeMotion.Depart(leaving.Exit, letter.Order, count, now - leaving.Start, holdStill);
                 if (leave is { } pose)
                     DrawLetter(leaving, letter, pose, quad);
@@ -143,9 +160,9 @@ internal sealed class BigTypeStageLayer : IDisposable
             // A typed word's deleted letter is only ever drawn falling (a replay of its atlas holds it too).
             if (letter.Order < 0)
                 continue;
-            var pose = arriving
-                ? BigTypeMotion.Arrive(state.Entrance, letter.Order, state.Name.Letters.Count, now - state.Start, holdStill)
-                : BigTypeLetterPose.Rest;
+            var pose = !arriving ? BigTypeLetterPose.Rest
+                : state.Quick ? BigTypeMotion.ArriveInRun(state.Entrance, now - state.Start, holdStill)
+                : BigTypeMotion.Arrive(state.Entrance, letter.Order, state.Name.Letters.Count, now - state.Start, holdStill);
             if (!arriving && sinceHop is { } hop)
                 pose = pose with { Y = BigTypeMotion.LetterHop(letter.Order, hop) };
             DrawLetter(state, letter, pose, quad);
@@ -233,6 +250,12 @@ internal sealed class BigTypeStageLayer : IDisposable
 
         /// <summary>When it arrived; once it leaves, when it started leaving.</summary>
         public float Start { get; set; } = start;
+
+        /// <summary>It came within a run of the name before (M47 B11): all its letters together, the short way.</summary>
+        public bool Quick { get; init; }
+
+        /// <summary>It goes because a name within a run of it came: all its letters together, quickly.</summary>
+        public bool QuickExit { get; set; }
 
         /// <summary>The arrival that sent it away (which way it leaves).</summary>
         public BigTypeEntrance Exit { get; set; }

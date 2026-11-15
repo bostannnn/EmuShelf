@@ -52,6 +52,11 @@ window.BT_TOKENS = {
     InGameRecentWhen:   { size: 32,  weight: 700, opacity: 0.7 },   // when it was unlocked
     // B9, the mock's keyboard (its inline sizes, doubled): the note under the keyboard's heading ("It lands on the slot you picked.").
     KeyboardNote:       { size: 36,  weight: 700, lineHeight: 1.3, opacity: 0.75 },
+    // B11, the app's own (the mock draws no narrow Stage: it scales its top screen onto the small one when the screens swap): the
+    // name on the Stage laid out again for the 1240-wide screen, in the canvas less NameLeft at each side, beside a game's medium
+    // ending NameLeft before the medium's box, and as tall as leaves the wide Stage's room above it once the name stands a hint row
+    // higher (stage.NarrowHintsRow).
+    DisplayNameNarrow:  { fitBox: [1080, 584], fitBoxBesideMedium: [600, 584] },
   },
 
   // The Stage, 1920x1080. Text sits in the four corners.
@@ -67,6 +72,12 @@ window.BT_TOKENS = {
     // The launch (B8, the mock's .launch): the title's lines centred, at most LaunchTitleMaxWidth wide, LaunchTitleLineHeight of its
     // size apart, the status LaunchGap under it; the block in the middle of the Stage.
     LaunchTitleMaxWidth: 1600, LaunchTitleLineHeight: 0.92, LaunchGap: 36,
+    // B11, the app's own: the Stage on the 1240-wide screen (the screens swapped). The hints keep their corner but take a row of their
+    // own, so the name and its two lines stand NarrowHintsRow higher; the medium's box moves to NarrowMediumRight / NarrowMediumTop,
+    // under the clock and above the lines; the console's name ends NarrowLabelGap before the battery (set smaller to fit, down to
+    // launcher.LabelFitMin, then an ellipsis); the launch title's lines are at most NarrowLaunchTitleMaxWidth wide, its sizes scaled
+    // down with it.
+    NarrowHintsRow: 96, NarrowMediumRight: 88, NarrowMediumTop: 200, NarrowLabelGap: 44, NarrowLaunchTitleMaxWidth: 1080,
   },
 
   // The Launcher, 1240x1080.
@@ -266,6 +277,19 @@ window.BT_TOKENS = {
     Message:   { holdMs: 2800, errorHoldMs: 4200, shakeMs: 380, shake: 22, shakeBack: 18, shakeSettle: 12 },   // an error shakes -22, +18, -12, 0
     InGameRest: { afterMs: 9000, fadeMs: 1200 },
     SessionAchievementBar: { ms: 800, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },   // B8: the mock's .pbar transition
+    // B11, the app's own (the mock's moves are one per press; on the Thor a held direction repeats every 90 ms down to 38): a move
+    // that arrives while the ring is still on its way glides on from where it is and how fast it is going, its middle trailing a
+    // moving focus by at most RingGlide.lagMs of travel, its size easing to the target's; it lands Ring.ms after the last move,
+    // squashed on Ring's keyframes.
+    RingGlide: { lagMs: 40 },
+    // A press that comes within LetterRun.withinMs of the one before is part of a run (quick taps): the name a run's first press
+    // brings lands as LetterIn; each after it comes in short, all its letters together from fromShare of LetterIn's distance over ms,
+    // the name it replaces goes in outMs, all together, and the Stage's and the Launcher's rolling texts swap in place. A held
+    // direction keeps the app's once-per-move rule (the Stage waits while the direction is held) and the name it rests on lands as
+    // LetterIn.
+    LetterRun: { withinMs: 220, ms: 200, fromShare: 0.4, outMs: 90 },
+    // The mock's bump (its inline numbers, doubled): at a wall the ring goes `px` toward it and back over ms, eased out as a whole.
+    Bump: { ms: 220, px: 18 },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

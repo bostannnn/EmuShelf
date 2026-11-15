@@ -1159,6 +1159,11 @@ public sealed class GamepadSettingsViewModelTests
         Assert.True(action.ShowsChevron);
         Assert.False(action.HasActionText);
         Assert.Same(viewModel.Rows.Single(row => row.IsSaveRow), viewModel.SaveRow);
+        // Handheld Big Type rows (M47 B11) show no "A …" prompt at their end; a value row its value.
+        Assert.StartsWith("A ", action.Value);
+        Assert.Equal(string.Empty, action.RowValue);
+        Assert.Equal(string.Empty, viewModel.SaveRow!.RowValue);
+        Assert.Equal(toggle.Value, toggle.RowValue);
 
         viewModel.SelectedSection = SettingsSection.RetroAchievements;
         await viewModel.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
@@ -1172,6 +1177,7 @@ public sealed class GamepadSettingsViewModelTests
         var drive = viewModel.Rows.Single(row => row.Key == "saves.connect");
         Assert.True(drive.HasActionText);
         Assert.Equal("Connect", drive.ActionText);
+        Assert.Equal("Connect", drive.RowValue);
         await viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").SelectCommand.ExecuteAsync(null);
         var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
         Assert.True(folder.IsEditableValue);

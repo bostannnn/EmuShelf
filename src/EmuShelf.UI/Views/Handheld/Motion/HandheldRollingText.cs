@@ -44,7 +44,8 @@ public sealed class HandheldRollingText : TextBlock
         var before = _shownText;
         var after = Text ?? string.Empty;
         EndRoll();
-        if (!_shown || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is null || !BigTypeMotion.Rolls(before, after, holdStill: !GetRolls(this)))
+        // Within a run of presses (a held direction, quick taps; M47 B11) it swaps in place, so a roll never restarts on a roll.
+        if (HandheldInputRun.Of(this) || !_shown || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is null || !BigTypeMotion.Rolls(before, after, holdStill: !GetRolls(this)))
             return;
         // The text block lets its own layout of the old text go; the roll draws one of its own, laid out the same way.
         var layout = CreateTextLayout(before);

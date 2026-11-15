@@ -26,6 +26,12 @@ public sealed record StageNameCommand(BigTypeLetters? Name, BigTypeEntrance Entr
 
     /// <summary>The name is a word being typed (M47 B9): how it changed; null for any other name.</summary>
     public BigTypeTyped? Typed { get; init; }
+
+    /// <summary>
+    /// The press that brought it came within a run of the one before (quick taps; M47 B11): it follows in the short form and the names
+    /// already leaving go at once. A name a held direction settles on is never quick: it lands as the mock's.
+    /// </summary>
+    public bool Quick { get; init; }
 }
 
 /// <summary>
