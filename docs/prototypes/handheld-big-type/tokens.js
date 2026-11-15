@@ -288,6 +288,8 @@ window.BT_TOKENS = {
     // direction keeps the app's once-per-move rule (the Stage waits while the direction is held) and the name it rests on lands as
     // LetterIn.
     LetterRun: { withinMs: 220, ms: 200, fromShare: 0.4, outMs: 90 },
+    // The mock's bump (its inline numbers, doubled): at a wall the ring goes `px` toward it and back over ms, eased out as a whole.
+    Bump: { ms: 220, px: 18 },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

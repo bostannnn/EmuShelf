@@ -456,6 +456,28 @@ public static class BigTypeMotion
     public static float DepartureMilliseconds(int count, bool holdStill = false) => holdStill ? LetterOutStillMilliseconds :
         (Math.Max(0, count - 1) * LetterOutStagger(count)) + LetterOutMilliseconds;
 
+    // ---- The bump (M47 B11) ----
+
+    /// <summary>tokens.js <c>Bump</c> (the mock's <c>bump</c>, doubled): at a wall the ring goes 18 px toward it and back in 220 ms.</summary>
+    public const float BumpMilliseconds = 220f;
+
+    public const float BumpDistance = 18f;
+
+    /// <summary>
+    /// How far toward the wall the ring is <paramref name="since"/> ms into a bump: the mock's keyframes (0, the full distance, 0, evenly
+    /// spaced) under CSS <c>ease-out</c> over the whole; 0 before and after.
+    /// </summary>
+    public static float Bump(float since)
+    {
+        if (since <= 0f || since >= BumpMilliseconds)
+            return 0f;
+        var p = EaseOut(since / BumpMilliseconds);
+        return BumpDistance * (p < 0.5f ? p * 2f : (1f - p) * 2f);
+    }
+
+    /// <summary>CSS <c>ease-out</c>, cubic-bezier(0, 0, .58, 1).</summary>
+    public static float EaseOut(float t) => Curve(0f, 0f, 0.58f, 1f, t);
+
     // ---- A run of names (M47 B11, the app's own) ----
 
     /// <summary>

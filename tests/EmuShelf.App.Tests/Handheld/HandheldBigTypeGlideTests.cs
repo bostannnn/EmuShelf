@@ -278,3 +278,23 @@ public partial class HandheldShellViewModelTests
         shell.Dispose();
     }
 }
+
+/// <summary>M47 B11: the wall's bump under Big Type is the mock's (tokens.js <c>Bump</c>).</summary>
+public class HandheldBigTypeBumpTests
+{
+    [Fact]
+    public void TheBump_IsTheMocks_18PxIn220Ms_EasedOut()
+    {
+        var tokens = File.ReadAllText(Path.Combine(HandheldGroundColourTests.RepositoryRoot(), "docs", "prototypes", "handheld-big-type", "tokens.js"));
+        double Field(string field) => double.Parse(Regex.Match(tokens, $@"\bBump:\s*\{{[^}}]*\b{field}:\s*(?<v>[0-9.]+)").Groups["v"].Value, CultureInfo.InvariantCulture);
+        Assert.Equal(Field("ms"), BigTypeMotion.BumpMilliseconds);
+        Assert.Equal(Field("px"), BigTypeMotion.BumpDistance);
+        Assert.Equal(0f, BigTypeMotion.Bump(0f));
+        Assert.Equal(0f, BigTypeMotion.Bump(220f));
+        // At its furthest when the eased progress is half way (ease-out gets there early), never further.
+        var peak = Enumerable.Range(0, 221).Select(t => BigTypeMotion.Bump(t)).Max();
+        Assert.InRange(peak, 17.5f, 18f);
+        var at = Enumerable.Range(0, 221).First(t => BigTypeMotion.Bump(t) >= peak - 0.01f);
+        Assert.InRange(at, 40, 90);
+    }
+}

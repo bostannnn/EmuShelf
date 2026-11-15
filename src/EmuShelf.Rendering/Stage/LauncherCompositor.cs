@@ -838,7 +838,18 @@ public sealed partial class LauncherCompositor : INativeScene
             (x, y, w, h, radius) = ((float)_x.Value, (float)_y.Value, (float)_w.Value, (float)_h.Value, (float)_r.Value);
         }
         var sinceBump = now - _bumpStart;
-        if (sinceBump < LauncherMotion.BumpMilliseconds)
+        if (_bigType)
+        {
+            // Big Type's bump is the mock's (M47 B11): the ring goes 18 px toward the wall and back in 220 ms.
+            if (sinceBump < BigTypeMotion.BumpMilliseconds)
+            {
+                var by = BigTypeMotion.Bump(sinceBump);
+                x += _bump.X * by;
+                y += _bump.Y * by;
+                animating = true;
+            }
+        }
+        else if (sinceBump < LauncherMotion.BumpMilliseconds)
         {
             var amount = LauncherMotion.Bump(sinceBump / LauncherMotion.BumpMilliseconds) * LauncherMotion.BumpFraction;
             x += _bump.X * amount * w;
