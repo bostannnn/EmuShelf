@@ -17,7 +17,8 @@ namespace EmuShelf.Rendering.Preview;
 /// </summary>
 internal static class StageModelCheck
 {
-    private const int Width = 1920;
+    // 1920, or 1240 for the narrow pass.
+    private static int Width = 1920;
     private const int Height = 1080;
 
     private static readonly (StageInkZone Zone, string Key, int X, int Y, int W, int H)[] Blocks =
@@ -176,6 +177,49 @@ internal static class StageModelCheck
             gl.DeleteRenderbuffer(renderbuffer);
         }
 
+        // The narrow Stage (the screens swapped, M47 B11): 1240 wide, the lines a hint row (96) higher, the hints on their own row; the
+        // model in the middle across at NarrowModelTop and NarrowModelScale, clear of every corner's text.
+        Width = 1240;
+        {
+            (StageInkZone Zone, string Key, int X, int Y, int W, int H)[] narrowBlocks =
+            [
+                (StageInkZone.Left, "bt-label", 88, 64, 260, 44),
+                (StageInkZone.Left, "bt-line", 88, 906 - 96, 520, 42),
+                (StageInkZone.Left, "bt-facts", 88, 968 - 96, 640, 36),
+                (StageInkZone.TopRight, "bt-status", 1240 - 88 - 392, 48, 392, 92),
+                (StageInkZone.BottomRight, "bt-hints", 1240 - 88 - 652, 950, 652, 58),
+            ];
+            var (nx, ny) = BigTypeModelMotion.Centre(1240f, 552f);
+            var scale = BigTypeModelMotion.NarrowModelScale;
+            var (bx, by) = (1240f - 88f - 196f, 200f + 276f);   // B11's narrow case corner, where it rises from
+            foreach (var (mediaName, shell, backdrop, colour) in Media.Where(m => m.Name is "keep-case-ps2" or "jewel-case-ps1" or "cartridge-snes" or "card-3ds"))
+            {
+                var ground = Colour(colour);
+                var ink = new StageInkCommand(ground, BigTypeVeil.Deep(ground * 255f) / 255f);
+                var medium = new StageMedium(shell, ground, nx - (besideWidth * scale / 2f), ny - (besideHeight * scale / 2f), besideWidth * scale, besideHeight * scale);
+                var (framebuffer, renderbuffer) = Target(gl);
+                var bare = NarrowStage(gl, framebuffer, ink, narrowBlocks);
+                bare.Draw(0f, Width, Height);
+                var empty = Read(gl, framebuffer);
+                bare.Dispose();
+                var stage = NarrowStage(gl, framebuffer, ink, narrowBlocks);
+                stage.Apply(new StageMediumCoverCommand(TestCover.Create()), 0f);
+                stage.Apply(new StageModelCommand(medium, null, BigTypeModelChange.Rise, bx, by, nx, ny, 392f, 552f, Scale: scale), 0f);
+                stage.Draw(3_000f, Width, Height);
+                var picture = Read(gl, framebuffer);
+                PngWriter.Write(Path.Combine(outputDirectory, $"narrow-{mediaName}.png"), Width, Height, picture);
+                var solid = Changed(empty, picture, threshold: 90);
+                Report($"narrow {mediaName}: drawn, its middle across the Stage's ({solid})", solid is { } m && MathF.Abs(((m.Left + m.Right) / 2f) - nx) < 70f);
+                Report($"narrow {mediaName}: clear of every corner's text", solid is { } k &&
+                    narrowBlocks.All(t => k.Right < t.X || k.Left > t.X + t.W || k.Bottom < t.Y || k.Top > t.Y + t.H));
+                stage.Draw(11_250f, Width, Height);
+                PngWriter.Write(Path.Combine(outputDirectory, $"narrow-{mediaName}-showcase.png"), Width, Height, Read(gl, framebuffer));
+                stage.Dispose();
+                gl.DeleteFramebuffer(framebuffer);
+                gl.DeleteRenderbuffer(renderbuffer);
+            }
+        }
+
         Console.WriteLine(failures == 0 ? "All model view checks passed." : $"{failures} model view check(s) FAILED.");
         return failures == 0 ? 0 : 1;
     }
@@ -197,6 +241,22 @@ internal static class StageModelCheck
             stage.Apply(new StageChromeCommand(key, BigTypeVeil.Mask(zone, 728f + BigTypeVeil.PastName, 1920f, 1080f), zone, Veil: true), 0f);
         var white = new StagePixels(1, 1, [255, 255, 255, 255], IsBgra: false);
         foreach (var block in Blocks)
+            stage.Apply(new StageChromeCommand(block.Key, new StageImage(white, block.X, block.Y, block.W, block.H), block.Zone), 0f);
+        return stage;
+    }
+
+    // The narrow Stage, on the plain pictured ground (still, so the frames compare), the model's veil behind the lines.
+    private static StageCompositor NarrowStage(GL gl, uint framebuffer, StageInkCommand ink,
+        (StageInkZone Zone, string Key, int X, int Y, int W, int H)[] blocks)
+    {
+        var stage = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }) { TargetFramebuffer = framebuffer };
+        stage.Apply(new StageMotionCommand(false, BigType: true), 0f);
+        var grey = new StagePixels(1, 1, [0x40, 0x40, 0x40, 255], IsBgra: false);
+        stage.Apply(new StageCanvasCommand(1240f), 0f);
+        stage.Apply(ink, 0f);
+        stage.Apply(new StageBackdropCommand(new StageBackdrop(new StageImage(grey, 0, 0, 1920, 1080), null, null, null, Vector2.Zero, 0, 0)), 0f);
+        var white = new StagePixels(1, 1, [255, 255, 255, 255], IsBgra: false);
+        foreach (var block in blocks)
             stage.Apply(new StageChromeCommand(block.Key, new StageImage(white, block.X, block.Y, block.W, block.H), block.Zone), 0f);
         return stage;
     }
@@ -233,7 +293,7 @@ internal static class StageModelCheck
         var framebuffer = gl.GenFramebuffer();
         var colour = gl.GenRenderbuffer();
         gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, colour);
-        gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.Rgba8, Width, Height);
+        gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.Rgba8, (uint)Width, (uint)Height);
         gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
         gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, colour);
         return (framebuffer, colour);
@@ -244,7 +304,7 @@ internal static class StageModelCheck
         var pixels = new byte[Width * Height * 4];
         gl.BindFramebuffer(FramebufferTarget.ReadFramebuffer, framebuffer);
         gl.PixelStore(PixelStoreParameter.PackAlignment, 4);
-        gl.ReadPixels(0, 0, Width, Height, PixelFormat.Rgba, PixelType.UnsignedByte, new Span<byte>(pixels));
+        gl.ReadPixels(0, 0, (uint)Width, (uint)Height, PixelFormat.Rgba, PixelType.UnsignedByte, new Span<byte>(pixels));
         var stride = Width * 4;
         var flipped = new byte[pixels.Length];
         for (var y = 0; y < Height; y++)

@@ -3237,6 +3237,27 @@ falls back to the emulator and says so.
       to run, not reproduced). Classic's naming on the Thor as before. The presses taken as "first press only wakes" after 15 s idle
       are today's behaviour in both looks (M45 decision 14, the idle drift); one was under Classic in the first pass. Home, Sounds
       and Reduce motion left as found, `bigtype`, this build installed.
+- [ ] **B11 — The owner's first look on the Thor: the narrow Stage, held input, polish.** The Stage laid out for the swapped
+      screen; motion that can always be interrupted and never falls behind a held direction; the wall bump, the idle drift's first
+      press, the mock's sounds, Settings' row values and the start-up ground, under Big Type only. (Choices in `DECISIONS.md`
+      2026-11-15 "M47 B11".) **Built:** the narrow Stage fills 1240 × 1080 (name in its own fit box, hints on their own row, the case in its
+      own corner, veils kept at their pixel size, three backdrops with a stronger left veil there); the ring glides from where it is when
+      a move interrupts one (`BigTypeRingGlide`, tokens.js `RingGlide`); quick taps bring the name in a short form and texts swap
+      (`LetterRun`); the native screens pace their frames to the vsync; the bump is the mock's (`Bump`); a direction ends the idle drift and
+      moves (the owner's decision, 15 November 2026); the sounds follow the mock's (two new ones synthesised from its parameters); Settings rows show no "A …"
+      prompt; no bare grey Stage at a start. **Verified on macOS:** Classic byte-identical on all 158 design frames; two Big Type renders of
+      the final code byte-identical; 15 of 158 Big Type frames changed from the starting render, each meant: the four swapped Stage bottoms
+      (laid out narrow), the long error message's top (it grows down over the second line) and the ten Settings bottoms (no "A SAVE" /
+      "A RESCAN" at the rows' ends); new tests hold the narrow layout (ink read back for the longest names and a message), the narrow legibility answer, the glide
+      (a move interrupted at six points, held runs at 38 and 72 ms: one ring wide, never further behind, the squash on landing, a single press
+      to the byte), the run, the bump, the drift, the sounds, the row values and the start-up backdrop; `dotnet build` and both test
+      projects passed three times running. A desktop GL check (`--stage-narrow-legibility`) reads every backdrop's zones on both widths.
+      **On the Thor** (Release AOT, `adb install -r`, 60 Hz, no system setting changed, the owner's library): the swapped Stage filled the
+      bottom screen with PS2's backdrop, a game's case in its corner and the lines a hint row up; held right on home, the native Launcher went
+      from 13 of 85 frame intervals over 25 ms (p95 32.5, 30 fps in the recording) to 2 of 223 (p95 17.7) and the Stage from 6 of 97 to 1–2 of
+      ~190; held moves in a folder, the Y sheet, the menu, Settings, a panel, the keyboard and Search's hits, quick taps, A/B open and close,
+      X during a move and the same on swapped screens were recorded (the session's notes, `m47-b11-renders`). Home, the swap, Sounds and Reduce
+      motion left as found. Built, awaiting the owner's look.
 - [ ] **B12 — The model view on LB and RB.** (owner, 2026-11-15: "I want only model on rb/lb, not big type + model", "Yes, keep the
       small line", "I like one big-type mode and separate model - approve"; `docs/prototypes/handheld-big-type/proposals.html`, first
       section.) Under Big Type a game no longer shows its 3D medium beside the big name: the name view (the default) is the name alone
@@ -3275,8 +3296,21 @@ falls back to the emulator and says so.
       with neither medium nor name. **Not seen on the Thor:** the right stick and its swing back (adb cannot move an axis; Mac renders and
       tests only), the launch from either view (no games launched), a platform with no authored medium (every console on the owner's
       Thor has one), a game pinned to home (the owner's home has none, and pinning one would change it; the home rule is held by the tests
-      and the frames on request). **Waiting for B11:** the model view on the narrow Stage (screens swapped) and B11's held-direction rule for the flip.
+      and the frames on request). **After B11 was merged in:** the model view on the narrow Stage (centred, clear of the clock, the label, the raised lines and the hints'
+      row; `NarrowModelTop`, `NarrowModelScale`, the app's own) and the flip's short form in a run of quick presses (never stacked, never
+      restarted). Checked after the merge: the native Stage's narrow pass on the Mac (keep case, jewel case, SNES cartridge, 3DS card:
+      centred, clear of every corner's text), B11's narrow layout test extended to the model, and the Thor (second sitting, 23:51, this
+      build installed with `adb install -r`): screens swapped, the PS2 folder's name view in the narrow name box and the model in the middle
+      of the narrow Stage clear of the clock, the label, the lines and the hints' row; five quick taps changed the game four times in half a
+      second with no stacked turns; swapped back. **Verified after the merge (macOS):** Classic byte-identical on all 158 design frames to the render before
+      any change; two Big Type renders byte-identical; 37 of 158 Big Type frames differ from a render of the design branch's tip (B11
+      merged): the same game frames as before the merge (name across the whole box, RB Model; Activity's RB as rounded keys; All apps'
+      Stage; home's second page turned from the folder beside the pinned game) and the three swapped Stage bottoms with a game (the name now
+      across B11's whole narrow box, no case beside it), each looked at, nothing clipped or overlapping; the on-request frames gained the
+      swapped Stage's name view, model and long name; `dotnet build` and both test projects passed three times running (App 1,764,
+      Infrastructure 1,407).
       Renders, recordings and the probe log: `m47-b12-renders` in the build sessions' notes. Home, the swap, Sounds (on) and Reduce
-      motion (off) as found, `bigtype`. This build replaced the one installed at 18:27; another session installed its own build at
-      19:18 and again at 19:25 (with its probe on `rest`), so the Thor now runs that one, not B12's.
+      motion (off) as found, `bigtype`. The first sitting's build replaced the one installed at 18:27; another session installed its own
+      build at 19:18 and 19:25 (its probe on `rest`) and again at 19:49; the second sitting installed B12's merged build at 23:51, which the
+      Thor runs now.
       Built, awaiting the owner's look.

@@ -101,8 +101,8 @@ internal sealed partial class HandheldStageMotion
             _modelTold = true;
             _modelGame = stage.GameId;
         }
-        // Off screen (the native Stage draws) the pieces are only pictured: at rest, at once.
-        _modelState.Apply(change, ModelNow, holdStill: ModelStill);
+        // Off screen (the native Stage draws) the pieces are only pictured: at rest, at once. A run of quick presses flips short (M47 B11).
+        _modelState.Apply(change, ModelNow, holdStill: ModelStill, quick: _shell?.QuickChange == true);
         RequestModelFrame();
     }
 
@@ -146,9 +146,10 @@ internal sealed partial class HandheldStageMotion
         var still = ModelStill;
         var beside = HandheldTokens.StageMediumCentre(CanvasWidthBigType);
         var centre = HandheldTokens.StageModelCentre(CanvasWidthBigType);
-        var off = BigTypeModelMotion.OffPlace((float)beside.X, (float)beside.Y, (float)centre.X, (float)centre.Y);
+        var modelScale = (float)HandheldTokens.StageModelScale(CanvasWidthBigType);
+        var off = BigTypeModelMotion.OffPlace((float)beside.X, (float)beside.Y, (float)centre.X, (float)centre.Y, modelScale);
         var gone = _modelState.IsGone(now, still);
-        var pose = gone ? default : _modelState.Pose(now, still, off);
+        var pose = gone ? default : _modelState.Pose(now, still, off, modelScale);
         var visible = !gone && !pose.IsHidden;
         // The 3D medium draws only on screen (the native Stage renders its own); the cover shows whenever it is the model's, so it can be
         // pictured, and at rest while the native Stage draws.
@@ -166,7 +167,8 @@ internal sealed partial class HandheldStageMotion
             EmuShelf.Rendering.Shells.MediaShellCatalog.PrepareAsync(shell) is { IsCompletedSuccessfully: true } prepared)
         {
             var size = prepared.Result.Size;
-            bump *= BigTypeModelMotion.FitScale(size.X, size.Z, size.Y, (float)HandheldTokens.StageModelFrameHeight * BigTypeModelMotion.FrameFill);
+            bump *= BigTypeModelMotion.FitScale(size.X, size.Z, size.Y,
+                (float)HandheldTokens.StageModelFrame(CanvasWidthBigType).Height * BigTypeModelMotion.FrameFill);
         }
         var k = pose.Scale * bump;
         var dx = pose.OffsetX;
@@ -189,17 +191,18 @@ internal sealed partial class HandheldStageMotion
             cover.RenderTransform = null;
         }
         if (floor.IsVisible)
-            PlaceFloor(floor, centre, pose, k, dx, dy);
+            PlaceFloor(floor, centre, pose, k, dx, dy, modelScale);
         return _modelState.IsMoving(now, still) || (_shell?.Playing is { } playing && Since(playing.Started) < BigTypeLaunchMotion.BumpAt + BigTypeLaunchMotion.BumpMilliseconds);
     }
 
-    private double CanvasWidthBigType => HandheldShellViewModel.WideCanvasWidth;
+    // The Big Type Stage is laid out for the narrow screen when it is on it (M47 B11).
+    private double CanvasWidthBigType => _isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
 
     // A piece laid out at the model's rest place, scaled about its own middle (across by scaleX more) and moved.
     private static ITransform Place(float scale, float scaleX, float dx, float dy) => new MatrixTransform(
         Matrix.CreateScale(scale * scaleX, scale) * Matrix.CreateTranslation(dx, dy));
 
-    private void PlaceFloor(Image floor, Point centre, BigTypeModelPose pose, float k, float dx, float dy)
+    private void PlaceFloor(Image floor, Point centre, BigTypeModelPose pose, float k, float dx, float dy, float modelScale)
     {
         var boxWidth = (float)HandheldTokens.StageMediumWidth;
         var boxHeight = (float)HandheldTokens.StageMediumHeight;
@@ -217,7 +220,7 @@ internal sealed partial class HandheldStageMotion
         }
         // Laid out at rest (the box grown ModelScale about the model's middle); the pose scales it about the box's middle, then the
         // shadow breathes about its own.
-        var scale = BigTypeModelMotion.ModelScale;
+        var scale = modelScale;
         var left = centre.X - (boxWidth * scale / 2);
         var top = centre.Y - (boxHeight * scale / 2);
         floor.Width = rect.Width * scale;
@@ -239,7 +242,8 @@ internal sealed partial class HandheldStageMotion
         if (_modelStage is { IsModelView: true })
             return HandheldTokens.StageModelCentre(CanvasWidthBigType);
         if (_modelStage is { ShowsBigTypeName: true } && _view.FindControl<HandheldBigTypeName>("BtName")?.Fitted is { } fitted)
-            return HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size);
-        return new Point(BigTypeLaunchMotion.TakeoverX, BigTypeLaunchMotion.TakeoverY);
+            return HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size, _isNarrow());
+        // Anything else: B11's place (its case's corner on the narrow Stage).
+        return HandheldTokens.StageTakeoverCentre(_isNarrow());
     }
 }

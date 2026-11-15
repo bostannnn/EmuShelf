@@ -83,7 +83,8 @@ internal sealed partial class HandheldStageMotion
         {
             var since = Since(play.Started);
             var radius = BigTypeLaunchMotion.TakeoverRadiusAt(since, still);
-            // M47 B12: from the model view's medium, or from the name's middle (there is no case beside it any more).
+            // M47 B12: from the model view's medium, or from the name's middle (there is no case beside it any more); M47 B11's narrow
+            // case corner otherwise.
             var origin = TakeoverOrigin();
             launch.Clip = radius >= BigTypeLaunchMotion.TakeoverRadius ? null
                 : new EllipseGeometry(new Rect(origin.X - radius, origin.Y - radius, radius * 2, radius * 2));

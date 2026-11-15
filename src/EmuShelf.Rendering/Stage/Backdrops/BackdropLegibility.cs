@@ -59,6 +59,36 @@ public static class BackdropLegibility
     /// <summary>The answer for a backdrop by its <see cref="BackdropCatalog"/> id; <see cref="Fallback"/> for null or an unknown id.</summary>
     public static BackdropInk For(string? id) => id is not null && Table.TryGetValue(id, out var ink) ? ink : Fallback;
 
+    /// <summary>
+    /// The answer on the narrow Stage (the screens swapped, M47 B11), which shows the backdrop's middle 1240 and so puts the left zone
+    /// over other parts of it: the table's ink always, and its veil, or a stronger one where the table's left a zone under tokens.js
+    /// <c>legibility.Pass</c> there (<see cref="NarrowLeftVeils"/>).
+    /// </summary>
+    public static BackdropInk For(string? id, bool narrow)
+    {
+        var answer = For(id);
+        if (!narrow || id is null || !NarrowLeftVeils.TryGetValue(id, out var veil) || veil <= answer.Left.Veil)
+            return answer;
+        return answer with { Left = answer.Left with { Veil = veil } };
+    }
+
+    /// <summary>
+    /// The app's own (M47 B11): the left veil on the narrow Stage for the backdrops whose middle reads darker (or lighter) behind the
+    /// left zone than the whole did, measured through the real compositor over every backdrop at three moments
+    /// (<c>tools/EmuShelf.Rendering.Preview -- --stage-narrow-legibility</c>, the worst of the 96th or 4th percentile as the mock's rule
+    /// reads it): a veil that brings every zone to at least tokens.js <c>legibility.Pass</c> (3.0) there. <c>arc-checker</c> splits its
+    /// inks (dark left, white clock) and the narrow Stage's left veil reaches under its clock, so its veil is the one that keeps both.
+    /// The ink is never changed.
+    /// </summary>
+    public static IReadOnlyDictionary<string, float> NarrowLeftVeils { get; } = new Dictionary<string, float>(StringComparer.Ordinal)
+    {
+        // Measured 2026-11-15 on this Mac's GL: the table's veil left these under 3.0 on the narrow Stage (2.26, 2.65, 2.09); with
+        // these 3.38 (its clock 3.15), 4.31 and 3.35.
+        ["arc-checker"] = 0.46f,
+        ["gc-caustics"] = 0.6f,
+        ["ps2-sea"] = 0.66f,
+    };
+
     /// <summary>Every baked backdrop, by id.</summary>
     public static IReadOnlyDictionary<string, BackdropInk> All => Table;
 

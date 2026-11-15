@@ -48,7 +48,7 @@ public sealed partial class StageCompositor
         // A replay (or a medium told again before it was ever shown) is simply there.
         if (!model.IsOn && change == BigTypeModelChange.None)
             change = BigTypeModelChange.Rise;
-        model.Apply(change, now, _holdStill, animate);
+        model.Apply(change, now, _holdStill, animate, command.Quick);
     }
 
     private void ApplyModelHold(StageModelHoldCommand command, float now)
@@ -91,7 +91,7 @@ public sealed partial class StageCompositor
     {
         if (_modelShown is not { } shown || _model is not { } model || !_modelOwnsMedium)
             return;
-        var pose = model.Pose(now, _holdStill, Off(shown));
+        var pose = model.Pose(now, _holdStill, Off(shown), shown.Scale);
         if (pose.IsHidden)
             return;
         var yaw = BigTypeModelMotion.RendererYaw(pose.Yaw);
@@ -104,7 +104,7 @@ public sealed partial class StageCompositor
     }
 
     private static (float X, float Y, float Scale) Off(StageModelCommand shown) =>
-        BigTypeModelMotion.OffPlace(shown.BesideX, shown.BesideY, shown.CentreX, shown.CentreY);
+        BigTypeModelMotion.OffPlace(shown.BesideX, shown.BesideY, shown.CentreX, shown.CentreY, shown.Scale);
 
     /// <summary>Draws the model view (its floor's shadow, then the medium or the cover); false when it is not showing.</summary>
     private bool DrawModel(float now, ref bool animating)
@@ -117,14 +117,14 @@ public sealed partial class StageCompositor
             return false;
         }
         animating |= model.IsMoving(now, _holdStill);
-        var pose = model.Pose(now, _holdStill, Off(shown));
+        var pose = model.Pose(now, _holdStill, Off(shown), shown.Scale);
         if (pose.IsHidden)
             return true;
         // The launch bumps it as the tile arrives (M47 B8), from either view's place. A landscape medium is set smaller to keep clear
         // of the corners (ModelMaxWidth).
         var (bump, rise) = CaseBump(now, ref animating);
         bump *= _modelOwnsMedium && _medium is { } fitted ? ModelFit(fitted) : 1f;
-        var scale = BigTypeModelMotion.ModelScale * pose.Scale * bump;
+        var scale = shown.Scale * pose.Scale * bump;
         var centreX = shown.CentreX + pose.OffsetX;
         var centreY = shown.CentreY + pose.OffsetY - rise;
         DrawModelFloor(shown, pose, centreX, centreY, scale);

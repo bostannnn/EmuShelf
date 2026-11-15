@@ -183,8 +183,10 @@ Added after H2 (owner, 2026-11-07):
       through the hinge turning in, floats, holds a three-quarter turn and every fifteen seconds turns
       once all the way round so its back and spine are seen. The right stick turns it from the pose it
       has reached; letting go, or R3, swings it back. Changing games is one flip into the next medium,
-      the way you moved, carrying on from the pose on screen (never a restart from rest); a change of
-      console changes the medium's kind in the same flip. The chosen view is kept across home and
+      the way you moved, carrying on from the pose on screen (never a restart from rest), and in a run of
+      quick presses a short flip that never stacks (M47 B11's run); a change of console changes the
+      medium's kind in the same flip. On the narrow Stage (the screens swapped) the model stands in its
+      middle, smaller (`NarrowModelTop`, `NarrowModelScale`), between the clock and the lines. The chosen view is kept across home and
       folders: it shows whenever a game is focused and steps aside for anything that is not one; a fresh
       start begins in the name view; the idle drift (decision 14) waits while the model shows. Over a sheet, the menu, Settings, a panel or a keyboard the
       Stage is the name view; a launch from the model view keeps the medium (it bumps, and the colour

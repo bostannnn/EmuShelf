@@ -92,6 +92,58 @@ public class HandheldBigTypeModelMotionTests
     }
 
     [Fact]
+    public void OnTheNarrowStage_TheModelIsCentred_BetweenTheClockAndTheLines()
+    {
+        // M47 B11's narrow Stage: 1240 wide, the hints on their own row, the lines raised a hint row (96 px).
+        Assert.Equal(189, Number(TokensJs(), "NarrowModelTop"));
+        Assert.Equal(0.96, Number(TokensJs(), "NarrowModelScale"), 3);
+        var (x, y) = BigTypeModelMotion.Centre(1240, 552);
+        Assert.Equal(620, x);
+        var s = BigTypeModelMotion.ScaleFor(1240);
+        Assert.Equal(BigTypeModelMotion.NarrowModelScale, s);
+        Assert.Equal(BigTypeModelMotion.ModelScale, BigTypeModelMotion.ScaleFor(1920));
+        var top = y - (552 * s / 2) + (BigTypeModelMotion.FloatTo * s);    // the float's highest
+        var bottom = y + (552 * s / 2) + (BigTypeModelMotion.FloatFrom * s); // and lowest
+        // Under the clock (its line box ends 48 + 92 × 1.15 from the top) and above the line (raised 96: 132 + 96 from the bottom, 42 × 1.15 tall).
+        Assert.True(top > 48 + (92 * 1.15), $"the model's top {top} reaches the clock");
+        var lineTop = 1080 - (132 + 96) - (42 * 1.15);
+        Assert.True(bottom < lineTop, $"the model's bottom {bottom} reaches the line at {lineTop}");
+        // Its shadow's middle stays above the line too.
+        var rect = BigTypeModelMotion.FloorRect(392, 552);
+        var shadow = y - (552 * s / 2) + ((rect.Y + (rect.Height / 2)) * s);
+        Assert.True(shadow < lineTop, $"the shadow's middle {shadow} reaches the line");
+    }
+
+    [Fact]
+    public void AQuickRunOfPresses_FlipsShort_AndNeverStacks()
+    {
+        var model = new BigTypeModelState();
+        model.Apply(BigTypeModelChange.Rise, 0, holdStill: false, animate: false);
+        // The first change of a run is quick only if it came within the run of the one before; here every press is quick.
+        model.Apply(BigTypeModelChange.FlipForward, 1000, holdStill: false, quick: true);
+        Assert.Equal(BigTypeModelMotion.FlipTurn * BigTypeMotion.RunFromShare, model.Pose(1000, false, Off).Kick, 2);
+        Assert.Equal(0f, model.Pose(1000 + BigTypeMotion.RunInMilliseconds, false, Off).Kick);
+        // Ten presses 90 ms apart (a fast tapper): the turn never goes past a short flip's, never stacks into whole turns.
+        var now = 2000f;
+        var widest = 0f;
+        for (var i = 0; i < 10; i++, now += 90f)
+        {
+            model.Apply(BigTypeModelChange.FlipForward, now, holdStill: false, quick: true);
+            for (var t = 0f; t < 90f; t += 10f)
+                widest = Math.Max(widest, Math.Abs(model.Pose(now + t, false, Off).Kick));
+        }
+        Assert.True(widest <= BigTypeModelMotion.FlipTurn * BigTypeMotion.RunFromShare + 0.01f, $"the turn reached {widest}");
+        // Turning back mid-run carries the turn on screen, never a jump back to a whole flip.
+        var onScreen = model.Pose(now, false, Off).Kick;
+        model.Apply(BigTypeModelChange.FlipBack, now, holdStill: false, quick: true);
+        Assert.InRange(Math.Abs(model.Pose(now, false, Off).Kick), 0f, BigTypeModelMotion.FlipTurn * BigTypeMotion.RunFromShare + 0.01f);
+        Assert.True(Math.Abs(onScreen) <= 72.01f);
+        // The press a run rests on (not quick) is the whole flip, from what is on screen.
+        model.Apply(BigTypeModelChange.FlipForward, now + 5000, holdStill: false);
+        Assert.Equal(BigTypeModelMotion.FlipTurn, model.Pose(now + 5000, false, Off).Kick, 2);
+    }
+
+    [Fact]
     public void Rising_ComesFromBelowTheHinge_TurningIn_AndLands()
     {
         var model = new BigTypeModelState();

@@ -15131,6 +15131,79 @@ byte-identical before and after.
   heading now takes the room its column gives it (`FitsRoom`, folder header only, so no other heading changes), the feed keys the picture
   and letters by the fitted size, and the heading's `FitChanged` makes the feed sync again.
 
+## 2026-11-15 — M47 B11: the narrow Stage, motion under held input, and smaller polish
+
+The owner tried Big Type on the Thor and reported: the Stage stays 16:9 when the screens are swapped; a held direction makes the
+ring lag and stretch into a long rectangle; everything should feel as smooth as possible. Fixed under Big Type only; Classic's 158
+design frames are byte-identical to the render made before any change.
+
+- **The narrow Stage is laid out for 1240 × 1080 (the app's own; the mock only scales its top screen).** B4 had shown the 16:9 Stage
+  whole, letterboxed. Now the canvas is the screen's (`btnarrow` beside Classic's `narrow`), the backdrop fills it (its middle, as
+  Classic's narrow Stage crops it), and the pieces are placed by the wide Stage's tokens and margins with five numbers of the app's own
+  in tokens.js (`type.DisplayNameNarrow`, `stage.Narrow*`): the name in a 1080 × 584 box (600 × 584 beside a game's case, so it ends
+  `NameLeft` before the case), the box's top where the wide Stage's is. **The hints keep their corner on a row of their own** (the lines
+  and the hints cannot share the bottom at this width: the second line alone runs to 740 px), so the name and its two lines stand
+  `NarrowHintsRow` (96) higher. The case's box moves to `NarrowMediumRight` 88 / `NarrowMediumTop` 200, under the clock and above the
+  lines, same size; the medium does what it did. The console's name ends `NarrowLabelGap` before the battery, set smaller to fit (down
+  to `LabelFitMin`, then an ellipsis). The launch title's lines are at most `NarrowLaunchTitleMaxWidth` wide, its sizes scaled with it,
+  and the takeover grows from the narrow case's middle (the command gained an `Origin`). The name fit's smallest size scales with a box
+  narrower than the wide Stage's narrowest (a single 34-letter word ran into the case at 56 px). Checked by a headless test over the
+  design set's longest titles, a 34-letter word, a monogram, a long console name and a two-line message (ink read back from pictures:
+  nothing overlaps, clips or runs off) and on the Thor (swapped, PS2's backdrop filling the bottom screen, a game's case in its corner).
+- **A two-line message grows down, not up** (both widths): B10's message on the line grew up into the name's descenders (Professor
+  Layton's "g" touched it). When it runs to two lines its second line takes the second line's row, which gives way while it shows. The
+  one wide frame with a long error changes for it.
+- **Legibility on the narrow crop, measured.** The veils' shapes were fractions of the canvas, so on the narrow Stage the corner patches
+  shrank under text that keeps its size (`arc-bulbs-v2`'s hints fell to 2.93): they now keep the 16:9 Stage's pixel size, anchored to
+  their own corners (`BigTypeVeil.ShapeWidth`; the wide Stage is unchanged). A new desktop GL check (`tools/EmuShelf.Rendering.Preview --
+  --stage-narrow-legibility`) draws all 53 backdrops through the real compositor with their veils on both widths at three moments and
+  reads each zone's text area as the mock's rule does (the 96th percentile against white ink, the 4th against the dark one). With the
+  table's veils three left zones fell under `legibility.Pass` on the narrow crop only or more than on the wide Stage (`arc-checker` 2.26,
+  `gc-caustics` 2.65, `ps2-sea` 2.09); the narrow Stage takes its own left veil for those three (`BackdropLegibility.NarrowLeftVeils`:
+  0.46, 0.60, 0.66; the ink is never changed). `arc-checker`'s is the strongest that keeps its white clock at 3.0 too, since the narrow
+  left veil reaches under the clock. Result: 159 of 159 narrow zones at 3.0 or more; by the same reading two wide zones are under 3.0
+  (`arc-checker` and `ps2-sea` left, 2.69 and 2.44), the table's own, left as they are (R2's look on the device is the owner's).
+- **The ring glides when a move arrives before the last one has finished (the app's own).** Cause, confirmed: `MoveRing` started each
+  move from the ring as drawn, already stretched, and `RingAt` stretched again to the union of that and the next target; a held repeat
+  (90 ms down to 38) grew it to 8,496 px in the maths. Now an interrupted move glides (`BigTypeRingGlide`): the ring's middle carries on
+  from where it is and how fast it is going on a critically damped spring that trails a steadily moving focus by `RingGlide.lagMs` (40 ms
+  of its travel, about one tile at the fastest repeat) however long the button is held; its size and corner ease to the target's and never
+  overshoot, so it keeps its own size; when no move follows it lands 300 ms after the last one, squashed on the mock's keyframes (a held
+  repeat never reaches the squash's 38%). A single press is the mock's move to the byte. A move during a page's pop glides from the ring as
+  drawn. Shared by both Launchers (the Avalonia lists, sheets, Settings, panels and keys use the same ring).
+- **The Stage under held and quick presses.** The app's once-per-move rule (M45) already keeps the Stage waiting while a direction is
+  held and updates it 140 ms after it settles: that rule stays, and the name the focus rests on lands as the mock's (never the short form).
+  **Quick taps** (a press within `LetterRun.withinMs`, 220 ms, of the one before, but slower than a held direction) used to queue a full
+  930 ms landing per tile with old names stacking on the Stage: now the name follows in a short form (all letters together from 0.4 of
+  the mock's distance in 200 ms; the name it replaces goes in 90 ms; older leaving names go at once), and the Stage's and the Launcher's
+  rolling texts swap in place instead of restarting a roll on a roll. The shell says so (`QuickChange`); the native commands carry it.
+- **Frame pacing (the cause of most of the "jagged").** Measured on the Thor with the app's probe: holding right on home, today's build
+  drew the native Launcher in pairs a millisecond apart and then missed a refresh (13 of 85 intervals over 25 ms, p95 32.5 ms; the screen
+  recording changed every 32 ms: 30 fps in effect). An animating native screen asked for its next frame at once, and posted commands
+  added frames between. Under Big Type the native screens now ask for the next frame on the next vsync (`VsyncPacer`: a Choreographer on a
+  thread of its own, so the UI thread's work cannot hold it up), time their motion at that vsync, and fold commands posted meanwhile into
+  that frame. Same press: 2 of 223 over 25 ms, p95 17.7 ms; the Stage 1–2 of ~190, p95 17.6–17.9 (was 6 of 97, p95 26.3). Classic keeps
+  its scheduling. The probe gained a "ring" run (`debug.emushelf.probe ring`) that logs the native ring and its target every frame.
+- **Smaller polish.** (1) The wall bump is the mock's: 18 px toward the wall and back in 220 ms, eased out (tokens.js `Bump`, its 9 px
+  doubled), both Launchers. (2) **The idle drift, the owner's decision (15 November 2026, "A direction also moves"):** under Big Type a
+  direction press that ends the 15 s drift also moves the focus (on the Thor the first press read as dropped); A, B, X and Y still only end
+  it, so A never starts a game from an idle screen. One named condition, `HandheldShellViewModel.DirectionWakesAndMoves`. (3) Sounds follow the mock's `sfx` calls, Sounds switch respected: a letter typed sounds move and Delete back; a wall
+  bumps; a message on the line sounds open and an error bump (work still running is silent, and the press it came with stays quiet); a
+  launch plays the mock's rising run and A on a game no longer sounds open first. The two new sounds (Bump: 180 Hz square, 50 ms; Launch:
+  C5 E5 G5 C6 triangles, 130 ms, 70 ms apart) are synthesised as today's five are, from the mock's own parameters at the same level scale.
+  (4) Settings rows show no "A SAVE" / "A RESCAN": a Big Type row takes its value as the mock sets one (`RowValue`: an action's word only
+  when it says something its label does not). (5) No bare grey Stage after a start: under Big Type a missing backdrop is not sent as the
+  plain grey picture, so the Stage shows its ground with white type until the first focus's backdrop comes (on the Thor one or two frames
+  of the Launcher's start-up ground remain before Recent's backdrop wipes in).
+- **Closed by the owner (15 November 2026):** X while the keyboard is up stays Done and Y Space, as B9 built it ("X is Done, Y is
+  Space"); the question B9 left open is closed. B11 did not touch the keyboard's hints or X.
+- **Left alone:** the backdrops themselves, the 3D medium's design, the companion's All apps / badges / photos, the idle fan-art page, the
+  empty library, making Big Type the default. **Found and not fixed:** the native name's letters drop the "i" of an "fi" ligature while
+  they move ("Nightf re"; B6's per-letter layout hit-tests inside the ligature); the Activity panel's heading shows its old period behind
+  the title for a moment; the parked native Launcher still draws about 20 frames a second while a direction is held on the other one; a
+  backdrop's first start on a console change still costs 40–57 ms on that frame (B6's, first time per backdrop); the Avalonia Launcher
+  opens and closes sheets and Settings at about 30 fps in the screen recordings (lists and keys under a held direction run at 60).
+
 ## 2026-11-15 — M47 B12: the model view on LB and RB (Big Type)
 
 The owner used Big Type on the Thor and found the game's 3D medium out of place beside the big name ("3D models looks weird with
@@ -15199,8 +15272,20 @@ keep the small line", "I like one big-type mode and separate model - approve"). 
   that has gone to leave.
 - **The leave goes after the name.** Held still, switching back to the name drew one frame with neither medium nor name on the Thor:
   the model's leave reached the Stage a frame before the name's letters. The feed posts the leave after the flush's name.
-- **Kept apart from B11.** New files and partial classes; the shared methods gained one-line hooks only (the shell's dispatch, hints,
-  `UpdateStage`, `CanDrift` and the stick; the native feed's centre, name, veils, takeover and property switch; the compositor's `Apply`,
-  `Draw` and `Dispose`; the Avalonia Stage motion's `Attach` and the launch clip). The narrow Stage (the model centred on the small screen
-  with nothing overlapping) and B11's rule that a held direction never restarts or stacks a move (for the flip between games) wait for
-  B11 to be merged into the design branch.
+- **Kept apart from B11, then merged with it.** New files and partial classes; the shared methods gained one-line hooks only (the
+  shell's dispatch, hints, `UpdateStage`, `CanDrift` and the stick; the native feed's centre, name, veils, takeover and property switch;
+  the compositor's `Apply`, `Draw` and `Dispose`; the Avalonia Stage motion's `Attach` and the launch clip). After B11 was merged into the
+  design branch it was merged here: B11's narrow name box beside a medium now applies only to cover search (`IsNameBesideMedium`), its
+  takeover origin and B12's are one (the model, the name's middle, else B11's narrow case point), and B11's narrow layout test checks the
+  model too.
+- **The narrow Stage (the screens swapped; the app's own numbers, `NarrowModelTop` 189, `NarrowModelScale` 0.96).** B11 gives the hints a
+  row of their own there and raises the lines by it, which leaves about 640 px between the clock and the line: at 1.36× (750 px) the model
+  would not fit. On the 1240-wide Stage it is centred across, its box 189 from the top grown 0.96, so with its float and its shadow it
+  stands between the clock (its top about 172 against the clock's line box at 154) and the line (its bottom about 712 against 810); it
+  rises from B11's narrow case corner. Checked on the Mac's native Stage for the keep case, the jewel case, the SNES cartridge and the 3DS
+  card (centred, clear of every corner's text) and in the Avalonia layout test.
+- **The flip under quick presses (B11's run).** A change of game whose press came within `LetterRun.withinMs` of the one before
+  (`QuickChange`) flips in the short form, as B11's names do: from the turn still on screen, or from `LetterRun.fromShare` of a flip's
+  half turn the way you moved if less is showing, over `LetterRun.ms`; it never adds another half turn on top (no stacking) and never
+  jumps back to a whole flip (no restart). A held direction keeps the app's once-per-move rule (the Stage waits until the focus rests), and
+  the game it rests on flips whole, from the turn on screen.

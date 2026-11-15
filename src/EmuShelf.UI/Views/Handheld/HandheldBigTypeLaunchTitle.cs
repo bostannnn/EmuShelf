@@ -31,15 +31,23 @@ public sealed class HandheldBigTypeLaunchTitle : Control
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         AvaloniaProperty.Register<HandheldBigTypeLaunchTitle, IBrush?>(nameof(Foreground), Brushes.White);
 
+    /// <summary>
+    /// The lines' width at most: the wide Stage's (tokens.js <c>stage.LaunchTitleMaxWidth</c>), or the narrow one's (M47 B11,
+    /// <c>stage.NarrowLaunchTitleMaxWidth</c>); the title's sizes scale with it.
+    /// </summary>
+    public static readonly StyledProperty<double> MaxLineWidthProperty =
+        AvaloniaProperty.Register<HandheldBigTypeLaunchTitle, double>(nameof(MaxLineWidth), HandheldTokens.LaunchTitleMaxWidth);
+
     static HandheldBigTypeLaunchTitle()
     {
-        AffectsMeasure<HandheldBigTypeLaunchTitle>(TextProperty);
+        AffectsMeasure<HandheldBigTypeLaunchTitle>(TextProperty, MaxLineWidthProperty);
         AffectsRender<HandheldBigTypeLaunchTitle>(ForegroundProperty, StartedProperty);
     }
 
     public string? Text { get => GetValue(TextProperty); set => SetValue(TextProperty, value); }
     public long Started { get => GetValue(StartedProperty); set => SetValue(StartedProperty, value); }
     public IBrush? Foreground { get => GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
+    public double MaxLineWidth { get => GetValue(MaxLineWidthProperty); set => SetValue(MaxLineWidthProperty, value); }
 
     private Fitted? _fitted;
     private bool _ticking;
@@ -54,7 +62,7 @@ public sealed class HandheldBigTypeLaunchTitle : Control
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
-        if (change.Property == TextProperty || change.Property == TextElement.FontFamilyProperty)
+        if (change.Property == TextProperty || change.Property == TextElement.FontFamilyProperty || change.Property == MaxLineWidthProperty)
             _fitted = null;
         if (change.Property == StartedProperty || change.Property == TextProperty)
             RequestFrame();
@@ -125,10 +133,10 @@ public sealed class HandheldBigTypeLaunchTitle : Control
         if (string.IsNullOrEmpty(Text))
             return null;
         var typeface = new Typeface(TextElement.GetFontFamily(this), FontStyle.Normal, HandheldTokens.DisplayNameWeight);
-        var size = BigTypeLaunchMotion.TitleSize(Text);
+        var max = MaxLineWidth;
+        var size = BigTypeLaunchMotion.TitleSize(Text) * (max / HandheldTokens.LaunchTitleMaxWidth);
         var spacing = HandheldTokens.DisplayLetterSpacing * size;
         var lineHeight = HandheldTokens.LaunchTitleLineHeight * size;
-        var max = HandheldTokens.LaunchTitleMaxWidth;
         double Measure(string text)
         {
             using var layout = new TextLayout(text, typeface, size, null, letterSpacing: spacing);

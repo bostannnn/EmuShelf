@@ -102,6 +102,7 @@ kbd{font:600 .8rem/1 var(--text);border:1.5px solid var(--line);border-radius:5p
 .bd{border-radius:8px;overflow:hidden}
 .pic{position:relative;aspect-ratio:16/9;isolation:isolate;background:#22212e;display:block}
 .pic canvas{position:absolute;inset:0;width:100%;height:100%}
+.pic canvas.pixel{image-rendering:pixelated}
 .pic .tint{position:absolute;inset:0;mix-blend-mode:color}
 .pic .mono{position:absolute;left:6%;bottom:6%;font:900 1.5rem/.9 var(--disp);letter-spacing:-.02em;color:#fff;text-shadow:0 1px 10px rgba(10,10,30,.35)}
 .gr{height:16px}
@@ -117,6 +118,12 @@ details.more summary{cursor:pointer;font-weight:600}
 .ab figcaption{font-size:.8rem;color:var(--mute);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .ab .dot{width:12px;height:12px;border-radius:50%;border:1px solid var(--line);flex:none}
 .ab .far{color:var(--bad);font-weight:700}
+.newgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px 16px}
+.nw{margin:0;display:grid;gap:8px;min-width:0;max-width:640px}
+.nw .frame{border-radius:10px;overflow:hidden}
+.nw .pic .mono{font-size:2rem}
+.nw figcaption{display:grid;gap:3px;font-size:.92rem;color:var(--mute)}
+.nw figcaption b{color:var(--fg);font-weight:700}
 @media (max-width:560px){ .bdgrid{gap:6px} .pic .mono{font-size:1rem} }
 a{color:var(--accent)}
 </style>
@@ -183,6 +190,32 @@ a{color:var(--accent)}
       <p class="mute" id="asum" style="margin-top:6px"></p>
       <div class="agrid" id="agrid"></div>
     </details>
+  </section>
+
+  <section class="prop" aria-labelledby="p3">
+    <h2 id="p3">Ten ideas for Nintendo 3DS</h2>
+    <p class="lede">You said the last five were less interesting than what the other consoles have. These ten are drawn the way those are: real scenes with depth and light, in the console's colour.</p>
+    <div class="newgrid" id="new3ds"></div>
+  </section>
+
+  <section class="prop" aria-labelledby="p4">
+    <h2 id="p4">Ten ideas for the default background</h2>
+    <p class="lede">For Settings, Activity, your own folders and anything else without a console. You liked the rising motes but found them too passive and too small, and asked why stars on a gaming device. These ten are bigger, livelier and about play. Each takes the colour of whatever is focused; try the three colours.</p>
+    <div class="bar"><div class="seg" role="group" aria-label="Colour">
+      <button class="btn" type="button" id="bg-settings" data-bg="#4A43B8" aria-pressed="true">Settings</button>
+      <button class="btn" type="button" id="bg-green" data-bg="#2A8766" aria-pressed="false">A green folder</button>
+      <button class="btn" type="button" id="bg-rust" data-bg="#A8503C" aria-pressed="false">A rust folder</button>
+    </div></div>
+    <div class="newgrid" id="newbg"></div>
+  </section>
+
+  <section class="prop" aria-labelledby="p5">
+    <h2 id="p5">Recent gets the checker floor</h2>
+    <p class="lede">The arcade animation you liked, in Recent's own colour, as you chose. It is going into the build as it is shown here.</p>
+    <div class="newgrid">
+      <figure class="nw"><div class="frame"><div class="pic" id="recentpic"><div class="tint" style="background:#39465F"></div><span class="mono">Recent</span></div><div class="gr" style="background:#39465F"></div></div>
+        <figcaption><b>Checker floor</b><span>The floor rushing toward you, recoloured from green and pink to Recent's slate.</span></figcaption></figure>
+    </div>
   </section>
 
   <p class="mute">To answer: <a href="https://claude.ai/artifact/ErRBKCeDUNdvFkiyChAqfT">Big Type Decisions</a>. The approved mock, unchanged: <a href="https://claude.ai/artifact/8LvGnNyDLSZRWDSSLU2NEF">Handheld Big Type</a>.</p>
@@ -300,12 +333,36 @@ async function drawAll(){if(adone)return;const B=window.Backdrops,grid=$('agrid'
    fig.querySelector('.pic').appendChild(x.s.cv);sec.querySelector('.arow').appendChild(fig);}
   grid.appendChild(sec);}}
 
+/* ---------- ideas: each set is its own file beside this page (ideas-3ds.js, ideas-bg.js) ----------
+   An idea is {name, line, draw(ctx, t, c), size?: [w, h], pixel?: true, dark?: true}. draw paints one whole frame for time t (seconds) in the
+   colour c ([r, g, b]); dark asks for dark type over a light picture; pixel asks for whole-pixel scaling. */
+const NEW={bg:[74,67,184],recent:null,items:[]};
+function mountIdeas(boxId,list,isBg){const box=$(boxId);if(!box)return;box.innerHTML='';
+ if(!(list||[]).length){box.innerHTML='<p class="mute">These did not load here.</p>';return;}
+ list.forEach((idea,i)=>{const [w,h]=idea.size||[640,360],f=document.createElement('figure');f.className='nw';
+  f.innerHTML=`<div class="frame"><div class="pic"><canvas width="${w}" height="${h}"${idea.pixel?' class="pixel"':''}></canvas><span class="mono"${idea.dark?' style="color:#3A0C20;text-shadow:none"':''}${isBg?' data-bgname':''}>${isBg?'Settings':'3DS'}</span></div><div class="gr"${isBg?' data-bgstrip':''} style="background:${isBg?'#4A43B8':'#C0446E'}"></div></div><figcaption><b>${i+1}. ${esc(idea.name)}</b><span>${esc(idea.line)}</span></figcaption>`;
+  box.appendChild(f);NEW.items.push({el:f,ctx:f.querySelector('canvas').getContext('2d'),idea,isBg,drawn:false});});}
+function loadIdeas(src,cb){const s=document.createElement('script');s.src=src;s.onload=cb;s.onerror=cb;document.head.appendChild(s);}
+loadIdeas('ideas-3ds.js',()=>mountIdeas('new3ds',window.BT_IDEAS_3DS,false));
+loadIdeas('ideas-bg.js',()=>mountIdeas('newbg',window.BT_IDEAS_BG,true));
+// only what is on screen moves; everything is drawn once so nothing is ever blank
+function newFrame(now){requestAnimationFrame(newFrame);if(document.hidden)return;if(newFrame.last&&now-newFrame.last<40)return;newFrame.last=now;const t=RM?12:now/1000,vh=innerHeight;
+ for(const it of NEW.items){const r=it.el.getBoundingClientRect(),on=r.bottom>-80&&r.top<vh+80;if(!on&&it.drawn)continue;if(RM&&it.drawn)continue;
+  try{it.idea.draw(it.ctx,t,it.isBg?NEW.bg:[192,68,110]);it.drawn=true;}catch(e){it.drawn=true;}}
+ if(NEW.recent&&!RM){NEW.recent.time+=1/25;try{window.Backdrops.render(NEW.recent,1/30);}catch(e){}}}
+requestAnimationFrame(newFrame);
+document.querySelectorAll('[data-bg]').forEach(b=>b.onclick=()=>{NEW.bg=rgb(b.dataset.bg);document.querySelectorAll('[data-bg]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));
+ document.querySelectorAll('[data-bgstrip]').forEach(e=>e.style.background=b.dataset.bg);document.querySelectorAll('[data-bgname]').forEach(e=>e.textContent=b.textContent.replace(/^A /,'').replace(/^./,m=>m.toUpperCase()));
+ NEW.items.forEach(it=>{if(it.isBg)it.drawn=false;});});
+function recentBackdrop(){const B=window.Backdrops,v=B&&B.VARIANTS.find(x=>x.id==='arc-checker');if(!v)return;const cv=document.createElement('canvas'),L=B.makeLayer(cv);
+ try{B.prepare(L,v,6);B.render(L,1/30);}catch(e){return;}if(cv.classList.contains('pixel'))cv.style.imageRendering='pixelated';$('recentpic').prepend(cv);NEW.recent=L;}
+
 /* ---------- start ---------- */
 fit();addEventListener('resize',fit);
 render(1);
 if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(wl)fitWord(wl,wl._W,340);});
 $('amore').addEventListener('toggle',e=>{if(e.target.open)drawAll();});
 (function load(srcs){if(!srcs.length){drawColour();return;}const s=document.createElement('script');s.src=srcs[0];
- s.onload=()=>{if(!window.Backdrops){load(srcs.slice(1));return;}stageBackdrop();drawColour();};s.onerror=()=>load(srcs.slice(1));document.head.appendChild(s);})(['backdrops.js','../handheld-mode/backdrops-motion-study/backdrops.js']);
+ s.onload=()=>{if(!window.Backdrops){load(srcs.slice(1));return;}stageBackdrop();drawColour();recentBackdrop();};s.onerror=()=>load(srcs.slice(1));document.head.appendChild(s);})(['backdrops.js','../handheld-mode/backdrops-motion-study/backdrops.js']);
 })();
 </script>

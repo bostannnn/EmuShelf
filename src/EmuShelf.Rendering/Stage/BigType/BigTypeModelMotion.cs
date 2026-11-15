@@ -70,6 +70,22 @@ public static class BigTypeModelMotion
     /// <summary>The medium's drawn height in its model-view frame: the renderer fills <c>640 / 820</c> of a frame's height (MediumFrameFill).</summary>
     public const float FrameFill = 640f / 820f;
 
+    /// <summary>
+    /// tokens.js <c>stage.NarrowModelTop</c>, <c>NarrowModelScale</c> (the app's own): on the 1240-wide Stage (the screens swapped, M47 B11)
+    /// the box's top and its scale, so the model stands between the clock and the lines (raised a hint row there).
+    /// </summary>
+    public const float NarrowModelTop = 189f;
+    public const float NarrowModelScale = 0.96f;
+
+    /// <summary>The narrow Stage's width (M47 B11): a canvas this wide or narrower is the narrow one.</summary>
+    public const float NarrowCanvasWidth = 1240f;
+
+    /// <summary>Whether a Stage canvas <paramref name="canvasWidth"/> wide is the narrow one.</summary>
+    public static bool IsNarrow(float canvasWidth) => canvasWidth <= NarrowCanvasWidth;
+
+    /// <summary>The model's scale on a canvas: <see cref="ModelScale"/> on the wide Stage, <see cref="NarrowModelScale"/> on the narrow.</summary>
+    public static float ScaleFor(float canvasWidth) => IsNarrow(canvasWidth) ? NarrowModelScale : ModelScale;
+
     /// <summary>tokens.js <c>stage.ModelFloor…</c>: the floor's shadow in the box's units (before the scale).</summary>
     public const float FloorLeft = 0.04f;
     public const float FloorRight = 0.10f;
@@ -133,19 +149,32 @@ public static class BigTypeModelMotion
 
     /// <summary>The middle of the medium's resting box in the model view, on a canvas <paramref name="canvasWidth"/> wide.</summary>
     /// <remarks>
-    /// tokens.js places the box ModelRight from the right edge of the 1920 Stage, which is its middle across; on any other canvas
-    /// it stays in the middle across (the narrow Stage's place waits for B11's layout).
+    /// tokens.js places the box ModelRight from the right edge of the 1920 Stage, which is its middle across; the narrow Stage's is in its
+    /// middle across too, <see cref="NarrowModelTop"/> from the top.
     /// </remarks>
     public static (float X, float Y) Centre(float canvasWidth, float mediumHeight) =>
-        (canvasWidth / 2f, ModelTop + (mediumHeight / 2f));
+        (canvasWidth / 2f, (IsNarrow(canvasWidth) ? NarrowModelTop : ModelTop) + (mediumHeight / 2f));
 
     /// <summary>
     /// Where the medium starts its rise and ends its fall, against its resting box: its old place beside the name
     /// (<paramref name="besideX"/>, <paramref name="besideY"/>, the middle of the medium's corner), <see cref="InDrop"/> lower, at
     /// <see cref="InFromScale"/> of its size there.
     /// </summary>
-    public static (float X, float Y, float Scale) OffPlace(float besideX, float besideY, float modelX, float modelY) =>
-        (besideX - modelX, besideY - modelY + InDrop, InFromScale / ModelScale);
+    public static (float X, float Y, float Scale) OffPlace(float besideX, float besideY, float modelX, float modelY,
+        float modelScale = ModelScale) =>
+        (besideX - modelX, besideY - modelY + InDrop, InFromScale / modelScale);
+
+    /// <summary>
+    /// The turn a quick change of game starts from (a press within <see cref="BigTypeMotion.RunWithinMilliseconds"/> of the one before; M47
+    /// B11's run): never another half turn on top of the one showing, never back to the start of a flip; it carries on from the turn on
+    /// screen, or from <see cref="BigTypeMotion.RunFromShare"/> of a flip's turn the way you moved if less is showing, over
+    /// <see cref="BigTypeMotion.RunInMilliseconds"/>.
+    /// </summary>
+    public static float QuickFlipFrom(float kickOnScreen, bool forward)
+    {
+        var shortFrom = (forward ? FlipTurn : -FlipTurn) * BigTypeMotion.RunFromShare;
+        return MathF.Abs(kickOnScreen) > MathF.Abs(shortFrom) ? kickOnScreen : shortFrom;
+    }
 
     /// <summary>The proposal's showcase at <paramref name="since"/> ms into it: (pitch, yaw) in degrees; it repeats every 15 s.</summary>
     public static (float Pitch, float Yaw) Showcase(float since)
@@ -336,7 +365,7 @@ public sealed class BigTypeModelState
     /// Tells it what happened at <paramref name="now"/>. Held still, or without <paramref name="animate"/> (a replay), the change is
     /// there at once.
     /// </summary>
-    public void Apply(BigTypeModelChange change, float now, bool holdStill, bool animate = true)
+    public void Apply(BigTypeModelChange change, float now, bool holdStill, bool animate = true, bool quick = false)
     {
         var shown = Place(now, holdStill);
         // At once: the moves start long ago, so they have finished.
@@ -363,9 +392,13 @@ public sealed class BigTypeModelState
                     Apply(BigTypeModelChange.Rise, now, holdStill, animate);
                     return;
                 }
-                _kickFrom = BigTypeModelMotion.FlipFrom(KickAt(now), change == BigTypeModelChange.FlipForward);
+                // A quick press (M47 B11's run) follows in a short form and never stacks; a settled one is the whole flip, from the turn on
+                // screen.
+                _kickFrom = quick
+                    ? BigTypeModelMotion.QuickFlipFrom(KickAt(now), change == BigTypeModelChange.FlipForward)
+                    : BigTypeModelMotion.FlipFrom(KickAt(now), change == BigTypeModelChange.FlipForward);
                 _kickStart = at;
-                _kickMilliseconds = BigTypeModelMotion.FlipMilliseconds;
+                _kickMilliseconds = quick ? BigTypeMotion.RunInMilliseconds : BigTypeModelMotion.FlipMilliseconds;
                 break;
             case BigTypeModelChange.Leave:
                 if (!_on)
@@ -421,7 +454,7 @@ public sealed class BigTypeModelState
     }
 
     /// <summary>The pose at <paramref name="now"/>, placed from its off place (<paramref name="off"/>, <see cref="BigTypeModelMotion.OffPlace"/>).</summary>
-    public BigTypeModelPose Pose(float now, bool holdStill, (float X, float Y, float Scale) off)
+    public BigTypeModelPose Pose(float now, bool holdStill, (float X, float Y, float Scale) off, float modelScale = BigTypeModelMotion.ModelScale)
     {
         var (place, fade) = Place(now, holdStill);
         if (fade <= 0f && !_on)
@@ -431,7 +464,7 @@ public sealed class BigTypeModelState
         var kick = holdStill ? 0f : KickAt(now);
         yaw += kick;
         var alive = holdStill ? 0f : Alive(now);
-        var bob = alive * BigTypeModelMotion.Float(now - _floatStart) * BigTypeModelMotion.ModelScale * scale;
+        var bob = alive * BigTypeModelMotion.Float(now - _floatStart) * modelScale * scale;
         var shade = BigTypeModelMotion.Shade(now - _floatStart);
         return new BigTypeModelPose(off.X * (1f - place), off.Y * (1f - place), scale, fade, bob, pitch, yaw, kick,
             1f + ((shade.Scale - 1f) * alive), 1f + ((shade.Opacity - 1f) * alive));

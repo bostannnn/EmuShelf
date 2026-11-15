@@ -54,10 +54,16 @@ internal sealed partial class HandheldNativeStageFeed
                 Dispatcher.UIThread.Post(() => SendTakeoverStatus(play), DispatcherPriority.Loaded);
                 break;
             case nameof(HandheldPlayViewModel.IsEnding) when play.IsEnding && _active && !IsPaused:
-                _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, 0f, Ending: true, Animate: _shell?.HoldsStill != true));
+                _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, 0f, Ending: true, Animate: _shell?.HoldsStill != true,
+                    Origin: TakeoverOrigin));
                 break;
         }
     }
+
+    // M47 B12: from the model view's medium or the name's middle (GameTakeoverOrigin); otherwise the narrow Stage's grows from its own
+    // case's place (M47 B11), and null is the wide Stage's.
+    private Vector2? TakeoverOrigin => GameTakeoverOrigin() ??
+        (IsBigTypeNarrow && HandheldTokens.StageTakeoverCentre(narrow: true) is var at ? new Vector2((float)at.X, (float)at.Y) : null);
 
     private static Vector3 Colour(HandheldPlayViewModel play) => new(play.Colour.R / 255f, play.Colour.G / 255f, play.Colour.B / 255f);
 
@@ -69,10 +75,8 @@ internal sealed partial class HandheldNativeStageFeed
             HandheldStageShots.ToCanvas(title, default, _canvas) is { } at)
             _takeoverTitle = title.Letters(at);
         var elapsed = (float)Stopwatch.GetElapsedTime(play.Started).TotalMilliseconds;
-        _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, elapsed, Ending: play.IsEnding, Animate: _shell?.HoldsStill != true)
-        {
-            Origin = TakeoverOrigin(),
-        });
+        _host.Post(new StageTakeoverCommand(Colour(play), _takeoverTitle, elapsed, Ending: play.IsEnding, Animate: _shell?.HoldsStill != true,
+            Origin: TakeoverOrigin));
         SendTakeoverStatus(play);
     }
 

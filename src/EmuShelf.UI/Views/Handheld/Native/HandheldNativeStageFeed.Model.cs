@@ -27,7 +27,12 @@ internal sealed partial class HandheldNativeStageFeed
         var centre = HandheldTokens.StageModelCentre(CanvasWidth);
         StageModelCommand Command(StageMedium? medium, StageImage? cover, BigTypeModelChange change) =>
             new(medium, cover, change, (float)beside.X, (float)beside.Y, (float)centre.X, (float)centre.Y,
-                (float)HandheldTokens.StageMediumWidth, (float)HandheldTokens.StageMediumHeight);
+                (float)HandheldTokens.StageMediumWidth, (float)HandheldTokens.StageMediumHeight,
+                Scale: (float)HandheldTokens.StageModelScale(CanvasWidth))
+            {
+                // A change in a run of quick presses flips in the short form (M47 B11); a held direction's Stage waits until it rests.
+                Quick = _shell?.QuickChange == true,
+            };
         if (!showing)
         {
             if (_modelSent)
@@ -92,7 +97,7 @@ internal sealed partial class HandheldNativeStageFeed
     }
 
     /// <summary>The launch's circle grows from the model view's medium, or (no case beside the name any more) from the name's middle.</summary>
-    private Vector2? TakeoverOrigin()
+    private Vector2? GameTakeoverOrigin()
     {
         if (_stage is not { } stage || !HandheldTokens.IsBigType)
             return null;
@@ -103,7 +108,7 @@ internal sealed partial class HandheldNativeStageFeed
         }
         if (stage.ShowsBigTypeName && _bigTypeName.Fitted is { } fitted)
         {
-            var origin = HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size);
+            var origin = HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size, IsBigTypeNarrow);
             return new Vector2((float)origin.X, (float)origin.Y);
         }
         return null;

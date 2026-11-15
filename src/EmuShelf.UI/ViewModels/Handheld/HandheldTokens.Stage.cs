@@ -178,8 +178,10 @@ public static partial class HandheldTokens
     {
         var height = StageMediumHeight / MediumFrameFill;
         var width = height * MediumFrameAspect;
-        var centreX = canvasWidth - StageMediumRight - (StageMediumWidth / 2);
-        var centreY = StageMediumTop + (StageMediumHeight / 2);
+        // M47 B11: on the narrow canvas the case's box has a corner of its own (tokens.js stage.NarrowMediumRight / NarrowMediumTop).
+        var narrow = canvasWidth <= NarrowCanvas;
+        var centreX = canvasWidth - (narrow ? StageNarrowMediumRight : StageMediumRight) - (StageMediumWidth / 2);
+        var centreY = (narrow ? StageNarrowMediumTop : StageMediumTop) + (StageMediumHeight / 2);
         return new Rect(centreX - (width / 2), centreY - (height / 2), width, height);
     }
 
@@ -210,6 +212,68 @@ public static partial class HandheldTokens
     public static double StageNoCoverTitleLineHeight => Math.Round(StageNoCoverTitle * StageCornerLineShare, 2);
 
     public static Thickness StageNoCoverPadding => new(Math.Round(StageMediumWidth * 0.12));
+
+    // ===== The narrow Stage (M47 B11, the app's own: tokens.js type.DisplayNameNarrow and stage.Narrow*) =====
+
+    /// <summary>The name's box on the 1240-wide screen (the screens swapped), and beside a game's medium there.</summary>
+    public static double StageNarrowNameWidth { get; private set; }
+
+    public static double StageNarrowNameWidthBesideMedium { get; private set; }
+
+    public static double StageNarrowNameHeight { get; private set; }
+
+    /// <summary>The hints take a row of their own on the narrow screen: the name and its two lines stand this much higher.</summary>
+    public static double StageNarrowHintsRow { get; private set; }
+
+    /// <summary>The medium's box on the narrow screen: its right edge's distance from the screen's, and its top (its size is the wide one's).</summary>
+    public static double StageNarrowMediumRight { get; private set; }
+
+    public static double StageNarrowMediumTop { get; private set; }
+
+    /// <summary>The console's name ends this far before the battery on the narrow screen.</summary>
+    public static double StageNarrowLabelGap { get; private set; }
+
+    /// <summary>The launch title's lines at most this wide on the narrow screen; its sizes scale down by the same share.</summary>
+    public static double StageNarrowLaunchTitleMaxWidth { get; private set; }
+
+    /// <summary>The name's box width for a Stage on the wide or the narrow screen, beside a medium (a game, a cover candidate) or not.</summary>
+    public static double StageNameBoxWidth(bool besideMedium, bool narrow) => narrow
+        ? besideMedium ? StageNarrowNameWidthBesideMedium : StageNarrowNameWidth
+        : besideMedium ? StageNameWidthBesideMedium : StageNameWidth;
+
+    public static Thickness StageNarrowNameMargin => new(StageNameLeft, 0, 0, StageNameBottom + StageNarrowHintsRow - StageNameOverhang);
+
+    public static double StageNarrowNameControlHeight => StageNarrowNameHeight + StageNameOverhang;
+
+    public static Thickness StageNarrowLineShotMargin => Raised(StageLineShotMargin, StageNarrowHintsRow);
+
+    public static Thickness StageNarrowFactsShotMargin => Raised(StageFactsShotMargin, StageNarrowHintsRow);
+
+    private static Thickness Raised(Thickness margin, double by) => new(margin.Left, margin.Top, margin.Right, margin.Bottom + by);
+
+    public static Thickness StageNarrowCoverMargin => new(0, StageNarrowMediumTop, StageNarrowMediumRight, 0);
+
+    /// <summary>The Avalonia Stage's medium in Big Type on the narrow canvas.</summary>
+    public static Thickness StageNarrowMediumFrameMargin => new(StageMediumFrame(NarrowCanvas).X, StageMediumFrame(NarrowCanvas).Y, 0, 0);
+
+    public static double StageNarrowMediumFrameWidth => StageMediumFrame(NarrowCanvas).Width;
+
+    public static double StageNarrowMediumFrameHeight => StageMediumFrame(NarrowCanvas).Height;
+
+    /// <summary>
+    /// Where the launch's takeover grows from: tokens.js <c>Launch.takeoverX / takeoverY</c> on the wide Stage (beside the case's middle);
+    /// on the narrow one the same point moved with the case to its narrow corner (M47 B11).
+    /// </summary>
+    public static Point StageTakeoverCentre(bool narrow)
+    {
+        var wide = new Point(BigTypeLaunchMotion.TakeoverX, BigTypeLaunchMotion.TakeoverY);
+        if (!narrow)
+            return wide;
+        return wide + (StageMediumFrame(NarrowCanvas).Center - StageMediumFrame(1920).Center);
+    }
+
+    // The narrow screen's width (HandheldShellViewModel.NarrowCanvasWidth): a Stage canvas narrower than the wide one is the narrow one.
+    private const double NarrowCanvas = 1240;
 
     // ===== The ink =====
 
@@ -282,5 +346,14 @@ public static partial class HandheldTokens
         MediumFrameAspect = 1400.0 / 820.0;
 
         StageBigTypeInk = Brush("White");
+
+        StageNarrowNameWidth = 1080;
+        StageNarrowNameWidthBesideMedium = 600;
+        StageNarrowNameHeight = 584;
+        StageNarrowHintsRow = 96;
+        StageNarrowMediumRight = 88;
+        StageNarrowMediumTop = 200;
+        StageNarrowLabelGap = 44;
+        StageNarrowLaunchTitleMaxWidth = 1080;
     }
 }

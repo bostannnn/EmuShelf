@@ -70,4 +70,25 @@ public partial class HandheldShellViewModelTests
         await DesignPairAsync(rig, "bt12-home-pinned-name", "Big Type: the same pinned game in the name view (RB Model; the page turns from the d-pad's edges)");
         shell.ReduceMotion = false;
     }
+
+    [AvaloniaFact]
+    public async Task BigTypeModelViewShots_Swapped()
+    {
+        if (DesignOutput is null || !B12Shots || DesignLook != HandheldLook.BigType)
+            return;
+        // The screens swapped: the Stage on the 1240-wide screen (M47 B11's layout), the model in its middle.
+        using var rig = await DesignRigAsync(swapped: true);
+        var shell = rig.Shell;
+        shell.ReduceMotion = true;
+        DesignOpenHome(shell, 1);
+        DesignFocusFolder(shell, DesignIndexIn(shell, "Final Fantasy X"));
+        shell.SettleStage();
+        await DesignPairAsync(rig, "bt12-ps2-name", "Big Type, screens swapped: the name view on the narrow Stage (its own name box, no case)");
+        Press(shell, GamepadAction.NextPlatform);
+        Assert.True(shell.Stage.IsModelView);
+        await DesignPairAsync(rig, "bt12-ps2-model", "Big Type, screens swapped: the model in the middle of the narrow Stage, between the clock and the lines");
+        DesignFocusFolder(shell, DesignIndexIn(shell, "Jak and Daxter: The Precursor Legacy"));
+        await DesignPairAsync(rig, "bt12-long-name-model", "Big Type, screens swapped: a long name on the line under the model");
+        shell.ReduceMotion = false;
+    }
 }

@@ -143,16 +143,15 @@ public sealed record StageLaunchCommand(StageImage? Cover, bool FromAbove = fals
 /// takes the Stage over through a circle from the case (<see cref="BigType.BigTypeLaunchMotion.TakeoverRadiusAt"/>), and the title's
 /// letters (<paramref name="Title"/>, white) land in it, timed from the press that launched, <paramref name="Elapsed"/> ms before the
 /// command. With <paramref name="Ending"/> the game ended: it fades. A null colour takes it away; without <paramref name="Animate"/> (a
-/// replay, holding still) it is simply there.
+/// replay, holding still) it is simply there. <paramref name="Origin"/> is where the circle grows from on the canvas: null is the wide
+/// Stage's case (tokens.js <c>Launch.takeoverX / takeoverY</c>); the narrow Stage sends its own case's middle (M47 B11).
 /// </summary>
-public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true)
+public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true,
+    Vector2? Origin = null)
     : StageCommand
 {
     public override string? RetainKey => "takeover";
     public override StageCommand ForReplay() => this with { Animate = false };
-
-    /// <summary>Where the circle grows from (M47 B12); null: the case's middle beside the name (tokens.js <c>takeoverX</c>, <c>takeoverY</c>).</summary>
-    public Vector2? Origin { get; init; }
 }
 
 /// <summary>The takeover's status line (white; M47 B8): a new picture rolls the characters that changed. Null takes it away.</summary>
@@ -199,6 +198,9 @@ public sealed record StageChromeCommand(string Key, StageImage? Image, Backdrops
     bool Veil = false, BigType.StageText? Text = null) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
+
+    /// <summary>Brought by a press within a run of the one before (M47 B11): its text swaps in place rather than rolling.</summary>
+    public bool Quick { get; init; }
 }
 
 /// <summary>

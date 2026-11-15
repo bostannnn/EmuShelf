@@ -11,9 +11,14 @@ namespace EmuShelf.App.ViewModels;
 /// </summary>
 public static partial class HandheldTokens
 {
-    /// <summary>The middle of the medium's corner beside the name (where the model view's medium rises from).</summary>
-    public static Point StageMediumCentre(double canvasWidth) =>
-        new(canvasWidth - StageMediumRight - (StageMediumWidth / 2), StageMediumTop + (StageMediumHeight / 2));
+    /// <summary>
+    /// The middle of the medium's corner beside the name (where the model view's medium rises from): the wide Stage's, or on the narrow
+    /// one its own corner (M47 B11).
+    /// </summary>
+    public static Point StageMediumCentre(double canvasWidth) => StageMediumFrame(canvasWidth).Center;
+
+    /// <summary>The model's scale on a canvas: tokens.js <c>ModelScale</c>, or <c>NarrowModelScale</c> on the narrow Stage.</summary>
+    public static double StageModelScale(double canvasWidth) => BigTypeModelMotion.ScaleFor((float)canvasWidth);
 
     /// <summary>The middle of the model view's resting box: across the middle, <c>ModelTop</c> from the top.</summary>
     public static Point StageModelCentre(double canvasWidth)
@@ -27,8 +32,8 @@ public static partial class HandheldTokens
     {
         var beside = StageMediumFrame(canvasWidth);
         var centre = StageModelCentre(canvasWidth);
-        var width = beside.Width * BigTypeModelMotion.ModelScale;
-        var height = beside.Height * BigTypeModelMotion.ModelScale;
+        var width = beside.Width * StageModelScale(canvasWidth);
+        var height = beside.Height * StageModelScale(canvasWidth);
         return new Rect(centre.X - (width / 2), centre.Y - (height / 2), width, height);
     }
 
@@ -36,10 +41,25 @@ public static partial class HandheldTokens
     public static Rect StageModelCoverBox(double canvasWidth)
     {
         var centre = StageModelCentre(canvasWidth);
-        var width = StageMediumWidth * BigTypeModelMotion.ModelScale;
-        var height = StageMediumHeight * BigTypeModelMotion.ModelScale;
+        var width = StageMediumWidth * StageModelScale(canvasWidth);
+        var height = StageMediumHeight * StageModelScale(canvasWidth);
         return new Rect(centre.X - (width / 2), centre.Y - (height / 2), width, height);
     }
+
+    // The narrow Stage's (M47 B11, the screens swapped): the same pieces on its 1240-wide canvas.
+    private const double NarrowStage = BigTypeModelMotion.NarrowCanvasWidth;
+
+    public static Thickness StageNarrowModelFrameMargin => new(StageModelFrame(NarrowStage).X, StageModelFrame(NarrowStage).Y, 0, 0);
+
+    public static double StageNarrowModelFrameWidth => StageModelFrame(NarrowStage).Width;
+
+    public static double StageNarrowModelFrameHeight => StageModelFrame(NarrowStage).Height;
+
+    public static Thickness StageNarrowModelCoverMargin => new(StageModelCoverBox(NarrowStage).X, StageModelCoverBox(NarrowStage).Y, 0, 0);
+
+    public static double StageNarrowModelCoverWidth => StageModelCoverBox(NarrowStage).Width;
+
+    public static double StageNarrowModelCoverHeight => StageModelCoverBox(NarrowStage).Height;
 
     // The Avalonia Stage's pieces, on its 16:9 canvas.
     public static Thickness StageModelFrameMargin => new(StageModelFrame(1920).X, StageModelFrame(1920).Y, 0, 0);
@@ -76,10 +96,13 @@ public static partial class HandheldTokens
     /// Where the launch's colour grows from in the name view (M47 B12's choice, awaiting the owner): there is no case beside the name any
     /// more, so the circle grows from the middle of the name itself, its box's middle across and its lines' middle up.
     /// </summary>
-    public static Point NameTakeoverOrigin(int lines, double size)
+    public static Point NameTakeoverOrigin(int lines, double size, bool narrow = false)
     {
-        var bottom = 1080 - StageNameBottom;
-        var block = Math.Min(StageNameHeight, Math.Max(1, lines) * size * BigTypeLayout.LineHeight);
-        return new Point(StageNameLeft + (StageNameWidth / 2), bottom - (block / 2));
+        // On the narrow Stage the name stands a hint row higher, in its own box (M47 B11).
+        var bottom = 1080 - StageNameBottom - (narrow ? StageNarrowHintsRow : 0);
+        var height = narrow ? StageNarrowNameHeight : StageNameHeight;
+        var width = narrow ? StageNarrowNameWidth : StageNameWidth;
+        var block = Math.Min(height, Math.Max(1, lines) * size * BigTypeLayout.LineHeight);
+        return new Point(StageNameLeft + (width / 2), bottom - (block / 2));
     }
 }
