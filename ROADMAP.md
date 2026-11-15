@@ -3159,6 +3159,18 @@ falls back to the emulator and says so.
       renders identical; 32 Big Type bottom frames differ from f47f67c, each only in the corner (every sheet, menu, Settings, panel and
       keyboard frame). Checked on the emulator (the Thor was not on adb): the corner at home, gone under naming, Search and a held tile,
       back after each; home left as found.
+      **First Thor pass (2026-11-15, from B10a's session; Release AOT, `adb install -r`, 60 Hz, no system setting changed,
+      `bigtype`):** pick up from the Y sheet's Move (the tile grown, the ring hidden, "Moving" / A Drop, B Put back), one trade and B
+      walking it back; a held tile's Y opening "Put in" and B out twice; naming on an empty slot (the keys and the colours row, the
+      ring on the first key, typed letters dropping into the Stage's name with the word resizing and the count rolling, a deleted letter
+      going, the two other character pages, the placeholder back when empty, B out; no folder made); Search from the Start menu (hits
+      above the keys, Up to a hit showing the game on the Stage with A Play / B Back and the ground flooding, B back to the keys, delete,
+      B out; nothing launched); the "X Swap" corner absent under the keyboards and a held tile and back at home. **Seen wrong on the
+      Thor, not on macOS:** while naming, the ring sat roughly 15–20 px down and right of the focused key (E, L, 123, the page key), at rest
+      more than a second after the press; on Search it was centred on T, then off again after B back from a hit. B9's macOS render has
+      it centred. Not fixed (B9's). Pacing, from the screen recordings (the recorder's own frames, so rough): the keyboard opening
+      and the held tile's rock drew new content in 94–100% of recorded frames. Not seen: a hardware keyboard, Edit title / Settings /
+      scraper keyboards, a rename's colours, a launch from a hit, held still with the keyboard. Evidence: `m47-b10a-renders/thor`.
 - [ ] **B10 — Make it the look.** A reduced-motion setting beside the system one; the owner's ear on the sounds
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
       motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the
@@ -3192,3 +3204,17 @@ falls back to the emulator and says so.
       as found (Settings, Recent, PS2, Activity). **Not seen on any device:** the Thor at all (B9's first Thor pass included), the
       system's own reduced-motion switch with this build, a failed launch's message, a long folder name. Renders and recordings:
       `m47-b10a-renders` in the build sessions' notes.
+      **Thor pass (2026-11-15; Release AOT, `adb install -r`, 60 Hz, no system setting changed; the owner's library):** under
+      `bigtype` Settings → Display shows "Reduce motion" Off; on (saved `true` in the owner's `Settings/settings.json`), over the same
+      home presses the Launcher changed in 2–3 recorded frames a press and the Stage in 3–4, nothing moved between presses (the
+      backdrop held), and two presses into the left wall changed nothing; off again (saved `false`) with no restart, the moves ran
+      8–12 frames a press, the wall nudged and the backdrop moved. "Sounds off" rolled onto the Stage's line and back with no pill
+      (Sounds put back on). Message roll on the native Stage, by the app's probe (`debug.emushelf.probe`, then cleared): 36 frames
+      in 558 ms and 34 in 535 ms, frame gap median 16.4 ms, worst 21.4 ms, render-thread CPU p95 2.4 ms, GPU 1.06 ms. Under
+      `classic`: Display has no Reduce motion row, a notice is today's pill, move mode and naming are today's. **Found wrong:** the
+      folder header's gap does not reach the native Launcher. "Game Boy Advance" beside 106 is still drawn at the old fit, about
+      10 px from its count. The Avalonia header is right, but `HandheldNativeLauncherFeed.SyncFolder` keys the name's picture and
+      letters by the name alone, so the re-fit is never pictured. Not fixed: it needs the feed to re-sync on the fit, more than a
+      line. **Not seen on the Thor:** the system's own reduced-motion or battery-saver switch (owner's rule: no system setting
+      changed), a failed launch's message. Left on the Thor: this build, `debug.emushelf.look` `bigtype`, home byte-identical to
+      before, Sounds on, Reduce motion off (the file now holds the key with its default).
