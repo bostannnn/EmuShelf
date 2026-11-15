@@ -61,24 +61,6 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         HandheldTokens.ApplyFace(this);
         // View wiring: the look's own styles (M47 B3) select on the root's class; today's look sets none.
         this.FindControl<Panel>("Root")!.Classes.Set("bigtype", HandheldTokens.IsBigType);
-        // View wiring (M47 B10): a folder's name keeps HeaderGap from its count, as the mock's header does: set smaller to fit the room the
-        // count leaves (its margin is the gap), never wider than HeaderNameMaxWidth. "Game Boy Advance" beside 106 touched it before.
-        if (HandheldTokens.IsBigType)
-        {
-            var header = this.FindControl<Control>("BtFolderHeader")!;
-            var folderName = this.FindControl<HandheldBigTypeHeading>("BtFolderName")!;
-            var folderCount = this.FindControl<Control>("BtFolderCount")!;
-            void FitName()
-            {
-                if (header.Bounds.Width <= 0)
-                    return;
-                var room = Math.Min(HandheldTokens.HeaderNameMaxWidth, header.Bounds.Width - folderCount.DesiredSize.Width);
-                if (room > 0 && !folderName.MaxTextWidth.Equals(room))
-                    folderName.MaxTextWidth = room;
-            }
-            header.SizeChanged += (_, _) => FitName();
-            folderCount.SizeChanged += (_, _) => FitName();
-        }
         _homeLayer = this.FindControl<Control>("HomeLayer")!;
         _pageCount = this.FindControl<Control>("BtPage")!;
         _canvas = this.FindControl<Control>("Canvas")!;

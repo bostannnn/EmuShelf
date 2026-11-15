@@ -15120,3 +15120,13 @@ byte-identical before and after.
   long descriptions ending in an ellipsis on the Stage (B7's rule); the panels' pictures (a scraper's preview, a badge) not shown on the
   Stage; the edge bump's distance and timing, the screen swap (X) and the medium's sway (the mock's `MediumSway` is not used), all still
   today's motion.
+- **Two faults the first Thor pass found, fixed (2026-11-15).** (1) **The compositor scales after the RenderTransform.** Avalonia applies a
+  composition visual's `Scale` about its `CenterPoint` after the control's own `RenderTransform` (checked headless: a 100 px box translated
+  to (500, 300) and scaled ×2 about (50, 50) drew at (950, 550)). The Avalonia ring is placed by a `TranslateTransform`, so B5's breath,
+  centred on half the ring's size, scaled it about the Launcher's top left and it rested 3% of its place away from its key (15–30 px on the
+  Thor) whenever the Avalonia Launcher had the screen; desktop frames never include compositor animations, so none showed it. The breath
+  is now about the shift plus half the size, and restarts if the ring moves while breathing. A test draws through the compositor with
+  the breath held at ×1.5. (2) **The folder name fits the room in its own measure pass.** B10a's first fix set the name's width from the
+  count's `SizeChanged`, a layout pass late, and the native feed keyed its picture by the name alone, so the Thor kept the old fit. The
+  heading now takes the room its column gives it (`FitsRoom`, folder header only, so no other heading changes), the feed keys the picture
+  and letters by the fitted size, and the heading's `FitChanged` makes the feed sync again.
