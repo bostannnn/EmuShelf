@@ -146,6 +146,9 @@ public sealed partial class HandheldShellViewModel
             return HandheldSound.Open;
         if (Closed(before.Folder, after.Folder) || Closed(before.Title, after.Title))
             return HandheldSound.Close;
+        // Big Type (M47 B9, the mock's endMove): a held tile put down with A sounds open, as picking it up did.
+        if (before.Moving && !after.Moving && action == GamepadAction.Confirm && HandheldTokens.IsBigType)
+            return HandheldSound.Open;
         if (Closed(before.Sheet, after.Sheet) || (before.Menu && !after.Menu) || Closed(before.Panel, after.Panel) ||
             Closed(before.Settings, after.Settings) || Closed(before.Naming, after.Naming) || (before.Moving && !after.Moving))
             return action == GamepadAction.Cancel ? HandheldSound.Back : HandheldSound.Confirm;

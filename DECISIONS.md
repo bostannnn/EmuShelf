@@ -14972,3 +14972,94 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   Stage, not the line (only B8's own messages use the line); a pinned game's launch from home and the swapped screens' launch were not
   seen on a device; the in-game companion on the 16:9 screen (a game on the bottom screen) lays the same parts on its 1920 canvas (the tabs and the
   corner at its right edge); the mock draws no wide companion, so this is the owner's to judge.
+
+## 2026-11-15 — M47 B9: typing and moving
+
+- **Big Type only; today's look is unchanged.** Classic's 158 design frames are byte-identical before and after. Every number is
+  tokens.js's; the mock's inline ones were added there first: `launcher` `KeyColumns`, `KeySpaceWidth`, `KeyActionWidth`,
+  `KeyRingOutset`, `KeyboardHead…`, `KeyboardNote…`, `Results…`; `type.KeyboardNote`; `colour.PlaceholderOpacity`; `motion`
+  `TypedLetterIn.stagger`, `TypedLetterOut`, `TypedResize`, `TypedNameOut`, `KeysIn`, `KeyFocus`, `KeyPress`, `ResultsIn`, `KeysOut`,
+  `FolderBorn`, `Held`, `Swap`, `PutDown` (all doubled from the mock's half scale; no new group, so `index.html` is unchanged). Two
+  numbers are the app's, not the mock's, and say so in the code: the colour key's check (40, today's chip) and the invisible field's
+  height. The shared maths is `BigTypeTypingMotion` and `BigTypeMoveMotion` (`EmuShelf.Rendering/Stage/BigType`), used by the native
+  Stage and the Avalonia screens alike.
+- **Pick up and put down are the mock's trades, not today's lift.** Under Big Type a held tile trades places with whatever is in the slot
+  it moves to (across pages, by the home navigation's own page crossing), each step is remembered, A puts it down where it is (saved),
+  and B walks every step back so home is exactly as it was (nothing saved). The held tile grows to `HeldScale`, sits above its
+  neighbours, its face rocks (on the compositor, phase-continuous across trades: a trade gives the tile a new container); the ring is
+  hidden; both tiles of a trade slide to their new slots on `Swap`'s curve (B slides every moved tile back at once); put down, the face
+  squashes and the ring lands on it. Sounds: open to pick up, open for A, back for B (the mock's). The Stage is the held tile's own with
+  "Moving" as its label and "It trades places with what it passes" as its line; hints A Drop, B Put back. Today's move mode (the tile
+  lifted out, the others sliding aside, a drop that merges) is kept whole for today's look.
+- **What today's drop did that a trade cannot is on Y while a tile is held** (the mock's Y bumps there, so nothing the mock shows
+  changes): a game goes into one of your folders (its slot left empty, as today's drop into a folder) or into a new folder named on the
+  keyboard on the slot it is held over; Settings or Activity goes into one of your folders. A folder held has nothing to go into, and Y
+  bumps. Making a folder from two pins is now two steps (a new folder from one, then the other put in it); the hint row adds "Y Put in…"
+  only when there is somewhere to put it.
+- **The rock lives the resting minute.** As B5's breath and bob: the mock rocks forever; here it stops a minute after the last press, so
+  a resting screen posts no frames (M45 H7).
+- **One keyboard for every field.** Naming a folder (new, or rename and recolour), Search, Edit title, a Settings text row, the scrapers'
+  fields and cover search's "Search for" all show the mock's keyboard under Big Type: heading (its letters land), note, three rows of
+  letters each centred on the widest (which puts the mock's own rows at the mock's indents, so the mock's keys are exactly in place),
+  then Space, Delete and Done. **What the app types beyond the mock's letters** (digits, today's naming `' - &`, every symbol today's
+  text keyboard has) is on two pages of characters behind a key at the end of the third row (or RB); a field whose case is the
+  typist's (Edit title, Settings, the scrapers) has Shift at the start of that row (or LB). Both keys sit in the room the mock's
+  third row leaves, so no key of the mock's moves. Today's Cancel key is gone under Big Type: B cancels with nothing typed, as the mock's;
+  there is no touch-only way to cancel (the mock has none either).
+- **The mock's typing rule for naming and Search** (a capital at the start and after a space, lower case otherwise, no space first or
+  twice; a full word, Delete on nothing and Done on an empty name bump), at the app's limits (24 letters for a folder, 256 for a search),
+  never the mock's 12 and 16. Other fields keep their own case and length. Done on an empty folder name now bumps where today's made a
+  folder called "New folder".
+- **A rename's colours are a row of keys above the letters** (up from the top row), the app's: the mock names a folder only, in the
+  next colour. The note says where a new folder lands: "It lands on the slot you picked." (an empty slot, or a held game), or the
+  app's "It lands on the first free slot." (Add to folder… → New folder).
+- **The typed word is the Stage's name, one layer** (the mock's typeWord): only the letters after what the old and new words share drop
+  in, a deleted letter falls off the end (it travels in the new atlas, order −1, on the native Stage), the word eases to its new size
+  about its box's bottom left, the placeholder ("Name", "Search", a field's title) shows at 0.34 and never drops in, and typing beginning
+  sends the name there upward. Closing, the word leaves as any name does (from the hinge, "back"). The native Stage draws it from
+  `StageNameCommand.Typed`; the Avalonia Stage the same from `HandheldBigTypeName.IsTyped`. While naming, the Stage's subject stays the
+  same (its title is not the word), so no key reads as a new item: on the device each new item took the next backdrop of its
+  rotation (found on the emulator, fixed). A secret (a password) shows as dots, as today's field did.
+- **The Stage's line while typing** is the mock's kbMeta: "n / 24 letters"; for Search "Type part of a name", then the number of games
+  that match ("12 games": the app knows them all, where the mock's five can only say "5 or more"), or "Nothing found"; the line holds
+  the last count while a search is under way. Other fields show their own description. Hints: the mock's A Type and B Delete or Cancel,
+  plus today's Y Space and X Done (Show for Search), which the app's pad still has. X stays Done while typing, as today (the mock's X
+  swaps the screens everywhere; the app's X swaps only on the grid).
+- **Search's hits** are up to five of home's tiles above the keys, rebuilt only when the games change; up from the top row goes to the
+  nearest, left and right along them, down or B back to the nearest key; on a hit the Stage is that game's (the ground floods to its
+  console) with A Play and B Back, and A closes Search and plays it through B8's route (after the game you are on home, not back in
+  Search: the screen question and the launch are sheets and states the open panel would otherwise take the pad from). Done with matches
+  still opens every match as a folder (today's); with none, or nothing typed, it leaves Search (the mock's closeKb).
+- **Opening and closing.** The layer under goes (the grid, or the list under a Settings or panel keyboard); the keys rise in by row and
+  along it; 260 ms later the ring lands on the first key (radius 34); a focused key is white with the ground's colour as its ink at 1.08,
+  and pulses when pressed or tapped. Closing, keys and hits drop, and 290 ms later the layer under comes back; a folder made is born on
+  its slot (from nothing, turned −25°), and the ring lands on it. On the device the Avalonia Launcher draws the keyboard and move mode,
+  so the native Launcher now waits for what it does not draw before it takes the screen back (`ScreenHoldRemaining`: a list's rows or the
+  keys leaving, a tile settling after a trade or a put-down, a folder being born). The shell tells the motion what settles before it says
+  the overlay closed (the keyboard and move mode end last), or the native Launcher would take the screen at once.
+- **Today's key styles are not reused.** The Big Type keys have their own class: today's `Border.key` (100 wide) reached into them
+  through the Launcher's styles and drew Space, Delete and Done narrow (found in the first render, fixed).
+- **A hardware keyboard** still types: an invisible field sits over the heading, bound two-way to the text, and a tap there gives it the
+  keys, as today's field took them. Typing there does not move the ring to the key (the mock's kbJump), unlike a tap on a key.
+- **Holding still:** keys, hits and the word are simply there, nothing rocks, squashes or slides, a closing keyboard simply goes and a
+  folder made is simply there.
+- **Where it was checked: the emulator, not the Thor.** The Thor was not on adb for this step (no device attached, twice), so, as the
+  brief says, the device check ran on the Android emulator (`emushelf-b3`, Release without AOT, `adb install -r`, `bigtype`): pick up,
+  trades, B putting back, A putting down (and back again), naming (placeholder, letters, a deleted letter falling, the count), Search
+  (hits, a hit on the Stage, back to the keys; nothing launched), a test folder born and deleted again through the app's Y sheet (twice),
+  and today's naming and move mode with `classic`. **Found there and fixed:** the Stage's backdrop moved to the next of its rotation on
+  every key while naming (the Stage's title was the word); the native Launcher's ring travelled from where it had been before a tile was
+  picked up, and its ground flashed the old colour and flooded again after a folder was made (taking the screen back under Big Type, both
+  now land on what the Avalonia Launcher showed); a keyboard closing straight into another (naming, then Search) left forever (found in
+  a render). Colour, feel and frame times on the Thor's panels are the owner's to judge when the Thor is back.
+- **The "X Swap" corner tells the truth (the orchestrating session's review).** The Launcher's corner said "X Swap" under a keyboard while
+  the Stage said "X Done" (or Search's "X Show") and X did not swap. The shell now says when X swaps (`XSwaps`): only on the grid, a
+  folder, its header and the dock with nothing over them. A sheet (the Y sheet, "Which screen?", Put in), the Start menu, Settings and
+  setup, a panel (Search, cover search, achievements, Activity, the scrapers, Edit title) and every keyboard, a held tile, a launch or a
+  game, and Big Type's unseen Title page (B8's "A plays", which only waits) take X for something else or swallow it, and the corner goes
+  there on both Launchers (the native one drops its picture during a launch). It goes and comes back at once, as the page corner does
+  under a panel (`PlaceCorner`); held still the same. The companion draws no Swap corner, so it needed nothing. Whether X should swap while
+  typing, as the mock's does, is the owner's to decide.
+- **Found and left:** today's sounds for typing are unchanged (a key typed sounds confirm; the mock's are move for a letter and back for
+  Delete): the sounds are B10's. There is no touch-only way to cancel a keyboard (B does it). A hardware keyboard typing does not move
+  the ring. After a game played from a Search hit you are on home, not back in Search.

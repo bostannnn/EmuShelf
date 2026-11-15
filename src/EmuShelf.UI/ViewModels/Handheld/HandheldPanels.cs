@@ -299,6 +299,19 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
     {
     }
 
+    private bool _bumped;
+
+    /// <summary>The press could not do anything here (Big Type: the ring nudges, as the mock's bump).</summary>
+    protected void Bump() => _bumped = true;
+
+    /// <summary>Whether the last press bumped (the panel's own, or its keyboard's); reading it clears it.</summary>
+    internal bool TakeBump()
+    {
+        var bumped = _bumped | (Keyboard?.TakeBump() ?? false);
+        _bumped = false;
+        return bumped;
+    }
+
     protected void RaiseChanged()
     {
         if (_disposed)

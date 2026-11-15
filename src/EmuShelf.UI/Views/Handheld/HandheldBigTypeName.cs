@@ -41,9 +41,81 @@ public sealed class HandheldBigTypeName : Control
     public static readonly StyledProperty<double> BoxHeightProperty =
         AvaloniaProperty.Register<HandheldBigTypeName, double>(nameof(BoxHeight), double.NaN);
 
+    /// <summary>The name is a word being typed (M47 B9): only new letters drop in, a deleted one falls off the end.</summary>
+    public static readonly StyledProperty<bool> IsTypedProperty =
+        AvaloniaProperty.Register<HandheldBigTypeName, bool>(nameof(IsTyped));
+
+    /// <summary>The typed word is empty and the name shows its placeholder (no letter drops in for it).</summary>
+    public static readonly StyledProperty<bool> IsPlaceholderProperty =
+        AvaloniaProperty.Register<HandheldBigTypeName, bool>(nameof(IsPlaceholder));
+
     static HandheldBigTypeName()
     {
         AffectsRender<HandheldBigTypeName>(TextProperty, ForegroundProperty, TextOpacityProperty, BoxHeightProperty, TextElement.FontFamilyProperty);
+    }
+
+    public bool IsTyped
+    {
+        get => GetValue(IsTypedProperty);
+        set => SetValue(IsTypedProperty, value);
+    }
+
+    public bool IsPlaceholder
+    {
+        get => GetValue(IsPlaceholderProperty);
+        set => SetValue(IsPlaceholderProperty, value);
+    }
+
+    // ---- The typed word (M47 B9, the mock's typeWord) ----
+
+    /// <summary>How the typed word last changed (the native Stage moves its letters from it); null for any other name.</summary>
+    public BigTypeTyped? TypedChange { get; private set; }
+
+    // The word as last typed ("" for the placeholder), null while not typing; the size it was fitted at; the letter deleted, if any.
+    private string? _typedText;
+    private double _typedSize;
+    private string? _ghost;
+
+    // On screen: the typed word's letters moving since the change, and the name before typing leaving upward.
+    private (BigTypeName Name, long Start, BigTypeTyped Change, string? Ghost)? _typing;
+    private readonly List<(BigTypeName Name, long Start)> _leavingUp = [];
+
+    /// <summary>
+    /// The typed word changed (or typing began or ended): what is new, what was deleted and the size before, as the mock's typeWord works
+    /// them out (the letters after the part both words share drop in; the one deleted falls off the end).
+    /// </summary>
+    private void NoteTyped(BigTypeName? before)
+    {
+        _ghost = null;
+        if (!IsTyped)
+        {
+            TypedChange = null;
+            _typedText = null;
+            return;
+        }
+        var now = IsPlaceholder ? string.Empty : Text?.Trim() ?? string.Empty;
+        var fitted = Fitted;
+        var anchor = new Point(0, double.IsNaN(BoxHeight) ? Bounds.Height : Math.Min(BoxHeight, Bounds.Height));
+        if (_typedText is not { } was)
+        {
+            // Typing began: the name there leaves upward; the placeholder is simply there, a word drops in whole.
+            TypedChange = new BigTypeTyped(now.Length == 0 ? int.MaxValue : 0, 0f, (float)anchor.X, (float)anchor.Y, Begins: true);
+        }
+        else
+        {
+            var common = 0;
+            while (common < was.Length && common < now.Length && was[common] == now[common])
+                common++;
+            // The placeholder never drops in (the mock's typeWord animates only typed letters).
+            var fresh = now.Length == 0 ? int.MaxValue : now.Take(common).Count(ch => !char.IsWhiteSpace(ch));
+            if (now.Length < was.Length && now.Length > 0 && !char.IsWhiteSpace(was[^1]))
+                _ghost = was[^1].ToString();
+            TypedChange = new BigTypeTyped(fresh, (float)_typedSize, (float)anchor.X, (float)anchor.Y, Begins: false);
+        }
+        _typedText = now;
+        _typedSize = fitted?.Size ?? 0;
+        if (before is not null && TypedChange.Begins)
+            _leavingUp.Add((before, Stopwatch.GetTimestamp()));
     }
 
     public double TextOpacity
@@ -103,19 +175,48 @@ public sealed class HandheldBigTypeName : Control
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
         base.OnPropertyChanged(change);
+        if (change.Property == IsTypedProperty && change.GetNewValue<bool>() && _typedText is null && _shown is not null)
+        {
+            // Typing began over a name with the same text (a rename of the folder in focus): the word still takes its place.
+            OnNameChanged();
+            return;
+        }
         if (change.Property != TextProperty)
             return;
+        OnNameChanged();
+    }
+
+    private void OnNameChanged()
+    {
         var before = _shown;
+        var wasTyped = _typedText is not null;
+        NoteTyped(before);
+        var moves = before is not null && HandheldRollingText.GetRolls(this) && IsEffectivelyVisible && TopLevel.GetTopLevel(this) is not null;
         _arriving = null;
-        if (before is null || !HandheldRollingText.GetRolls(this) || !IsEffectivelyVisible || TopLevel.GetTopLevel(this) is null)
+        if (TypedChange is { } typed)
+        {
+            // The typed word stays one layer: its own letters move; only a name there before typing leaves (upward).
+            _leaving.Clear();
+            _typing = moves && Fitted is { } word ? (word, Stopwatch.GetTimestamp(), typed, _ghost) : null;
+            if (!moves)
+                _leavingUp.Clear();
+            if (moves)
+                RequestFrame();
+            return;
+        }
+        _typing = null;
+        _leavingUp.Clear();
+        if (!moves)
         {
             _leaving.Clear();
             return;
         }
         var now = Stopwatch.GetTimestamp();
-        _leaving.Add((before, now, Entrance));
+        _leaving.Add((before!, now, Entrance));
         if (Fitted is { } next)
             _arriving = (next, now, Entrance);
+        // The word typed leaves as a name does (the mock's setWord after closeKb).
+        _ = wasTyped;
         RequestFrame();
     }
 
@@ -136,6 +237,8 @@ public sealed class HandheldBigTypeName : Control
     /// <summary>The letters in flight, each its own layout at its place with its pose; false once nothing moves.</summary>
     private bool DrawMoving(DrawingContext context, IBrush brush)
     {
+        if (DrawTyping(context, brush))
+            return true;
         _leaving.RemoveAll(leaving => Since(leaving.Start) >= BigTypeMotion.DepartureMilliseconds(LetterCount(leaving.Name)));
         if (_arriving is { } a && Since(a.Start) >= BigTypeMotion.ArrivalMilliseconds(LetterCount(a.Name)))
             _arriving = null;
@@ -185,6 +288,71 @@ public sealed class HandheldBigTypeName : Control
         }
     }
 
+    /// <summary>
+    /// The typed word on screen (M47 B9): the name before it leaving upward, the new letters dropping in, the deleted one falling off the
+    /// end, the whole word easing to its new size about its box's bottom left. False once nothing moves.
+    /// </summary>
+    private bool DrawTyping(DrawingContext context, IBrush brush)
+    {
+        var still = !HandheldRollingText.GetRolls(this);
+        _leavingUp.RemoveAll(up => Since(up.Start) >= BigTypeTypingMotion.NameOutMilliseconds(LetterCount(up.Name), still));
+        if (_typing is { } t && TypingDone(t, still))
+            _typing = null;
+        if (_typing is null && _leavingUp.Count == 0)
+            return false;
+        foreach (var (name, start) in _leavingUp)
+        {
+            foreach (var letter in LettersOf(name))
+            {
+                if (BigTypeTypingMotion.NameOut(letter.Order, Since(start), still) is { } pose)
+                    DrawLetter(context, name, letter, pose, brush);
+            }
+        }
+        var word = _typing?.Name ?? Fitted;
+        _shown = Fitted;
+        if (word is null)
+            return true;
+        var since = _typing is { } typing ? Since(typing.Start) : float.MaxValue;
+        var change = _typing?.Change;
+        var size = change is { FromSize: > 0f } c ? BigTypeTypingMotion.TypedSize(c.FromSize, (float)word.Size, since, still) : (float)word.Size;
+        var scale = size / (float)word.Size;
+        var anchor = new Point(change?.AnchorX ?? 0, change?.AnchorY ?? 0);
+        using (context.PushTransform(Matrix.CreateTranslation(-anchor.X, -anchor.Y) * Matrix.CreateScale(scale, scale) * Matrix.CreateTranslation(anchor.X, anchor.Y)))
+        {
+            foreach (var letter in LettersOf(word))
+            {
+                var pose = change is { } typed && letter.Order >= typed.FreshFrom
+                    ? BigTypeTypingMotion.TypedIn(letter.Order - typed.FreshFrom, since, still)
+                    : BigTypeLetterPose.Rest;
+                DrawLetter(context, word, letter, pose, brush);
+            }
+            if (_typing is { Ghost: { } ghost } && GhostOf(word, ghost) is { } placed && BigTypeTypingMotion.TypedOut(since, still) is { } fall)
+                DrawLetter(context, word, placed, fall, brush);
+        }
+        return true;
+    }
+
+    private static bool TypingDone((BigTypeName Name, long Start, BigTypeTyped Change, string? Ghost) typing, bool still)
+    {
+        var since = Since(typing.Start);
+        var fresh = typing.Change.FreshFrom == int.MaxValue ? 0 : Math.Max(0, LetterCount(typing.Name) - typing.Change.FreshFrom);
+        return since >= Math.Max(Math.Max(BigTypeTypingMotion.TypedInMilliseconds(fresh, still),
+            typing.Ghost is null || still ? 0f : BigTypeTypingMotion.TypedLetterOutMilliseconds),
+            typing.Change.FromSize > 0f && !still ? BigTypeTypingMotion.TypedResizeMilliseconds : 0f);
+    }
+
+    /// <summary>The deleted letter, placed right after the word's last letter (the mock's ghost at the end of the last word).</summary>
+    private static PlacedLetter? GhostOf(BigTypeName word, string ghost)
+    {
+        if (word.Words.Count == 0)
+            return null;
+        var last = word.Words[^1];
+        using var layout = Layout(last.Text, word.Typeface, word.Size, null);
+        using var glyph = Layout(ghost, word.Typeface, word.Size, null);
+        var origin = new Point(last.X + layout.WidthIncludingTrailingWhitespace, last.Top);
+        return new PlacedLetter(ghost, origin, new Point(origin.X + (glyph.WidthIncludingTrailingWhitespace / 2), origin.Y + (glyph.Height / 2)), -1);
+    }
+
     private static float Since(long start) => (float)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
 
     private void RequestFrame()
@@ -196,7 +364,7 @@ public sealed class HandheldBigTypeName : Control
         {
             _ticking = false;
             InvalidateVisual();
-            if (_arriving is not null || _leaving.Count > 0)
+            if (_arriving is not null || _leaving.Count > 0 || _typing is not null || _leavingUp.Count > 0)
                 RequestFrame();
         });
     }
@@ -243,6 +411,9 @@ public sealed class HandheldBigTypeName : Control
         if (Fitted is not { } name)
             return null;
         var placed = LettersOf(name).Select(letter => new HandheldLetterAtlas.Placed(letter.Text, letter.Origin, letter.Order)).ToList();
+        // A typed word's deleted letter goes with it, placed after its last letter, to fall off the end (M47 B9).
+        if (_ghost is { } ghost && GhostOf(name, ghost) is { } fall)
+            placed.Add(new HandheldLetterAtlas.Placed(fall.Text, fall.Origin, -1));
         return HandheldLetterAtlas.Build(name.Text, placed, name.Typeface, name.Size, origin, (float)TextOpacity);
     }
 

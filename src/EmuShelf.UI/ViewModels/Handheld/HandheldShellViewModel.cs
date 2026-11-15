@@ -739,7 +739,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return;
             case HandheldSlotKind.Empty:
                 // A on an empty slot makes a folder there, the 3DS gesture (decision 11).
-                StartNaming(isNew: true, HomeIndex, [], null, -1);
+                StartNaming(isNew: true, HomeIndex, [], null, -1, NotePickedSlot);
                 return;
             case HandheldSlotKind.Game:
                 if (_pins.TryGetValue(slot.GameId, out var pinned))
@@ -1264,6 +1264,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         IsStagePending = false;
         _stageTimer?.Stop();
+        SyncTyping();
         TakeBigTypeListText();
         UpdateStageCore();
         ApplyBigTypeListText();
@@ -1288,6 +1289,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (Settings is { } settings)
         {
             ShowSettingsStage(settings);
+            return;
+        }
+        // Big Type (M47 B9): on one of Search's hits, the Stage is that game's (the mock's focusRes).
+        if (Panel is HandheldSearchPanel { FocusedHit: { } hit } && HandheldTokens.IsBigType)
+        {
+            ShowGameStage(hit.Entry, hit.Cover);
             return;
         }
         if (Panel is { } panel)

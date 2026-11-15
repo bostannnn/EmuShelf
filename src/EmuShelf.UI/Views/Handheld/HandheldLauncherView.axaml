@@ -138,6 +138,11 @@
       <Setter Property="RenderTransform" Value="translateY(-14px) scale(1.16)" />
       <Setter Property="Opacity" Value="0.92" />
     </Style>
+    <!-- Big Type (M47 B9, the mock's .tile.held): the held tile grows above its neighbours; its face rocks (the Launcher's motion). -->
+    <Style Selector="Panel.bigtype Panel.home-slot.carried">
+      <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.HeldTransform}" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
     <Style Selector="Border.empty-slot.landing">
       <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccentOutline}" />
       <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicLandingFill}" />
@@ -724,7 +729,7 @@
                             (76% of its width, at most 56% of its side) or its glyph; focused, it is white with its colour as the ink.
                             A game is its cover cropped square. Nothing has a shadow, a gloss or a gradient.
                           -->
-                          <Panel IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+                          <Panel Classes="bt-face" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
                             <Border IsVisible="{Binding IsFlatTile}" CornerRadius="{x:Static vm:HandheldTokens.TileRadius}" Background="{Binding FaceBrush}">
                               <Panel>
                                 <Viewbox IsVisible="{Binding HasFaceMonogram}" Width="{x:Static vm:HandheldTokens.MonogramHomeWidth}" Stretch="Uniform" StretchDirection="DownOnly"
@@ -1074,7 +1079,8 @@
       -->
       <Panel x:Name="BtCorners" Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Margin="{x:Static vm:HandheldTokens.DockCornerMargin}"
              Height="{x:Static vm:HandheldTokens.DockTile}" VerticalAlignment="Bottom">
-        <StackPanel x:Name="BtSwap" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
+        <!-- Only while X really swaps the screens (M47 B9): a sheet, a list, a keyboard, a held tile or a launch takes X for something else. -->
+        <StackPanel x:Name="BtSwap" IsVisible="{Binding $parent[UserControl].((vm:HandheldShellViewModel)DataContext).XSwaps, FallbackValue=True}" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
                     Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}">
           <Border Width="{x:Static vm:HandheldTokens.DockCornerGlyph}" Height="{x:Static vm:HandheldTokens.DockCornerGlyph}" CornerRadius="{x:Static vm:HandheldTokens.DockCornerGlyphRadius}"
                   BorderBrush="{x:Static vm:HandheldTokens.OnColour}" BorderThickness="{x:Static vm:HandheldTokens.DockCornerGlyphStroke}" VerticalAlignment="Center">
@@ -1510,14 +1516,8 @@
     Laid across the screens the way Settings is: its rows (or the keyboard) here, the focused row's card on the Stage. It
     takes this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets PanelCanvas's width.
   -->
-  <!-- Today's look; Big Type only while the panel types (M47 B7). -->
-  <Panel>
-    <Panel.IsVisible>
-      <MultiBinding Converter="{x:Static BoolConverters.Or}">
-        <Binding Source="{x:Static vm:HandheldTokens.IsClassic}" />
-        <Binding Path="Panel.IsTyping" FallbackValue="False" />
-      </MultiBinding>
-    </Panel.IsVisible>
+  <!-- Today's look (Big Type draws a panel's rows as type, M47 B7, and its keyboard as the mock's, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="PanelLayer" IsVisible="{Binding IsPanelOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
@@ -1539,6 +1539,8 @@
     moves over the keys (A types, B deletes, Y is a space, X or Start finishes) and up from the top row reaches
     the colours; taps work too. The Stage shows the folder with the name and colour as they change.
   -->
+  <!-- Today's look (Big Type names a folder on the mock's keyboard, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="NamingLayer" IsVisible="{Binding IsNaming}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
@@ -1628,6 +1630,7 @@
       </Border>
     </Viewbox>
   </Border>
+  </Panel>
 
   <!--
     ===== Settings (M45 H6a, decision 18) =====
@@ -1636,14 +1639,8 @@
     Launcher's look; the choosers, the confirmations and the keyboard for text rows are states of this layer. It takes
     this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets SettingsCanvas's width.
   -->
-  <!-- Today's look; Big Type only while Settings types (M47 B7). -->
-  <Panel>
-    <Panel.IsVisible>
-      <MultiBinding Converter="{x:Static BoolConverters.Or}">
-        <Binding Source="{x:Static vm:HandheldTokens.IsClassic}" />
-        <Binding Path="Settings.IsTyping" FallbackValue="False" />
-      </MultiBinding>
-    </Panel.IsVisible>
+  <!-- Today's look (Big Type draws Settings as type, M47 B7, and its keyboard as the mock's, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="SettingsLayer" IsVisible="{Binding IsSettingsOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">

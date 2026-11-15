@@ -23,6 +23,9 @@ public sealed record StageNameCommand(BigTypeLetters? Name, BigTypeEntrance Entr
 {
     public override string? RetainKey => "bigtype-name";
     public override StageCommand ForReplay() => this with { Animate = false };
+
+    /// <summary>The name is a word being typed (M47 B9): how it changed; null for any other name.</summary>
+    public BigTypeTyped? Typed { get; init; }
 }
 
 /// <summary>
@@ -31,3 +34,11 @@ public sealed record StageNameCommand(BigTypeLetters? Name, BigTypeEntrance Entr
 /// backdrop on its own.
 /// </summary>
 public sealed record StageInputCommand : StageCommand;
+
+/// <summary>
+/// How a typed word changed (M47 B9, the mock's typeWord): the letters from <paramref name="FreshFrom"/> on (in reading order) drop in;
+/// the letter with order −1, if any, is the one deleted, falling off the end; the word was fitted at <paramref name="FromSize"/> before
+/// (0: it was not shown) and eases to its new size about (<paramref name="AnchorX"/>, <paramref name="AnchorY"/>), its box's bottom left
+/// on the canvas. <paramref name="Begins"/>: typing began with this word, and the name that was there leaves upward.
+/// </summary>
+public sealed record BigTypeTyped(int FreshFrom, float FromSize, float AnchorX, float AnchorY, bool Begins);

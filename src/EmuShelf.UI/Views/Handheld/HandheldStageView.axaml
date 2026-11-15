@@ -483,7 +483,8 @@
           </Panel>
         </Border>
 
-        <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
+        <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
+                                Text="{Binding Stage.Name}" IsVisible="{Binding Stage.HasBigTypeName}"
                                 TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
                                 BoxHeight="{x:Static vm:HandheldTokens.StageNameHeight}"
                                 Width="{Binding Stage.NameBoxWidth}" Height="{x:Static vm:HandheldTokens.StageNameControlHeight}"

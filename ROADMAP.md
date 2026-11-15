@@ -3119,6 +3119,46 @@ falls back to the emulator and says so.
       Left installed with `debug.emushelf.look` `bigtype`. **Not seen on any device:** a launch with no screen question, a missing file,
       an unlock while playing, holding still.
 - [ ] **B9 — Typing and moving.** Naming and Search with letters landing on the Stage; pick up and put down.
+      **Built 2026-11-15; awaiting the owner's look. Checked on the Android emulator (`emushelf-b3`), not the Thor: the Thor was not on adb
+      for this step.** (Choices in `DECISIONS.md` 2026-11-15 "M47 B9".) Under Big Type only, from shared maths (`BigTypeTypingMotion`,
+      `BigTypeMoveMotion`): **pick up and put down** are the mock's trades (the held tile grows to `HeldScale` above its neighbours, its face
+      rocks, the ring hides, each direction trades places with the next slot, across pages, every step remembered; A puts it down with the
+      squash, B walks every step back; Stage "Moving" / "It trades places with what it passes", hints A Drop, B Put back); today's merges
+      are on Y while a tile is held (Put in a folder of yours, or a new one; Settings or Activity into a folder). **The keyboard** is the
+      mock's for every field the app types into (naming and renaming a folder, Search, Edit title, Settings' text rows, the scrapers'
+      fields, cover search's "Search for"): its heading lands, the keys rise in at the mock's places, the ring lands on the first key after
+      260 ms, a focused key is white with the ground's colour, a pressed one pulses; the app's digits and symbols are on two pages behind a
+      key at the end of the third row (RB), Shift where a field keeps its own case (LB), a rename's colours in a row above the letters. The
+      **typed word is the Stage's name**: only new letters drop in, a deleted one falls off the end, the word resizes, the placeholder at
+      0.34, the name before it leaves upward (native Stage and Avalonia alike). The mock's typing rules at the app's limits (24, 256).
+      **Search** shows up to five hits above the keys (rebuilt only when the games change), the pad goes between them and the keys, a hit
+      is the game on the Stage (the ground floods to it), A plays it through B8's route; Done with matches still opens them all as a folder.
+      Closing, the keys drop and 290 ms later the layer under is back, a folder made is born on its slot. The native Launcher now waits for
+      what only the Avalonia Launcher draws (`ScreenHoldRemaining`) and lands its ring and ground on what it finds. tokens.js gained the
+      mock's inline numbers for all of it (two numbers are the app's and say so). **Verified on macOS:** Classic at the final code is
+      byte-identical to Classic at the starting commit `1eae802` on all 158 frames; two Big Type renders of the final code are
+      byte-identical; 4 of 158 Big Type frames differ from the starting render (Search empty and typed, both screens: the keyboard and the
+      typed word), and the design set has no frame of naming or move mode, so `BigTypeTypingAndMovingShots` renders those on request (held,
+      traded, put back, Put in, naming empty / typed / colours / symbols, Search empty / typed / a hit). New tests:
+      `HandheldBigTypeTypingMotionTests` (tokens.js, every move at fixed moments, held still) and `HandheldShellViewModelTests+BigTypeTypingAndMoving`
+      (the keys' places, the rules, Search's hits and pad, A on a hit, Edit title's Shift, trades, B walking back, across a page, Y into a
+      folder, today's move mode kept). `dotnet build` and `dotnet test` passed three times running after the last change. **Emulator check**
+      (Release build without AOT, `adb install -r`, `debug.emushelf.look` `bigtype`; both displays recorded): pick up from the Y sheet's
+      Move, the rock, two trades and B putting everything back; A putting a tile down (and a second hold putting it back); naming on an
+      empty slot (placeholder, letters dropping in, a deleted letter falling, the count, the backdrop staying); Search (hits arriving, up to a
+      hit with the game on the Stage, B back to the nearest key, delete, cancel; nothing launched); a test folder "T" named, born on its slot,
+      then deleted through the app's own Y sheet (twice). Found there and fixed: the Stage's backdrop changed on every key while naming;
+      the native ring travelled from its old place after a put-down; the native ground flashed the old colour and flooded again after a
+      folder was made. With `classic`: today's naming keyboard and today's move mode as before. Left on the emulator: this build, `bigtype`;
+      its home exactly as it started (Settings, Recent, PS2, Activity). **Not seen on any device:** the Thor at all (colour, feel, frame
+      times), Edit title / Settings / scraper keyboards, a rename's colours, the symbol pages, a hardware keyboard, held still, and a
+      launch from a Search hit. Renders, recordings and strips: `m47-b9-renders` in the build sessions' notes.
+      **Review fix (2026-11-15):** the Launcher's "X Swap" corner showed under a keyboard while X was Done; it now shows only while X
+      really swaps (`XSwaps`: the grid, a folder, its header, the dock), on both Launchers, and goes under sheets, the menu, Settings,
+      panels, keyboards, a held tile, a launch and Big Type's unseen Title page. Classic byte-identical on all 158 frames; two Big Type
+      renders identical; 32 Big Type bottom frames differ from f47f67c, each only in the corner (every sheet, menu, Settings, panel and
+      keyboard frame). Checked on the emulator (the Thor was not on adb): the corner at home, gone under naming, Search and a held tile,
+      back after each; home left as found.
 - [ ] **B10 — Make it the look.** A reduced-motion setting beside the system one; the owner's ear on the sounds
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
       motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the

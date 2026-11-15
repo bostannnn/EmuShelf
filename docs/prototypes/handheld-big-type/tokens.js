@@ -50,6 +50,8 @@ window.BT_TOKENS = {
     InGameStatLabel:    { size: 32,  weight: 700, opacity: 0.75 },  // "in total", "achievements" beside their figures
     InGameRecent:       { size: 38,  weight: 700 },                 // an achievement unlocked lately
     InGameRecentWhen:   { size: 32,  weight: 700, opacity: 0.7 },   // when it was unlocked
+    // B9, the mock's keyboard (its inline sizes, doubled): the note under the keyboard's heading ("It lands on the slot you picked.").
+    KeyboardNote:       { size: 36,  weight: 700, lineHeight: 1.3, opacity: 0.75 },
   },
 
   // The Stage, 1920x1080. Text sits in the four corners.
@@ -94,6 +96,15 @@ window.BT_TOKENS = {
     PanelRowsTop: 200, PanelRowsInset: 16, PanelWidth: 1080,
     CoverRowsVisible: 2,   // cover search's candidates: two rows of the folder's tiles in view (the mock's eight); more scroll
     KeyPitch: 112, KeyboardLeft: 66, KeyboardTop: 424,
+    // The keyboard (B9, the mock's openKb, buildKeys and mkKey). Its three rows of letters sit KeyPitch apart from KeyboardTop, each
+    // row centred on the widest (KeyColumns keys from KeyboardLeft), which puts the mock's rows at its own indents (0, 56 and 168);
+    // under them Space, Delete and Done, KeySpaceWidth and KeyActionWidth wide. The ring sits KeyRingOutset round a key. Its heading
+    // (SheetTitle) at KeyboardHeadLeft / KeyboardHeadTop, at most KeyboardHeadMaxWidth wide, the note (KeyboardNote) at
+    // KeyboardNoteLeft / KeyboardNoteTop. Search's results: up to ResultsMax of home's tiles in a row from ResultsLeft / ResultsTop,
+    // ResultsPitch apart.
+    KeyColumns: 10, KeySpaceWidth: 548, KeyActionWidth: 268, KeyRingOutset: 14,
+    KeyboardHeadLeft: 66, KeyboardHeadTop: 44, KeyboardHeadMaxWidth: 1120, KeyboardNoteLeft: 70, KeyboardNoteTop: 224,
+    ResultsLeft: 66, ResultsTop: 200, ResultsPitch: 200, ResultsMax: 5,
   },
 
   // The in-game companion (B8, the mock's launch builds it), on the Launcher's 1240x1080 in the in-game colour. Tops are the top of each
@@ -132,6 +143,7 @@ window.BT_TOKENS = {
     TileFocus: '#FFFFFF',                  // the focused one; its ink is the console's colour
     Ring: '#FFFFFF',
     Danger: '#FFC9BD',
+    PlaceholderOpacity: 0.34,              // B9: the typed word's placeholder ("Name", "Search") on the Stage
     RowRestOpacity: 0.58, RowLockedOpacity: 0.34, RowLockedFocusOpacity: 0.8, SwitchOffOpacity: 0.65, UnderSheetOpacity: 0.12, EmptySlotDotOpacity: 0.30, MissingTileOpacity: 0.45,
     InkToward: '#0B0A18', InkMix: 0.74,    // the Stage's dark ink: the console colour mixed this far toward InkToward
     InGameMix: 0.64,                       // the Launcher while a game runs
@@ -159,7 +171,35 @@ window.BT_TOKENS = {
     LetterIn:  { ms: 540, delay: 90, staggerMax: 26, staggerTotal: 300, fromEm: 0.55, fromEmVertical: 0.5,
                  openEm: 0.95, openTilt: 7, backEm: -0.7, backTilt: -5, riseEm: 0.7, riseTilt: 5 },
     LetterOut: { ms: 170, staggerMax: 12, staggerTotal: 110, toEm: 0.45, openEm: -0.6, backEm: 0.6, riseEm: -0.4, stillMs: 60 },
-    TypedLetterIn: { ms: 460, fromEm: 0.55, tilt: -8 },
+    // The word being typed is the Stage's name and stays one layer (B9, the mock's typeWord): only new letters drop in (TypedLetterIn,
+    // from fromEm above, tilted tilt, stagger ms apart, on the Land curve); a deleted letter falls off the end (TypedLetterOut: dropEm
+    // down, turning tilt, on the Leave curve); the word is set smaller or larger as it grows, eased over TypedResize (CSS ease-out); the
+    // name that was there before leaves upward first (TypedNameOut, stagger ms a letter up to staggerTotal, on the Leave curve). The
+    // placeholder ("Name", "Search") shows at colour.PlaceholderOpacity.
+    TypedLetterIn: { ms: 460, fromEm: 0.55, tilt: -8, stagger: 30 },
+    TypedLetterOut: { ms: 260, dropEm: 0.6, tilt: 14 },
+    TypedResize: { ms: 200 },
+    TypedNameOut: { ms: 170, stagger: 10, staggerTotal: 110, toEm: -0.6 },
+    // The keyboard (B9, the mock's openKb and closeKb). Its keys rise in (KeysIn: from rise px below, on the Land curve, rowStagger ms a
+    // row and keyStagger ms a key along it); ringAfterMs after it opens the ring is on the first key. A key that takes the focus turns
+    // white and grows (KeyFocus: its colours over fadeMs, its size over ms on the Land curve); a key pressed or tapped pulses from
+    // KeyPress.fromScale. Search's results arrive from above (ResultsIn: from `from` px, at fromScale, stagger ms apart, on the Land
+    // curve). Closing, the keys and results drop (KeysOut: drop px over ms on the Leave curve, stagger ms apart counted every
+    // staggerEvery keys) and after holdMs the layer under comes back; a folder made is born on its slot (FolderBorn: from fromScale,
+    // turned fromTilt degrees, on the Land curve).
+    KeysIn:    { ms: 440, rise: 140, rowStagger: 50, keyStagger: 12, ringAfterMs: 260 },
+    KeyFocus:  { ms: 300, fadeMs: 200 },
+    KeyPress:  { ms: 300, fromScale: 0.95 },
+    ResultsIn: { ms: 420, stagger: 45, from: -60, fromScale: 0.6 },
+    KeysOut:   { ms: 170, drop: 100, stagger: 8, staggerEvery: 10, holdMs: 290 },
+    FolderBorn: { ms: 600, fromScale: 0, fromTilt: -25 },
+    // Pick up and put down (B9, the mock's startMove, moveKey and endMove). Held, the tile grows to shape.HeldScale above its
+    // neighbours and its inside rocks between -Held.degrees and +Held.degrees, wiggleMs each way (CSS ease-in-out); each trade of places
+    // slides both tiles to their new slots (Swap, on its curve). Put down, its inside squashes PutDown.from, then low, then 1 over ms
+    // (CSS ease-out).
+    Held:      { wiggleMs: 420, degrees: 3.5 },
+    Swap:      { ms: 360, easing: 'cubic-bezier(.2, 1.3, .35, 1)' },
+    PutDown:   { ms: 380, from: 1.12, low: 0.92 },
     DigitIn:   { ms: 400, delay: 50, stagger: 12, travelEm: 1.1 },
     DigitOut:  { ms: 220, stagger: 12, travelEm: 1.1 },
     Ring:      { ms: 300, coversBothAt: 0.38 },

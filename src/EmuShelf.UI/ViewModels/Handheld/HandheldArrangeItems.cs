@@ -135,6 +135,25 @@ public sealed partial class HandheldKeyViewModel(string label, HandheldKeyKind k
 {
     public string Label { get; } = label;
     public HandheldKeyKind Kind { get; } = kind;
+
+    /// <summary>What a character key types, when it is not its label (the Big Type keys show capitals and type by the case rule).</summary>
+    public string Value { get; init; } = label;
+
+    /// <summary>The Big Type keyboard's place for this key on the 1240 × 1080 Launcher (M47 B9); today's look lays its keys out itself.</summary>
+    public double X { get; set; }
+
+    public double Y { get; set; }
+
+    public double Width { get; set; }
+
+    public double CentreX => X + (Width / 2);
+
+    /// <summary>Its place as a margin from the Launcher's top left (the Big Type keys are laid out absolutely).</summary>
+    public Avalonia.Thickness Place => new(X, Y, 0, 0);
+
+    /// <summary>Counts presses (A on it, or a tap): the Big Type key pulses each time (the mock's <c>pulse</c>).</summary>
+    [ObservableProperty]
+    public partial int Presses { get; set; }
     public bool IsWide => Kind != HandheldKeyKind.Character;
     public bool IsDone => Kind == HandheldKeyKind.Done;
 
@@ -179,14 +198,23 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
         Text = isNew ? string.Empty : name;
         foreach (var chip in HandheldHomeLayout.FolderColors)
             Colors.Add(new HandheldColorChipViewModel(chip));
-        foreach (var row in CharacterRows)
-            KeyRows.Add(new HandheldKeyRowViewModel(row.Select(ch => new HandheldKeyViewModel(ch.ToString(), HandheldKeyKind.Character)).ToList()));
-        KeyRows.Add(new HandheldKeyRowViewModel(
-        [
-            new HandheldKeyViewModel("Space", HandheldKeyKind.Space),
-            new HandheldKeyViewModel("Delete", HandheldKeyKind.Delete),
-            new HandheldKeyViewModel("Done", HandheldKeyKind.Done),
-        ]));
+        if (HandheldTokens.IsBigType)
+        {
+            // The mock's keys (M47 B9); the app's apostrophe, hyphen and ampersand are on the next page.
+            foreach (var row in HandheldBigTypeKeys.Build(0, shiftKey: false, string.Empty, BigTypeLabel))
+                KeyRows.Add(row);
+        }
+        else
+        {
+            foreach (var row in CharacterRows)
+                KeyRows.Add(new HandheldKeyRowViewModel(row.Select(ch => new HandheldKeyViewModel(ch.ToString(), HandheldKeyKind.Character)).ToList()));
+            KeyRows.Add(new HandheldKeyRowViewModel(
+            [
+                new HandheldKeyViewModel("Space", HandheldKeyKind.Space),
+                new HandheldKeyViewModel("Delete", HandheldKeyKind.Delete),
+                new HandheldKeyViewModel("Done", HandheldKeyKind.Done),
+            ]));
+        }
         var chosen = HandheldHomeLayout.FolderColors.ToList().IndexOf(color);
         ColorIndex = chosen < 0 ? 0 : chosen;
         ChooseColor(ColorIndex);
@@ -195,7 +223,25 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
 
     public bool IsNew { get; }
     public string Heading => IsNew ? "New folder" : "Rename";
-    public string Placeholder => IsNew ? "Name it…" : "Name";
+    public string Placeholder => HandheldTokens.IsBigType ? "Name" : IsNew ? "Name it…" : "Name";
+
+    /// <summary>The Big Type keyboard's heading (M47 B9, the mock's "Name the folder"; a rename's is the app's).</summary>
+    public string BigTypeHeading => IsNew ? "Name the folder" : "Rename the folder";
+
+    /// <summary>The Big Type Stage's label while naming (the mock's "New folder").</summary>
+    public string BigTypeKicker => IsNew ? "New folder" : "Rename";
+
+    /// <summary>The note under the Big Type keyboard's heading: where the folder will be (the mock's, for a slot that was picked).</summary>
+    public string Note { get; init; } = string.Empty;
+
+    /// <summary>The Big Type Stage's line: how many letters of how many (the mock's "n / 12 letters", at the app's own limit).</summary>
+    public string LetterCount => FormattableString.Invariant($"{Text.Length} / {MaxNameLength} letters");
+
+    // The Big Type keys show the mock's capitals and their own characters on the other pages.
+    private static string BigTypeLabel(char ch) => ch.ToString();
+
+    /// <summary>The Big Type keyboard's page: 0 the letters, then the app's other characters (M47 B9).</summary>
+    public int Page { get; private set; }
 
     /// <summary>The home slot (across pages) the new folder lands on; for a rename, the folder's slot.</summary>
     internal int SlotIndex { get; }
@@ -215,6 +261,7 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
     /// <summary>The name as typed; the field binds it two-way (a hardware keyboard types there).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Name))]
+    [NotifyPropertyChangedFor(nameof(LetterCount))]
     public partial string Text { get; set; } = string.Empty;
 
     partial void OnTextChanged(string value)
@@ -280,6 +327,25 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
     /// <summary>Moves across the keys; up from the top row reaches the colour chips. False at an edge.</summary>
     internal bool MoveKey(int rows, int columns)
     {
+        if (rows != 0 && HandheldTokens.IsBigType)
+        {
+            // The mock's kbKey: up and down go to the nearest key across; up from the top row reaches the colours (the app's).
+            var row = KeyRow + rows;
+            var centre = FocusedKey.CentreX;
+            if (row < 0)
+            {
+                Zone = HandheldNamingZone.Colours;
+                FocusedColor = NearestColour(centre);
+                UpdateFocus();
+                return true;
+            }
+            if (row >= KeyRows.Count)
+                return false;
+            KeyColumn = HandheldBigTypeKeys.Nearest(KeyRows[row].Keys, centre);
+            KeyRow = row;
+            UpdateFocus();
+            return true;
+        }
         if (rows != 0)
         {
             var row = KeyRow + rows;
@@ -325,6 +391,14 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
     /// <summary>Types a character: a capital at the start and after a space, as the mockup does. False when full.</summary>
     internal bool Type(string character)
     {
+        if (HandheldTokens.IsBigType)
+        {
+            // The mock's kbInput: no space first or twice, and a full name bumps.
+            if (HandheldBigTypeKeys.Typed(Text, character, MaxNameLength) is not { } typed)
+                return false;
+            Text = typed;
+            return true;
+        }
         if (Text.Length >= MaxNameLength)
             return false;
         var capital = (Text.Length == 0 || Text.EndsWith(' ')) && character != " ";
@@ -338,6 +412,42 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
         if (Text.Length == 0)
             return false;
         Text = Text[..^1];
+        return true;
+    }
+
+    /// <summary>The Big Type keyboard's next page of characters (its key at the end of the third row, or RB); the focus stays on that key.</summary>
+    internal void NextPage()
+    {
+        Page = (Page + 1) % HandheldBigTypeKeys.Pages.Count;
+        KeyRows.Clear();
+        foreach (var row in HandheldBigTypeKeys.Build(Page, shiftKey: false, string.Empty, BigTypeLabel))
+            KeyRows.Add(row);
+        KeyRow = 2;
+        KeyColumn = KeyRows[2].Keys.Count - 1;
+        MoveTo(HandheldNamingZone.Keys);
+    }
+
+    /// <summary>The colour chip nearest across to <paramref name="centreX"/> (the Big Type colours sit as a row of keys above the letters).</summary>
+    private int NearestColour(double centreX)
+    {
+        var left = HandheldBigTypeKeys.CentredLeft(Colors.Count);
+        var best = 0;
+        for (var i = 1; i < Colors.Count; i++)
+        {
+            if (Math.Abs(left + (i * HandheldTokens.KeyPitch) + (HandheldTokens.KeySide / 2) - centreX) <
+                Math.Abs(left + (best * HandheldTokens.KeyPitch) + (HandheldTokens.KeySide / 2) - centreX))
+                best = i;
+        }
+        return best;
+    }
+
+    /// <summary>Down from the colours (Big Type): the nearest key across in the top row.</summary>
+    internal bool LeaveColoursDown()
+    {
+        var centre = HandheldBigTypeKeys.CentredLeft(Colors.Count) + (FocusedColor * HandheldTokens.KeyPitch) + (HandheldTokens.KeySide / 2);
+        KeyRow = 0;
+        KeyColumn = HandheldBigTypeKeys.Nearest(KeyRows[0].Keys, centre);
+        MoveTo(HandheldNamingZone.Keys);
         return true;
     }
 

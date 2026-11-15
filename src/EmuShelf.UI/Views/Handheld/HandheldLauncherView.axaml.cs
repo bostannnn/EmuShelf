@@ -511,6 +511,12 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         }
         if (panel.IsTyping)
         {
+            if (Find<HandheldSearchHitViewModel>(source) is { } hit)
+            {
+                shell.TapSearchHit(hit);
+                e.Handled = true;
+                return;
+            }
             if (Find<HandheldKeyViewModel>(source) is { } key)
             {
                 shell.TapPanelKey(key);

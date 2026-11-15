@@ -97,6 +97,13 @@ internal sealed partial class HandheldLauncherMotion
             _selector.Opacity = 0;
             return false;
         }
+        // M47 B9: hidden while a tile is held (the mock's startMove) and for the keyboard's first 260 ms (its openKb); it then lands.
+        if (HoldingTile || KeyboardRingWaits)
+        {
+            _selector.Opacity = 0;
+            _ringAnchor = null;
+            return KeyboardRingWaits;
+        }
         var now = BtNow;
         var target = new BigTypeRing((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height, (float)radius);
         // A folder opening or closing, a launch, the shelf coming back: the ring waits, then pops in or lands (M47 B8).
@@ -216,10 +223,14 @@ internal sealed partial class HandheldLauncherMotion
         if (GridMoving)
             return _bt.IsMoving(BtNow, hops: false);
         var now = BtNow;
+        var trading = false;
         foreach (var (id, container, cell) in GridContainers())
         {
             _bt.Place(id, cell);
-            var push = _bt.Push(id, now);
+            // A tile still sliding to the slot it traded into (M47 B9) is drawn from where it came.
+            var traded = TradeOffset(cell);
+            trading |= traded != System.Numerics.Vector2.Zero;
+            var push = _bt.Push(id, now) + traded;
             if (container.RenderTransform is TranslateTransform shift)
             {
                 if (shift.X != push.X || shift.Y != push.Y)
@@ -230,7 +241,7 @@ internal sealed partial class HandheldLauncherMotion
                 container.RenderTransform = new TranslateTransform(push.X, push.Y);
             }
         }
-        return _bt.IsMoving(now, hops: false);
+        return _bt.IsMoving(now, hops: false) || trading;
     }
 
     // The home page's or the open folder's tiles on this Launcher: each tile's id (as the native Launcher names it), its container

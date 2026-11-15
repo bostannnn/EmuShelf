@@ -262,14 +262,15 @@ internal sealed class HandheldNativeLauncherFeed
         var active = !_failed && _shell is { IsLauncherOverlayOpen: false };
         if (active == _active)
             return;
-        // Big Type (M47 B7): a list that closed keeps the screen while its rows leave; the native Launcher comes back after.
+        // Big Type (M47 B7): a list that closed keeps the screen while its rows leave; the native Launcher comes back after. M47 B9: so
+        // does the keyboard while its keys drop and a folder named on it is born, and move mode while a tile settles.
         if (active && HandheldTokens.IsBigType)
         {
             _motion.SyncLists();
-            if (_motion.ListExitRemaining > 0f)
+            if (_motion.ScreenHoldRemaining > 0f)
             {
-                _motion.ListExitEnded -= OnListExitEnded;
-                _motion.ListExitEnded += OnListExitEnded;
+                _motion.ScreenHoldEnded -= OnListExitEnded;
+                _motion.ScreenHoldEnded += OnListExitEnded;
                 return;
             }
         }
@@ -289,6 +290,9 @@ internal sealed class HandheldNativeLauncherFeed
             // again. Re-picturing every tile here cost ~0.3 s of CPU each time a sheet or naming closed (M45 H4 polish).
             // Focus and tracks are re-sent: they are small and the selector may have moved.
             _focusSent = null;
+            // Big Type (M47 B9): the ring lands where the focus is now (a tile put down after it was carried, a folder made), rather than
+            // travelling from where it was when this Launcher last had the screen, as the Avalonia ring landed there (the mock's 'back').
+            _landFocus = HandheldTokens.IsBigType;
             _tracksSent = null;
             Schedule();
         }
@@ -296,7 +300,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void OnListExitEnded()
     {
-        _motion.ListExitEnded -= OnListExitEnded;
+        _motion.ScreenHoldEnded -= OnListExitEnded;
         UpdateActive();
     }
 
@@ -358,6 +362,9 @@ internal sealed class HandheldNativeLauncherFeed
         {
             case nameof(HandheldShellViewModel.IsLauncherOverlayOpen):
                 UpdateActive();
+                break;
+            case nameof(HandheldShellViewModel.XSwaps):
+                Schedule();
                 break;
             case nameof(HandheldShellViewModel.TitlePage):
                 WatchTitle(_shell?.TitlePage);
@@ -594,8 +601,11 @@ internal sealed class HandheldNativeLauncherFeed
         }
         else
         {
-            SyncGround(shell, instant: repictured || _catchUpPending);
-            Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
+            // Taking the screen back under Big Type (M47 B9), the ground is already the colour the Avalonia Launcher flooded to.
+            SyncGround(shell, instant: repictured || _catchUpPending || _landFocus);
+            // The Swap corner only while X swaps (M47 B9): during a launch it goes, as on the Avalonia Launcher.
+            if (shell.XSwaps)
+                Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
             if (screen.IsPageCountShown)
                 Static("bt-page", screen.PageCountText, present, () => Text(Sprite("bt-page", HandheldStageShots.Shot(_btPage, _canvas), LauncherGroup.Dock), _btPage));
         }
@@ -641,7 +651,8 @@ internal sealed class HandheldNativeLauncherFeed
         }
         // Catching up (shown again for a swap, or a new shape): the selector and the lift are already where the focus
         // is when the screen comes into view, rather than gliding from where they were before it was hidden.
-        SyncFocus(instant: repictured || _catchUpPending, pop: paged && HandheldTokens.IsBigType);
+        SyncFocus(instant: repictured || _catchUpPending || _landFocus, pop: paged && HandheldTokens.IsBigType && !_landFocus);
+        _landFocus = false;
         if (_launchPending && present.Contains("t-cover"))
         {
             _launchPending = false;
@@ -1081,6 +1092,9 @@ internal sealed class HandheldNativeLauncherFeed
         return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, PageWidth, 1080), LauncherGroup.Title,
             LauncherTrack.None, false, 0, 0, Z: 0);
     }
+
+    // Set when this Launcher takes the screen back under Big Type: the next focus lands.
+    private bool _landFocus;
 
     private void SyncFocus(bool instant, bool pop = false)
     {
