@@ -290,6 +290,9 @@ internal sealed class HandheldNativeLauncherFeed
             // again. Re-picturing every tile here cost ~0.3 s of CPU each time a sheet or naming closed (M45 H4 polish).
             // Focus and tracks are re-sent: they are small and the selector may have moved.
             _focusSent = null;
+            // Big Type (M47 B9): the ring lands where the focus is now (a tile put down after it was carried, a folder made), rather than
+            // travelling from where it was when this Launcher last had the screen, as the Avalonia ring landed there (the mock's 'back').
+            _landFocus = HandheldTokens.IsBigType;
             _tracksSent = null;
             Schedule();
         }
@@ -595,7 +598,8 @@ internal sealed class HandheldNativeLauncherFeed
         }
         else
         {
-            SyncGround(shell, instant: repictured || _catchUpPending);
+            // Taking the screen back under Big Type (M47 B9), the ground is already the colour the Avalonia Launcher flooded to.
+            SyncGround(shell, instant: repictured || _catchUpPending || _landFocus);
             Static("bt-swap", "1", present, () => Sprite("bt-swap", HandheldStageShots.Shot(_btSwap, _canvas), LauncherGroup.Dock));
             if (screen.IsPageCountShown)
                 Static("bt-page", screen.PageCountText, present, () => Text(Sprite("bt-page", HandheldStageShots.Shot(_btPage, _canvas), LauncherGroup.Dock), _btPage));
@@ -642,7 +646,8 @@ internal sealed class HandheldNativeLauncherFeed
         }
         // Catching up (shown again for a swap, or a new shape): the selector and the lift are already where the focus
         // is when the screen comes into view, rather than gliding from where they were before it was hidden.
-        SyncFocus(instant: repictured || _catchUpPending, pop: paged && HandheldTokens.IsBigType);
+        SyncFocus(instant: repictured || _catchUpPending || _landFocus, pop: paged && HandheldTokens.IsBigType && !_landFocus);
+        _landFocus = false;
         if (_launchPending && present.Contains("t-cover"))
         {
             _launchPending = false;
@@ -1082,6 +1087,9 @@ internal sealed class HandheldNativeLauncherFeed
         return new LauncherSprite("t-bg", HandheldStageShots.Picture(background, 0, 0, PageWidth, 1080), LauncherGroup.Title,
             LauncherTrack.None, false, 0, 0, Z: 0);
     }
+
+    // Set when this Launcher takes the screen back under Big Type: the next focus lands.
+    private bool _landFocus;
 
     private void SyncFocus(bool instant, bool pop = false)
     {

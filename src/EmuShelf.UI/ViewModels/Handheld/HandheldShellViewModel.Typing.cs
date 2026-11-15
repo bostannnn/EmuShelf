@@ -21,6 +21,14 @@ public partial class HandheldShellViewModel
     [ObservableProperty]
     public partial HandheldTypingViewModel? Typing { get; private set; }
 
+    // The keyboard is known before anything hears that the Launcher's overlay closed: on the device the native Launcher then waits for
+    // the keys to drop before it takes the screen back.
+    partial void OnNamingChanged(HandheldNamingViewModel? value) => SyncTyping();
+
+    partial void OnPanelChanged(HandheldPanelViewModel? value) => SyncTyping();
+
+    partial void OnSettingsChanged(HandheldSettingsViewModel? value) => SyncTyping();
+
     /// <summary>Finds the keyboard open now and keeps <see cref="Typing"/> on it (one per keyboard, so the view's keys stay).</summary>
     private void SyncTyping()
     {

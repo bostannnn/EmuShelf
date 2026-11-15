@@ -934,7 +934,10 @@ public sealed partial class HandheldShellViewModel
         var count = naming.IsNew
             ? naming.GameIds.Count
             : _layout.FindFolder(naming.FolderId)?.GameIds.Count ?? 0;
-        ShowStage(HandheldStageKind.Folder, naming.Name, count == 0 ? "Your folder · empty" : $"Your folder · {HandheldText.GameCount(count)}",
+        // Big Type (M47 B9): the Stage's subject stays the same while typing (the word is its name, written over it), so no key reads
+        // as a new item: on the device each new item takes the next backdrop of its rotation, and the mock's backdrop stays.
+        ShowStage(HandheldStageKind.Folder, HandheldTokens.IsBigType ? naming.BigTypeKicker : naming.Name,
+            count == 0 ? "Your folder · empty" : $"Your folder · {HandheldText.GameCount(count)}",
             backdrop: HandheldTokens.IsBigType ? null : FolderBackdrop(naming.Color));
         Stage.Monogram = string.Empty;
         Stage.FolderGlyph = HandheldGlyph.Star;

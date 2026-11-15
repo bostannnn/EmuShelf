@@ -51,8 +51,8 @@ public partial class HandheldShellViewModel
     /// <summary>Puts the held tile down: where it is (A), or with every step walked back so home is as it was (B).</summary>
     private void PutDown(MoveState move, bool back)
     {
+        // Move mode ends last (IsMoving), once the Launcher knows what settles: on the device the native Launcher waits for it.
         _move = null;
-        IsMoving = false;
         if (back)
         {
             // Which slot each tile on home now ends on: the steps walked back in turn (the mock's endMove(undo)).
@@ -77,6 +77,7 @@ public partial class HandheldShellViewModel
             if (traded.Count > 0)
                 TilesTraded?.Invoke(traded);
             TilePutDown?.Invoke(move.Origin);
+            IsMoving = false;
             return;
         }
         var slots = move.Preview.ToList();
@@ -84,6 +85,7 @@ public partial class HandheldShellViewModel
         _home = PositionOf(move.Target);
         ApplyLayout(_layout.WithSlots(slots));
         TilePutDown?.Invoke(move.Target);
+        IsMoving = false;
     }
 
     // ---- Y while held: into a folder ----
