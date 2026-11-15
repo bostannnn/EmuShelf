@@ -315,7 +315,7 @@
                               <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
                             </Panel>
                           </Border>
-                          <TextBlock Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding Value}" IsVisible="{Binding !IsToggle}" />
+                          <TextBlock Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding RowValue}" IsVisible="{Binding !IsToggle}" />
                         </vh:HandheldRowLine>
                       </Panel>
                     </Panel>
