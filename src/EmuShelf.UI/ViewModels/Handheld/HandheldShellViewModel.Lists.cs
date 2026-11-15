@@ -149,7 +149,7 @@ public partial class HandheldShellViewModel
             return;
         Stage.IsListTyping = Settings?.IsTyping == true || (Settings is null && Panel?.IsTyping == true);
         Stage.ListCover = Settings is null && Panel is { IsListing: true } covers ? covers.BigTypeCover : null;
-        _listText = BigTypeListText();
+        _listText = TypingStageText() ?? BigTypeListText();
     }
 
     private HandheldListStageText? BigTypeListText()

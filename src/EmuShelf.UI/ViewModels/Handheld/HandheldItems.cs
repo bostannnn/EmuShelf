@@ -1024,21 +1024,31 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     /// <summary>
     /// The fitted name shows (Big Type, and not under a fan-art hero's own card). Under Settings and a panel it is the focused row's
-    /// name (M47 B7), except while they type: the typed text keeps today's card until B9 brings the keyboard.
+    /// name (M47 B7); while anything types it is the word being typed (M47 B9).
     /// </summary>
-    public bool HasBigTypeName => HandheldTokens.IsBigType && !string.IsNullOrEmpty(Name) &&
-        Kind is not HandheldStageKind.None && !IsHeroArt && !(IsListTyping && Kind is HandheldStageKind.Setting or HandheldStageKind.Panel);
+    public bool HasBigTypeName => HandheldTokens.IsBigType && !string.IsNullOrEmpty(Name) && Kind is not HandheldStageKind.None && !IsHeroArt;
 
-    /// <summary>Settings or a panel is typing (the Big Type look keeps today's card for it until B9).</summary>
+    /// <summary>Settings or a panel is typing (B7 kept today's card for it under Big Type; B9's keyboard puts the word on the Stage).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasBigTypeName), nameof(ShowsSettingCard), nameof(ShowsPanelCard))]
     public partial bool IsListTyping { get; set; }
 
-    /// <summary>Settings' card: today's look, or Big Type while Settings types.</summary>
-    public bool ShowsSettingCard => IsSetting && (HandheldTokens.IsClassic || IsListTyping);
+    /// <summary>
+    /// The name is a word being typed (M47 B9, the mock's typeWord): it stays one layer, only new letters drop in and a deleted one
+    /// falls off its end.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsTyped { get; set; }
 
-    /// <summary>A panel's card: today's look, or Big Type while the panel types.</summary>
-    public bool ShowsPanelCard => IsPanel && (HandheldTokens.IsClassic || IsListTyping);
+    /// <summary>The typed word is empty: the name shows the placeholder ("Name", "Search") faintly.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NameOpacity))]
+    public partial bool IsPlaceholder { get; set; }
+
+    /// <summary>Settings' card: today's look only.</summary>
+    public bool ShowsSettingCard => IsSetting && HandheldTokens.IsClassic;
+
+    /// <summary>A panel's card: today's look only.</summary>
+    public bool ShowsPanelCard => IsPanel && HandheldTokens.IsClassic;
 
     /// <summary>
     /// A cover the focused row stands for (cover search's candidate, M47 B7): Big Type sets it where a game's cover sits, beside the
@@ -1059,7 +1069,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     /// <summary>The name's box: narrower when a game's medium or cover stands beside it.</summary>
     public double NameBoxWidth => IsGame || HasListCover ? HandheldTokens.StageNameWidthBesideMedium : HandheldTokens.StageNameWidth;
 
-    public double NameOpacity => IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
+    public double NameOpacity => IsPlaceholder ? HandheldTokens.PlaceholderOpacity : IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>

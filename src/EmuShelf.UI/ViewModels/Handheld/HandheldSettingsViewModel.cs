@@ -567,6 +567,9 @@ public enum HandheldKeyOutcome
 
     /// <summary>Y on a secret: show or hide it.</summary>
     ToggleReveal,
+
+    /// <summary>The key could not type here (Big Type's rules: a full word, a space first or twice, nothing to delete): it bumps.</summary>
+    Bumped,
 }
 
 /// <summary>
@@ -633,6 +636,30 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsSymbols { get; private set; }
 
+    /// <summary>
+    /// The Big Type keyboard's page (M47 B9): 0 the mock's letters, then the app's other characters, behind the key at the end of the
+    /// third row (or RB).
+    /// </summary>
+    public int Page { get; private set; }
+
+    /// <summary>
+    /// Typing by the mock's rule (Search, under Big Type): a capital at the start and after a space, lower case otherwise, no space
+    /// first or twice, and no Shift key. Other keyboards keep their own case (Shift, or LB).
+    /// </summary>
+    public bool AutoCapital
+    {
+        get => _autoCapital;
+        set
+        {
+            if (_autoCapital == value)
+                return;
+            _autoCapital = value;
+            Build();
+        }
+    }
+
+    private bool _autoCapital;
+
     public int KeyRow { get; private set; }
     public int KeyColumn { get; private set; }
     public HandheldKeyViewModel FocusedKey => KeyRows[KeyRow].Keys[KeyColumn];
@@ -661,18 +688,20 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     /// A pad button on the keyboard: the D-pad moves over the keys, A types the focused one, B deletes (and with nothing
     /// left to delete, cancels), Y is a space (or shows a secret), LB is Shift, RB the symbols, X and Start are Done.
     /// </summary>
-    internal HandheldKeyOutcome Dispatch(GamepadAction action)
+    internal HandheldKeyOutcome Dispatch(GamepadAction action) => Noted(DispatchCore(action));
+
+    private HandheldKeyOutcome DispatchCore(GamepadAction action)
     {
         switch (action)
         {
             case GamepadAction.NavigateUp:
-                return MoveKey(-1, 0) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+                return MoveKey(-1, 0) ? HandheldKeyOutcome.Changed : Edge;
             case GamepadAction.NavigateDown:
-                return MoveKey(1, 0) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+                return MoveKey(1, 0) ? HandheldKeyOutcome.Changed : Edge;
             case GamepadAction.NavigateLeft:
-                return MoveKey(0, -1) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+                return MoveKey(0, -1) ? HandheldKeyOutcome.Changed : Edge;
             case GamepadAction.NavigateRight:
-                return MoveKey(0, 1) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.None;
+                return MoveKey(0, 1) ? HandheldKeyOutcome.Changed : Edge;
             case GamepadAction.Confirm:
                 return Press(FocusedKey);
             case GamepadAction.Cancel:
@@ -680,10 +709,14 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
             case GamepadAction.Actions when IsSecret:
                 return HandheldKeyOutcome.ToggleReveal;
             case GamepadAction.Actions:
-                Type(" ");
-                return HandheldKeyOutcome.Changed;
+                return Type(" ") || !HandheldTokens.IsBigType ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
+            case GamepadAction.PreviousPlatform when HandheldTokens.IsBigType && AutoCapital:
+                return HandheldKeyOutcome.None;
             case GamepadAction.PreviousPlatform:
                 ToggleShift();
+                return HandheldKeyOutcome.Changed;
+            case GamepadAction.NextPlatform when HandheldTokens.IsBigType:
+                NextPage();
                 return HandheldKeyOutcome.Changed;
             case GamepadAction.NextPlatform:
                 ToggleSymbols();
@@ -696,14 +729,47 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
         }
     }
 
+    // At an edge of the keys: nothing in today's look; Big Type's keyboard bumps there, as the mock's does.
+    private static HandheldKeyOutcome Edge => HandheldTokens.IsBigType ? HandheldKeyOutcome.Bumped : HandheldKeyOutcome.None;
+
     /// <summary>A key: A on it, or a tap (the caller focuses it first).</summary>
-    internal HandheldKeyOutcome Press(HandheldKeyViewModel key)
+    internal HandheldKeyOutcome Press(HandheldKeyViewModel key) => Noted(PressCore(key));
+
+    // A bump is kept for the shell, which owns the ring (TakeBump).
+    private HandheldKeyOutcome Noted(HandheldKeyOutcome outcome)
+    {
+        if (outcome == HandheldKeyOutcome.Bumped)
+            _bumped = true;
+        return outcome;
+    }
+
+    private bool _bumped;
+
+    /// <summary>Whether the last press bumped (Big Type: the ring nudges); reading it clears it.</summary>
+    internal bool TakeBump()
+    {
+        var bumped = _bumped;
+        _bumped = false;
+        return bumped;
+    }
+
+    private HandheldKeyOutcome PressCore(HandheldKeyViewModel key)
     {
         FocusKey(key);
+        key.Presses++;
         switch (key.Kind)
         {
+            case HandheldKeyKind.Character when HandheldTokens.IsBigType && AutoCapital:
+                return Type(key.Value) ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
             case HandheldKeyKind.Character:
                 Type(key.Label);
+                break;
+            case HandheldKeyKind.Space when HandheldTokens.IsBigType && AutoCapital:
+                return Type(" ") ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
+            case HandheldKeyKind.Delete when HandheldTokens.IsBigType:
+                return DeleteLast() ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
+            case HandheldKeyKind.Symbols when HandheldTokens.IsBigType:
+                NextPage();
                 break;
             case HandheldKeyKind.Space:
                 Type(" ");
@@ -736,10 +802,27 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
 
     internal bool Type(string character)
     {
+        if (HandheldTokens.IsBigType && AutoCapital)
+        {
+            if (HandheldBigTypeKeys.Typed(Text, character, MaxLength) is not { } typed)
+                return false;
+            Text = typed;
+            return true;
+        }
         if (Text.Length >= MaxLength)
             return false;
         Text += character;
         return true;
+    }
+
+    /// <summary>The Big Type keyboard's next page of characters; the focus stays on the page key.</summary>
+    internal void NextPage()
+    {
+        Page = (Page + 1) % HandheldBigTypeKeys.Pages.Count;
+        Build();
+        KeyRow = 2;
+        KeyColumn = KeyRows[2].Keys.Count - 1;
+        UpdateFocus();
     }
 
     internal bool DeleteLast()
@@ -769,6 +852,18 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     /// <summary>Moves across the keys, keeping roughly the same place across rows of different lengths. False at an edge.</summary>
     internal bool MoveKey(int rows, int columns)
     {
+        _blurred = false;
+        if (rows != 0 && HandheldTokens.IsBigType)
+        {
+            // The mock's kbKey: up and down go to the nearest key across.
+            var target = KeyRow + rows;
+            if (target < 0 || target >= KeyRows.Count)
+                return false;
+            KeyColumn = HandheldBigTypeKeys.Nearest(KeyRows[target].Keys, FocusedKey.CentreX);
+            KeyRow = target;
+            UpdateFocus();
+            return true;
+        }
         if (rows != 0)
         {
             var row = KeyRow + rows;
@@ -790,8 +885,27 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
         return true;
     }
 
+    /// <summary>No key has the focus (the pad is on Search's hits above the keys).</summary>
+    internal void Blur()
+    {
+        _blurred = true;
+        UpdateFocus();
+    }
+
+    private bool _blurred;
+
+    /// <summary>The focus on a key by its place.</summary>
+    internal void FocusAt(int row, int column)
+    {
+        _blurred = false;
+        KeyRow = Math.Clamp(row, 0, KeyRows.Count - 1);
+        KeyColumn = Math.Clamp(column, 0, KeyRows[KeyRow].Keys.Count - 1);
+        UpdateFocus();
+    }
+
     internal void FocusKey(HandheldKeyViewModel key)
     {
+        _blurred = false;
         for (var row = 0; row < KeyRows.Count; row++)
         {
             var column = KeyRows[row].Keys.ToList().IndexOf(key);
@@ -808,6 +922,19 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     private void Build()
     {
         KeyRows.Clear();
+        if (HandheldTokens.IsBigType)
+        {
+            // The mock's keys (M47 B9): its letters, the app's other characters on the next pages; Shift where the case is the typist's.
+            var shifted = IsShifted;
+            var auto = AutoCapital;
+            foreach (var bigRow in HandheldBigTypeKeys.Build(Page, shiftKey: !auto, shifted ? "abc" : "Shift",
+                ch => auto || shifted || !char.IsLetter(ch) ? ch.ToString() : char.ToLowerInvariant(ch).ToString()))
+                KeyRows.Add(bigRow);
+            KeyRow = Math.Clamp(KeyRow, 0, KeyRows.Count - 1);
+            KeyColumn = Math.Clamp(KeyColumn, 0, KeyRows[KeyRow].Keys.Count - 1);
+            UpdateFocus();
+            return;
+        }
         foreach (var row in IsSymbols ? SymbolRows : LetterRows)
         {
             var keys = row.Select(ch => IsShifted ? char.ToUpperInvariant(ch) : ch)
@@ -834,7 +961,7 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
         for (var row = 0; row < KeyRows.Count; row++)
         {
             for (var column = 0; column < KeyRows[row].Keys.Count; column++)
-                KeyRows[row].Keys[column].IsFocused = row == KeyRow && column == KeyColumn;
+                KeyRows[row].Keys[column].IsFocused = !_blurred && row == KeyRow && column == KeyColumn;
         }
     }
 }

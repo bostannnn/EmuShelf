@@ -145,6 +145,50 @@
     <Style Selector="Panel.still Panel.row, Panel.still Border.switch, Panel.still Border.switch > Panel, Panel.still Border.switch > Panel > Border.tint, Panel.still ItemsControl.window">
       <Setter Property="Transitions" Value="{x:Null}" />
     </Style>
+    <!--
+      The keyboard (M47 B9, the mock's .key; its own class, so today's key styles never reach it): a key is a tile's white at rest; focused it turns white with the ground's colour as its
+      ink and grows a little, its colours over KeyFocus.fadeMs and its size on the Land curve.
+    -->
+    <Style Selector="Border.btkey">
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.KeySide}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.KeyRound}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.TileRest}" />
+      <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.KeyRestTransform}" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="{x:Static vm:HandheldTokens.KeyFocusFade}" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="{x:Static vm:HandheldTokens.KeyFocusMove}" Easing="{x:Static vm:HandheldTokens.LandEasing}" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.btkey.focused">
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.TileFocus}" />
+      <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.KeyFocusTransform}" />
+    </Style>
+    <Style Selector="Border.btkey TextBlock">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeyText}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="ClipToBounds" Value="False" />
+    </Style>
+    <Style Selector="Border.btkey.focused TextBlock">
+      <Setter Property="Foreground" Value="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
+    </Style>
+    <Style Selector="Panel.still Border.btkey">
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
+    <Style Selector="TextBlock.keyboard-note">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeyboardNote}" />
+      <Setter Property="LineHeight" Value="{x:Static vm:HandheldTokens.KeyboardNoteLine}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.KeyboardNoteOpacity}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="ClipToBounds" Value="False" />
+    </Style>
     <Style Selector="vh|HandheldBigTypeHeading">
       <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
       <Setter Property="HorizontalAlignment" Value="Left" />
@@ -430,6 +474,114 @@
         </ItemsControl>
         </Panel>
         </StackPanel>
+      </Panel>
+    </Panel>
+
+    <!--
+      ===== The keyboard (M47 B9, the mock's openKb): naming a folder, Search, and every other field the app types into =====
+      Its heading lands letter by letter, the note under it, then the keys: three rows of letters each centred on the widest, then
+      Space, Delete and Done, every key placed where the mock's is. Above the letters a rename's colours (the app's) or Search's hits.
+      The word typed is the Stage's name. The keys rise in, pulse when pressed, and drop out as it closes (the Launcher's motion).
+    -->
+    <Panel x:Name="Keyboard" IsVisible="{Binding IsTyping}">
+      <Panel DataContext="{Binding Typing}" x:DataType="vm:HandheldTypingViewModel">
+        <vh:HandheldBigTypeHeading x:Name="KeyboardTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.SheetTitle}" MaxTextWidth="{x:Static vm:HandheldTokens.KeyboardHeadMaxWidth}"
+                                   SpacingEm="{x:Static vm:HandheldTokens.DisplayLetterSpacing}" FromEm="{x:Static vm:HandheldTokens.HeadingInSheetFromEm}"
+                                   Margin="{x:Static vm:HandheldTokens.KeyboardHeadMargin}" />
+        <TextBlock Classes="keyboard-note" Text="{Binding Note}" IsVisible="{Binding HasNote}" Margin="{x:Static vm:HandheldTokens.KeyboardNoteMargin}" />
+
+        <!-- A folder's colours as a row of keys above the letters (the app's: up from the top row). -->
+        <ItemsControl x:Name="KeyboardColoursPart" ItemsSource="{Binding Colors}" IsVisible="{Binding HasColors}" Margin="{Binding ColoursMargin}"
+                      HorizontalAlignment="Left" VerticalAlignment="Top" ClipToBounds="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.KeyGap}" ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldColorChipViewModel">
+              <Panel Width="{x:Static vm:HandheldTokens.KeySide}" Height="{x:Static vm:HandheldTokens.KeySide}" Background="Transparent" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
+                <Panel Classes="arrive">
+                  <Border Classes="btkey" Classes.focused="{Binding IsFocused}" Background="{Binding Brush}">
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="{x:Static vm:HandheldTokens.KeyGlyph}" Height="{x:Static vm:HandheldTokens.KeyGlyph}"
+                              Foreground="{x:Static vm:HandheldTokens.OnColour}" IsVisible="{Binding IsChosen}" />
+                  </Border>
+                </Panel>
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusKey}" Margin="{x:Static vm:HandheldTokens.KeyRingMargin}" />
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Search's hits: home's tiles in a row above the keys (the mock's kbSearch). -->
+        <ItemsControl x:Name="KeyboardHitsPart" ItemsSource="{Binding Hits}" IsVisible="{Binding HasHits}" ClipToBounds="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <Panel ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldSearchHitViewModel">
+              <Panel Classes="focusable hit" Classes.focused="{Binding IsFocused}" Width="{x:Static vm:HandheldTokens.TileHome}" Height="{x:Static vm:HandheldTokens.TileHome}"
+                     Margin="{Binding Place}" HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
+                <Panel Classes="arrive">
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.TileRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.TileRest}">
+                    <Panel>
+                      <TextBlock Classes="bt-tile-title" Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleBigHome}"
+                                 LineHeight="{x:Static vm:HandheldTokens.TileTitleBigHomeLine}" Margin="{x:Static vm:HandheldTokens.TileTitleBigHomeMargin}" />
+                      <Border IsVisible="{Binding HasCover}">
+                        <Border.Background>
+                          <ImageBrush Source="{Binding Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                        </Border.Background>
+                      </Border>
+                    </Panel>
+                  </Border>
+                </Panel>
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusTile}" Margin="{x:Static vm:HandheldTokens.RingOutsetTile}" />
+              </Panel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- The keys, each where the mock's is; a row is a list of keys, each placed from the Launcher's top left. -->
+        <ItemsControl x:Name="KeyboardKeysPart" ItemsSource="{Binding KeyRows}" ClipToBounds="False">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <Panel ClipToBounds="False" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:HandheldKeyRowViewModel">
+              <ItemsControl ItemsSource="{Binding Keys}" ClipToBounds="False">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <Panel ClipToBounds="False" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:HandheldKeyViewModel">
+                    <Panel Classes="keyslot" Margin="{Binding Place}" Width="{Binding Width}" Height="{x:Static vm:HandheldTokens.KeySide}"
+                           HorizontalAlignment="Left" VerticalAlignment="Top" Background="Transparent" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
+                      <Panel Classes="arrive">
+                        <Panel vh:HandheldPulse.Count="{Binding Presses}">
+                          <Border Classes="btkey" Classes.focused="{Binding IsFocused}">
+                            <TextBlock Text="{Binding Label}" />
+                          </Border>
+                        </Panel>
+                      </Panel>
+                      <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusKey}" Margin="{x:Static vm:HandheldTokens.KeyRingMargin}" />
+                    </Panel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- A hardware keyboard types here (as today's field took one): a tap on the heading gives it the keys. -->
+        <TextBox x:Name="KeyboardField" Text="{Binding Text, Mode=TwoWay}" Opacity="0" Width="{x:Static vm:HandheldTokens.KeyboardHeadMaxWidth}"
+                 Height="{x:Static vm:HandheldTokens.KeyboardFieldHeight}" Margin="{x:Static vm:HandheldTokens.KeyboardHeadMargin}"
+                 HorizontalAlignment="Left" VerticalAlignment="Top" BorderThickness="0" Background="Transparent" />
       </Panel>
     </Panel>
   </Panel>

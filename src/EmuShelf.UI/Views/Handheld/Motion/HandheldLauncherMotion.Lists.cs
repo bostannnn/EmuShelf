@@ -40,6 +40,9 @@ internal sealed partial class HandheldLauncherMotion
         SettingsChoice,
         SettingsConfirm,
         Panel,
+
+        /// <summary>The keyboard (M47 B9): naming, Search, any field typed into.</summary>
+        Keyboard,
     }
 
     /// <summary>Which list is open and which instance: a new one arrives; the same one with another section rises in.</summary>
@@ -93,6 +96,9 @@ internal sealed partial class HandheldLauncherMotion
         {
             UpdateLists();
             ApplyArrivals();
+            // The keyboard's keys are posed before their first frame too (M47 B9).
+            if (_keysOpening)
+                PoseKeys(_keysStart is { } start ? SinceTicks(start) : 0f);
         };
     }
 
@@ -104,6 +110,8 @@ internal sealed partial class HandheldLauncherMotion
     {
         if (_shell is not { } shell)
             return default;
+        if (shell.Typing is { } typing)
+            return new ListKey(ListKind.Keyboard, typing, -1);
         if (shell.Settings is { } settings)
         {
             if (settings.IsTyping)
@@ -132,6 +140,9 @@ internal sealed partial class HandheldLauncherMotion
         if (!HandheldTokens.IsBigType || _lists is null || _shell is not { } shell)
             return;
         ListsShown.LauncherGroundBrush = shell.LauncherGroundBrush;
+        // A keyboard that closed keeps the screen while its keys drop (M47 B9); then the lists follow the shell again.
+        if (KeyboardLeaving(shell))
+            return;
         var identity = HandheldListsShown.IdentityOf(shell);
         if (_exit is { } leaving)
         {
@@ -313,6 +324,9 @@ internal sealed partial class HandheldLauncherMotion
                 Arrive(lists.PanelRows, BigTypeListMotion.RowsInSlide);
                 ArriveCovers(lists.PanelGrid, HandheldTokens.CoverColumns);
                 lists.PanelTitle.Arrive();
+                break;
+            case ListKind.Keyboard:
+                OpenKeyboard(lists);
                 break;
         }
         RequestTick();
@@ -506,8 +520,8 @@ internal sealed partial class HandheldLauncherMotion
         {
             if (_view.FindControl<Control>(name) is not { } corner)
                 continue;
-            // Under Settings the page's corner says the version instead (the mock's); under a panel it is empty.
-            var gone = kind == ListKind.Panel || (kind is ListKind.Settings or ListKind.SettingsChoice or ListKind.SettingsConfirm && name != "BtPage");
+            // Under Settings the page's corner says the version instead (the mock's); under a panel or the keyboard it is empty.
+            var gone = kind is ListKind.Panel or ListKind.Keyboard || (kind is ListKind.Settings or ListKind.SettingsChoice or ListKind.SettingsConfirm && name != "BtPage");
             // Each keeps its own opacity at rest (the page is set at the corners' opacity).
             if (!_cornerOpacity.ContainsKey(name))
                 _cornerOpacity[name] = corner.Opacity;

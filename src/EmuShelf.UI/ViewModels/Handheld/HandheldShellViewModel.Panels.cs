@@ -121,6 +121,7 @@ public sealed partial class HandheldShellViewModel
                 RefreshPanelStage();
             _stageDefer = null;
         }
+        ForwardBump(panel.TakeBump(), action);
         return true;
     }
 
@@ -139,6 +140,9 @@ public sealed partial class HandheldShellViewModel
 
     private void RefreshPanelStage()
     {
+        // Big Type: the pad on one of Search's hits floods the ground to its console (M47 B9).
+        if (HandheldTokens.IsBigType && Panel is HandheldSearchPanel)
+            UpdateGround();
         // Only a held direction waits; anything else shows at once, since the card it replaces may hold pictures that are
         // about to go (a refreshed set's badges, a search's covers).
         if (_stageDefer is { } defer)
@@ -211,6 +215,7 @@ public sealed partial class HandheldShellViewModel
     {
         var panel = new HandheldSearchPanel(_library, _lastSearch, _clock) { Debounce = SearchDebounce };
         panel.ResultsRequested += (query, ids) => ShowSearchResults(panel, query, ids);
+        panel.PlayRequested += entry => _ = PlayFromSearchAsync(panel, entry.Id);
         OpenPanel(panel, closed =>
         {
             _lastSearch = ((HandheldSearchPanel)closed).Query.Trim();

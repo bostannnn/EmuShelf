@@ -42,6 +42,13 @@ public sealed partial class HandheldListsShown : ObservableObject
     [ObservableProperty]
     public partial IBrush? LauncherGroundBrush { get; set; }
 
+    /// <summary>The keyboard shown (M47 B9): the shell's, or one that closed while its keys drop.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsTyping))]
+    public partial HandheldTypingViewModel? Typing { get; set; }
+
+    public bool IsTyping => Typing is not null;
+
     /// <summary>Shows what the shell has open now.</summary>
     public void Follow(HandheldShellViewModel shell)
     {
@@ -53,6 +60,7 @@ public sealed partial class HandheldListsShown : ObservableObject
         IsMenuOpen = Settings is null && Panel is null && shell.IsMenuOpen;
         Sheet = Settings is null && Panel is null && !IsMenuOpen ? shell.Sheet : null;
         LauncherGroundBrush = shell.LauncherGroundBrush;
+        Typing = shell.Typing;
     }
 
     /// <summary>Which list is shown: its view model (the menu is the shell's list of rows); null for none.</summary>

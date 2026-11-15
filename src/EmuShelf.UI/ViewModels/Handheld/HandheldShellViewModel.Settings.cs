@@ -101,6 +101,7 @@ public sealed partial class HandheldShellViewModel
                 RefreshSettingsStage();
             _stageDefer = null;
         }
+        ForwardBump(settings.Keyboard?.TakeBump() == true, action);
         return true;
     }
 

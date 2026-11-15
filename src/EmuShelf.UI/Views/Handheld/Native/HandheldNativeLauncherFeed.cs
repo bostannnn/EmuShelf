@@ -262,14 +262,15 @@ internal sealed class HandheldNativeLauncherFeed
         var active = !_failed && _shell is { IsLauncherOverlayOpen: false };
         if (active == _active)
             return;
-        // Big Type (M47 B7): a list that closed keeps the screen while its rows leave; the native Launcher comes back after.
+        // Big Type (M47 B7): a list that closed keeps the screen while its rows leave; the native Launcher comes back after. M47 B9: so
+        // does the keyboard while its keys drop and a folder named on it is born, and move mode while a tile settles.
         if (active && HandheldTokens.IsBigType)
         {
             _motion.SyncLists();
-            if (_motion.ListExitRemaining > 0f)
+            if (_motion.ScreenHoldRemaining > 0f)
             {
-                _motion.ListExitEnded -= OnListExitEnded;
-                _motion.ListExitEnded += OnListExitEnded;
+                _motion.ScreenHoldEnded -= OnListExitEnded;
+                _motion.ScreenHoldEnded += OnListExitEnded;
                 return;
             }
         }
@@ -296,7 +297,7 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void OnListExitEnded()
     {
-        _motion.ListExitEnded -= OnListExitEnded;
+        _motion.ScreenHoldEnded -= OnListExitEnded;
         UpdateActive();
     }
 

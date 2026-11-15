@@ -30,6 +30,10 @@ public partial class HandheldBigTypeLists : UserControl
         PanelRows = Find<Control>("PanelRowsPart");
         PanelTitle = Find<HandheldBigTypeHeading>("PanelTitlePart");
         PanelGrid = Find<Control>("PanelGridPart");
+        KeyboardTitle = Find<HandheldBigTypeHeading>("KeyboardTitlePart");
+        KeyboardKeys = Find<Control>("KeyboardKeysPart");
+        KeyboardColours = Find<Control>("KeyboardColoursPart");
+        KeyboardHits = Find<Control>("KeyboardHitsPart");
         // View wiring: a list's window clips its rows above and below only, so a row sliding in from the side is never cut.
         foreach (var window in this.GetLogicalDescendantsOfClass("rows-window"))
             // Its height is its most rows (MaxHeight), not what it holds now: rows streaming in (cover search's) grow it after the clip is set.
@@ -56,6 +60,10 @@ public partial class HandheldBigTypeLists : UserControl
     internal Control PanelRows { get; }
     internal HandheldBigTypeHeading PanelTitle { get; }
     internal Control PanelGrid { get; }
+    internal HandheldBigTypeHeading KeyboardTitle { get; }
+    internal Control KeyboardKeys { get; }
+    internal Control KeyboardColours { get; }
+    internal Control KeyboardHits { get; }
 
     private T Find<T>(string name) where T : Control =>
         this.FindControl<T>(name) ?? throw new System.InvalidOperationException($"The lists have no {name}.");

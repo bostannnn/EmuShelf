@@ -448,7 +448,7 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!HandheldTokens.IsBigType)
             return;
-        var key = $"{stage.HasBigTypeName}|{stage.Name}|{stage.NameBoxWidth}|{stage.NameOpacity}";
+        var key = $"{stage.HasBigTypeName}|{stage.Name}|{stage.NameBoxWidth}|{stage.NameOpacity}|{stage.IsTyped}";
         if (key == _nameSent)
             return;
         var first = _nameSent is null;
@@ -463,7 +463,11 @@ internal sealed partial class HandheldNativeStageFeed
             log(FormattableString.Invariant(
                 $"name '{letters.Text}' lines {_bigTypeName.Fitted?.Lines} letters {letters.Letters.Count} size {letters.Size:0} atlas {letters.Atlas.Width}x{letters.Atlas.Height} in {System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds:0.0} ms (UI thread)"));
         }
-        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first));
+        // A word being typed (M47 B9) says how it changed, its anchor on the canvas.
+        var typed = stage.IsTyped && _bigTypeName.TypedChange is { } change && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } origin
+            ? change with { AnchorX = (float)(origin.X + change.AnchorX), AnchorY = (float)(origin.Y + change.AnchorY) }
+            : null;
+        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first) { Typed = typed });
     }
 
     // ---- Big Type's ink and veils (M47 B4) ----
@@ -566,11 +570,9 @@ internal sealed partial class HandheldNativeStageFeed
             SendCover(stage.Art, then: new StageCentreCommand(null, medium, null, pop, FadeIn: fade));
             return;
         }
-        // M47 B7: Settings and a panel are type (their focused row is the name), except while they type; a panel's cover (cover
-        // search's candidate) sits where a game's flat cover does.
-        var art = stage.HasBigTypeCover ? HandheldStageShots.Shot(_bigTypeCover, _canvas)
-            : (stage.IsSetting || stage.IsPanel) && stage.IsListTyping ? HandheldStageShots.Shot(_centre, _canvas)
-            : null;
+        // M47 B7: Settings and a panel are type (their focused row is the name; M47 B9: while they type, the word typed); a panel's
+        // cover (cover search's candidate) sits where a game's flat cover does.
+        var art = stage.HasBigTypeCover ? HandheldStageShots.Shot(_bigTypeCover, _canvas) : null;
         _host.Post(new StageCentreCommand(art, null, null, pop, FadeIn: fade));
     }
 

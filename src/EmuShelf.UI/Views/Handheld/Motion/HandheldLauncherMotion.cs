@@ -192,6 +192,7 @@ internal sealed partial class HandheldLauncherMotion
     {
         if (ReferenceEquals(shell, _shell))
             return;
+        AttachPickup(_shell, shell);
         if (_shell is { } old)
         {
             old.PropertyChanged -= OnShellChanged;
@@ -599,6 +600,8 @@ internal sealed partial class HandheldLauncherMotion
             moving |= StepUnder();
             moving |= StepGround();
             moving |= StepGridMove();
+            moving |= StepKeyboard();
+            moving |= StepPickup();
             // The neighbours' push before the ring: the tile the focus lands on may still be settling back from its own push, and the
             // ring must take its target from where the tile is this frame, or it rests a fraction of a pixel off (M47 B7).
             moving |= StepPushes();
@@ -607,6 +610,8 @@ internal sealed partial class HandheldLauncherMotion
         moving |= StepSelectorFade();
         if (!HandheldTokens.IsBigType)
             moving |= StepPushes();
+        if (HandheldTokens.IsBigType)
+            CheckScreenHold();
         if (moving)
             RequestTick();
         else
