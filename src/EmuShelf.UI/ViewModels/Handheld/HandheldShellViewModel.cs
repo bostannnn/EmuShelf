@@ -396,7 +396,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     public bool DispatchGamepadAction(GamepadAction action)
     {
         // The first press after the idle drift only wakes the Stage (decision 14); under Big Type a direction wakes it and moves too
-        // (M47 B11, awaiting the owner: DirectionWakesAndMoves).
+        // (M47 B11, the owner's decision: DirectionWakesAndMoves).
         if (WakeOnInput() && !DirectionWakesAndMoves(action))
         {
             PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
@@ -501,9 +501,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     }
 
     /// <summary>
-    /// M47 B11 (the session's choice, awaiting the owner; DECISIONS.md "M47 B11"): under Big Type a direction press that ends the idle
-    /// drift also moves the focus, so on the Thor it never reads as a dropped press; any other button still only ends the drift, so A can
-    /// never start a game from an idle screen. Classic keeps decision 14 whole. To undo, return false here.
+    /// M47 B11 (the owner's decision, 15 November 2026, "A direction also moves"; DECISIONS.md "M47 B11"): under Big Type a direction
+    /// press that ends the idle drift also moves the focus, so on the Thor it never reads as a dropped press; A, B, X and Y still only end
+    /// the drift, so A can never start a game from an idle screen. Classic keeps decision 14 whole. To undo, return false here.
     /// </summary>
     private static bool DirectionWakesAndMoves(GamepadAction action) =>
         HandheldTokens.IsBigType && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft

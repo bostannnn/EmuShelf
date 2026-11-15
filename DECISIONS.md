@@ -15185,10 +15185,9 @@ design frames are byte-identical to the render made before any change.
   that frame. Same press: 2 of 223 over 25 ms, p95 17.7 ms; the Stage 1–2 of ~190, p95 17.6–17.9 (was 6 of 97, p95 26.3). Classic keeps
   its scheduling. The probe gained a "ring" run (`debug.emushelf.probe ring`) that logs the native ring and its target every frame.
 - **Smaller polish.** (1) The wall bump is the mock's: 18 px toward the wall and back in 220 ms, eased out (tokens.js `Bump`, its 9 px
-  doubled), both Launchers. (2) **Awaiting the owner — the idle drift:** under Big Type a direction press that ends the 15 s drift also moves
-  the focus (on the Thor the first press read as dropped); any other button still only ends it, so A never starts a game from an idle screen.
-  One named condition, `HandheldShellViewModel.DirectionWakesAndMoves`; return false there to undo. This is the session's choice, not the
-  owner's or the mock's. (3) Sounds follow the mock's `sfx` calls, Sounds switch respected: a letter typed sounds move and Delete back; a wall
+  doubled), both Launchers. (2) **The idle drift, the owner's decision (15 November 2026, "A direction also moves"):** under Big Type a
+  direction press that ends the 15 s drift also moves the focus (on the Thor the first press read as dropped); A, B, X and Y still only end
+  it, so A never starts a game from an idle screen. One named condition, `HandheldShellViewModel.DirectionWakesAndMoves`. (3) Sounds follow the mock's `sfx` calls, Sounds switch respected: a letter typed sounds move and Delete back; a wall
   bumps; a message on the line sounds open and an error bump (work still running is silent, and the press it came with stays quiet); a
   launch plays the mock's rising run and A on a game no longer sounds open first. The two new sounds (Bump: 180 Hz square, 50 ms; Launch:
   C5 E5 G5 C6 triangles, 130 ms, 70 ms apart) are synthesised as today's five are, from the mock's own parameters at the same level scale.
@@ -15196,6 +15195,8 @@ design frames are byte-identical to the render made before any change.
   when it says something its label does not). (5) No bare grey Stage after a start: under Big Type a missing backdrop is not sent as the
   plain grey picture, so the Stage shows its ground with white type until the first focus's backdrop comes (on the Thor one or two frames
   of the Launcher's start-up ground remain before Recent's backdrop wipes in).
+- **Closed by the owner (15 November 2026):** X while the keyboard is up stays Done and Y Space, as B9 built it ("X is Done, Y is
+  Space"); the question B9 left open is closed. B11 did not touch the keyboard's hints or X.
 - **Left alone:** the backdrops themselves, the 3D medium's design, the companion's All apps / badges / photos, the idle fan-art page, the
   empty library, making Big Type the default. **Found and not fixed:** the native name's letters drop the "i" of an "fi" ligature while
   they move ("Nightf re"; B6's per-letter layout hit-tests inside the ligature); the Activity panel's heading shows its old period behind

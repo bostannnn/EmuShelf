@@ -3244,7 +3244,7 @@ falls back to the emulator and says so.
       own corner, veils kept at their pixel size, three backdrops with a stronger left veil there); the ring glides from where it is when
       a move interrupts one (`BigTypeRingGlide`, tokens.js `RingGlide`); quick taps bring the name in a short form and texts swap
       (`LetterRun`); the native screens pace their frames to the vsync; the bump is the mock's (`Bump`); a direction ends the idle drift and
-      moves (awaiting the owner); the sounds follow the mock's (two new ones synthesised from its parameters); Settings rows show no "A …"
+      moves (the owner's decision, 15 November 2026); the sounds follow the mock's (two new ones synthesised from its parameters); Settings rows show no "A …"
       prompt; no bare grey Stage at a start. **Verified on macOS:** Classic byte-identical on all 158 design frames; two Big Type renders of
       the final code byte-identical; 15 of 158 Big Type frames changed from the starting render, each meant: the four swapped Stage bottoms
       (laid out narrow), the long error message's top (it grows down over the second line) and the ten Settings bottoms (no "A SAVE" /
