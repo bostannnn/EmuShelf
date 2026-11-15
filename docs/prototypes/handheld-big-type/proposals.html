@@ -102,6 +102,7 @@ kbd{font:600 .8rem/1 var(--text);border:1.5px solid var(--line);border-radius:5p
 .bd{border-radius:8px;overflow:hidden}
 .pic{position:relative;aspect-ratio:16/9;isolation:isolate;background:#22212e;display:block}
 .pic canvas{position:absolute;inset:0;width:100%;height:100%}
+.pic canvas.pixel{image-rendering:pixelated}
 .pic .tint{position:absolute;inset:0;mix-blend-mode:color}
 .pic .mono{position:absolute;left:6%;bottom:6%;font:900 1.5rem/.9 var(--disp);letter-spacing:-.02em;color:#fff;text-shadow:0 1px 10px rgba(10,10,30,.35)}
 .gr{height:16px}
@@ -192,14 +193,14 @@ a{color:var(--accent)}
   </section>
 
   <section class="prop" aria-labelledby="p3">
-    <h2 id="p3">Five ideas for Nintendo 3DS</h2>
-    <p class="lede">You turned down the tiles and my first "soft layers". These five have more form and depth. All are in the console's colour only.</p>
+    <h2 id="p3">Ten ideas for Nintendo 3DS</h2>
+    <p class="lede">You said the last five were less interesting than what the other consoles have. These ten are drawn the way those are: real scenes with depth and light, in the console's colour.</p>
     <div class="newgrid" id="new3ds"></div>
   </section>
 
   <section class="prop" aria-labelledby="p4">
-    <h2 id="p4">Five ideas for the default background</h2>
-    <p class="lede">For Settings, Activity, your own folders and anything else without a console. You turned down the first two. Each of these takes the colour of whatever is focused; try the three colours.</p>
+    <h2 id="p4">Ten ideas for the default background</h2>
+    <p class="lede">For Settings, Activity, your own folders and anything else without a console. You liked the rising motes but found them too passive and too small, and asked why stars on a gaming device. These ten are bigger, livelier and about play. Each takes the colour of whatever is focused; try the three colours.</p>
     <div class="bar"><div class="seg" role="group" aria-label="Colour">
       <button class="btn" type="button" id="bg-settings" data-bg="#4A43B8" aria-pressed="true">Settings</button>
       <button class="btn" type="button" id="bg-green" data-bg="#2A8766" aria-pressed="false">A green folder</button>
@@ -332,80 +333,27 @@ async function drawAll(){if(adone)return;const B=window.Backdrops,grid=$('agrid'
    fig.querySelector('.pic').appendChild(x.s.cv);sec.querySelector('.arow').appendChild(fig);}
   grid.appendChild(sec);}}
 
-/* ---------- new animations, drawn here for the first time ---------- */
-const mixRgb=(a,b,t)=>a.map((v,i)=>Math.round(v+(b[i]-v)*t)),css=(c,a=1)=>`rgba(${c[0]},${c[1]},${c[2]},${a})`;
-const W=640,H=360,WHITE=[255,255,255],INK=[10,8,30],WINE=[90,18,48];
-const rnd=(i,k=1)=>{const x=Math.sin(i*127.1+k*311.7)*43758.5453;return x-Math.floor(x);};
-function bgGrad(ctx,a,b){const g=ctx.createLinearGradient(0,0,0,H);g.addColorStop(0,css(a));g.addColorStop(1,css(b));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);}
-function rr(ctx,x,y,w,h,r){r=Math.max(0,Math.min(r,w/2,h/2));ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();}
-const proj=(x,y,z,cam)=>[W/2+(x-cam)*380/z,H/2+y*380/z];
-
-// Nintendo 3DS
-function dDunes(ctx,t,c){bgGrad(ctx,mixRgb(c,WHITE,.88),mixRgb(c,WHITE,.66));const deep=mixRgb(c,INK,.45);
- for(let i=0;i<6;i++){const z=i/5,col=z<.5?mixRgb(mixRgb(c,WHITE,.6),c,z*2):mixRgb(c,deep,(z-.5)*2),base=H*(.38+z*.5),amp=12+z*26,sh=Math.sin(t*.22)*34*z+t*(4+z*16);
-  ctx.beginPath();ctx.moveTo(-4,H+4);for(let x=-4;x<=W+4;x+=8){const u=(x+sh)/W;ctx.lineTo(x,base+amp*(Math.sin(u*(3.1+i*.7)+i*1.9)*.65+Math.sin(u*(7.3-i*.5)+i)*.35));}ctx.lineTo(W+4,H+4);ctx.closePath();
-  const g=ctx.createLinearGradient(0,base-amp,0,H);g.addColorStop(0,css(mixRgb(col,WHITE,.2)));g.addColorStop(.5,css(col));ctx.fillStyle=g;ctx.fill();ctx.strokeStyle=css(WHITE,.16+z*.2);ctx.lineWidth=1.2;ctx.stroke();}}
-function dPanes(ctx,t,c){bgGrad(ctx,mixRgb(c,WHITE,.22),mixRgb(c,INK,.38));const cam=Math.sin(t*.3)*60,ps=[];
- for(let i=0;i<12;i++)ps.push({x:(rnd(i,1)-.5)*920,y:(rnd(i,2)-.5)*330,z:320+rnd(i,3)*700,w:70+rnd(i,4)*90,h:90+rnd(i,5)*110,a:t*(.12+rnd(i,6)*.2)+i});
- ps.sort((p,q)=>q.z-p.z);
- for(const p of ps){const cs=Math.cos(p.a),sn=Math.sin(p.a),bob=Math.sin(t*.4+p.z)*8,pts=[[-1,-1],[1,-1],[1,1],[-1,1]].map(([u,v])=>proj(p.x+u*p.w/2*cs,p.y+v*p.h/2+bob,p.z+u*p.w/2*sn,cam));
-  const fog=Math.min(1,(p.z-320)/700),face=Math.abs(cs);ctx.beginPath();pts.forEach((q,i)=>i?ctx.lineTo(q[0],q[1]):ctx.moveTo(q[0],q[1]));ctx.closePath();
-  const g=ctx.createLinearGradient(pts[0][0],pts[0][1],pts[2][0],pts[2][1]);g.addColorStop(0,css(WHITE,(.3+face*.32)*(1-fog*.6)));g.addColorStop(1,css(mixRgb(c,WHITE,.4),(.1+face*.12)*(1-fog*.5)));
-  ctx.fillStyle=g;ctx.fill();ctx.strokeStyle=css(WHITE,.55*(1-fog*.6));ctx.lineWidth=1;ctx.stroke();}}
-function dBokeh(ctx,t,c){const g=ctx.createRadialGradient(W*.5,H*.62,20,W*.5,H*.62,W*.78);g.addColorStop(0,css(mixRgb(c,WHITE,.1)));g.addColorStop(1,css(mixRgb(c,INK,.64)));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- ctx.globalCompositeOperation='screen';
- for(let i=0;i<30;i++){const z=rnd(i,1),r=6+Math.abs(z-.45)*52,span=W+2*r,x=(((rnd(i,2)*W+t*(6+z*14)*(i%2?1:-1))%span)+span)%span-r,y=H*(.1+rnd(i,3)*.8)+Math.sin(t*.3+i)*12,al=(.5-Math.abs(z-.45)*.6)*(.7+.3*Math.sin(t*.8+i*2.3));
-  const col=mixRgb(c,WHITE,.35+rnd(i,4)*.5),rg=ctx.createRadialGradient(x,y,0,x,y,r);rg.addColorStop(0,css(col,al*.85));rg.addColorStop(.84,css(col,al*.7));rg.addColorStop(1,css(col,0));ctx.fillStyle=rg;ctx.beginPath();ctx.arc(x,y,r,0,7);ctx.fill();}
- ctx.globalCompositeOperation='source-over';}
-function dBars(ctx,t,c){const top=mixRgb(c,WHITE,.84),bot=mixRgb(c,WHITE,.5);bgGrad(ctx,top,bot);const hz=H*.34,cam=Math.sin(t*.25)*40;
- for(let r=14;r>=1;r--){const z=140+r*70,fog=r/14,s=300/z;for(let k=-10;k<=10;k++){const d=Math.hypot(k*.9,r),h=30+22*Math.sin(d*.8-t*1.1)+16*Math.sin(k*.6+t*.5),X=W/2+(k*64-cam)*s,Y=hz+150*s,w=40*s,hh=Math.max(6,h)*2.2*s;
-   ctx.fillStyle=css(mixRgb(mixRgb(c,WINE,.15),top,fog*.86));rr(ctx,X-w/2,Y-hh,w,hh,w*.3);ctx.fill();ctx.fillStyle=css(WHITE,.4*(1-fog));rr(ctx,X-w/2,Y-hh,w,Math.min(hh,w*.5),w*.3);ctx.fill();}}}
-function dSteps(ctx,t,c){bgGrad(ctx,mixRgb(c,WHITE,.82),mixRgb(c,WHITE,.46));const S=[];
- for(let i=0;i<26;i++){const a=i*.5+t*.3;S.push({x:Math.cos(a)*170+90,y:((i*24+t*10)%624)-312,z:560+Math.sin(a)*170,a});}
- S.sort((p,q)=>q.z-p.z);
- for(const p of S){const s=420/p.z,X=W/2+p.x*s,Y=H/2+p.y*s,w=120*s,h=16*s,lit=.5+.5*Math.sin(p.a),fog=Math.max(0,(p.z-390)/340);
-  ctx.fillStyle=css(WINE,.1*(1-fog));rr(ctx,X-w/2+4*s,Y+10*s,w,h,h/2);ctx.fill();
-  ctx.fillStyle=css(mixRgb(mixRgb(c,WINE,.25),mixRgb(c,WHITE,.55),lit));rr(ctx,X-w/2,Y-h/2,w,h,h/2);ctx.fill();
-  ctx.fillStyle=css(WHITE,.22+.36*lit);rr(ctx,X-w/2+h*.3,Y-h/2+h*.14,w-h*.6,h*.28,h*.14);ctx.fill();}}
-
-// the default background
-function gHorizon(ctx,t,c){const hz=H*.5;bgGrad(ctx,mixRgb(c,INK,.3),mixRgb(c,INK,.05));const g=ctx.createLinearGradient(0,hz-70,0,hz+40);g.addColorStop(0,css(mixRgb(c,WHITE,.3),0));g.addColorStop(.62,css(mixRgb(c,WHITE,.45),.5));g.addColorStop(1,css(mixRgb(c,WHITE,.3),0));ctx.fillStyle=g;ctx.fillRect(0,hz-70,W,110);
- ctx.lineWidth=1;for(let i=0;i<16;i++){const z=((i+t*.25)%16)/16,y=hz+(H-hz)*Math.pow(z,2.2);ctx.strokeStyle=css(WHITE,.04+.2*z);ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
- ctx.strokeStyle=css(WHITE,.09);for(let k=-12;k<=12;k++){ctx.beginPath();ctx.moveTo(W/2+k*14,hz);ctx.lineTo(W/2+k*190,H);ctx.stroke();}}
-function gRings(ctx,t,c){const g=ctx.createRadialGradient(W*.7,H*.55,10,W*.7,H*.55,W*.8);g.addColorStop(0,css(mixRgb(c,WHITE,.22)));g.addColorStop(.5,css(c));g.addColorStop(1,css(mixRgb(c,INK,.3)));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- ctx.save();ctx.translate(W*.7,H*.55);ctx.rotate(-.32);
- for(let i=0;i<6;i++){const r=46+i*52;ctx.strokeStyle=css(WHITE,.26-i*.03);ctx.lineWidth=1;ctx.beginPath();ctx.ellipse(0,0,r,r*.36,0,0,7);ctx.stroke();
-  const a=t*(.5/(1+i*.6))+i*1.7;ctx.fillStyle=css(WHITE,.85);ctx.beginPath();ctx.arc(Math.cos(a)*r,Math.sin(a)*r*.36,2.6,0,7);ctx.fill();}
- ctx.restore();}
-function gMotes(ctx,t,c){bgGrad(ctx,mixRgb(c,INK,.1),mixRgb(c,INK,.35));const g=ctx.createRadialGradient(W*.2,-40,10,W*.2,-40,H*1.5);g.addColorStop(0,css(WHITE,.32));g.addColorStop(1,css(WHITE,0));ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
- for(let i=0;i<70;i++){const z=rnd(i,1),x=(rnd(i,2)*W+Math.sin(t*.2+i)*18+t*3*z)%W,y=H-((rnd(i,3)*H+t*(3+z*9))%(H+20)),al=(.12+z*.5)*(.6+.4*Math.sin(t*.9+i*3.1));ctx.fillStyle=css(WHITE,al);ctx.beginPath();ctx.arc(x,y,.6+z*2.4,0,7);ctx.fill();}}
-function gStars(ctx,t,c){bgGrad(ctx,mixRgb(c,INK,.22),c);const P=[];for(let i=0;i<34;i++)P.push([(rnd(i,1)*W+Math.sin(t*.07+i*1.3)*40+W)%W,(rnd(i,2)*H+Math.cos(t*.06+i*2.1)*30+H)%H]);
- ctx.lineWidth=1;for(let i=0;i<P.length;i++)for(let j=i+1;j<P.length;j++){const d=Math.hypot(P[i][0]-P[j][0],P[i][1]-P[j][1]);if(d<110){ctx.strokeStyle=css(WHITE,.22*(1-d/110));ctx.beginPath();ctx.moveTo(P[i][0],P[i][1]);ctx.lineTo(P[j][0],P[j][1]);ctx.stroke();}}
- for(const q of P){ctx.fillStyle=css(WHITE,.7);ctx.beginPath();ctx.arc(q[0],q[1],1.8,0,7);ctx.fill();}}
-function gRipples(ctx,t,c){bgGrad(ctx,mixRgb(c,INK,.18),mixRgb(c,WHITE,.08));ctx.lineWidth=1.2;for(const [cx,cy,ph] of [[W*.3,H*.72,0],[W*.74,H*.86,2.4]])for(let i=0;i<7;i++){const r=(t*22+ph*40+i*78)%546;ctx.strokeStyle=css(WHITE,.3*(1-r/546));ctx.beginPath();ctx.ellipse(cx,cy,r,r*.3,0,0,7);ctx.stroke();}}
-
-const IDEAS={
- new3ds:[['Paper dunes',dDunes,'Six ridges at six depths drift past each other, the near ones darker and faster. The 3D screen’s layered depth, as a landscape.',1],
-  ['Floating panes',dPanes,'Sheets of glass hang in space and turn slowly while the view sways from side to side, so near and far slide apart.',0],
-  ['Passing lights',dBokeh,'Soft discs of light drift past in and out of focus, like StreetPass lights seen through a lens.',0],
-  ['Depth bars',dBars,'Rows of rounded bars run to the horizon and a slow wave passes through them.',1],
-  ['Spiral steps',dSteps,'Rounded steps wind upward in a slow spiral, lit from one side.',1]],
- newbg:[['Far horizon',gHorizon,'A faint floor of lines running to a glowing horizon, moving slowly toward you.',0],
-  ['Orbits',gRings,'Thin tilted rings with a single point of light travelling round each, like a quiet orrery.',0],
-  ['Motes',gMotes,'A shaft of soft light with fine dust rising through it.',0],
-  ['Constellation',gStars,'Points drift slowly and thin lines join the ones that come near each other.',0],
-  ['Ripples',gRipples,'Rings spread across a flat surface from two points and fade.',0]]};
+/* ---------- ideas: each set is its own file beside this page (ideas-3ds.js, ideas-bg.js) ----------
+   An idea is {name, line, draw(ctx, t, c), size?: [w, h], pixel?: true, dark?: true}. draw paints one whole frame for time t (seconds) in the
+   colour c ([r, g, b]); dark asks for dark type over a light picture; pixel asks for whole-pixel scaling. */
 const NEW={bg:[74,67,184],recent:null,items:[]};
-for(const k in IDEAS){const box=$(k);IDEAS[k].forEach(([name,fn,line,dark],i)=>{const f=document.createElement('figure');f.className='nw';const isBg=k==='newbg';
-  f.innerHTML=`<div class="frame"><div class="pic"><canvas width="${W}" height="${H}" id="cv-${k}-${i}"></canvas><span class="mono"${dark?' style="color:#5A1230;text-shadow:none"':''}${isBg?' data-bgname':''}>${isBg?'Settings':'3DS'}</span></div><div class="gr"${isBg?' data-bgstrip':''} style="background:${isBg?'#4A43B8':'#C0446E'}"></div></div><figcaption><b>${i+1}. ${name}</b><span>${line}</span></figcaption>`;
-  box.appendChild(f);NEW.items.push({ctx:f.querySelector('canvas').getContext('2d'),fn,isBg,el:f,on:true});});}
-if('IntersectionObserver' in window){const io=new IntersectionObserver(es=>es.forEach(e=>{const it=NEW.items.find(x=>x.el===e.target);if(it)it.on=e.isIntersecting;}),{rootMargin:'80px'});NEW.items.forEach(it=>io.observe(it.el));}
-function newFrame(now){requestAnimationFrame(newFrame);if(document.hidden)return;if(newFrame.last&&now-newFrame.last<33)return;newFrame.last=now;const t=RM?12:now/1000;
- for(const it of NEW.items){try{it.fn(it.ctx,t,it.isBg?NEW.bg:[192,68,110]);}catch(e){}}newFrame.once=true;
- if(NEW.recent&&!RM){NEW.recent.time+=1/30;try{window.Backdrops.render(NEW.recent,1/30);}catch(e){}}}
+function mountIdeas(boxId,list,isBg){const box=$(boxId);if(!box)return;box.innerHTML='';
+ if(!(list||[]).length){box.innerHTML='<p class="mute">These did not load here.</p>';return;}
+ list.forEach((idea,i)=>{const [w,h]=idea.size||[640,360],f=document.createElement('figure');f.className='nw';
+  f.innerHTML=`<div class="frame"><div class="pic"><canvas width="${w}" height="${h}"${idea.pixel?' class="pixel"':''}></canvas><span class="mono"${idea.dark?' style="color:#3A0C20;text-shadow:none"':''}${isBg?' data-bgname':''}>${isBg?'Settings':'3DS'}</span></div><div class="gr"${isBg?' data-bgstrip':''} style="background:${isBg?'#4A43B8':'#C0446E'}"></div></div><figcaption><b>${i+1}. ${esc(idea.name)}</b><span>${esc(idea.line)}</span></figcaption>`;
+  box.appendChild(f);NEW.items.push({el:f,ctx:f.querySelector('canvas').getContext('2d'),idea,isBg,drawn:false});});}
+function loadIdeas(src,cb){const s=document.createElement('script');s.src=src;s.onload=cb;s.onerror=cb;document.head.appendChild(s);}
+loadIdeas('ideas-3ds.js',()=>mountIdeas('new3ds',window.BT_IDEAS_3DS,false));
+loadIdeas('ideas-bg.js',()=>mountIdeas('newbg',window.BT_IDEAS_BG,true));
+// only what is on screen moves; everything is drawn once so nothing is ever blank
+function newFrame(now){requestAnimationFrame(newFrame);if(document.hidden)return;if(newFrame.last&&now-newFrame.last<40)return;newFrame.last=now;const t=RM?12:now/1000,vh=innerHeight;
+ for(const it of NEW.items){const r=it.el.getBoundingClientRect(),on=r.bottom>-80&&r.top<vh+80;if(!on&&it.drawn)continue;if(RM&&it.drawn)continue;
+  try{it.idea.draw(it.ctx,t,it.isBg?NEW.bg:[192,68,110]);it.drawn=true;}catch(e){it.drawn=true;}}
+ if(NEW.recent&&!RM){NEW.recent.time+=1/25;try{window.Backdrops.render(NEW.recent,1/30);}catch(e){}}}
 requestAnimationFrame(newFrame);
 document.querySelectorAll('[data-bg]').forEach(b=>b.onclick=()=>{NEW.bg=rgb(b.dataset.bg);document.querySelectorAll('[data-bg]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));
- document.querySelectorAll('[data-bgstrip]').forEach(e=>e.style.background=b.dataset.bg);document.querySelectorAll('[data-bgname]').forEach(e=>e.textContent=b.textContent.replace(/^A /,'').replace(/^./,m=>m.toUpperCase()));});
+ document.querySelectorAll('[data-bgstrip]').forEach(e=>e.style.background=b.dataset.bg);document.querySelectorAll('[data-bgname]').forEach(e=>e.textContent=b.textContent.replace(/^A /,'').replace(/^./,m=>m.toUpperCase()));
+ NEW.items.forEach(it=>{if(it.isBg)it.drawn=false;});});
 function recentBackdrop(){const B=window.Backdrops,v=B&&B.VARIANTS.find(x=>x.id==='arc-checker');if(!v)return;const cv=document.createElement('canvas'),L=B.makeLayer(cv);
  try{B.prepare(L,v,6);B.render(L,1/30);}catch(e){return;}if(cv.classList.contains('pixel'))cv.style.imageRendering='pixelated';$('recentpic').prepend(cv);NEW.recent=L;}
 
