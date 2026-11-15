@@ -34,6 +34,9 @@ internal static class FrameProbeProperty
     /// </summary>
     public static bool Rest { get; private set; }
 
+    /// <summary>"ring": the probe on, and the native Launcher logs where its Big Type ring and its target are every frame (M47 B11).</summary>
+    public static bool Ring { get; private set; }
+
     private static bool Read()
     {
         try
@@ -44,7 +47,8 @@ internal static class FrameProbeProperty
             NoBatch = value == "nobatch";
             Alternate = value == "ab";
             Rest = value == "rest";
-            var on = value is "1" or "on" or "true" or "nobatch" or "ab" or "rest";
+            Ring = value == "ring";
+            var on = value is "1" or "on" or "true" or "nobatch" or "ab" or "rest" or "ring";
             if (on)
             {
                 global::Android.Util.Log.Info("EmuShelfBigType", $"{Property}: native frame times are logged for this run");

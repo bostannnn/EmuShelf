@@ -99,7 +99,7 @@ internal sealed partial class HandheldNativeStageFeed
             [
                 ("bt-label", Find("BtLabelShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Label}", StageInkZone.Left),
                 ("bt-line", Find("BtLineShot"), s => $"{s.Stage.HasBigTypeName}|{s.HasLineMessage}|{s.Stage.Line}", StageInkZone.Left),
-                ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}", StageInkZone.Left),
+                ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}|{(s.HasLineMessage ? s.Stage.Line : null)}", StageInkZone.Left),
                 ("bt-status", Find("BtStatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.HasBattery}", StageInkZone.TopRight),
                 ("bt-hints", Find("BtHintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}")), StageInkZone.BottomRight),
                 message,
@@ -157,9 +157,14 @@ internal sealed partial class HandheldNativeStageFeed
     private Control Find(string name) =>
         _view.FindControl<Control>(name) ?? throw new InvalidOperationException($"The Stage has no {name}.");
 
-    // 1920 on the 16:9 screen, 1240 on the narrow one (M45 H5).
-    // Big Type keeps the 16:9 canvas on either screen (M47 B4): the narrow one shows it whole, letterboxed.
-    private float CanvasWidth => (float)(_isNarrow() && HandheldTokens.IsClassic ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth);
+    // 1920 on the 16:9 screen, 1240 on the narrow one (M45 H5), in either look: Big Type lays its Stage out again for the narrow
+    // screen (M47 B11; B4 had shown the 16:9 one whole, letterboxed).
+    private float CanvasWidth => (float)(_isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth);
+
+    // The Big Type Stage on the narrow screen: the name's box and the case have narrow places of their own.
+    private bool IsBigTypeNarrow => HandheldTokens.IsBigType && _isNarrow();
+
+    private double NameBoxWidth(HandheldStageViewModel stage) => IsBigTypeNarrow ? stage.NarrowNameBoxWidth : stage.NameBoxWidth;
 
     private readonly Func<bool> _isNarrow;
 
@@ -413,7 +418,7 @@ internal sealed partial class HandheldNativeStageFeed
                 _chromeSent[key] = now;
                 // The clock and the line's counts roll (M47 B5): their pictures carry where each character sits.
                 var text = key is "bt-status" or "bt-line" ? HandheldTextCells.Of(piece, _canvas) : null;
-                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone, Text: text));
+                _host.Post(new StageChromeCommand(key, HandheldStageShots.Shot(piece, _canvas), zone, Text: text) { Quick = shell.QuickChange });
             }
         }
         if (resent || _catchUpPending)
@@ -450,7 +455,7 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!HandheldTokens.IsBigType)
             return;
-        var key = $"{stage.HasBigTypeName}|{stage.Name}|{stage.NameBoxWidth}|{stage.NameOpacity}|{stage.IsTyped}";
+        var key = $"{stage.HasBigTypeName}|{stage.Name}|{NameBoxWidth(stage)}|{stage.NameOpacity}|{stage.IsTyped}|{CanvasWidth}";
         if (key == _nameSent)
             return;
         var first = _nameSent is null;
@@ -469,7 +474,7 @@ internal sealed partial class HandheldNativeStageFeed
         var typed = stage.IsTyped && _bigTypeName.TypedChange is { } change && HandheldStageShots.ToCanvas(_bigTypeName, default(Point), _canvas) is { } origin
             ? change with { AnchorX = (float)(origin.X + change.AnchorX), AnchorY = (float)(origin.Y + change.AnchorY) }
             : null;
-        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first) { Typed = typed });
+        _host.Post(new StageNameCommand(letters, HandheldStageEntrance.Of(shell), Animate: animate && !first) { Typed = typed, Quick = shell.QuickChange });
     }
 
     // ---- Big Type's ink and veils (M47 B4) ----
@@ -491,7 +496,7 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!HandheldTokens.IsBigType)
             return;
-        var flatEnd = BigTypeVeil.LeftFlatEnd((float)HandheldTokens.StageNameLeft, (float)stage.NameBoxWidth);
+        var flatEnd = BigTypeVeil.LeftFlatEnd((float)HandheldTokens.StageNameLeft, (float)NameBoxWidth(stage));
         var key = FormattableString.Invariant($"{flatEnd}|{CanvasWidth}");
         if (key == _veilsSent)
             return;
@@ -640,6 +645,10 @@ internal sealed partial class HandheldNativeStageFeed
     private void SendBackdrop()
     {
         if (!_active)
+            return;
+        // Big Type (M47 B11): no backdrop yet (a start, before the first focus has its own) is not the plain grey: the native Stage
+        // keeps the one it has, or at a start shows its ground, the Launcher's colour, with white type, until the first one comes.
+        if (HandheldTokens.IsBigType && _stage?.Backdrop is null)
             return;
         _backdropSent = _stage?.Backdrop;
         _backdropSentOnce = true;

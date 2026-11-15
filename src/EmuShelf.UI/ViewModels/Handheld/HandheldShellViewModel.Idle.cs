@@ -208,9 +208,29 @@ public sealed partial class HandheldShellViewModel
         var woke = IsDrifting;
         StopDrift(refreshStage: true);
         ArmIdle();
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        InputRun = _lastInputAt != 0 && EmuShelf.Rendering.Stage.BigType.BigTypeMotion.InRun(
+            (float)System.Diagnostics.Stopwatch.GetElapsedTime(_lastInputAt, now).TotalMilliseconds);
+        _lastInputAt = now;
+        _stageSettledSincePress = false;
         InputArrived?.Invoke();
         return woke;
     }
+
+    private long _lastInputAt;
+    private bool _stageSettledSincePress;
+
+    /// <summary>
+    /// The last press came within a run of the one before (a held direction, quick taps; M47 B11, tokens.js <c>LetterRun.withinMs</c>).
+    /// </summary>
+    public bool InputRun { get; private set; }
+
+    /// <summary>
+    /// What changes now was brought by a press within a run of the one before (M47 B11): under Big Type the Stage's name follows in its
+    /// short form and texts swap rather than roll. Never once the Stage has settled after a held direction (today's once-per-move rule
+    /// keeps the Stage waiting while a direction is held): the name the focus rests on lands as the mock's.
+    /// </summary>
+    public bool QuickChange => InputRun && !_stageSettledSincePress;
 
     /// <summary>
     /// A press or a touch arrived (M47 B5): the Big Type Launcher's resting motion (the ring's breath, the bob) wakes for another

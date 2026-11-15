@@ -215,6 +215,10 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         // that frame instead of adding one; the sway and a backdrop together then post 30 frames a second, not 50.
         if (command is StageMediumPoseCommand { Sway: true } && _frameComing)
             return;
+        // Big Type paces its frames to the vsync (M47 B11): while one is coming, what is posted waits for it rather than drawing an
+        // extra frame in between.
+        if (Paced && (_pacedFrameComing || _inFrame))
+            return;
         _view?.RequestRender();
     }
 
@@ -288,6 +292,46 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
 
     private float Now => (float)_clock.Elapsed.TotalMilliseconds;
 
+    // ---- Pacing (M47 B11) ----
+
+    // Under the Big Type look an animating screen draws its next frame on the next vsync (VsyncPacer), its motion timed at it.
+    private static bool Paced => EmuShelf.App.ViewModels.HandheldTokens.IsBigType;
+
+    private volatile bool _pacedFrameComing;
+
+    // The GL thread is drawing: what is posted now is picked up by the next frame, which this one asks for (OnDrawFrame's end).
+    private volatile bool _inFrame;
+
+    // The vsync the next frame was asked for, on this surface's clock (NaN: draw at the time it starts).
+    private float _pacedAt = float.NaN;
+    private float _lastDrawn = float.NegativeInfinity;
+    private bool _framePaced;
+
+    private void RequestPacedFrame()
+    {
+        _pacedFrameComing = true;
+        VsyncPacer.Instance.OnNextVsync(vsync =>
+        {
+            // The vsync's time on this surface's clock: now, less how long ago the vsync was.
+            var ago = (Java.Lang.JavaSystem.NanoTime() - vsync) / 1_000_000f;
+            _pacedAt = Now - Math.Max(0f, ago);
+            _view?.RequestRender();
+        });
+    }
+
+    // The time a frame's motion is drawn at: the vsync it was asked for (never earlier than the last frame's), or when it starts.
+    private float FrameTime()
+    {
+        var now = Now;
+        var paced = _pacedAt;
+        _pacedAt = float.NaN;
+        _framePaced = !float.IsNaN(paced) && now - paced is >= 0f and < 50f;
+        var at = _framePaced ? paced : now;
+        at = Math.Max(at, _lastDrawn);
+        _lastDrawn = at;
+        return at;
+    }
+
     public void OnSurfaceCreated(IGL10? gl, EglConfig? config)
     {
         // A lost context (a GPU reset, a recreated activity, a view in a new window) rebuilds the scene from the retained
@@ -356,7 +400,11 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
     {
         if (_compositor is not { } compositor)
             return;
-        var now = Now;
+        _pacedFrameComing = false;
+        _inFrame = true;
+        // The probe times frames by when they start; the motion is drawn at the paced vsync's time under Big Type.
+        var startedAt = Now;
+        var now = Paced ? FrameTime() : startedAt;
         var probing = FrameProbeProperty.IsOn;
         var started = probing ? Stopwatch.GetTimestamp() : 0L;
         var threadStarted = probing ? ThreadCpuMilliseconds() : 0d;
@@ -365,6 +413,8 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             _gpuTimer?.Begin();
             if (compositor is IProbedScene probed)
                 probed.ProbeSections = probing;
+            if (compositor is LauncherCompositor ringed)
+                ringed.ProbeRing = probing && FrameProbeProperty.Ring;
             // The A/B run: batching on for two frames, off for two (the backdrops step every other frame, so both see the same work).
             var suffix = string.Empty;
             if (probing && FrameProbeProperty.Alternate && compositor is StageCompositor alternating)
@@ -392,7 +442,9 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             {
                 var cpu = ThreadCpuMilliseconds() - threadStarted;
                 Slow(compositor, cpu, drawnCpu, drawMilliseconds, gcBefore);
-                Probe(compositor, now, cpu, Stopwatch.GetElapsedTime(started).TotalMilliseconds, animating);
+                Probe(compositor, startedAt, cpu, Stopwatch.GetElapsedTime(started).TotalMilliseconds, animating);
+                if (FrameProbeProperty.Ring && compositor is LauncherCompositor { LastRing: { } ring })
+                    global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {ring} start={startedAt:0.0} paced={_framePaced}");
             }
             // Parked out of sight: what was asked for is drawn, nothing more (no animation, no drift).
             if (_parked)
@@ -407,7 +459,16 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             _frameComing = animating || (next is not null && _active);
             if (animating)
             {
-                _view?.RequestRender();
+                if (Paced)
+                {
+                    // A step the resting cadence asked for earlier would add a frame between two paced ones.
+                    _drift?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+                    RequestPacedFrame();
+                }
+                else
+                {
+                    _view?.RequestRender();
+                }
                 return;
             }
             ScheduleDrift(next);
@@ -415,6 +476,13 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
         catch (Exception ex)
         {
             Fail(ex);
+        }
+        finally
+        {
+            // What was posted while this frame drew (and so asked for no frame of its own) gets one, unless a paced one is coming.
+            _inFrame = false;
+            if (Paced && !_pacedFrameComing && !_queue.IsEmpty)
+                _view?.RequestRender();
         }
     }
 

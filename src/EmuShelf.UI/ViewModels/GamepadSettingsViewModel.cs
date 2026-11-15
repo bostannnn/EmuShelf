@@ -136,6 +136,13 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public bool HasActionText =>
         IsAction && Value.Length > 0 && !Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase);
     public string ActionText => HasActionText ? Value : string.Empty;
+
+    /// <summary>
+    /// The value a Handheld Big Type row shows at its end (M47 B11, as the mock sets a row's value): an action row's word only when it
+    /// says something its label does not ("Working…", "Sync now"), never Gamepad mode's "A …" prompt ("A SAVE", "A RESCAN"); any
+    /// other row its value.
+    /// </summary>
+    public string RowValue => IsAction ? ActionText : Value;
     internal Func<Task>? Activate { get; private set; }
     internal Func<Task>? SecondaryActivate { get; private set; }
     internal bool SecondaryIsDestructive { get; private set; }
@@ -202,6 +209,7 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowsChevron));
         OnPropertyChanged(nameof(HasActionText));
         OnPropertyChanged(nameof(ActionText));
+        OnPropertyChanged(nameof(RowValue));
         OnPropertyChanged(nameof(SecondaryKey));
     }
 }
