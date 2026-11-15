@@ -436,8 +436,11 @@ public partial class HandheldShellViewModel
     public string? LineMessage => _lineMessage;
 
     /// <summary>An error on the Stage's line (the mock's <c>toast(text, {error: true})</c>): it shakes, holds <c>errorHoldMs</c>, then the line comes back.</summary>
-    public void ShowLineError(string text) =>
+    public void ShowLineError(string text)
+    {
         PutLineMessage(text, error: true, TimeSpan.FromMilliseconds(BigTypeLaunchMotion.ErrorHoldMilliseconds));
+        PlayMessageSound(error: true, working: false);
+    }
 
     /// <summary>
     /// Big Type (M47 B10): the app's messages (<see cref="ShowStatus"/>, <see cref="Announce"/>, an edit's notice) are the line under
@@ -468,6 +471,7 @@ public partial class HandheldShellViewModel
         PutLineMessage(text, error, glyph == HandheldGlyph.Working
             ? null
             : hold ?? TimeSpan.FromMilliseconds(error ? BigTypeLaunchMotion.ErrorHoldMilliseconds : BigTypeLaunchMotion.HoldMilliseconds));
+        PlayMessageSound(error, working: glyph == HandheldGlyph.Working);
     }
 
     private void PutLineMessage(string text, bool error, TimeSpan? hold)

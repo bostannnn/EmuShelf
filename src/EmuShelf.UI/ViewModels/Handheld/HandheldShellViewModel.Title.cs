@@ -243,7 +243,11 @@ public sealed partial class HandheldShellViewModel
         // Big Type (M47 B8): the tile flies up through the hinge and the console's colour takes the Stage over.
         var bigType = HandheldTokens.IsBigType;
         if (bigType)
+        {
             BeginPlay(page);
+            // The mock's launch sound, a rising run (M47 B11).
+            PlaySound(EmuShelf.Core.Handheld.HandheldSound.Launch);
+        }
         UpdateHints();
         LaunchStarting?.Invoke(page);
         bool started;

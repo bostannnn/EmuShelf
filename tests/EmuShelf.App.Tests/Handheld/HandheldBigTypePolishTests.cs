@@ -5,6 +5,7 @@ using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Handheld;
+using EmuShelf.Core.Handheld;
 using Xunit;
 
 namespace EmuShelf.App.Tests.Handheld;
@@ -53,6 +54,59 @@ public partial class HandheldShellViewModelTests
             Assert.Null(shell.OpenFolder);
             Assert.Equal("GC System", shell.Stage.Title);
             Assert.Equal("PS2 System", start);
+            shell.Dispose();
+        });
+
+        // ---- Sounds: the mock's sfx calls ----
+
+        [Fact]
+        public void Sounds_FollowTheMock_UnderBigTypeOnly() => BigType(() =>
+        {
+            var home = new HandheldShellViewModel.SoundState(null, null, null, false, null, null, null, false, false, "a", "x");
+            // A wall bumps (today: silent).
+            Assert.Equal(HandheldSound.Bump, HandheldShellViewModel.SoundFor(home, home, GamepadAction.NavigateLeft, bumped: true));
+            // A letter typed sounds move, Delete back (today: confirm both).
+            var typing = home with { Typed = 3 };
+            Assert.Equal(HandheldSound.Move, HandheldShellViewModel.SoundFor(typing, typing with { Typed = 4, Content = "y" }, GamepadAction.Confirm, false));
+            Assert.Equal(HandheldSound.Back, HandheldShellViewModel.SoundFor(typing, typing with { Typed = 2, Content = "y" }, GamepadAction.Confirm, false));
+            // A on a game opens its page to play: the launch's own sound plays, not open.
+            var title = new object();
+            Assert.Null(HandheldShellViewModel.SoundFor(home, home with { Title = title, TitlePlays = true }, GamepadAction.Confirm, false));
+            Assert.Equal(HandheldSound.Open, HandheldShellViewModel.SoundFor(home, home with { Title = title }, GamepadAction.Confirm, false));
+
+            HandheldTokens.Use(HandheldLook.Classic);
+            Assert.Null(HandheldShellViewModel.SoundFor(home, home, GamepadAction.NavigateLeft, bumped: true));
+            Assert.Equal(HandheldSound.Confirm, HandheldShellViewModel.SoundFor(typing, typing with { Typed = 4, Content = "y" }, GamepadAction.Confirm, false));
+            Assert.Equal(HandheldSound.Open, HandheldShellViewModel.SoundFor(home, home with { Title = title, TitlePlays = true }, GamepadAction.Confirm, false));
+            return Task.CompletedTask;
+        }).GetAwaiter().GetResult();
+
+        [Fact]
+        public void TheTwoNewSounds_AreTheMocksOwn()
+        {
+            // bump: blip(180, .05, 'square', .018); launch: four triangles .13 s long, .07 s apart.
+            var bump = HandheldSoundSynth.Render(HandheldSound.Bump);
+            var launch = HandheldSoundSynth.Render(HandheldSound.Launch);
+            Assert.Equal((int)Math.Ceiling(0.06 * HandheldSoundSynth.SampleRate), bump.Length);
+            Assert.Equal((int)Math.Ceiling((0.21 + 0.13 + 0.01) * HandheldSoundSynth.SampleRate), launch.Length);
+            Assert.True(bump.Max(sample => Math.Abs((int)sample)) < launch.Max(sample => Math.Abs((int)sample)));
+            // Today's five are unchanged in length.
+            Assert.Equal((int)Math.Ceiling(0.055 * HandheldSoundSynth.SampleRate), HandheldSoundSynth.Render(HandheldSound.Move).Length);
+        }
+
+        [AvaloniaFact]
+        public Task AMessageOnTheLine_SoundsOpen_AnErrorBump_AndThePressItCameWithStaysQuiet() => BigType(async () =>
+        {
+            var sounds = new RecordingSounds();
+            var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 2));
+            shell.SoundPlayer = sounds;
+            shell.ShowStatus("Found 2 new games");
+            Assert.Equal([HandheldSound.Open], sounds.Take());
+            shell.ShowStatus("Could not start NetherSX2", StatusSeverity.Error);
+            Assert.Equal([HandheldSound.Bump], sounds.Take());
+            // Work still running is silent.
+            shell.ShowStatus("Scanning · 1 of 9 consoles", StatusSeverity.Progress);
+            Assert.Empty(sounds.Take());
             shell.Dispose();
         });
 
