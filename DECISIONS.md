@@ -15401,13 +15401,27 @@ keep the small line", "I like one big-type mode and separate model - approve"). 
     app's frames in four colours the lowest is 6.07. Through the screen: the rule changed ink between moments on the left and at the
     hints (the bright core against the dark walls), so those are a fixed white with a 0.5 veil (marked as a fixed choice, as `ps2-sea`'s
     hints are), the clock white at 0.4: lowest 4.21 on the drawing and 4.11 on the app's frames.
-  - **Draw size: not measured on the Thor**, which was off adb for this part. Both are at a cautious 1440 × 810. On this Mac's GPU at
-    1920 × 1080 a step costs 1.13 ms (Through the screen) and 1.2 ms (Lift-off), against 0.88 for PS2's orbs and 0.66 for Steam, which the
-    Thor ran at full size for about 1.1 and 0.9 ms a frame, and 13.1 for the fur. So both should afford more; the measurement switch
-    (`debug.emushelf.bdsize`, probe `rest`) is in the build for when the Thor is back.
+  - **Draw sizes, measured on the Thor** when it came back on adb (same probe and switch as part 1; a route through the 3DS from
+    PSP and Wii, Steam to Settings, Settings to Activity to an empty slot and back, warm pass then measured pass, each size a run):
+    | | old size | 960 | 1440 | 1920 |
+    |---|---|---|---|---|
+    | Through the screen at rest / worst wipe frame (ms GPU) | 0.86 / 1.92 | 1.17 / 2.34 | 1.60 / 2.89 | 2.17 / 3.27 |
+    | Lift-off at rest / worst wipe frame | 1.00 / 1.37 | 1.17 / 1.56 | 1.34 / 1.91 | 1.65 / 2.71 |
+    Against today's worst wipe frame (3.0 ms): **Through the screen 1440 × 810** (1920 reached 3.27), **Lift-off 1920 × 1080** (the
+    Stage's full size). Rest steps kept their timing at every size (interval p95 about 40 ms), missed vsyncs 0–2 a wipe. The final build:
+    Through the screen 1.59 ms at rest, its wipes 2.92–3.02 at worst (2.67 and 2.89 in the earlier run); Lift-off 1.62–1.65 at rest, its
+    wipes 1.94 and 2.74. On the Thor Settings, Activity and the empty slots shared one running Lift-off (no wipe and no new start between
+    them, PSP's graphite easing to Settings' indigo), your folder showed it in its rose, and a PS2 game in the name view and the model
+    view (B12) kept PS2's orbs. On this Mac's GPU it had looked cheaper still (1.13 and 1.2 ms a step at 1920).
   - **The emulator** (`emushelf-b3`, `-no-snapshot-save`, Release AOT, `adb install -r`): Lift-off behind Settings, Activity and an empty
     slot in Settings' indigo on Android's GL, one start for the three; Recent's checker and PS2's orbs as before. Its library has no 3DS,
     so Through the screen was seen only on the Mac. Left as found: home on Settings, `debug.emushelf.look` unset.
+- **With B12 merged** (the design branch at 312a93c, the model view): a game's Stage, its big name or its model alone, still brings its
+  console's backdrop, so neither the default background nor the ink rule changes for it. **Wide and narrow:** B11's narrow-legibility
+  check gained `--bigtype` (Big Type's own animations through Big Type's compositor, each in its colour, the default background in
+  Settings' indigo, against Big Type's answers with B11's narrow veils). All 54 zones of the 18 hold 3.0 on the narrow Stage. On the
+  wide one Recent's checker's left zone read 2.89 over the whole name box, so its Big Type left veil is 0.34 (3.41; 3.59 narrow), noted
+  in `legibility.json`. Through the screen's lowest is 3.17 wide and 3.37 narrow; Lift-off's 7.41.
 - **Touches other sessions' files lightly:** `HandheldNativeStageFeed.SendBackdrop` (one argument), `StageCompositor` (the look on four
   starts, Big Type's ink lookup), `BackdropLegibility` (a second table), `NativeSceneSurface`'s probe (the `rest` value). B11 changed
   `SendBackdrop` and `BackdropLegibility` too, on its own branch.

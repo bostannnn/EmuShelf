@@ -3333,7 +3333,11 @@ falls back to the emulator and says so.
       running backdrop changing colour between such items. Both ported from `ideas-3ds.js` / `ideas-bg.js`: Through the screen reads
       the same as the drawing (mean ΔE 0.0); Lift-off the same scene (mean ΔE 0.5–1.5; which blocks are aloft differs). Legibility
       baked: Lift-off white at the resting veils in all 72 colours a ground can be (lowest 5.81); Through the screen a fixed white
-      (0.5, 0.4, 0.5; lowest 4.11 on the app). Both at a cautious 1440 × 810: **the Thor was off adb, so their GPU cost is not
-      measured** (on the Mac they cost about what PS2's orbs do). Seen on the emulator (Lift-off) and the Mac (both). Classic
-      byte-identical to a render made after merging B11; Big Type's design frames unchanged; tests three times running.
+      (0.5, 0.4, 0.5; lowest 4.11 on the app). **Measured on the Thor** once it was back: Through the screen 1440 × 810 (worst wipe
+      frame 2.89 ms; 1920 reached 3.27), Lift-off 1920 × 1080 (2.71). Seen on the Thor (all of it, the model view over PS2's orbs
+      included), the emulator (Lift-off) and the Mac.
+      **After merging B12 (312a93c):** the model view keeps its console's backdrop; Big Type's answers hold 3.0 wide and narrow through
+      the real compositor (`--stage-narrow-legibility --bigtype`), Recent's checker's left veil raised to 0.34 for the wide Stage.
+      Classic's 158 design frames byte-identical to the design branch's tip; 21 Big Type frames change, all focuses without a platform
+      (Settings and its pages, Activity, the Start and dock menus, the two tiles, the empty library), each now in its own colour.
       Built, awaiting the owner's look.

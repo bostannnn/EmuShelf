@@ -355,8 +355,7 @@ window.BT_TOKENS = {
 //   size: the size its frame is drawn at, in pixels. upscale: 'crisp' keeps the console's own size and shows it in whole pixels
 //         (a 256-wide frame at 8, its edges cropped); 'sharp' draws it this large so no stair-steps or soft upscaling show, the
 //         largest the Thor's GPU allowed without worse frame pacing (measured, M47 B13: the largest whose worst frame
-//         through a wipe stayed within today's worst, 3.0 ms on the GPU; PS3, not in the owner's library, a cautious step;
-//         3ds-screen and lift-off, made while the Thor was off adb, the same cautious step until measured).
+//         through a wipe stayed within today's worst, 3.0 ms on the GPU; PS3, not in the owner's library, a cautious step).
 //   bloomThreshold: Big Type's own, 0 to 255, where it differs from the console's finish (Wii: only the pointer glows, so the
 //         background gradient no longer clips to white in a band; the owner: "make gradient more smooth").
 window.BT_TOKENS.backdrops = [
@@ -377,5 +376,5 @@ window.BT_TOKENS.backdrops = [
   { owner: 'arcade', id: 'arc-vector-v3', pull: 1, size: [320, 180], upscale: 'crisp' },
   { owner: 'steam', id: 'steam-mesh', pull: 0, size: [1920, 1080], upscale: 'sharp' },
   { owner: 'recent', id: 'arc-checker', pull: 1, size: [320, 180], upscale: 'crisp' },
-  { owner: 'default', id: 'lift-off', pull: 0, size: [1440, 810], upscale: 'sharp' },
+  { owner: 'default', id: 'lift-off', pull: 0, size: [1920, 1080], upscale: 'sharp' },
 ];
