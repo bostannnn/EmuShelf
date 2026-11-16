@@ -120,6 +120,13 @@ if (args.Contains("--stage-bigtype"))
     return;
 }
 
+// The native Stage's own roll of a line, from real pictures the App tests write (M47 B11, "a pixel or two stuck on top").
+if (args.Contains("--stage-roll"))
+{
+    Environment.ExitCode = StageRollCheck.Run(gl, ArgumentValue("--stage-roll")!, ArgumentValue("--out") ?? "artifacts/stage-roll");
+    return;
+}
+
 // Whether the baked legibility table holds over the narrow Stage's crop of every backdrop (M47 B11).
 if (args.Contains("--stage-narrow-legibility"))
 {

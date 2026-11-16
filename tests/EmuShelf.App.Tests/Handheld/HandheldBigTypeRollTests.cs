@@ -28,6 +28,31 @@ public class HandheldBigTypeRollTests
 {
     private sealed record Picture(int Width, int Height, byte[] Alpha, StageText Cells);
 
+    // On request (EMUSHELF_ROLL_RAW): the two pictures as raw RGBA, the old one red and the new one green, and their cells, for the
+    // native Stage's own roll on the Mac's GL (tools/EmuShelf.Rendering.Preview -- --stage-roll DIR).
+    private static void Raw(Picture old, Picture next, string what)
+    {
+        if (Environment.GetEnvironmentVariable("EMUSHELF_ROLL_RAW") is not { Length: > 0 } directory)
+            return;
+        Directory.CreateDirectory(directory);
+        var name = new string(what.Where(char.IsLetterOrDigit).Take(24).ToArray());
+        var cells = new System.Text.StringBuilder();
+        foreach (var (picture, tag, channel) in new[] { (old, "old", 0), (next, "new", 1) })
+        {
+            var rgba = new byte[picture.Width * picture.Height * 4];
+            for (var i = 0; i < picture.Alpha.Length; i++)
+            {
+                rgba[(i * 4) + channel] = picture.Alpha[i];
+                rgba[(i * 4) + 3] = picture.Alpha[i];
+            }
+            File.WriteAllBytes(Path.Combine(directory, $"{name}.{tag}.rgba"), rgba);
+            cells.AppendLine(System.FormattableString.Invariant($"{tag} {picture.Width} {picture.Height}"));
+            foreach (var cell in picture.Cells.Cells)
+                cells.AppendLine(System.FormattableString.Invariant($"{tag}cell {(int)cell.Character} {cell.X} {cell.Y} {cell.Width} {cell.Height} {cell.Em}"));
+        }
+        File.WriteAllText(Path.Combine(directory, $"{name}.cells.txt"), cells.ToString());
+    }
+
     // A one-line text as the Stage pictures it: the face, its size and weight, white on nothing, laid out in a window (as the line is).
     private static async Task<Picture> PictureOf(string text, double size, double? width = null, bool wrap = false)
     {
@@ -119,6 +144,8 @@ public class HandheldBigTypeRollTests
         ["NetherSX2 · last played today", "Last played: Okami", 36.0],
         // The clock rolling a digit.
         ["6:39 PM", "6:40 PM", 92.0],
+        // The model view's line, the game's name (M47 B12), from one game to the next.
+        ["007 : Everything or Nothing", "Ape Escape 2", 42.0],
     ];
 
     [AvaloniaTheory]
@@ -127,6 +154,7 @@ public class HandheldBigTypeRollTests
     {
         var old = await PictureOf(from, size);
         var next = await PictureOf(to, size);
+        Raw(old, next, $"{from}-{to}");
         await AssertRollClean(old, next, $"\"{from}\" → \"{to}\"");
     }
 
