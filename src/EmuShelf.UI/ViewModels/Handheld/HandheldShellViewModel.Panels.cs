@@ -213,7 +213,13 @@ public sealed partial class HandheldShellViewModel
     /// <summary>Opens Search: the keyboard on the Launcher, the matches fanning on the Stage. It starts from the last query.</summary>
     public Task OpenSearchAsync()
     {
-        var panel = new HandheldSearchPanel(_library, _lastSearch, _clock) { Debounce = SearchDebounce };
+        OpenSearchPanel(_lastSearch);
+        return Task.CompletedTask;
+    }
+
+    private HandheldSearchPanel OpenSearchPanel(string query)
+    {
+        var panel = new HandheldSearchPanel(_library, query, _clock) { Debounce = SearchDebounce };
         panel.ResultsRequested += (query, ids) => ShowSearchResults(panel, query, ids);
         panel.PlayRequested += entry => _ = PlayFromSearchAsync(panel, entry.Id);
         OpenPanel(panel, closed =>
@@ -221,7 +227,7 @@ public sealed partial class HandheldShellViewModel
             _lastSearch = ((HandheldSearchPanel)closed).Query.Trim();
             return Task.CompletedTask;
         });
-        return Task.CompletedTask;
+        return panel;
     }
 
     /// <summary>Search's Done: the matches open as a folder over home (B there comes back to where you were).</summary>

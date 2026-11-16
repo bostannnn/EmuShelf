@@ -89,10 +89,14 @@ public partial class HandheldShellViewModel
             : HandheldDirection.Right);
     }
 
-    /// <summary>A on a Search hit (M47 B9, the mock's startGame from the keyboard): Search closes and the game plays, as A on a game does.</summary>
+    /// <summary>
+    /// A on a Search hit (M47 B9, the mock's startGame from the keyboard): Search closes and the game plays, as A on a game does. When the
+    /// launch is over (the game ended, the launch failed, or the screen question was left) Search comes back on what was typed with that
+    /// hit focused (M47 B14, the mock's endPlay: <c>focusRes</c>). A game whose file is missing does not close Search at all.
+    /// </summary>
     private async Task PlayFromSearchAsync(HandheldSearchPanel panel, long gameId)
     {
-        ClosePanel(panel);
+        var query = panel.Query;
         System.Collections.Generic.IReadOnlyList<HandheldGameEntry> games;
         try
         {
@@ -102,12 +106,24 @@ public partial class HandheldShellViewModel
         {
             return;
         }
-        if (_disposed || games.Count == 0)
+        if (_disposed || games.Count == 0 || !ReferenceEquals(Panel, panel))
         {
             _library.ReleaseGames(games);
             return;
         }
+        if (HandheldTokens.IsBigType && !games[0].IsAvailable)
+        {
+            // The mock's startGame: a missing file does not launch; the line says so and the keyboard stays.
+            _library.ReleaseGames(games);
+            Bumped?.Invoke(HandheldDirection.Up);
+            ShowLineError(MissingFileText);
+            return;
+        }
+        if (HandheldTokens.IsBigType)
+            _searchReturn = new SearchReturn(query, gameId);
+        ClosePanel(panel);
         OpenOrPlay(games[0]);
+        ReturnToSearchIfDue();
     }
 
     /// <summary>A tap on a Search hit: the first focuses it, a second plays it.</summary>

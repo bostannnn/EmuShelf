@@ -442,6 +442,7 @@ public sealed partial class HandheldSearchPanel : HandheldPanelViewModel
             else if (Keyboard is { } keyboard)
                 keyboard.FocusAt(0, 0);
         }
+        TakeArrivalFocus();
     }
 
     protected override void DisposeCore()
