@@ -65,23 +65,60 @@ public partial class HandheldStageView : UserControl
                 }
                 // A message on the line that runs to two lines (M47 B10) grows down into the second line's row, which gives way, rather
                 // than up into the name's descenders (M47 B11; found on the narrow screen, the same on the wide one).
-                if (lines[0] is { } message && message.Parent is Control messageShot && lines[1]?.Parent is Control factsShot)
+                // Any other long text (M47 B14) runs on at a whole word rather than end in an ellipsis. The line and the second line share
+                // three rows under the name (stage.LineRowsShared): their own two and the one free below them, which is all the room
+                // there is above the screen's edge. The line takes at most two, growing down into the second line's row; the second line
+                // takes the rest, moved down a row of its own under a line of two, or growing down into the free row under a line of one.
+                // Neither reaches up into the name. Only text past its rows ends in an ellipsis, at a whole word.
+                if (lines[0] is { } message && message.Parent is Control messageShot && lines[1] is { } facts && facts.Parent is Control factsShot)
                 {
-                    var wrapped = message.Classes.Contains("message") && message.TextLayout.TextLines.Count > 1;
-                    if (wrapped)
+                    var isMessage = message.Classes.Contains("message");
+                    var lineMax = HandheldTokens.StageLineRowsShared - 1;
+                    if (message.MaxLines != lineMax)
+                        message.MaxLines = lineMax;
+                    var lineRows = message.TextLayout.TextLines.Count;
+                    var lineBy = 0d;
+                    for (var row = 1; row < lineRows; row++)
+                        lineBy += message.TextLayout.TextLines[row].Height;
+                    var lineMargin = narrow ? HandheldTokens.StageNarrowLineShotMargin : HandheldTokens.StageLineShotMargin;
+                    var factsMargin = narrow ? HandheldTokens.StageNarrowFactsShotMargin : HandheldTokens.StageFactsShotMargin;
+                    if (lineBy > 0)
                     {
-                        var by = message.TextLayout.TextLines[^1].Height;
-                        var margin = narrow ? HandheldTokens.StageNarrowLineShotMargin : HandheldTokens.StageLineShotMargin;
-                        var at = new Thickness(margin.Left, margin.Top, margin.Right, margin.Bottom - by);
+                        var at = new Thickness(lineMargin.Left, lineMargin.Top, lineMargin.Right, lineMargin.Bottom - lineBy);
                         if (messageShot.Margin != at)
                             messageShot.Margin = at;
-                        if (factsShot.Opacity != 0)
-                            factsShot.Opacity = 0;
                     }
                     else
                     {
                         messageShot.ClearValue(MarginProperty);
+                    }
+                    if (isMessage && lineRows > 1)
+                    {
+                        if (factsShot.Opacity != 0)
+                            factsShot.Opacity = 0;
+                        factsShot.ClearValue(MarginProperty);
+                    }
+                    else
+                    {
                         factsShot.ClearValue(OpacityProperty);
+                        var factsMax = System.Math.Max(1, HandheldTokens.StageLineRowsShared - lineRows);
+                        if (facts.MaxLines != factsMax)
+                            facts.MaxLines = factsMax;
+                        // Under a line of two it moves down by a row of its own (the line's row is taller, but the rows overlap by their
+                        // leading, as B7 set them); under a line of one, its own second row grows down into the free row.
+                        var factsRows = facts.TextLayout.TextLines;
+                        var factsBy = lineRows > 1 && factsRows.Count > 0 ? factsRows[0].Height
+                            : factsRows.Count > 1 ? factsRows[1].Height : 0;
+                        if (factsBy > 0)
+                        {
+                            var at = new Thickness(factsMargin.Left, factsMargin.Top, factsMargin.Right, factsMargin.Bottom - factsBy);
+                            if (factsShot.Margin != at)
+                                factsShot.Margin = at;
+                        }
+                        else
+                        {
+                            factsShot.ClearValue(MarginProperty);
+                        }
                     }
                 }
                 if (label?.Parent is Control labelShot && status is not null)

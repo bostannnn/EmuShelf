@@ -97,6 +97,10 @@ window.BT_TOKENS = {
     // a row of their own and the lines stand a hint row higher, so the model is centred across the narrow Stage with its box
     // NarrowModelTop from the top, grown NarrowModelScale, to stand between the clock and the lines with its float and its shadow.
     NarrowModelTop: 189, NarrowModelScale: 0.96,
+    // B14, the app's own (the mock's lines have no width and its texts all fit): a long line or second line runs on at a whole word
+    // rather than end in an ellipsis. The two share LineRowsShared rows under the name, their own two and the one free below them (all
+    // the room above the screen's edge), each growing down: the line takes at most two, the second line the rest.
+    LineRowsShared: 3,
   },
 
   // The Launcher, 1240x1080.
