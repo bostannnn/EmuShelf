@@ -111,6 +111,16 @@ public partial class HandheldShellViewModel
         BtLabel = game.SystemName;
         BtName = game.Title;
         BtIsMissing = !game.IsAvailable;
+        // M47 B12: in the model view the line is the name and the second line the facts (HandheldShellViewModel.ModelView.cs).
+        _stageGame = game;
+        _modelTexts = false;
+        if (ModelViewDue)
+        {
+            ApplyModelTexts(game);
+            if (HandheldTokens.IsBigType && !_emulatorNames.ContainsKey(game.SystemId))
+                _ = LoadEmulatorNameAsync(game);
+            return;
+        }
         if (!game.IsAvailable)
         {
             BtLine = "File not found";
@@ -166,7 +176,7 @@ public partial class HandheldShellViewModel
             return;
         _emulatorNames[game.SystemId] = name;
         if (Stage.Kind is HandheldStageKind.Game or HandheldStageKind.Hero && _stageGameId == game.Id && game.IsAvailable)
-            BtFacts = GameFacts(game);
+            BtFacts = StageFactsFor(game);
     }
 
     /// <summary>Settings may have changed a system's emulator: its name is read again next time.</summary>

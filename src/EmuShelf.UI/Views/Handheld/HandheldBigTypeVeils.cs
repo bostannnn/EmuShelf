@@ -28,9 +28,39 @@ public sealed class HandheldBigTypeVeils : Control
     public static readonly StyledProperty<double> NameLeftProperty =
         AvaloniaProperty.Register<HandheldBigTypeVeils, double>(nameof(NameLeft), 80);
 
+    /// <summary>
+    /// Where the left veil stops being flat when no name decides it (M47 B12's model view: past the two lines); NaN leaves it to the
+    /// name's box.
+    /// </summary>
+    public static readonly StyledProperty<double> FlatEndProperty =
+        AvaloniaProperty.Register<HandheldBigTypeVeils, double>(nameof(FlatEnd), double.NaN);
+
     static HandheldBigTypeVeils()
     {
-        AffectsRender<HandheldBigTypeVeils>(DeepProperty, NameBoxWidthProperty, NameLeftProperty);
+        AffectsRender<HandheldBigTypeVeils>(DeepProperty, NameBoxWidthProperty, NameLeftProperty, FlatEndProperty);
+    }
+
+    public double FlatEnd
+    {
+        get => GetValue(FlatEndProperty);
+        set => SetValue(FlatEndProperty, value);
+    }
+
+    /// <summary>
+    /// The model view's left veil (M47 B12): it lies behind what the left zone actually shows there, the label and the two lines, so it
+    /// stays flat to the widest of them plus <see cref="BigTypeVeil.PastName"/>, on the canvas.
+    /// </summary>
+    public static float LinesFlatEnd(Control view, Visual canvas)
+    {
+        var right = 0f;
+        foreach (var name in new[] { "BtLabelShot", "BtLineShot", "BtFactsShot" })
+        {
+            if (view.FindControl<Control>(name) is not { IsVisible: true } piece || piece.Bounds.Width < 1 ||
+                HandheldStageShots.ToCanvas(piece, new Point(piece.Bounds.Width - piece.Padding().Right, 0), canvas) is not { } end)
+                continue;
+            right = Math.Max(right, (float)end.X);
+        }
+        return right + BigTypeVeil.PastName;
     }
 
     public HandheldBigTypeVeils()
@@ -66,7 +96,7 @@ public sealed class HandheldBigTypeVeils : Control
         var size = Bounds.Size;
         if (size.Width < 1 || size.Height < 1)
             return;
-        var flatEnd = BigTypeVeil.LeftFlatEnd((float)NameLeft, (float)NameBoxWidth);
+        var flatEnd = double.IsFinite(FlatEnd) ? (float)FlatEnd : BigTypeVeil.LeftFlatEnd((float)NameLeft, (float)NameBoxWidth);
         // The left veil lies under the corner ones, as the mock's layers do.
         for (var i = 0; i < Zones.Length; i++)
         {
@@ -103,4 +133,10 @@ public sealed class HandheldBigTypeVeils : Control
             Marshal.Copy(data, row * mask.Width * 4, buffer.Address + (row * buffer.RowBytes), mask.Width * 4);
         return bitmap;
     }
+}
+
+internal static class HandheldShotPadding
+{
+    /// <summary>A pictured corner's padding (its Border's), or none.</summary>
+    public static Thickness Padding(this Control piece) => piece is Border border ? border.Padding : default;
 }

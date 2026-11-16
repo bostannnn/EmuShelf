@@ -123,11 +123,36 @@ public partial class HandheldShellViewModelTests
                     shell.Stage.Facts = "NetherSX2 · last played today · disc 2 of 3";
                     shell.Stage.Label = "Nintendo Entertainment System";
                     seen.Add(shell.Stage.Name!);
-                    await CheckAsync(view, canvas, shell, $"game-{seen.Count}", besideMedium: true);
+                    // M47 B12: a game's name view has no case beside it, so the name has the whole narrow box.
+                    await CheckAsync(view, canvas, shell, $"game-{seen.Count}", besideMedium: false);
                 }
                 Assert.Equal(Titles.OrderBy(title => title).ToArray(), seen.OrderBy(title => title).ToArray());
+
+                // M47 B12: the model view on the narrow Stage, the model (here the flat cover standing in) in the middle, clear of every
+                // corner's text and above the lines.
+                Press(shell, GamepadAction.NextPlatform);
+                Assert.True(shell.Stage.IsModelView);
+                await SettleAsync();
+                Save(view, "model");
+                Rect Of(string control)
+                {
+                    var c = view.FindControl<Control>(control)!;
+                    return new Rect(c.TranslatePoint(default, canvas)!.Value, c.Bounds.Size);
+                }
+                var model = Of("BtModelCover");
+                Assert.True(new Rect(canvas.Bounds.Size).Contains(model), $"the model ({model}) runs off the screen");
+                Assert.InRange(model.Center.X, 619.5, 620.5);
+                var modelLine = view.FindControl<TextBlock>("BtLine")!;
+                var modelLineTop = modelLine.TranslatePoint(default, canvas)!.Value.Y;
+                Assert.True(model.Bottom <= modelLineTop, $"the model ({model}) runs into the line ({modelLineTop})");
+                foreach (var piece in new[] { "BtLabelShot", "BtStatusShot", "BtHintsShot", "BtFactsShot" })
+                    Assert.False(model.Intersects(Of(piece).Deflate(HandheldTokens.StageShotPad)), $"the model ({model}) runs into {piece} ({Of(piece)})");
+                Assert.False(view.FindControl<Control>("BtName")!.IsVisible);
+                Press(shell, GamepadAction.PreviousPlatform);
+                Assert.False(shell.Stage.IsModelView);
+
                 shell.ShowStatus(LongError, StatusSeverity.Error);
-                await CheckAsync(view, canvas, shell, "message", besideMedium: true);
+                await CheckAsync(view, canvas, shell, "message", besideMedium: false);
                 var line = view.FindControl<TextBlock>("BtLine")!;
                 Assert.Equal(2, line.TextLayout.TextLines.Count);
                 Assert.DoesNotContain(line.TextLayout.TextLines, text => text.HasCollapsed);
