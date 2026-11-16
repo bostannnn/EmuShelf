@@ -839,6 +839,12 @@ public sealed partial class HandheldShellViewModel
             UpdateHints();
             return;
         }
+        // Big Type (M47 B14): Delete with nothing to delete reads Cancel and leaves without saving, as B does.
+        if (HandheldTokens.IsBigType && key.Kind == HandheldKeyKind.Delete && naming.Text.Length == 0)
+        {
+            CancelNaming();
+            return;
+        }
         var done = key.Kind switch
         {
             HandheldKeyKind.Character => naming.Type(key.Value),

@@ -133,7 +133,9 @@ public enum HandheldKeyKind
 /// <summary>One key of the naming keyboard.</summary>
 public sealed partial class HandheldKeyViewModel(string label, HandheldKeyKind kind) : ObservableObject
 {
-    public string Label { get; } = label;
+    /// <summary>What the key says (Big Type's Delete reads "Cancel" while nothing is typed, M47 B14).</summary>
+    [ObservableProperty]
+    public partial string Label { get; set; } = label;
     public HandheldKeyKind Kind { get; } = kind;
 
     /// <summary>What a character key types, when it is not its label (the Big Type keys show capitals and type by the case rule).</summary>
@@ -203,6 +205,7 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
             // The mock's keys (M47 B9); the app's apostrophe, hyphen and ampersand are on the next page.
             foreach (var row in HandheldBigTypeKeys.Build(0, shiftKey: false, string.Empty, BigTypeLabel))
                 KeyRows.Add(row);
+            HandheldBigTypeKeys.FollowText(KeyRows, Text.Length > 0);
         }
         else
         {
@@ -268,6 +271,8 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
     {
         if (value.Length > MaxNameLength)
             Text = value[..MaxNameLength];
+        if (HandheldTokens.IsBigType)
+            HandheldBigTypeKeys.FollowText(KeyRows, Text.Length > 0);
         NameChanged?.Invoke();
     }
 
@@ -422,6 +427,7 @@ public sealed partial class HandheldNamingViewModel : ObservableObject
         KeyRows.Clear();
         foreach (var row in HandheldBigTypeKeys.Build(Page, shiftKey: false, string.Empty, BigTypeLabel))
             KeyRows.Add(row);
+        HandheldBigTypeKeys.FollowText(KeyRows, Text.Length > 0);
         KeyRow = 2;
         KeyColumn = KeyRows[2].Keys.Count - 1;
         MoveTo(HandheldNamingZone.Keys);

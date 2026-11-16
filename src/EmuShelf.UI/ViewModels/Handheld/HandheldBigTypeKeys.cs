@@ -73,7 +73,7 @@ public static class HandheldBigTypeKeys
         rows.Add(new HandheldKeyRowViewModel(
         [
             new HandheldKeyViewModel("Space", HandheldKeyKind.Space) { Value = " ", X = left, Y = bottom, Width = HandheldTokens.KeySpaceWidth },
-            new HandheldKeyViewModel("Delete", HandheldKeyKind.Delete)
+            new HandheldKeyViewModel(DeleteLabel, HandheldKeyKind.Delete)
             {
                 X = left + HandheldTokens.KeySpaceWidth + gap, Y = bottom, Width = HandheldTokens.KeyActionWidth,
             },
@@ -83,6 +83,20 @@ public static class HandheldBigTypeKeys
             },
         ]));
         return rows;
+    }
+
+    /// <summary>The Delete key's word while something is typed, and while nothing is (M47 B14: then it cancels, as B does).</summary>
+    public const string DeleteLabel = "Delete";
+    public const string CancelLabel = "Cancel";
+
+    /// <summary>
+    /// The keyboard by touch (M47 B14): with nothing typed the Delete key reads Cancel and leaves without keeping anything, as B and the
+    /// mock's Backspace do with nothing to delete (its hint says "B Cancel" then), so a keyboard can be left with no pad.
+    /// </summary>
+    public static void FollowText(IEnumerable<HandheldKeyRowViewModel> rows, bool hasText)
+    {
+        foreach (var key in rows.SelectMany(row => row.Keys).Where(key => key.Kind == HandheldKeyKind.Delete))
+            key.Label = hasText ? DeleteLabel : CancelLabel;
     }
 
     /// <summary>The edge keys' width: what is left beside the letters' third row.</summary>
