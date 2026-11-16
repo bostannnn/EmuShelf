@@ -246,7 +246,33 @@ public interface IHandheldLibrary
 
     /// <summary>The app is busy with library work (an import, a rename): a new one waits.</summary>
     bool IsBusy => false;
+
+    // ---- Big Type's setup (M47 B14, the mock's three questions and the climbing count) ----
+
+    /// <summary>
+    /// The emulator that will run each of these systems' games, by the name Settings shows, and whether it is installed (null when the
+    /// head cannot tell). One entry per system, in the order given; a system with no emulator to name has a null name.
+    /// </summary>
+    Task<IReadOnlyList<HandheldSetupEmulator>> DescribeEmulatorsAsync(IReadOnlyList<string> systemIds) =>
+        Task.FromResult<IReadOnlyList<HandheldSetupEmulator>>(systemIds.Select(id => new HandheldSetupEmulator(id, null, null)).ToList());
+
+    /// <summary>
+    /// Add games' import (the folder is scanned for the system, remembered and its games added), told quietly: no status line, the
+    /// games found so far reported through <paramref name="found"/> as the scan goes (on the UI thread), and what was added (or why it
+    /// failed) returned. The default imports through <see cref="ImportFolderAsync"/> and cannot count.
+    /// </summary>
+    async Task<HandheldSetupImport> ImportFolderCountingAsync(string folder, string systemId, Action<int> found)
+    {
+        await ImportFolderAsync(folder, systemId);
+        return new HandheldSetupImport(0, null);
+    }
 }
+
+/// <summary>A system's emulator as setup's second question lists it: its name (null: none), and whether it is installed (null: unknown).</summary>
+public sealed record HandheldSetupEmulator(string SystemId, string? Name, bool? IsInstalled);
+
+/// <summary>What one folder's import in setup added, or why it failed (null when it did not).</summary>
+public sealed record HandheldSetupImport(int Added, string? Error);
 
 /// <summary>A game's disc numbers and the one it starts on.</summary>
 public sealed record HandheldDiscs(IReadOnlyList<int> Numbers, int Selected);

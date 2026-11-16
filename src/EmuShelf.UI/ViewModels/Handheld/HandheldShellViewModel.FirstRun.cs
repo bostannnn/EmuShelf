@@ -57,8 +57,11 @@ public sealed partial class HandheldShellViewModel
     }
 
     /// <summary>The Stage for an empty slot when there are no games: the way to add some.</summary>
-    private void ShowEmptyLibraryStage() =>
+    private void ShowEmptyLibraryStage()
+    {
         ShowStage(HandheldStageKind.EmptySlot, "Add games", "Pick the folder your games are in");
+        ApplyBigTypeEmptyLibraryText();
+    }
 
     // ---- The dock app's Stage ----
 

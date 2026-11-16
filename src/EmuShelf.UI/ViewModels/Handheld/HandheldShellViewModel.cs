@@ -66,7 +66,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds is its switch, with its state (H6d).
         // Each row's hint is what the Big Type Stage says under it (M47 B7, the mock's START); today's look does not show it.
         MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync) { Hint = "Find a game by name" });
-        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync) { Hint = "Point EmuShelf at a folder" });
+        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesOrSetupAsync) { Hint = "Point EmuShelf at a folder" });
         MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync) { Hint = "Emulators, library, display" });
         MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()) { Hint = "What you played, day by day" });
         _soundsMenuItem = new HandheldMenuItemViewModel("Sounds", () =>
@@ -328,6 +328,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _home = new HandheldHomePosition(0, 0);
         if (firstRead && IsLibraryEmpty)
             _home = PositionOf(FirstEmptySlotIndex());
+        // Setup that began on an empty library lands on the first console's folder once its games are read (M47 B14).
+        if (TakeSetupLanding() is { } landing)
+            _home = PositionOf(landing);
         if (OpenFolder is { } folder && !FolderStillExists(folder.Source))
             CloseFolder();
         ShowPage(_home.Page);
@@ -783,8 +786,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         switch (slot.Kind)
         {
             case HandheldSlotKind.Empty when IsLibraryEmpty:
-                // With no games there is nothing to put in a folder: an empty slot is where games are added (M45 H6d).
-                _ = AddGamesAsync();
+                // With no games there is nothing to put in a folder: an empty slot is where games are added (M45 H6d); under Big Type
+                // it starts setup (M47 B14, the mock's doA with no library).
+                _ = AddGamesOrSetupAsync();
                 return;
             case HandheldSlotKind.Empty:
                 // A on an empty slot makes a folder there, the 3DS gesture (decision 11).
@@ -1796,7 +1800,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (AddGameViewHints())
             return;
         var focused = HomeSlotAt(HomeIndex);
-        _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? IsLibraryEmpty ? "Add games" : "New folder" : "Open"));
+        _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? IsLibraryEmpty ? HandheldTokens.IsBigType ? "Set up" : "Add games" : "New folder" : "Open"));
         _nextHints.Add(new HandheldHint("Y", "More"));
         _nextHints.Add(new HandheldHint(string.Empty, "Menu", HandheldGlyph.Menu));
     }

@@ -150,6 +150,12 @@ public partial class HandheldShellViewModel
         Stage.IsListTyping = Settings?.IsTyping == true || (Settings is null && Panel?.IsTyping == true);
         Stage.ListCover = Settings is null && Panel is { IsListing: true } covers ? covers.BigTypeCover : null;
         _listText = TypingStageText() ?? BigTypeListText();
+        // Setup's count (M47 B14, the mock's wizScan: typeWord): the number of games found is typed as the keyboard's word is.
+        if (Settings is null && Panel is HandheldSetupPanel { IsCounting: true })
+        {
+            Stage.IsTyped = true;
+            Stage.IsPlaceholder = false;
+        }
     }
 
     private HandheldListStageText? BigTypeListText()
