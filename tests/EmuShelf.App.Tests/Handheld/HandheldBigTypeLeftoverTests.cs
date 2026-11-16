@@ -61,6 +61,42 @@ public partial class HandheldShellViewModelTests
             shell.Dispose();
         });
 
+        // ---- 2. A panel's picture where the case stands ----
+
+        [Avalonia.Headless.XUnit.AvaloniaFact]
+        public Task AnAchievementsBadge_IsThePictureBesideTheName() => BigType(async () =>
+        {
+            var badge = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"emushelf-badge-{Guid.NewGuid():N}.png");
+            await System.IO.File.WriteAllBytesAsync(badge, Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="));
+            try
+            {
+                using var panel = new HandheldAchievementsPanel(Achievements(new FakeAchievements { BadgePath = badge }));
+                for (var i = 0; i < 200 && panel.Card.Image is null; i++)
+                    await Task.Delay(10);
+                Assert.NotNull(panel.Card.Image);
+                // The mock's panels: the focused row's picture stands where the case does, beside the name.
+                Assert.Same(panel.Card.Image, panel.BigTypeCover);
+                Assert.True(panel.Card.IsSquareImage);
+            }
+            finally
+            {
+                System.IO.File.Delete(badge);
+            }
+        });
+
+        [Fact]
+        public Task WhileTyping_NoPictureIsSet() => BigType(async () =>
+        {
+            var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3));
+            await shell.OpenSearchAsync();
+            var search = Assert.IsType<HandheldSearchPanel>(shell.Panel);
+            // Typing: nothing beside the name.
+            Assert.Null(search.BigTypeCover);
+            Assert.Null(shell.Stage.ListCover);
+            shell.Dispose();
+        });
+
         [Fact]
         public async Task Classic_ADockApp_KeepsItsSweep()
         {
