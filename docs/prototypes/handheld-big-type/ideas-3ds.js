@@ -101,7 +101,7 @@ function ball(x,y,z,r,m,k=0){
   if(e<=0){const l=1/(sqrt(nx*nx+ny*ny+nz*nz)||1);nx*=l;ny*=l;nz*=l;}
   shade(i,nx,ny,nz,iz,m,cov>1?1:cov,k);}}
 }
-function cap(x0w,y0w,z0w,x1w,y1w,z1w,r,m,k=0){
+function cap(x0w,y0w,z0w,x1w,y1w,z1w,r,m,k0=0,k1=k0){
  view(x0w,y0w,z0w);let ax=tx,ay=ty,az=tz;view(x1w,y1w,z1w);let bx=tx,by=ty,bz=tz;if(az<NEAR&&bz<NEAR)return;
  if(az<NEAR){const u=(NEAR-az)/(bz-az);ax+=(bx-ax)*u;ay+=(by-ay)*u;az=NEAR;}else if(bz<NEAR){const u=(NEAR-bz)/(az-bz);bx+=(ax-bx)*u;by+=(ay-by)*u;bz=NEAR;}
  const iza=1/az,izb=1/bz,sax=OX+ax*F*iza,say=OY-ay*F*iza,sbx=OX+bx*F*izb,sby=OY-by*F*izb,Ra=r*F*iza,Rb=r*F*izb;
@@ -115,10 +115,10 @@ function cap(x0w,y0w,z0w,x1w,y1w,z1w,r,m,k=0){
  for(let y=y0;y<=y1;y++){const py=y+.5,qy=py-say;for(let x=x0;x<=x1;x++){const px=x+.5,qx=px-sax,u=(qx*ex+qy*ey)*iel,i=y*W+x;
   if(u<=0||u>=1){const end=u>=1,R=end?Rb:Ra,ddx=(end?px-sbx:qx)/R,ddy=(end?py-sby:qy)/R,e=1-ddx*ddx-ddy*ddy,cov=e*R*.5+.5;if(cov<=0)continue;
    const c=e>0?sqrt(e):0,iz=1/((end?bz:az)+c*r*fz);if(iz<=Z[i])continue;let al=(ddx*ex+ddy*ey)*iel2,s=(ddx*ey-ddy*ex)*iel2*sg;if(e<=0){const l=1/(sqrt(al*al+s*s)||1);al*=l;s*=l;}
-   shade(i,al*dx+s*sx+c*fx,al*dy+s*sy+c*fy,al*dz+s*sz+c*fz,iz,m,cov>1?1:cov,k);}
+   shade(i,al*dx+s*sx+c*fx,al*dy+s*sy+c*fy,al*dz+s*sz+c*fz,iz,m,cov>1?1:cov,end?k1:k0);}
   else{const izu=iza+(izb-iza)*u,R=rF*izu,lx=qx-ex*u,ly=qy-ey*u,s2=(lx*lx+ly*ly)/(R*R),e=1-s2,cov=e*R*.5+.5;if(cov<=0)continue;
    const c=e>0?sqrt(e):0,iz=1/(1/izu+c*r*fz);if(iz<=Z[i])continue;const s=(lx*sx-ly*sy>=0?1:-1)*sqrt(s2>1?1:s2);
-   shade(i,s*sx+c*fx,s*sy+c*fy,s*sz+c*fz,iz,m,cov>1?1:cov,k);}}}
+   shade(i,s*sx+c*fx,s*sy+c*fy,s*sz+c*fz,iz,m,cov>1?1:cov,k0+(k1-k0)*u);}}}
 }
 
 // ---------- sky: a vertical gradient with soft glows; also what fog fades into ----------
@@ -206,13 +206,14 @@ function pearlSheet(ctx,t,c){const p=palette(c);
  const m=mat(p(-.95),p(-.1),{sl:S_GLOSS,sp:1,rim:.85,rc:p(.45),kc:p(.62)}),dz=.46,flow=t*.42,row=Math.floor(flow/dz),tr=flow-row*dz;
  for(let j=50;j>=0;j--){const z=1.9+j*dz-tr;if(z<1.6)continue;const zw=(j+row)*dz,hw=Math.ceil((z*.86+1)/dz);
   for(let xi=-hw;xi<=hw;xi++){const x=xi*dz,a=sin(x*.36+t*.55)*cos(zw*.24-t*.3),b=sin(zw*.5+x*.22-t*.6),k=clamp(.42+a*.6+b*.3,0,1);
-   ball(x,-1.25+.62*a+.26*b,z,.13+.045*k,m,k*k);}}
+   let g=sin(zw*.27+x*.09*sin(t*.11)-t*.8);g=g>0?g*g*g*g:0; // a slow band of light that travels down the sheet
+   ball(x,-1.25+.62*a+.26*b,z,.13+.045*k+.02*g,m,clamp(k*k+g*.75,0,1));}}
  present(ctx,{thr:150,amt:.6,aa:false});}
 
 // ---------- Through the screen ----------
 const WPATH=rrectPath(3.1,1.86,.8,7),WPN=WPATH.length,WK=new Float32Array(WPN*6),WI=(()=>{const o=[];for(const [r0,r1] of [[0,1],[2,3],[3,4],[4,5]])for(let i=0;i<WPN;i++){const j=(i+1)%WPN,a=r0*WPN,b=r1*WPN;o.push(a+i,a+j,b+j,a+i,b+j,b+i);}return new Uint16Array(o);})();
 // one wall with a screen-shaped opening: the inner reveal, a rounded lip, and a face that only reaches as far as the wall in front lets you see
-function wall(z,ang,ox,oy,outer,m){const ca=cos(ang),sa=sin(ang),rings=[[-.1,.9,0,.1],[0,0,0,1],[0,0,.5,1],[.12,0,1,.7],[Math.min(1.1,outer*.45),0,1,.12],[outer,0,1,0]];let v=0;
+function wall(z,ang,ox,oy,outer,m){const ca=cos(ang),sa=sin(ang),rings=[[-.1,.9,0,.05],[0,0,0,.9],[0,0,.5,.9],[.12,0,1,.5],[Math.min(1.1,outer*.45),0,1,.1],[outer,0,1,0]];let v=0;
  for(const [off,dz,nf,k] of rings){const a=1-nf,l=1/(Math.hypot(a,nf)||1);for(let i=0;i<WPN;i++,v++){const q=WPATH[i],lx=q[0]+q[2]*off,ly=q[1]+q[3]*off,nx=-q[2]*a*l,ny=-q[3]*a*l,j=v*3;
   WP[j]=ox+lx*ca-ly*sa;WP[j+1]=oy+lx*sa+ly*ca;WP[j+2]=z+dz;WN[j]=nx*ca-ny*sa;WN[j+1]=nx*sa+ny*ca;WN[j+2]=-nf*l;WK[v]=k;}}
  drawBuf(WP,WN,WK,WI,WI.length,v,m);}
@@ -220,19 +221,19 @@ function throughScreen(ctx,t,c){const p=palette(c),gx=238+sin(t*.11)*8,gy=106+co
  sky([[0,p(-.97)],[1,p(-.97)]],[{x:gx,y:gy,rx:120,ry:78,col:p(-.05),k:.95},{x:gx,y:gy,rx:40,ry:26,col:p(.8),k:.9}]);
  sway(t,.34,10,0,0,250,238,106,.3);setLight(.2,.45,.9);setFog(4.2,27,1);
  const n=13,sp=2.3,flow=t*.6,row=Math.floor(flow/sp),tr=flow-row*sp;
- const mA=mat(p(-.985),p(-.55),{sl:S_GLOSS,sp:.5,rim:.9,rc:p(.45),kc:p(.5)}),mB=mat(p(-.975),p(-.45),{sl:S_GLOSS,sp:.5,rim:.9,rc:p(.45),kc:p(.62)});
+ const mA=mat(p(-.985),p(-.5),{sl:S_GLOSS,sp:.35,rim:.4,rc:p(.3),kc:p(.2)}),mB=mat(p(-.975),p(-.4),{sl:S_GLOSS,sp:.35,rim:.4,rc:p(.3),kc:p(.34)});
  let zp=0;for(let k=0;k<n;k++){const z=3.7+k*sp-tr,id=k+row,far=clamp((z-3.7)/20,0,1);
   wall(z,.1*sin(id*.9+t*.13),sin(id*.7+t*.1)*.8*far,cos(id*.55+t*.08)*.45*far,k?3.3*(z/zp-1)+1.3:9,id&1?mA:mB);zp=z;}
  present(ctx,{thr:190,amt:.4});}
 
 // ---------- Fog sea ----------
 const FGW=(W>>1)+2,FGH=(H>>1)+2,FGT=new Float32Array(FGW*FGH),FGC=new Float32Array(FGW*FGH*3);
-function fogSea(ctx,t,c){const p=palette(c),hz=47,horizon=p(.5);
- sky([[0,p(-.93)],[.11,p(-.62)],[hz/H,horizon],[1,horizon]],[{x:160+sin(t*.04)*30,y:hz+1,rx:210,ry:13,col:p(.92),k:.8}]);
+function fogSea(ctx,t,c){const p=palette(c),hz=47,horizon=p(.7);
+ sky([[0,p(-.95)],[.09,p(-.66)],[hz/H,horizon],[1,horizon]],[{x:170+sin(t*.04)*30,y:hz-6,rx:150,ry:30,col:p(.93),k:.55}]);
  sway(t,.9,9,2.7,.2,260,200,100,.3);setLight(-.5,.45,.6);setFog(10,40,.75);
  const y0=.5,m=mat(p(-.985),p(-.6),{sl:S_GLOSS,sp:.9,rim:1.1,rc:p(.45)});
- for(let j=12;j>=0;j--)for(let i=-8;i<=8;i++){const x=i*2+(j&1),z=3+j*2,w=.5+.5*sin(t*.33+i*.7+j*.5)*cos(j*.33-t*.16+i*.24),top=y0-.7+3.9*w*w*(.5+.5*hash(i*7.1+j*3.3));
-  if(top<y0-.25)continue;cap(x,y0-1,z,x,top-.34,z,.34,m);}
+ for(let j=12;j>=0;j--)for(let i=-8;i<=8;i++){const x=i*2+(j&1),z=3+j*2,w=.5+.5*sin(t*.33+i*.7+j*.5)*cos(j*.33-t*.16+i*.24),top=y0-.7+4.4*w*w*(.45+.55*hash(i*7.1+j*3.3));
+  if(top<y0-.25)continue;cap(x,y0-1,z,x,top-.3,z,.3,m);}
  // The gas: an exponential height fog with a rolling top, integrated along each ray and lit from the slope of its surface.
  // The top and its light are soft, so they are worked out on a half-size grid; the integral is per pixel, so the columns sink into it softly.
  const s=.26,dens=1.6,lit=p(.48),mid=p(-.12),shd=p(-.62),lx=-.64,lz=.77;
@@ -248,40 +249,44 @@ function fogSea(ctx,t,c){const p=palette(c),hz=47,horizon=p(.5);
  present(ctx,{thr:200,amt:.4});}
 
 // ---------- Ring basin ----------
-const RB_SEG=[9,7,11,8,6,9,5,7,5,4],RB_TINT=RB_SEG.map((n,k)=>{const o=new Float32Array(n);for(let i=0;i<n;i++)o[i]=hash(i*3.7+k*17.3)>.7?.55:0;return o;});
+const RB_SEG=[9,7,11,8,6,9,5,7,5,4],RB_TINT=RB_SEG.map((n,k)=>{const o=new Float32Array(n);for(let i=0;i<n;i++)o[i]=hash(i*3.7+k*17.3)>.7?.5:0;return o;});
 function ringBasin(ctx,t,c){const p=palette(c);
- sky([[0,p(-.9)],[1,p(-.9)]]);sway(t,1,13,8.4,.62,400,200,112,.3,-6.5);setLight(-.6,.58,-.35);setFog(0,1,0);
- const cxw=1.9,czw=7.4,K=9,sw=.9,sh=.6,R0=9.5,lhn=sqrt(.6*.6+.35*.35),lhx=-.6/lhn,lhz=-.35/lhn,slen=sh*lhn/.58;
- const mT=mat(p(-.96),p(-.2),{sl:S_GLOSS,sp:.55,rim:.2,rc:p(.4),kc:p(.2)}),mR=mat(p(-.98),p(-.45),{sl:S_GLOSS,sp:.3,rim:.15,rc:p(.4),kc:p(.2)});
- const glow=p(.3),dark=p(-.99),rot=RB_SEG.map((n,k)=>t*(.035+.011*k)*(k&1?1:-1)+k*1.3+40),f0=p(.82),f1=p(.05),breathe=.94+.06*sin(t*.5),Rf=R0-(K-1)*sw;
+ sky([[0,p(-.9)],[1,p(-.9)]]);sway(t,1,13,8.4,.62,400,200,112,.3,-6.5);const lwx=-.66,lwy=.64,lwz=-.39;setLight(lwx,lwy,lwz);setFog(0,1,0);
+ const cxw=1.9,czw=7.4,K=9,sw=.9,sh=.6,R0=9.5,lhn=sqrt(lwx*lwx+lwz*lwz),lhx=lwx/lhn,lhz=lwz/lhn,slen=sh*lhn/lwy;
+ const tLo=p(-.97),tHi=p(-.2),rLo=p(-.985),rHi=p(-.42),kc=p(.22),mB=mat(tLo,tHi,{sl:S_GLOSS,sp:.6,rim:.2,rc:p(.4),kc});
+ const glow=p(.3),dark=p(-.99),rot=RB_SEG.map((n,k)=>t*(.035+.011*k)*(k&1?1:-1)+k*1.3+40),f0=p(.82),f1=p(.05),breathe=.94+.06*sin(t*.5),Rf=R0-(K-1)*sw,dUp=DL[(lwy*127.5+127.5)|0];
  for(let i=0,j=0;i<N;i++,j+=3){wdir(-VT[j],-VT[j+1],-VT[j+2]);const dx=tx,dy=ty,dz=tz;if(dy>-.02)continue;
+  // walk down the steps: at each level the ray either lands on that ring's tread, strikes the riser below it, or carries on inward
   const dt=-sh/dy,sx=dx*dt,sz=dz*dt;let tk=-EY/dy,px=EX-cxw+dx*tk,pz=EZ-czw+dz*tk,k=0,riser=false,Rk=R0;
   for(;;){Rk=R0-k*sw;if(k===K||px*px+pz*pz>=Rk*Rk)break;const qx=px+sx,qz=pz+sz;if(qx*qx+qz*qz>Rk*Rk){riser=true;break;}px=qx;pz=qz;k++;}
-  let nx=0,ny=1,nz=0,sdw=0,ao=1,depth=k/K,tint=0,m=mT;
-  if(riser){const a=dx*dx+dz*dz,b=px*dx+pz*dz,cc=px*px+pz*pz-Rk*Rk,u=(-b+sqrt(b*b-a*cc))/a,hx=px+dx*u,hz2=pz+dz*u;let v=-dy*u/sh;if(v>1)v=1;
-   nx=-hx/Rk;nz=-hz2/Rk;ny=0;if(v<.14){const w=(1-v/.14)*1.1,l=1/sqrt(1+w*w);nx*=l;ny=w*l;nz*=l;}
+  let sdw=0,ao=1,depth=k/K,tint=0,r,g,b,lit=false;
+  if(riser){const a=dx*dx+dz*dz,bq=px*dx+pz*dz,cc=px*px+pz*pz-Rk*Rk,u=(-bq+sqrt(bq*bq-a*cc))/a,hx=px+dx*u,hz2=pz+dz*u;let v=-dy*u/sh;if(v>1)v=1;
    const n=RB_SEG[k],fr0=(fatan2(hz2,hx)+rot[k])*n/TAU,fi=fr0|0,fr=fr0-fi,ds=(fr<.5?fr:1-fr)*TAU*Rk/n;if(ds<.05)ao=.5+ds*10;
-   ao*=1-.45*v;depth=(k+v)/K;m=mR;tint=RB_TINT[k][fi%n];}
-  else if(k<K){const r=sqrt(px*px+pz*pz),ein=r-Rk,eout=k>0?Rk+sw-r:9;if(ein<.1){const w=(1-ein/.1)*1.15,l=1/sqrt(1+w*w);nx=-px/r*w*l;nz=-pz/r*w*l;ny=l;}
-   const n=RB_SEG[k],fr0=(fatan2(pz,px)+rot[k])*n/TAU,fi=fr0|0,fr=fr0-fi,ds=(fr<.5?fr:1-fr)*TAU*r/n;if(ds<.05)ao=.5+ds*10;
+   ao*=1-.45*v;depth=(k+v)/K;tint=RB_TINT[k][fi%n];let nx=-hx/Rk,nz=-hz2/Rk;
+   if(v<.14){const w=(1-v/.14)*1.1,l=1/sqrt(1+w*w);vdir(nx*l,w*l,nz*l);shade(i,tx,ty,tz,1,mB,1,tint);lit=true;}
+   else{const d=DL[((nx*lwx+nz*lwz)*127.5+127.5)|0];r=rLo[0]+(rHi[0]-rLo[0])*d;g=rLo[1]+(rHi[1]-rLo[1])*d;b=rLo[2]+(rHi[2]-rLo[2])*d;}}
+  else if(k<K){const rr=sqrt(px*px+pz*pz),ein=rr-Rk,eout=k>0?Rk+sw-rr:9;
+   const n=RB_SEG[k],fr0=(fatan2(pz,px)+rot[k])*n/TAU,fi=fr0|0,fr=fr0-fi,ds=(fr<.5?fr:1-fr)*TAU*rr/n;if(ds<.05)ao=.5+ds*10;
    if(eout<.45){const q=eout/.45;ao*=.55+.45*q*(2-q);}tint=RB_TINT[k][fi%n];
    if(k>0){const qx=px+lhx*slen,qz=pz+lhz*slen,e1=sqrt(qx*qx+qz*qz)-(Rk+sw);sdw=e1<-.1?0:e1>.14?1:(e1+.1)/.24;
-    if(k>1&&sdw<1){const q2x=px+lhx*slen*2,q2z=pz+lhz*slen*2,e2=sqrt(q2x*q2x+q2z*q2z)-(Rk+2*sw),s2=e2<-.16?0:e2>.24?1:(e2+.16)/.4;if(s2>sdw)sdw=s2;}}}
-  else{const r=sqrt(px*px+pz*pz)/Rf;let q=1-r*r;if(q<0)q=0;q*=q*breathe;C[j]=f1[0]+(f0[0]-f1[0])*q;C[j+1]=f1[1]+(f0[1]-f1[1])*q;C[j+2]=f1[2]+(f0[2]-f1[2])*q;continue;}
-  vdir(nx,ny,nz);shade(i,tx,ty,tz,1,m,1,tint);
-  const dk=1-ao*(1-.75*sdw),g=depth*depth*.62*breathe;let r=C[j],gg=C[j+1],b=C[j+2];r+=(dark[0]-r)*dk;gg+=(dark[1]-gg)*dk;b+=(dark[2]-b)*dk;
-  C[j]=r+(glow[0]-r)*g;C[j+1]=gg+(glow[1]-gg)*g;C[j+2]=b+(glow[2]-b)*g;}
+    if(k>1&&sdw<1){const q2x=px+lhx*slen*2,q2z=pz+lhz*slen*2,e2=sqrt(q2x*q2x+q2z*q2z)-(Rk+2*sw),s2=e2<-.16?0:e2>.24?1:(e2+.16)/.4;if(s2>sdw)sdw=s2;}}
+   if(ein<.1){const w=(1-ein/.1)*1.15,l=1/sqrt(1+w*w);vdir(-px/rr*w*l,l,-pz/rr*w*l);shade(i,tx,ty,tz,1,mB,1,tint);lit=true;}
+   else{r=tLo[0]+(tHi[0]-tLo[0])*dUp;g=tLo[1]+(tHi[1]-tLo[1])*dUp;b=tLo[2]+(tHi[2]-tLo[2])*dUp;}}
+  else{const rr=sqrt(px*px+pz*pz)/Rf;let q=1-rr*rr;if(q<0)q=0;q*=q*breathe;C[j]=f1[0]+(f0[0]-f1[0])*q;C[j+1]=f1[1]+(f0[1]-f1[1])*q;C[j+2]=f1[2]+(f0[2]-f1[2])*q;continue;}
+  if(lit){r=C[j];g=C[j+1];b=C[j+2];}else if(tint>0){const q=tint*.8;r+=(kc[0]-r)*q;g+=(kc[1]-g)*q;b+=(kc[2]-b)*q;}
+  const dk=1-ao*(1-.75*sdw),gl=depth*depth*.62*breathe;r+=(dark[0]-r)*dk;g+=(dark[1]-g)*dk;b+=(dark[2]-b)*dk;
+  C[j]=r+(glow[0]-r)*gl;C[j+1]=g+(glow[1]-g)*gl;C[j+2]=b+(glow[2]-b)*gl;}
  present(ctx,{thr:200,amt:.4});}
 
 // ---------- Strata ----------
 const SM=24,SWd=W+2*SM,SHt=H+2*SM,STH=new Float32Array(SWd*SHt),SLW=(SWd>>1)+2,SLH=(SHt>>1)+2,STL=new Float32Array(SLW*SLH);
-function strata(ctx,t,c){const p=palette(c),L=8,sc=1/640,o1x=t*.0034,o1y=t*.0021,o2x=-t*.0026,o2y=t*.003;
- for(let y=0,q=0;y<SLH;y++){const yy=y*2-SM,v=yy*sc,by=(.5-yy/H)*.2;for(let x=0;x<SLW;x++,q++){const xx=x*2-SM,u=xx*sc;STL[q]=.66*noise(N_SOFT,u+o1x,v+o1y)+.34*noise(N_SOFT,u*1.9+o2x+.37,v*1.9+o2y+.11)+by+(xx/W-.5)*.26;}}
+function strata(ctx,t,c){const p=palette(c),L=10,sc=1/560,o1x=t*.0034,o1y=t*.0021,o2x=-t*.0026,o2y=t*.003;
+ for(let y=0,q=0;y<SLH;y++){const yy=y*2-SM,v=yy*sc,by=(.5-yy/H)*.13;for(let x=0;x<SLW;x++,q++){const xx=x*2-SM,u=xx*sc;STL[q]=.62*noise(N_SOFT,u+o1x,v+o1y)+.38*noise(N_SOFT,u*2.1+o2x+.37,v*2.1+o2y+.11)+by+(xx/W-.5)*.2;}}
  for(let y=0,q=0;y<SHt;y++){const a=(y>>1)*SLW,fy=(y&1)*.5;for(let x=0;x<SWd;x++,q++){const b=a+(x>>1),fx=(x&1)*.5,h0=STL[b]+(STL[b+1]-STL[b])*fx,h1=STL[b+SLW]+(STL[b+SLW+1]-STL[b+SLW])*fx;STH[q]=h0+(h1-h0)*fy;}}
- const swx=sin(t*.33)*2,swy=cos(t*.21)*.6,LEV=[],SXk=[],SYk=[],LO=[p(-.99)],HI=[p(-.8)],step=.066,lev0=.27;
- for(let k=0;k<L;k++){LEV.push(lev0+k*step);SXk.push(SM+(k-3)*-swx);SYk.push(SM+Math.round((k-3)*-swy));const v=-.72+k*(1.55/(L-1));LO.push(p(v-.42));HI.push(p(v+.08));}
+ const swx=sin(t*.33)*2,swy=cos(t*.21)*.6,LEV=[],SXk=[],SYk=[],LO=[p(-.99)],HI=[p(-.84)],step=.05,lev0=.26;
+ for(let k=0;k<L;k++){LEV.push(lev0+k*step);SXk.push(SM+(k-4)*-swx*.8);SYk.push(SM+Math.round((k-4)*-swy));const v=-.8+k*(1.42/(L-1));LO.push(p(v-.4));HI.push(p(v+.06));}
  // light and half-vector in picture space: x right, y down, z toward the eye
- const Lx=-.5,Ly=-.62,Lz=.6,hl=1/Math.hypot(Lx,Ly,Lz+1),Hx=Lx*hl,Hy=Ly*hl,Hz=(Lz+1)*hl,bw=5.5,so=4.2,G0=.0042,spc=p(1),dkC=p(-1);
+ const Lx=-.5,Ly=-.62,Lz=.6,hl=1/Math.hypot(Lx,Ly,Lz+1),Hx=Lx*hl,Hy=Ly*hl,Hz=(Lz+1)*hl,bw=4.5,so=3.4,G0=.0046,spc=p(1),dkC=p(-1);
  for(let y=0,i=0;y<H;y++)for(let x=0;x<W;x++,i++){let top=-1,hv=0,q=0;const hc=STH[(y+SM)*SWd+x+SM];let k=Math.min(L-1,((hc-lev0)/step+2.2)|0);
   for(;k>=0;k--){const fx=x+SXk[k],xi=fx|0,qq=(y+SYk[k])*SWd+xi,h=STH[qq]+(STH[qq+1]-STH[qq])*(fx-xi);if(h>LEV[k]){top=k;hv=h;q=qq;break;}}
   let nx=0,ny=0,nz=1;
@@ -296,104 +301,93 @@ function strata(ctx,t,c){const p=palette(c),L=8,sc=1/640,o1x=t*.0034,o1y=t*.0021
   const j=i*3;C[j]=r;C[j+1]=g;C[j+2]=bl;}
  present(ctx,{thr:215,amt:.3});}
 
-// ---------- Long shadows ----------
-const SMW=288,SMH=208,SMB=new Float32Array(SMW*SMH),SMX=-9,SMZ=-3,SMS=16; // a shadow map laid on the floor: 16 texels to a unit
-function longShadows(ctx,t,c){const p=palette(c);
- sky([[0,p(-.5)],[1,p(-.5)]]);sway(t,1,14,11.5,.9,520,200,112,.3,-6.8);
- const az=t*.1+.9,el=.4,lx=cos(az)*cos(el),ly=sin(el),lz=sin(az)*cos(el),sdx=-cos(az),sdz=-sin(az),cot=cos(el)/sin(el);setLight(lx,ly,lz);setFog(0,1,0);
- SMB.fill(0);const pegs=[],r=.15;
- for(let j=-2;j<=8;j++)for(let i=-6;i<=6;i++){const x=i*1.36+(j&1)*.68+(hash(i*3.1+j*7.7)-.5)*.36,z=j*1.14+(hash(i*5.3+j*2.9)-.5)*.3,w=.5+.5*sin(t*.3+x*.45+z*.6+sin(z*.4-t*.2)),h=.3+.95*w*w;pegs.push([x,z,h]);
-  // its shadow: a soft-edged streak on the floor that widens and fades toward the tip
-  const len=h*cot,x1=x+sdx*len,z1=z+sdz*len,pad=.5,u0=Math.max(0,Math.floor((Math.min(x,x1)-pad-SMX)*SMS)),u1=Math.min(SMW-1,Math.ceil((Math.max(x,x1)+pad-SMX)*SMS)),v0=Math.max(0,Math.floor((Math.min(z,z1)-pad-SMZ)*SMS)),v1=Math.min(SMH-1,Math.ceil((Math.max(z,z1)+pad-SMZ)*SMS));
-  for(let v=v0;v<=v1;v++){const pz=SMZ+(v+.5)/SMS-z;for(let u=u0;u<=u1;u++){const px=SMX+(u+.5)/SMS-x;let s=(px*sdx+pz*sdz)/len;s=s<0?0:s>1?1:s;const ex=px-sdx*len*s,ez=pz-sdz*len*s,d=sqrt(ex*ex+ez*ez),pen=.03+.17*s,a=(r+pen-d)/(2*pen);
-   if(a>0){const val=(a>1?1:a)*(1-.45*s*s),q=v*SMW+u;if(val>SMB[q])SMB[q]=val;}}}}
- const flo=p(-.97),fhi=p(-.02),fsh=p(-.9),sc=p(.7),dif=.55+.45*DL[(ly*127.5+127.5)|0];
- for(let y=0,i=0,j=0;y<H;y++)for(let x=0;x<W;x++,i++,j+=3){const vx=VT[j],vy=VT[j+1],vz=VT[j+2];wdir(-vx,-vy,-vz);const wy=ty,tf=-EY/wy,X=EX+tx*tf,Zw=EZ+tz*tf;
-  const fu=(X-SMX)*SMS-.5,fv=(Zw-SMZ)*SMS-.5,u0=fu|0,v0=fv|0;let sh=0;if(u0>=0&&v0>=0&&u0<SMW-1&&v0<SMH-1){const q=v0*SMW+u0,a=fu-u0,b=fv-v0,s0=SMB[q]+(SMB[q+1]-SMB[q])*a,s1=SMB[q+SMW]+(SMB[q+SMW+1]-SMB[q+SMW])*a;sh=s0+(s1-s0)*b;}
-  const nh=(LY+vy)*HN[((LX*vx+LY*vy+LZ*vz)*1024+1024)|0],sp=nh>0?S_SHEEN[(nh*2048)|0]*.4+S_GLOSS[(nh*2048)|0]*.6:0,far=clamp((tf-13)/9,0,1),lit=dif*(1-.88*sh);
-  let rr=flo[0]+(fhi[0]-flo[0])*lit,g=flo[1]+(fhi[1]-flo[1])*lit,b=flo[2]+(fhi[2]-flo[2])*lit;const s=sp*(1-sh)*.5;rr+=(sc[0]-rr)*s;g+=(sc[1]-g)*s;b+=(sc[2]-b)*s;
-  C[j]=rr+(fsh[0]-rr)*far;C[j+1]=g+(fsh[1]-g)*far;C[j+2]=b+(fsh[2]-b)*far;}
- const m=mat(p(-.55),p(.6),{sl:S_GLOSS,sp:1,rim:.3,rc:p(.8)});pegs.sort((a,b)=>b[1]-a[1]);for(const [x,z,h] of pegs)cap(x,-.2,z,x,h-r,z,r,m);
- present(ctx,{thr:205,amt:.35});}
-
-// ---------- Card helix ----------
-const CARD=(()=>{const path=rrectPath(.95,.57,.17,3),n=path.length,th=.05,pos=[0,0,-th],nor=[0,0,-1],idx=[];
- const ring=(off,z,nz,out)=>{const s=pos.length/3;for(const [x,y,nx,ny] of path){const X=x+nx*off,Y=y+ny*off;pos.push(X,Y,z);const ax=out?nx*out:X*.3,ay=out?ny*out:Y*.3,l=Math.hypot(ax,ay,nz);nor.push(ax/l,ay/l,nz/l);}return s;};
- const r0=ring(-.07,-th,-1,0),r1=ring(0,-th+.025,-.7,.7),r2=ring(0,th-.025,.7,.7),r3=ring(-.07,th,1,0),cb=pos.length/3;pos.push(0,0,th);nor.push(0,0,1);
- for(let i=0;i<n;i++){const j=(i+1)%n;idx.push(0,r0+j,r0+i);for(const [a,b] of [[r0,r1],[r1,r2],[r2,r3]])idx.push(a+i,a+j,b+j,a+i,b+j,b+i);idx.push(cb,r3+i,r3+j);}
- return meshOf(pos,nor,null,idx);})();
-function helix(t,ax,az,Rh,count,per,dy,rate,phase,mA,mB,sc){const turn=TAU/per;
- for(let nI=0;nI<count;nI++){const u=nI+t*rate,w=mod(u,count),th=w*turn+phase,y=(w-count/2)*dy;
-  drawMesh(CARD,place(-.2,th,0,sc,ax-sin(th)*Rh,y,az-cos(th)*Rh),nI&1?mA:mB);}}
-function cardHelix(ctx,t,c){const p=palette(c);
- sky([[0,p(-.97)],[.5,p(-.8)],[1,p(-.98)]],[{x:296+sin(t*.06)*14,y:104,rx:120,ry:130,col:p(-.2),k:.8},{x:296,y:104,rx:40,ry:150,col:p(.2),k:.35}]);
- sway(t,.5,10,0,0,260,200,112,.3);setLight(-.55,.5,-.67);setFog(6.5,9,1);
- const mA=mat(p(-.97),p(-.3),{sl:S_GLOSS,sp:1,rim:.6,rc:p(.3)}),mB=mat(p(-.94),p(-.02),{sl:S_GLOSS,sp:1,rim:.6,rc:p(.45)});
- helix(t,2.5,10,3,48,12,.235,.5,0,mA,mB,1);
- present(ctx,{thr:190,amt:.45});}
+// ---------- Raked garden ----------
+const GS=[[3.3,5.7,1.32],[-2.2,8.9,.92],[5.5,2.1,.56],[-6.2,4.9,.74],[1,11.6,.64],[-3.4,1.5,.42]].map(([x,z,R])=>({x,z,R,y:-R*.38,rb:R*.925,h:R*.62}));
+const GDS=8,GDX=-13,GDZ=-4,GDW=26*GDS,GDH=21*GDS,GDD=new Float32Array(GDW*GDH),GDU=new Float32Array(GDW*GDH),GDV=new Float32Array(GDW*GDH);
+// how far each point of the sand is from the nearest stone, and which way that stone lies; the stones never move, so this is worked out once
+for(let v=0,q=0;v<GDH;v++)for(let u=0;u<GDW;u++,q++){const x=GDX+(u+.5)/GDS,z=GDZ+(v+.5)/GDS;let best=1e9,bx=1,bz=0;for(const s of GS){const ex=x-s.x,ez=z-s.z,d=Math.hypot(ex,ez),e=d-s.rb;if(e<best){best=e;bx=ex/(d||1);bz=ez/(d||1);}}GDD[q]=best;GDU[q]=bx;GDV[q]=bz;}
+const SMW=320,SMH=288,SMB=new Float32Array(SMW*SMH),SMX=-10,SMZ=-4,SMS=16; // a shadow map laid on the sand, 16 texels to a unit
+function rakedGarden(ctx,t,c){const p=palette(c);
+ sky([[0,p(.7)],[1,p(.7)]]);sway(t,.9,10,6.6,.72,330,200,112,.3,-4);
+ const az=t*.085+2.2,el=.36,lx=cos(az)*cos(el),ly=sin(el),lz=sin(az)*cos(el),sdx=-cos(az),sdz=-sin(az),cot=cos(el)/sin(el);setLight(lx,ly,lz);setFog(0,1,0);
+ SMB.fill(0);
+ for(const s of GS){const len=s.h*cot*1.25,x1=s.x+sdx*len,z1=s.z+sdz*len,pad=s.rb+.6,u0=Math.max(0,Math.floor((Math.min(s.x,x1)-pad-SMX)*SMS)),u1=Math.min(SMW-1,Math.ceil((Math.max(s.x,x1)+pad-SMX)*SMS)),v0=Math.max(0,Math.floor((Math.min(s.z,z1)-pad-SMZ)*SMS)),v1=Math.min(SMH-1,Math.ceil((Math.max(s.z,z1)+pad-SMZ)*SMS));
+  for(let v=v0;v<=v1;v++){const pz=SMZ+(v+.5)/SMS-s.z;for(let u=u0;u<=u1;u++){const px=SMX+(u+.5)/SMS-s.x;let q=(px*sdx+pz*sdz)/len;q=q<0?0:q>1?1:q;const ex=px-sdx*len*q,ez=pz-sdz*len*q,d=sqrt(ex*ex+ez*ez),rr=s.rb*(1-.5*q),pen=.05+.3*q,a=(rr+pen-d)/(2*pen);
+   if(a>0){const val=(a>1?1:a)*(1-.35*q*q),o=v*SMW+u;if(val>SMB[o])SMB[o]=val;}}}}
+ const lo=p(-.28),hi=p(.93),shC=p(-.5),haze=p(.74),ringW=1.55,f1=2.9,f2=2.5;
+ for(let y=0,i=0,j=0;y<H;y++)for(let x=0;x<W;x++,i++,j+=3){wdir(-VT[j],-VT[j+1],-VT[j+2]);const tf=-EY/ty,X=EX+tx*tf,Zw=EZ+tz*tf;Z[i]=1/(tf*-VT[j+2]);
+  let gu=(X-GDX)*GDS-.5,gv=(Zw-GDZ)*GDS-.5;if(gu<0)gu=0;else if(gu>GDW-2)gu=GDW-2;if(gv<0)gv=0;else if(gv>GDH-2)gv=GDH-2;const u0=gu|0,v0=gv|0,o=v0*GDW+u0,a=gu-u0,b=gv-v0,d0=GDD[o]+(GDD[o+1]-GDD[o])*a,d1=GDD[o+GDW]+(GDD[o+GDW+1]-GDD[o+GDW])*a,D=d0+(d1-d0)*b;
+  // raked lines: rings around each stone, straight furrows everywhere else; the light reads the slope of each ridge
+  let sl=0,ux=1,uz=0;
+  if(D<ringW){if(D>.06&&D<ringW-.07){sl=sin((D*f1-t*.05)*TAU)*.95;const on=(a>.5?1:0)+(b>.5?GDW:0);ux=GDU[o+on];uz=GDV[o+on];}}
+  else sl=sin((X*f2+.16*sin(Zw*.37)-t*.012)*TAU)*.95;
+  const il=1/sqrt(1+sl*sl),nl=(ly-sl*(ux*lx+uz*lz))*il,d=DL[(nl*127.5+127.5)|0];
+  const su=(X-SMX)*SMS-.5,sv=(Zw-SMZ)*SMS-.5,s0=su|0,t0=sv|0;let sh=0;if(s0>=0&&t0>=0&&s0<SMW-1&&t0<SMH-1){const q=t0*SMW+s0,e=su-s0,f=sv-t0,h0=SMB[q]+(SMB[q+1]-SMB[q])*e,h1=SMB[q+SMW]+(SMB[q+SMW+1]-SMB[q+SMW])*e;sh=h0+(h1-h0)*f;}
+  if(D<.3){const q=1-D/.3;if(q*.5>sh)sh=q*.5;}
+  let r=lo[0]+(hi[0]-lo[0])*d,g=lo[1]+(hi[1]-lo[1])*d,bl=lo[2]+(hi[2]-lo[2])*d;if(sh>0){const q=sh*.78;r+=(shC[0]-r)*q;g+=(shC[1]-g)*q;bl+=(shC[2]-bl)*q;}
+  const far=clamp((tf-10.5)/9,0,1)*.85;C[j]=r+(haze[0]-r)*far;C[j+1]=g+(haze[1]-g)*far;C[j+2]=bl+(haze[2]-bl)*far;}
+ const m=mat(p(-.99),p(-.42),{sl:S_GLOSS,sp:1,rim:.55,rc:p(.6)});for(let k=GS.length-1;k>=0;k--){const s=GS[k];ball(s.x,s.y,s.z,s.R,m);}
+ present(ctx,{thr:235,amt:.2});}
 
 // ---------- height-field sheets (satin, valley) ----------
-const HGN=64*44,HGP=new Float32Array(HGN*3),HGNn=new Float32Array(HGN*3),HGK=new Float32Array(HGN);let HGI=null,HGIk='';
+const HGN=100*44,HGP=new Float32Array(HGN*3),HGNn=new Float32Array(HGN*3),HGK=new Float32Array(HGN);let HGI=null,HGIk='';
 function sheet(nx,nz,xz,hf,kf,m){ // xz(i,j) leaves the point in tx,tz; hf(x,z) is the height; kf(h,x,z) the tint
  const key=nx+'x'+nz;if(HGIk!==key){HGIk=key;const o=[];for(let j=0;j<nz-1;j++)for(let i=0;i<nx-1;i++){const a=j*nx+i,b=a+1,cc=a+nx,d=cc+1;o.push(a,cc,d,a,d,b);}HGI=new Uint16Array(o);}
- const e=.06;for(let j=0,v=0;j<nz;j++)for(let i=0;i<nx;i++,v++){xz(i,j);const x=tx,z=tz,h=hf(x,z),hx=(hf(x+e,z)-h)/e,hz=(hf(x,z+e)-h)/e,l=1/sqrt(hx*hx+1+hz*hz),q=v*3;HGP[q]=x;HGP[q+1]=h;HGP[q+2]=z;HGNn[q]=-hx*l;HGNn[q+1]=l;HGNn[q+2]=-hz*l;HGK[v]=kf(h,x,z);}
+ const e=.05;for(let j=0,v=0;j<nz;j++)for(let i=0;i<nx;i++,v++){xz(i,j);const x=tx,z=tz,h=hf(x,z),hx=(hf(x+e,z)-h)/e,hz=(hf(x,z+e)-h)/e,l=1/sqrt(hx*hx+1+hz*hz),q=v*3;HGP[q]=x;HGP[q+1]=h;HGP[q+2]=z;HGNn[q]=-hx*l;HGNn[q+1]=l;HGNn[q+2]=-hz*l;HGK[v]=kf(h,x,z);}
  drawBuf(HGP,HGNn,HGK,HGI,HGI.length,nx*nz,m);}
 
 // ---------- Satin ----------
 function satin(ctx,t,c){const p=palette(c);
  sky([[0,p(-.97)],[1,p(-.9)]]);sway(t,.8,10,9.5,.98,330,200,112,.3,-4.5);setLight(-.6,.55,.3);setFog(12,9,.85);
  const ca=cos(.5),sa=sin(.5);
- const hf=(x,z)=>{const u=x*ca+z*sa,v=-x*sa+z*ca,w=.6+.4*sin(v*.5-t*.17+u*.13),ph=u*2.1+1.3*sin(v*.42+t*.2)+.5*sin(v*1.1-u*.3-t*.16)+t*.3,s=sin(ph);return .36*w*s*(.6+.4*s*s)+.1*sin(u*4.4-v*.7+t*.33)*w;};
- const m=mat(p(-.99),p(-.25),{sl:S_SATIN,sp:.55,sc:p(.7),rim:.5,rc:p(-.1),kc:p(.15)});
- sheet(64,44,(i,j)=>{const z=-2+j/43*13.5,hw=6.3+z*.38;tx=(i/63*2-1)*hw;tz=z;},hf,(h)=>clamp(h*1.4+.5,0,1)*.6,m);
- present(ctx,{thr:185,amt:.4});}
+ // u runs across the folds, v along them; the grid is laid the same way, fine across and coarse along, so the folds stay smooth
+ const fold=(u,v)=>{const w=.62+.38*sin(v*.5-t*.17+u*.13),s=sin(u*2.1+1.3*sin(v*.42+t*.2)+.5*sin(v*1.1-u*.3-t*.16)+t*.3);return .34*w*s*(.6+.4*s*s);};
+ const hf=(x,z)=>fold(x*ca+(z-4)*sa,-x*sa+(z-4)*ca);
+ const m=mat(p(-.99),p(-.28),{sl:S_SATIN,sp:.42,sc:p(.6),rim:.45,rc:p(-.1),kc:p(.12)});
+ sheet(100,26,(i,j)=>{const u=(i/99*2-1)*11.5,v=(j/25*2-1)*10.5;tx=u*ca-v*sa;tz=4+u*sa+v*ca;},hf,(h)=>clamp(h*1.5+.5,0,1)*.6,m);
+ present(ctx,{thr:190,amt:.35});}
 
 // ---------- Contour valley ----------
 const VZ=(()=>{const o=[];for(let z=1.25;o.length<42;z*=1.094)o.push(z);return o;})();
-function contourValley(ctx,t,c){const p=palette(c),hzn=78;
- sky([[0,p(-.97)],[hzn/H*.55,p(-.72)],[hzn/H,p(.2)],[.5,p(-.2)],[1,p(-.6)]],[{x:230+sin(t*.05)*20,y:hzn-2,rx:210,ry:17,col:p(.72),k:.8},{x:238+sin(t*.05)*20,y:hzn-5,rx:26,ry:13,col:p(1),k:.9}]);
- sway(t,.6,9,1.55,.1,260,200,104,.3);setLight(-.35,.42,.84);setFog(4.5,30,1);
+function contourValley(ctx,t,c){const p=palette(c),hzn=78,sx=236+sin(t*.05)*18;
+ sky([[0,p(-.97)],[hzn/H*.5,p(-.75)],[hzn/H,p(.1)],[.5,p(-.3)],[1,p(-.6)]],[{x:sx,y:hzn-3,rx:220,ry:20,col:p(.6),k:.75},{x:sx,y:hzn-9,rx:30,ry:22,col:p(.96),k:.8}]);
+ sway(t,.6,9,1.55,.1,260,200,104,.3);setLight((sx-200)/260,.19,1);setFog(4.5,30,1);
  const Zt=t*1.15,hf=(x,z)=>{const Z=z+Zt,ax=x<0?-x:x,A=smooth(.9,6.5,ax);return -1.15+A*(1.35+.95*sin(x*.31+Z*.19)+.65*sin(Z*.33-x*.24)+.3*sin(x*.7+Z*.52))+.1*sin(Z*.55+x*.9);};
- const m=mat(p(-.99),p(-.4),{sl:S_GLOSS,sp:.7,rim:.7,rc:p(.2),kc:p(.3),con:14,cw:.1,ca:.6,cc:p(.7),cf:11});
+ const m=mat(p(-.99),p(-.45),{sl:S_SATIN,sp:.75,sc:p(.75),rim:.5,rc:p(.1),kc:p(.2),con:14,cw:.1,ca:.6,cc:p(.7),cf:11});
  sheet(54,42,(i,j)=>{const z=VZ[j];tx=(i/53*2-1)*(3.6+z*.98)+EX*.5;tz=z;},hf,(h)=>clamp((h+1.3)/4.6,0.001,1),m);
  present(ctx,{thr:195,amt:.45});}
 
-// ---------- Lacquer pool ----------
-function lacquerPool(ctx,t,c){const p=palette(c);
- sky([[0,p(-.9)],[1,p(-.9)]]);sway(t,.6,8,2.3,.44,260,200,112,.3);setFog(0,1,0);
- const drops=[],per=1.2,life=7.5;for(let k=Math.floor((t-life)/per);k<=Math.floor(t/per);k++){const age=t-k*per;if(age<0||age>=life)continue;const R=.15+age*1.2,q=1-age/life;drops.push([(hash(k)-.5)*12,1.6+hash(k+.5)*12,R,q*sqrt(q)*.34*Math.min(1,age*2),(R>1.7?(R-1.7)*(R-1.7):0),(R+1.7)*(R+1.7)]);}
- const body=p(-.985),hor=p(.66),zen=p(-.93),pan=p(1),Hc=7,dr=t*.22,nd=drops.length;
- for(let i=0,j=0;i<N;i++,j+=3){wdir(-VT[j],-VT[j+1],-VT[j+2]);const dx=tx,dy=ty,dz=tz,tf=-EY/dy,X=EX+dx*tf,Zw=EZ+dz*tf;
-  noise(N_SOFT,X*.035+t*.009,Zw*.035-t*.012);let hx=ngx*5,hz=ngy*5;
-  for(let k=0;k<nd;k++){const d=drops[k],ex=X-d[0],ez=Zw-d[1],d2=ex*ex+ez*ez;if(d2>d[4]&&d2<d[5]){const r=sqrt(d2),q=r-d[2],s=-d[3]*sin(q*5.2)*fexp(-q*q*1.3)*5.2/(r+.2);hx+=s*ex;hz+=s*ez;}}
-  const il=1/sqrt(hx*hx+1+hz*hz),nx=-hx*il,nz=-hz*il,dn=dx*nx+dy*il+dz*nz,rx=dx-2*dn*nx,rz=dz-2*dn*nz;let ry=dy-2*dn*il;if(ry<.015)ry=.015;
-  let cs=1+dn;if(cs<0)cs=0;const c2=cs*cs,fr=.045+.955*c2*c2*cs,e=ry>.5?1:ry*2,eg=e*e*(3-2*e);
-  let r=hor[0]+(zen[0]-hor[0])*eg,g=hor[1]+(zen[1]-hor[1])*eg,b=hor[2]+(zen[2]-hor[2])*eg;
-  // soft light panels overhead, rounded like the menu's tiles, found by following the reflected ray up to the ceiling
-  const th=Hc/ry,u=X+rx*th,v=Zw+rz*th+dr,cu=u-Math.floor(u/9+.5)*9,cv=v-Math.floor(v/6.5+.5)*6.5,qx=(cu<0?-cu:cu)-2.1,qy=(cv<0?-cv:cv)-1.1,sd=(qx>0&&qy>0?sqrt(qx*qx+qy*qy):qx>qy?qx:qy)-.7;
-  if(sd<.5){const a=(sd<-.5?1:.5-sd)*(th>60?0:1-th/60);r+=(pan[0]-r)*a;g+=(pan[1]-g)*a;b+=(pan[2]-b)*a;}
-  C[j]=body[0]+(r-body[0])*fr;C[j+1]=body[1]+(g-body[1])*fr;C[j+2]=body[2]+(b-body[2])*fr;}
- present(ctx,{thr:150,amt:.5});}
-
-// ---------- Deep wells ----------
-function deepWells(ctx,t,c){const p=palette(c),D=10,cw=2.15,ch=1.5,hw=.86,hh=.54,rc=.26,bev=.08;
- sky([[0,p(.5)],[1,p(.5)]]);const sxw=sin(t*.33)*1.4,syw=.3+sin(t*.21+1)*.35;setCam(sxw,syw,-D,Math.atan2(-sxw,D),Math.atan2(syw,D),300,200,112);
- const lwx=-.5,lwy=.6,lwz=-.62,ll=1/Math.hypot(lwx,lwy,lwz),lx=lwx*ll,ly=lwy*ll,lz=lwz*ll;setLight(lx,ly,lz);setFog(0,1,0);
- const mF=mat(p(.1),p(.9),{sl:S_GLOSS,sp:.5,rim:0}),mI=mat(p(-.5),p(.62),{sl:S_GLOSS,sp:.25,rim:0}),deep=p(-.7),dk=p(-.85);
+// ---------- Depth grid ----------
+const DG_E=new Float32Array(15*11);
+function depthGrid(ctx,t,c){const p=palette(c),D=10,cw=2.9,ch=1.9,hw=1.18,hh=.71,rc=.22,bev=.1;
+ sky([[0,p(-.9)],[1,p(-.9)]]);const sxw=sin(t*.33)*1.5,syw=.2+sin(t*.21+1)*.4;setCam(sxw,syw,-D,Math.atan2(-sxw,D),Math.atan2(syw,D),300,200,112);
+ for(let iy=-5;iy<=5;iy++)for(let ix=-7;ix<=7;ix++){const w=.5+.5*sin(t*.4+ix*.8+iy*.55+sin(iy*.9-t*.2+ix*.3));DG_E[(iy+5)*15+ix+7]=.12+2.1*w*w;}
+ const f0=p(-.9),f1=p(-.66),lipHi=p(.55),lipLo=p(-1),g0=p(.86),g1=p(-.5),wd=p(-.97),L2x=-.6,L2y=.8;
  for(let i=0,j=0;i<N;i++,j+=3){wdir(-VT[j],-VT[j+1],-VT[j+2]);const dx=tx,dy=ty,dz=tz,t0=-EZ/dz,X=EX+dx*t0,Y=EY+dy*t0,ix=Math.floor(X/cw+.5),iy=Math.floor(Y/ch+.5),u=X-ix*cw,v=Y-iy*ch;
   const au=u<0?-u:u,av=v<0?-v:v,qx=au-hw+rc,qy=av-hh+rc,corner=qx>0&&qy>0,sdf=(corner?sqrt(qx*qx+qy*qy):qx>qy?qx:qy)-rc;
-  if(sdf>=0){let nx=0,ny=0,nz=-1;if(sdf<bev){const w=(1-sdf/bev)*1.2;let gx=corner?qx:qx>qy?1:0,gy=corner?qy:qx>qy?0:1;const gl=1/sqrt(gx*gx+gy*gy);gx*=gl*(u<0?-1:1);gy*=gl*(v<0?-1:1);const l=1/sqrt(1+w*w);nx=-gx*w*l;ny=-gy*w*l;nz=-l;}
-   vdir(nx,ny,nz);shade(i,tx,ty,tz,1,mF,1,0);continue;}
-  const w0=.5+.5*sin(t*.42+ix*.8+iy*.55+sin(iy*.9-t*.2)),Dk=.18+1.9*w0*w0,sxz=dx/dz,syz=dy/dz,su=sxz>0?(hw-u)/sxz:sxz<0?(-hw-u)/sxz:1e9,sv=syz>0?(hh-v)/syz:syz<0?(-hh-v)/syz:1e9;
-  let s=Dk,nx=0,ny=0,nz=-1,ao=1,sh=0;
-  if(su<s||sv<s){if(su<sv){s=su;nx=sxz>0?-1:1;nz=0;}else{s=sv;ny=syz>0?-1:1;nz=0;}ao=1-.5*s/Dk;
-   const wdl=nx*lx+ny*ly;if(wdl>0){const reach=-lz/(wdl+.05)*.9;sh=clamp((s-reach*.35)/(.25+reach*.2),0,1);}}
-  else{const fu=u+sxz*Dk,fv=v+syz*Dk,dl=Dk/-lz,pu=fu+lx*dl,pv=fv+ly*dl,ax=(pu<0?-pu:pu)-hw+rc,ay=(pv<0?-pv:pv)-hh+rc,sd2=(ax>0&&ay>0?sqrt(ax*ax+ay*ay):ax>ay?ax:ay)-rc,pen=.03+.1*Dk;
-   sh=clamp((sd2+pen)/(2*pen),0,1);const e1=hw-(fu<0?-fu:fu),e2=hh-(fv<0?-fv:fv),ed=e1<e2?e1:e2;ao=.72+.28*clamp(ed/.3,0,1);}
-  vdir(nx,ny,nz);shade(i,tx,ty,tz,1,mI,1,0);
-  const a=1-ao*(1-.6*sh),f=clamp(s/2.2,0,1)*.75;let r=C[j],g=C[j+1],b=C[j+2];r+=(dk[0]-r)*a;g+=(dk[1]-g)*a;b+=(dk[2]-b)*a;
-  C[j]=r+(deep[0]-r)*f;C[j+1]=g+(deep[1]-g)*f;C[j+2]=b+(deep[2]-b)*f;}
- present(ctx,{thr:235,amt:.25});}
+  const Dk=DG_E[(iy+5)*15+ix+7]||1,E=1-Dk*.36;let r,g,b;
+  if(sdf>=0){const q=clamp(.5+Y*.09+.25*sin(X*.3+Y*.2-t*.25),0,1);r=f0[0]+(f1[0]-f0[0])*q;g=f0[1]+(f1[1]-f0[1])*q;b=f0[2]+(f1[2]-f0[2])*q;
+   if(sdf<.5){const a=(1-sdf*2);const sp=a*a*.22*E;r+=(g0[0]-r)*sp;g+=(g0[1]-g)*sp;b+=(g0[2]-b)*sp;} // light spilling out of the opening
+   if(sdf<bev){const w=1-sdf/bev;let gx=corner?qx:qx>qy?1:0,gy=corner?qy:qx>qy?0:1;const gl=1/sqrt(gx*gx+gy*gy);gx*=gl*(u<0?-1:1);gy*=gl*(v<0?-1:1);const l=-(gx*L2x+gy*L2y);
+    if(l>0){const a=w*(.25+l*.75)*.7;r+=(lipHi[0]-r)*a;g+=(lipHi[1]-g)*a;b+=(lipHi[2]-b)*a;}else{const a=-w*l*.8;r+=(lipLo[0]-r)*a;g+=(lipLo[1]-g)*a;b+=(lipLo[2]-b)*a;}}}
+  else{const sxz=dx/dz,syz=dy/dz,su=sxz>0?(hw-u)/sxz:sxz<0?(-hw-u)/sxz:1e9,sv=syz>0?(hh-v)/syz:syz<0?(-hh-v)/syz:1e9;
+   const fr=g1[0]+(g0[0]-g1[0])*E,fg=g1[1]+(g0[1]-g1[1])*E,fb=g1[2]+(g0[2]-g1[2])*E;
+   if(su<Dk||sv<Dk){const s=su<sv?su:sv,q=s/Dk,a=q*q*(.5+.4*E)*(su<sv?(sxz>0?.8:1):(syz>0?.7:1.1));r=wd[0]+(fr-wd[0])*a;g=wd[1]+(fg-wd[1])*a;b=wd[2]+(fb-wd[2])*a;}
+   else{const fu=(u+sxz*Dk)/hw,fv=(v+syz*Dk)/hh,vg=1-.3*(fu*fu+fv*fv);r=fr*vg;g=fg*vg;b=fb*vg;}}
+  C[j]=r;C[j+1]=g;C[j+2]=b;}
+ present(ctx,{thr:185,amt:.5});}
+
+// ---------- Reeds ----------
+function reeds(ctx,t,c){const p=palette(c);
+ sky([[0,p(-.93)],[.3,p(-.985)],[1,p(-.99)]],[{x:200,y:-20,rx:260,ry:60,col:p(-.3),k:.7}]);
+ sway(t,.7,7,4.4,.66,260,200,108,.3,-1.2);setLight(-.5,.7,-.25);setFog(6,10,.92);
+ const m=mat(p(-.995),p(-.5),{sl:S_GLOSS,sp:.9,rim:.5,rc:p(.2),kc:p(.55)}),sp=.5;
+ for(let j=25;j>=0;j--){const z0=.3+j*sp,hw=Math.ceil(((z0+1.2)*.8+1.6)/sp);
+  for(let i=-hw;i<=hw;i++){const id=i*7.31+j*3.17,x=i*sp+(hash(id)-.5)*.34,z=z0+(hash(id+.4)-.5)*.34,h=1.35+.75*hash(id+.8);
+   // gusts: two waves of lean crossing the field
+   const g1=sin(x*.42+z*.3-t*.85),g2=sin(x*.95-z*.5-t*1.25+1.7),lx=.3*g1+.14*g2+.06*sin(t*1.9+id),lz=.16*sin(x*.3-z*.55+t*.6)+.1*g2,l2=lx*lx+lz*lz,ty1=h*(1-.35*l2);
+   cap(x,0,z,x+lx*h*.3,ty1*.52,z+lz*h*.3,.075,m,0,.42);cap(x+lx*h*.3,ty1*.52,z+lz*h*.3,x+lx*h,ty1,z+lz*h,.075,m,.42,1);}}
+ present(ctx,{thr:160,amt:.5,aa:false});}
 
 window.BT_IDEAS_3DS=[
  {name:'Pearl sheet',line:'A rolling sheet of glossy pearls streams toward you out of the dark.',size:[W,H],pixel:false,dark:false,draw:pearlSheet},
@@ -401,11 +395,10 @@ window.BT_IDEAS_3DS=[
  {name:'Fog sea',line:'Rounded columns rise and sink through a rolling sea of fog.',size:[W,H],pixel:false,dark:false,draw:fogSea},
  {name:'Ring basin',line:'A stepped basin of slowly counter-turning rings, glowing from the bottom.',size:[W,H],pixel:false,dark:false,draw:ringBasin},
  {name:'Strata',line:'Stacked contour layers that slowly change shape.',size:[W,H],pixel:false,dark:false,draw:strata},
- {name:'Long shadows',line:'x',size:[W,H],pixel:false,dark:false,draw:longShadows},
- {name:'Card helix',line:'x',size:[W,H],pixel:false,dark:false,draw:cardHelix},
+ {name:'Raked garden',line:'x',size:[W,H],pixel:false,dark:true,draw:rakedGarden},
  {name:'Satin',line:'x',size:[W,H],pixel:false,dark:false,draw:satin},
  {name:'Contour valley',line:'x',size:[W,H],pixel:false,dark:false,draw:contourValley},
- {name:'Lacquer pool',line:'x',size:[W,H],pixel:false,dark:false,draw:lacquerPool},
- {name:'Deep wells',line:'x',size:[W,H],pixel:false,dark:true,draw:deepWells},
+ {name:'Depth grid',line:'x',size:[W,H],pixel:false,dark:false,draw:depthGrid},
+ {name:'Reeds',line:'x',size:[W,H],pixel:false,dark:false,draw:reeds},
 ];
 })();

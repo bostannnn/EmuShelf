@@ -135,7 +135,7 @@ if (args.Contains("--stage-bigtype"))
 // Whether the baked legibility table holds over the narrow Stage's crop of every backdrop (M47 B11).
 if (args.Contains("--stage-narrow-legibility"))
 {
-    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility");
+    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility", args.Contains("--bigtype"));
     return;
 }
 
@@ -151,6 +151,13 @@ if (args.Contains("--launcher-bigtype"))
 if (args.Contains("--stage-letters"))
 {
     Environment.ExitCode = StageLettersCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-letters");
+    return;
+}
+
+// The Stage compositor's model view: each real medium rising, at rest, showing its back, flipping, turned and swinging back (M47 B12).
+if (args.Contains("--stage-model"))
+{
+    Environment.ExitCode = StageModelCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-model");
     return;
 }
 

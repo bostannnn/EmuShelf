@@ -156,10 +156,11 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
       `backdrops` and `BigTypeBackdrops`; the ink and veil were baked again for these (`legibility.json`
       `bigType`). Dreamcast's ground became sea blue `#0E7AB5` so its blue sea could stay as it is. Today's
       look keeps its rotating lists (`KnownSystems` `Backdrops`, M45 H7b), sizes and colours.
-    - **The Stage:** the name fitted into `DisplayName.fitBox` (smaller beside a game's medium), at
-      most three lines, bottom-left; the console's name top left; battery and clock top right; the
-      line and the second line under the name; the button hints bottom right as outlined circles; a
-      game's 3D medium (decision 17) or flat cover in its corner. The app's messages (a failed launch,
+    - **The Stage:** the name fitted into `DisplayName.fitBox` (smaller only beside cover search's
+      case), at most three lines, bottom-left; the console's name top left; battery and clock top right;
+      the line and the second line under the name; the button hints bottom right as outlined circles
+      (a key of two letters, RB or RS, as a rounded key). A game shows its name alone; LB or RB on a
+      focused game shows its medium alone instead, the model view (decision 17, M47 B12). The app's messages (a failed launch,
       a scan's progress, what an edit did) are the line under the name, not a toast (M47 B10).
     - **The Launcher:** flat, squarer tiles (`TileHome`, `TileFolder`, `TileRadius`), monograms
       fitted to the tile, the focused folder white with its colour as ink, one white ring
@@ -182,13 +183,48 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
 
 Added after H2 (owner, 2026-11-07):
 
-17. **A browsed game is its physical medium.** The Stage draws the focused game as its real case,
-    cartridge or card in 3D with the cover printed on it (the Gamepad shelf's models), resting at a
-    three-quarter turn and swaying gently. Changing games never restarts the motion: the next
-    medium carries on from the pose on screen and settles at rest. The right stick turns it, and R3
-    swings it back. Behind it is a quiet wash of the platform colour,
-    not the blurred fan art (too busy behind a medium). Platforms without an authored medium keep the
-    flat cover. The Title page keeps the fan-art hero from decision 15.
+17. **A browsed game is its physical medium, on a view of its own under Big Type** (rewritten
+    2026-11-15 for M47 B12; owner: "3D models looks weird with chosen big-type style, like it is
+    unnecessary", then "I like one big-type mode and separate model - approve"). The medium is the
+    game's real case, cartridge or card in 3D with the cover printed on it (the Gamepad shelf's models);
+    a platform without an authored medium (or a device whose GPU path fails) stands its flat cover in
+    the same place.
+    - **Today's look (Classic)** is unchanged: the Stage draws the focused game as its medium, resting at
+      a three-quarter turn and swaying gently over a quiet wash of the platform colour; changing games
+      carries on from the pose on screen; the right stick turns it and R3 swings it back. The Title page
+      keeps the fan-art hero from decision 15.
+    - **Big Type** never puts the medium beside the big name. A focused game has two views. The **name
+      view** (the default) is the big name alone across the whole name box. The **model view**, on LB or
+      RB on a focused game (in a folder, or pinned to home; the owner, 2026-11-15: "Switch the view")
+      with nothing over it, is the medium
+      alone in the middle of the Stage at 1.36 times its old size, its floor's shadow under it, no big
+      name: the game's name is the line, and the second line is its play time, achievements and
+      emulator. The hints are A Play, B Back, RS Turn, RB Name (no B on home, where it does nothing); the
+      name view's gain RB Model. It rises
+      through the hinge turning in, floats, holds a three-quarter turn and every fifteen seconds turns
+      once all the way round so its back and spine are seen. The right stick turns it from the pose it
+      has reached; letting go, or R3, swings it back. Changing games is one flip into the next medium,
+      the way you moved, carrying on from the pose on screen (never a restart from rest), and in a run of
+      quick presses a short flip that never stacks (M47 B11's run); a change of console changes the
+      medium's kind in the same flip. On the narrow Stage (the screens swapped) the model stands in its
+      middle, smaller (`NarrowModelTop`, `NarrowModelScale`), between the clock and the lines. The chosen view is kept across home and
+      folders: it shows whenever a game is focused and steps aside for anything that is not one; a fresh
+      start begins in the name view; the idle drift (decision 14) waits while the model shows. Over a sheet, the menu, Settings, a panel or a keyboard the
+      Stage is the name view; a launch from the model view keeps the medium (it bumps, and the colour
+      grows from it). Cover search (M47 B7) keeps its case beside the name, wearing the candidate. On
+      home LB and RB still turn the page on anything that is not a game; with a pinned game focused the
+      page turns only from the d-pad at the grid's left and right edges. The rule is one condition,
+      `HandheldShellViewModel.CanSwitchGameView`: a game is focused, on home or in a folder, with nothing
+      over it.
+
+    *Superseded under Big Type (kept for the record):* decision 17 read "The Stage draws the focused game
+    as its real case, cartridge or card in 3D with the cover printed on it (the Gamepad shelf's models),
+    resting at a three-quarter turn and swaying gently. Changing games never restarts the motion: the
+    next medium carries on from the pose on screen and settles at rest. The right stick turns it, and R3
+    swings it back. Behind it is a quiet wash of the platform colour, not the blurred fan art (too busy
+    behind a medium). Platforms without an authored medium keep the flat cover. The Title page keeps the
+    fan-art hero from decision 15." That is still today's look (Classic); under Big Type M47 B4 to B10a
+    put that medium beside the big name, which B12 replaced with the two views.
 
 Added after the roadmap review (owner, 2026-11-08):
 
@@ -310,7 +346,8 @@ comfy look so it doesn't pull your eye from the game.
 | X | Swap screens | Swap screens | — |
 | Y | Tile actions sheet | Game actions sheet | — |
 | Start | System menu | System menu | — |
-| LB / RB | Previous / next page | Previous / next folder | Previous / next page |
+| LB / RB | Previous / next page; Big Type, on a pinned game: the name view or the model view (decision 17, M47 B12), and the page turns only from the d-pad's edges | Big Type, on a game: the name view or the model view (decision 17, M47 B12); otherwise nothing | Previous / next page |
+| Right stick / R3 | — | Turn the medium / swing it back (today's look always; Big Type in the model view) | — |
 | Touch | Tap = select, tap again = open; swipe = page; long-press = move | Same | Drag |
 
 **Tile actions (Y):**
@@ -337,7 +374,7 @@ goes when today's look is removed (M47 D5).
 `docs/prototypes/handheld-big-type/tokens.js` (`motion`, `shape`), mirrored in the app: the maths
 is in `EmuShelf.Rendering/Stage/BigType` (`BigTypeMotion`, `BigTypeLauncherMotion`,
 `BigTypeListMotion`, `BigTypeFolderMotion`, `BigTypeLaunchMotion`, `BigTypeTypingMotion`,
-`BigTypeMoveMotion`), pure functions of time shared by the two native compositors
+`BigTypeMoveMotion`, `BigTypeModelMotion`), pure functions of time shared by the two native compositors
 (`StageCompositor`, `LauncherCompositor`) and the Avalonia views, and held to tokens.js by tests.
 A number the mock does not have is marked as the app's own where it is defined. Below, a name in
 code font is a tokens.js entry.
@@ -375,11 +412,12 @@ code font is a tokens.js entry.
 | Messages | The line under the name rolls to the message and back; an error shakes and holds longer; work still running holds until the app replaces it; a press moves on | `Message` |
 | Typing | The keys rise in, the ring lands on the first key, a key pulses when pressed; the typed word is the Stage's name: new letters drop in, a deleted one falls off, the word resizes; Search's hits arrive from above; closing, the keys drop; a folder made is born on its slot | `KeysIn`, `KeyFocus`, `KeyPress`, `TypedLetterIn`, `TypedLetterOut`, `TypedResize`, `TypedNameOut`, `ResultsIn`, `KeysOut`, `FolderBorn` |
 | Moving | A held tile grows and rocks; each direction trades places with the next slot; A puts it down with a squash, B walks every step back | `HeldScale`, `Held`, `Swap`, `PutDown` |
+| The model view (M47 B12, `proposals.html`) | LB or RB on a focused game (in a folder or pinned to home): the name's letters leave and the medium rises through the hinge from its old corner, turning in (two thirds of a turn) on the Flip curve; back again it drops out the way it came and the name lands. At rest it floats with its shadow breathing under it, holds a three-quarter turn and every 15 s turns once all the way round; it rests after a minute alone like the backdrop. Another game is one flip into its medium, the way you moved, from the turn on screen. The stick turns it from the pose it has reached; let go (or R3) it swings back. A wide medium (a jewel case, a cartridge) is set smaller to stay `ModelMaxWidth` wide. The launch's colour grows from the medium in the model view and from the name's middle in the name view | `ModelRight`, `ModelTop`, `ModelScale`, `ModelFloor…`, `ModelMaxWidth`, `ModelIn`, `ModelFlip`, `ModelFloat`, `ModelShowcase`, `ModelSwing`, `HintKey` |
 
 **Still from today's look under Big Type** (not yet given Big Type's numbers; see the B10 note in
 `ROADMAP.md`): the edge bump (7% of the ring toward the wall over 300 ms; the mock's is 18 px over
 220 ms), the screen swap (X), and the medium's sway (decision 17's spring; the mock's
-`MediumSway` is not used).
+`MediumSway` is not used), which since M47 B12 is only cover search's case beside the name.
 
 **Holding still.** Handheld mode holds still when any of these asks:
 - battery saver, or Android's own reduced-motion setting (the animator scale at 0), read by
@@ -395,7 +433,9 @@ and `LauncherMotionCommand`), every move above arrives in place at once, as the 
 `prefers-reduced-motion`: the ring and the lift land, nothing breathes, bobs, hops, rocks or rolls,
 the new name is there and the old one goes in `LetterOut.stillMs`, the flood lands, the wipe cuts,
 lists and keys are simply there, a folder or home is simply there, the takeover is there with no
-wait, the edge bump does not nudge, and the backdrop and the medium's sway hold a still frame.
+wait, the edge bump does not nudge, and the backdrop and the medium's sway hold a still frame. The model view's
+medium stands at its resting three-quarter turn with no float and no turn, rises, flips and leaves at once, and still
+turns under the stick (letting go puts it back at once).
 
 ### Today's look (M45; the default until Big Type is made the default)
 

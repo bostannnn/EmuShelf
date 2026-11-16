@@ -42,23 +42,30 @@ internal static class StageNarrowLegibilityCheck
             (StageInkZone.BottomRight, 1190, 940, 642, 68),
         ];
 
-    public static int Run(GL gl, string outputDirectory)
+    /// <param name="bigType">M47 B13: Big Type's own animations through Big Type's compositor (sizes, recolour, each in its own colour,
+    /// the default background in Settings' indigo), against Big Type's answers (<c>--stage-narrow-legibility --bigtype</c>).</param>
+    public static int Run(GL gl, string outputDirectory, bool bigType = false)
     {
         Directory.CreateDirectory(outputDirectory);
-        var ground = new Vector3(0x2B, 0x5B, 0xC7) / 255f;
-        var deepBytes = BigTypeVeil.Deep(new Vector3(0x2B, 0x5B, 0xC7));
-        var deep = deepBytes / 255f;
-        var ink = new StageInkCommand(ground, deep);
+        var ps2 = new Vector3(0x2B, 0x5B, 0xC7) / 255f;
         int wideFails = 0, narrowFails = 0, zones = 0;
-        foreach (var (id, answer) in BackdropLegibility.All.OrderBy(entry => entry.Key, StringComparer.Ordinal))
+        var list = bigType
+            ? BigTypeBackdrops.All.SelectMany(row => row.Backdrops.Select(entry => (entry.Id, Answer: BackdropLegibility.ForBigType(entry.Id),
+                Ground: BackdropPreview.Ground(row.Owner)))).ToList()
+            : BackdropLegibility.All.OrderBy(entry => entry.Key, StringComparer.Ordinal).Select(entry => (entry.Key, Answer: entry.Value, Ground: ps2)).ToList();
+        foreach (var (id, answer, ground) in list)
         {
+            var deep = BigTypeVeil.Deep(ground * 255f) / 255f;
+            var ink = new StageInkCommand(ground, deep);
             var worst = new Dictionary<(bool Narrow, StageInkZone Zone), float>();
             foreach (var narrow in new[] { false, true })
             {
                 var width = narrow ? 1240 : 1920;
                 var (framebuffer, colour) = RenderTarget(gl, width, Height);
                 var compositor = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }) { TargetFramebuffer = framebuffer };
-                Feed(compositor, ink, id, width);
+                if (bigType)
+                    compositor.Apply(new StageMotionCommand(HoldStill: false, BigType: true), 0f);
+                Feed(compositor, ink, id, width, bigType ? ground : null);
                 var now = 0f;
                 byte[]? last = null;
                 foreach (var moment in Moments)
@@ -69,7 +76,7 @@ internal static class StageNarrowLegibilityCheck
                     last = frame;
                     foreach (var area in Areas(narrow))
                     {
-                        var zoneInk = answer[area.Zone];
+                        var zoneInk = (bigType ? BackdropLegibility.ForBigType(id, narrow) : BackdropLegibility.For(id, narrow))[area.Zone];
                         var contrast = Contrast(frame, width, area, zoneInk.Dark ? deep : Vector3.One, zoneInk.Dark);
                         var key = (narrow, area.Zone);
                         worst[key] = worst.TryGetValue(key, out var was) ? Math.Min(was, contrast) : contrast;
@@ -90,12 +97,12 @@ internal static class StageNarrowLegibilityCheck
                     wideFails++;
                 if (narrowWorst < Pass)
                     narrowFails++;
-                var narrowVeil = BackdropLegibility.For(id, narrow: true)[zone].Veil;
+                var narrowVeil = (bigType ? BackdropLegibility.ForBigType(id, narrow: true) : BackdropLegibility.For(id, narrow: true))[zone].Veil;
                 Console.WriteLine(FormattableString.Invariant(
                     $"  {(narrowWorst >= Pass ? "ok  " : "FAIL")} {id,-18} {zone,-11} ink {(answer[zone].Dark ? "dark " : "white")} veil {answer[zone].Veil:0.00}/{narrowVeil:0.00}  wide {wide:0.00}  narrow {narrowWorst:0.00}"));
             }
         }
-        Console.WriteLine($"{zones} zones over {BackdropLegibility.All.Count} backdrops: under {Pass} on the wide Stage {wideFails}, on the narrow one {narrowFails}.");
+        Console.WriteLine($"{zones} zones over {list.Count} backdrops: under {Pass} on the wide Stage {wideFails}, on the narrow one {narrowFails}.");
         return 0;
     }
 
@@ -125,13 +132,13 @@ internal static class StageNarrowLegibilityCheck
         return (0.2126f * Lin(c.X)) + (0.7152f * Lin(c.Y)) + (0.0722f * Lin(c.Z));
     }
 
-    private static void Feed(StageCompositor compositor, StageInkCommand ink, string backdropId, float canvas)
+    private static void Feed(StageCompositor compositor, StageInkCommand ink, string backdropId, float canvas, Vector3? ground = null)
     {
         var grey = new StagePixels(1, 1, [0x40, 0x40, 0x40, 255], IsBgra: false);
         var pictured = new StageBackdrop(new StageImage(grey, 0, 0, 1920, 1080), null, null, null, Vector2.Zero, 0, 0);
         compositor.Apply(new StageCanvasCommand(canvas), 0f);
         compositor.Apply(ink, 0f);
-        compositor.Apply(new StageBackdropCommand(pictured, [backdropId]), 0f);
+        compositor.Apply(new StageBackdropCommand(pictured, [backdropId], Ground: ground), 0f);
         // The left veil as wide as the widest name box on each canvas (no medium beside it).
         var flatEnd = BigTypeVeil.LeftFlatEnd(80, canvas < 1920 ? 1080 : 1360);
         foreach (var (key, zone) in new[] { ("veil-left", StageInkZone.Left), ("veil-top-right", StageInkZone.TopRight), ("veil-bottom-right", StageInkZone.BottomRight) })

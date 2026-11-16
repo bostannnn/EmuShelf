@@ -3258,6 +3258,61 @@ falls back to the emulator and says so.
       ~190; held moves in a folder, the Y sheet, the menu, Settings, a panel, the keyboard and Search's hits, quick taps, A/B open and close,
       X during a move and the same on swapped screens were recorded (the session's notes, `m47-b11-renders`). Home, the swap, Sounds and Reduce
       motion left as found. Built, awaiting the owner's look.
+- [ ] **B12 — The model view on LB and RB.** (owner, 2026-11-15: "I want only model on rb/lb, not big type + model", "Yes, keep the
+      small line", "I like one big-type mode and separate model - approve"; `docs/prototypes/handheld-big-type/proposals.html`, first
+      section.) Under Big Type a game no longer shows its 3D medium beside the big name: the name view (the default) is the name alone
+      across the whole name box, and on LB or RB on a focused game (in a folder or pinned to home) the model view is the medium alone in
+      the middle of the Stage (1.36×, its
+      floor's shadow under it), the name only the line, rising through the hinge, floating, turning once all the way round every 15 s,
+      flipping into the next game's medium, turned by the stick and swinging back. On home LB / RB switch the view on a pinned game (the
+      owner, 2026-11-15: "Switch the view") and turn the page on anything else; the d-pad's edges still turn it. Choices in `DECISIONS.md`
+      2026-11-15 "M47 B12".
+      **Built (2026-11-15), under Big Type only, in folders and on home:** the shared maths `BigTypeModelMotion` /
+      `BigTypeModelState` (rise, flips, showcase, float, shadow, the stick's hold and swing back, held still, rest after a minute), the
+      native Stage's `StageCompositor.ModelView.cs` (posed every frame; a wide medium set smaller by `ModelMaxWidth`), the Avalonia Stage's
+      `HandheldStageMotion.Model.cs`, the shell's `HandheldShellViewModel.ModelView.cs` (texts, hints with RB / RS as rounded keys, the
+      stick), the launch's colour from the medium or the name's middle. Where each piece of the old arrangement lives now, and the choices
+      waiting for the owner (the view at start, the launch from the name view, the drift waiting in the model view), are in the
+      decision. **Verified on macOS:** Classic byte-identical to the render before any change on all 158 design frames; Big Type: 37 of 158 frames differ from the render before (every frame with a game focused: the name across the whole box with no case or cover beside it, and RB Model in its hints; Activity's RB hints as rounded keys; under the folder's game, All apps' Stage; home's second page now turned from the tile beside the pinned game, as RB on the game switches its view), each looked at for clipped, overlapping or overflowing text and none found; two Big Type renders of the final code byte-identical; the
+      model view's frames on request (`EMUSHELF_B12_SHOTS=1`: PS2 name and model, no cover, missing file, long name, PS1 three discs,
+      3DS, a game pinned to home in both views); the native Stage's real media on the Mac (`tools/EmuShelf.Rendering.Preview --stage-model`: keep case, jewel case, SNES
+      cartridge, DS and 3DS cards, a flat cover; centred, clear of the corners, clear at the rise's first frame, gone after leaving, still
+      when held). New tests: `HandheldBigTypeModelMotionTests` (tokens, the rise, the leave from mid-rise, the showcase and float, flips
+      carrying on, the stick and swing back, held still, the minute's rest, the shadow) and `HandheldShellViewModelTests+BigTypeModelView`
+      (LB / RB in a folder both ways, kept across games and folders, a folder tile on home still turns the page, a sheet or the menu over
+      it, a missing file, the stick, no drift over it, Classic unchanged; on home a pinned game switches the view and does not turn the
+      page, any other tile turns the page and does not switch, the d-pad's edge still turns the page from a pinned game, and from a pinned
+      game's model to a folder tile and back the model returns and carries into a folder). `dotnet build` and the full `dotnet test` passed three times running after the
+      last change. **Thor (Release AOT, `adb install -r`, replacing B11's build; 60 Hz; no system setting changed; the owner's library):**
+      the name view with RB Model; RB rises the PS2 keep case through the hinge, it floats and turns once all the way round (its back);
+      single presses flip into the next game, a held direction carries on through several; LB lands the name; the PS1 jewel case, the
+      SNES cartridge and the DS card in the model view (the jewel case touched the battery under the owner's 12-hour clock until
+      `ModelMaxWidth` came down to 720); the choice carried into another folder; Reduce motion on: at rest, views at once, no blank frame
+      after a fix, off again; Classic: RB in a folder does nothing. Frame probe: the rise 37 frames after the press frame, interval median
+      16.5 ms, p95 19.4, worst 20.7; flips 429 frames, median 16.6, p95 20.0, worst 28.7 (one); render-thread CPU p95 2.6 ms, GPU p95
+      2.2 ms. The medium's first appearance in a fresh process: 16.6 ms for its first 3D render (B6 measured 8 to 19 ms) after a 25.7 ms
+      first apply on the press frame (78.6 ms gap, once per process; a later rise's press frame 5.8 ms). Found and fixed there: the idle
+      drift took the Stage at 15 s with the medium drawn over its fan art (the drift now waits in the model view), and a held-still frame
+      with neither medium nor name. **Not seen on the Thor:** the right stick and its swing back (adb cannot move an axis; Mac renders and
+      tests only), the launch from either view (no games launched), a platform with no authored medium (every console on the owner's
+      Thor has one), a game pinned to home (the owner's home has none, and pinning one would change it; the home rule is held by the tests
+      and the frames on request). **After B11 was merged in:** the model view on the narrow Stage (centred, clear of the clock, the label, the raised lines and the hints'
+      row; `NarrowModelTop`, `NarrowModelScale`, the app's own) and the flip's short form in a run of quick presses (never stacked, never
+      restarted). Checked after the merge: the native Stage's narrow pass on the Mac (keep case, jewel case, SNES cartridge, 3DS card:
+      centred, clear of every corner's text), B11's narrow layout test extended to the model, and the Thor (second sitting, 23:51, this
+      build installed with `adb install -r`): screens swapped, the PS2 folder's name view in the narrow name box and the model in the middle
+      of the narrow Stage clear of the clock, the label, the lines and the hints' row; five quick taps changed the game four times in half a
+      second with no stacked turns; swapped back. **Verified after the merge (macOS):** Classic byte-identical on all 158 design frames to the render before
+      any change; two Big Type renders byte-identical; 37 of 158 Big Type frames differ from a render of the design branch's tip (B11
+      merged): the same game frames as before the merge (name across the whole box, RB Model; Activity's RB as rounded keys; All apps'
+      Stage; home's second page turned from the folder beside the pinned game) and the three swapped Stage bottoms with a game (the name now
+      across B11's whole narrow box, no case beside it), each looked at, nothing clipped or overlapping; the on-request frames gained the
+      swapped Stage's name view, model and long name; `dotnet build` and both test projects passed three times running (App 1,764,
+      Infrastructure 1,407).
+      Renders, recordings and the probe log: `m47-b12-renders` in the build sessions' notes. Home, the swap, Sounds (on) and Reduce
+      motion (off) as found, `bigtype`. The first sitting's build replaced the one installed at 18:27; another session installed its own
+      build at 19:18 and 19:25 (its probe on `rest`) and again at 19:49; the second sitting installed B12's merged build at 23:51, which the
+      Thor runs now.
 - [ ] **B13 — The owner's backdrop choices, under Big Type.** One animation per console (the 3DS's three replaced in part 2), recoloured toward
       the console's ground where chosen, drawn sharp or crisp by the owner's rule; Recent's own `arc-checker`; Dreamcast's ground sea
       blue `#0E7AB5`; Wii's gradient smoothed; `psp-ribbon` ported. (Choices and words in `DECISIONS.md` 2026-11-15 "M47 B13".)

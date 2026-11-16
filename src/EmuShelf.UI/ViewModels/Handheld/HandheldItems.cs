@@ -912,8 +912,12 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     public partial bool IsMediumUnavailable { get; set; }
 
-    /// <summary>A browsed game is drawn as its physical medium.</summary>
-    public bool HasMedium => (Kind == HandheldStageKind.Game || IsCoverOnCase) && Medium is not null && !IsMediumUnavailable;
+    /// <summary>
+    /// A browsed game is drawn as its physical medium. Under Big Type only in the model view (M47 B12) or on cover search's case: the
+    /// name view shows the name alone.
+    /// </summary>
+    public bool HasMedium => (Kind == HandheldStageKind.Game || IsCoverOnCase) && Medium is not null && !IsMediumUnavailable &&
+        (HandheldTokens.IsClassic || IsModelView || IsCoverOnCase);
 
     /// <summary>Big Type's cover search (M47 B7, the mock's): the game's case stands beside the name wearing the candidate.</summary>
     private bool IsCoverOnCase => HandheldTokens.IsBigType && Kind == HandheldStageKind.Panel && ListCover is not null;
@@ -1060,20 +1064,26 @@ public sealed partial class HandheldStageViewModel : ObservableObject
 
     public bool HasListCover => HandheldTokens.IsBigType && ListCover is not null && Kind == HandheldStageKind.Panel;
 
-    /// <summary>A game drawn as its flat cover sits in the medium's corner under Big Type (or a panel's candidate cover).</summary>
-    public bool HasBigTypeCover => HandheldTokens.IsBigType && (HasFlatCover || (HasListCover && !HasMedium));
+    /// <summary>
+    /// A cover beside the name under Big Type: only cover search's candidate (M47 B7). A game's own flat cover is the model view's
+    /// (<see cref="HasModelCover"/>, M47 B12); the name view has none.
+    /// </summary>
+    public bool HasBigTypeCover => HandheldTokens.IsBigType && HasListCover && !HasMedium;
 
-    /// <summary>A game drawn as its medium sits in its corner under Big Type.</summary>
-    public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium;
+    /// <summary>A medium beside the name under Big Type: only cover search's case wearing the candidate (M47 B7).</summary>
+    public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium && !IsModelView;
 
-    /// <summary>The name's box: narrower when a game's medium or cover stands beside it.</summary>
+    /// <summary>The name's box: narrower only when cover search's case or candidate stands beside it (M47 B12: a game's name has the whole box).</summary>
     public double NameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: false);
 
     /// <summary>The name's box on the narrow screen (the screens swapped, M47 B11): its own widths, beside a medium or not.</summary>
     public double NarrowNameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: true);
 
-    /// <summary>A game's medium or cover (or a panel's candidate cover) stands beside the name.</summary>
-    public bool IsNameBesideMedium => IsGame || HasListCover;
+    /// <summary>
+    /// Something stands beside the name: since M47 B12 only cover search's case or candidate (a game's medium is the model view's, in the
+    /// middle, and the name view has none).
+    /// </summary>
+    public bool IsNameBesideMedium => HasListCover;
 
     public double NameOpacity => IsPlaceholder ? HandheldTokens.PlaceholderOpacity : IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }
@@ -1118,6 +1128,9 @@ public enum HandheldGlyph
 public sealed record HandheldHint(string Button, string Label, HandheldGlyph Icon = HandheldGlyph.None)
 {
     public bool HasIcon => Icon != HandheldGlyph.None;
+
+    /// <summary>A key of more than one letter (RB, RS): Big Type draws it as a rounded key, not a circle (M47 B12, proposals.html).</summary>
+    public bool IsWide => Button.Length > 1;
 }
 
 public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> invoke) : ObservableObject

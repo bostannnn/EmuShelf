@@ -32,6 +32,12 @@ public sealed partial class HandheldShellViewModel
     /// </summary>
     public void ApplyRightStick(float x, float y, double deltaMilliseconds)
     {
+        // M47 B12: the model view's medium is posed by the Stage itself; the stick only says how far it has turned it.
+        if (Stage.IsModelView)
+        {
+            ApplyModelStick(x, y, deltaMilliseconds);
+            return;
+        }
         if (!CanTurnMedium || !_medium.ApplyStick(x, y, deltaMilliseconds))
             return;
         PushMediumPose();
@@ -45,6 +51,11 @@ public sealed partial class HandheldShellViewModel
     /// <summary>R3: the medium swings back to its resting three-quarter view.</summary>
     private void RecentreMedium()
     {
+        if (Stage.IsModelView)
+        {
+            ReleaseModelTurn();
+            return;
+        }
         if (!Stage.HasMedium || !_medium.Recentre())
             return;
         PushMediumPose();
@@ -58,7 +69,8 @@ public sealed partial class HandheldShellViewModel
 
     private void UpdateMediumTimer()
     {
-        if (_disposed || !Stage.HasMedium || (!_medium.IsSettling && !_medium.IsSwaying))
+        // The model view's medium (M47 B12) is posed by the Stage itself, so the sway's clock does not run for it.
+        if (_disposed || !Stage.HasMedium || Stage.IsModelView || (!_medium.IsSettling && !_medium.IsSwaying))
         {
             StopMediumTimer();
             return;

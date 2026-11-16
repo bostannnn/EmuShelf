@@ -183,7 +183,8 @@ public static class BackdropLegibility
     {
         // Through the screen: a fixed white with these veils, measured (the rule changes ink between moments on the left and the hints).
         ["3ds-screen"] = new("3ds", Changes(0.5f), White(0.4f), Changes(0.5f)),
-        ["arc-checker"] = new("recent", Dark(0.28f), White(0.25f), Dark(0.25f)),
+        // Recent\'s checker: the left veil raised from 0.28 so the whole name box holds 3.0 through the real compositor (M47 B13 part 2).
+        ["arc-checker"] = new("recent", Dark(0.34f), White(0.25f), Dark(0.25f)),
         ["arc-vector-v3"] = new("arcade", White(0.28f), White(0.25f), White(0.25f)),
         ["dc-sea-v2"] = new("dreamcast", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
         ["ds-dots"] = new("nds", Dark(0.28f), Dark(0.25f), Dark(0.25f)),
