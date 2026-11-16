@@ -3258,6 +3258,23 @@ falls back to the emulator and says so.
       ~190; held moves in a folder, the Y sheet, the menu, Settings, a panel, the keyboard and Search's hits, quick taps, A/B open and close,
       X during a move and the same on swapped screens were recorded (the session's notes, `m47-b11-renders`). Home, the swap, Sounds and Reduce
       motion left as found. Built, awaiting the owner's look.
+      **2026-11-16, the owner on the Thor: "a pixel or two stuck on top for a while" after a line rolls.** Cause: a rolling character
+      travelled the mock's 1.1 em, but its window here is its text block's whole height (the face's own line, about 1.5 em; a two-line
+      message twice that), so the bottom of a leaving glyph stayed in the top of its window until the roll ended, and the top of an
+      arriving one sat in the bottom of its window before it rose. Fixed in the one place every roll is cut (`BigTypeRollDraw`, used by the
+      native Stage, the takeover's status, the native Launcher and the Avalonia text): a character travels the mock's distance or its
+      window's height, whichever is more. A new test composes the roll's frames from real pictures of the line, the second line, the clock
+      and a two-line message, as the compositors draw them, every 4 ms: no piece outside the text's box, nothing of a leaving glyph once it
+      has had its time, nothing of an arriving one before it rises, and the new picture alone once the roll ends (it found 6 to 415 pixels
+      left behind before the fix). The model view's line (B12, merged in) is among its cases. The native Stage's own roll read back on the
+      Mac (`tools/EmuShelf.Rendering.Preview -- --stage-roll DIR`, pictures from the test with `EMUSHELF_ROLL_RAW`): before, 84 to 242
+      pixels of the old line stayed from the last glyph's leave to the roll's end and up to 102 of the new one showed before the first rise;
+      after, none. **On the Thor (2026-11-16, Release AOT, `adb install -r` over B12's build, 60 Hz, no system setting changed):** recorded
+      the Stage between an empty slot and a folder on home's second page, one press at a time and held: before, the bottoms of "Press A to
+      make a folder here" stayed as a dotted strip above "0 games" for about 0.3 s and the new line's tops showed under the old one before it
+      rose; after, neither. Home, the swap, Sounds and Reduce motion left as found, `bigtype`, this build installed. Classic byte-identical
+      on all 158 design frames with and without the fix; two Big Type renders of the fix identical and no Big Type frame changed (rolls end
+      before the frames are taken); one Classic launching frame and one Big Type sheet frame differ run to run whatever the code.
 - [ ] **B12 — The model view on LB and RB.** (owner, 2026-11-15: "I want only model on rb/lb, not big type + model", "Yes, keep the
       small line", "I like one big-type mode and separate model - approve"; `docs/prototypes/handheld-big-type/proposals.html`, first
       section.) Under Big Type a game no longer shows its 3D medium beside the big name: the name view (the default) is the name alone
