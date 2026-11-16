@@ -405,9 +405,10 @@
     <!-- ===== A panel: achievements, Activity, cover search, the scrapers ===== -->
     <Panel x:Name="PanelLayer" IsVisible="{Binding IsPanelOpen}">
       <Panel DataContext="{Binding Panel}" x:DataType="vm:HandheldPanelViewModel" IsVisible="{Binding IsListing}">
-        <!-- The heading: the panel's name at the left, its count at the right, both on the box's bottom. -->
+        <!-- The heading: the panel's name at the left, its count at the right, both on the box's bottom; a long name is set smaller to
+             fit the room its count leaves it (M47 B14, B10a's rule for a folder's name). -->
         <Grid Margin="{x:Static vm:HandheldTokens.PanelHeadMargin}" Height="{x:Static vm:HandheldTokens.PanelHeadHeight}" VerticalAlignment="Top" ColumnDefinitions="*,Auto">
-          <vh:HandheldBigTypeHeading x:Name="PanelTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.Heading}" MaxTextWidth="{x:Static vm:HandheldTokens.PanelNameMaxWidth}"
+          <vh:HandheldBigTypeHeading x:Name="PanelTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.Heading}" MaxTextWidth="{x:Static vm:HandheldTokens.PanelNameMaxWidth}" FitsRoom="True"
                                      FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" VerticalAlignment="Bottom" />
           <vh:HandheldRollingText x:Name="PanelCount" Grid.Column="1" Text="{Binding Count}" IsVisible="{Binding HasCount}" FontSize="{x:Static vm:HandheldTokens.PanelCount}"
                                   FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnColour}" Opacity="{x:Static vm:HandheldTokens.PanelCountOpacity}"
