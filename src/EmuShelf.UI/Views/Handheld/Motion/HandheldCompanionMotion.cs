@@ -94,6 +94,7 @@ internal sealed class HandheldCompanionMotion
                 _restSince = Stopwatch.GetTimestamp();
                 break;
             case nameof(HandheldCompanionViewModel.ArrivedSince):
+            case nameof(HandheldCompanionViewModel.LayerChangedSince):
             case nameof(HandheldCompanionViewModel.IsLeaving):
             case nameof(HandheldCompanionViewModel.TabChangedSince):
             case nameof(HandheldCompanionViewModel.ShowsBigTypeBody):
@@ -134,10 +135,16 @@ internal sealed class HandheldCompanionMotion
         var arrived = Since(companion.ArrivedSince);
         var left = Since(companion.LeavingSince);
 
+        // M47 B15: a layer over the running game (the Shelf, the Wall, the Reel): the parts drop out under it (the page's C.hide()).
+        var covered = companion.HasLayer;
+        var coveredFor = Since(companion.LayerChangedSince);
+
         (float Offset, float Opacity) PartPose(int index)
         {
             if (leaving)
                 return BigTypeLaunchMotion.PartOut(index, left, still);
+            if (covered)
+                return BigTypeLaunchMotion.PartOut(index, coveredFor, still);
             return BigTypeLaunchMotion.PartIn(index, arrived, still);
         }
 
@@ -151,7 +158,7 @@ internal sealed class HandheldCompanionMotion
         }
         var bar = PartPose(BarIndex);
         Pose(_bar, 0, bar.Offset, bar.Opacity);
-        moving |= leaving ? left < BigTypeLaunchMotion.PartOutMilliseconds + (BarIndex * BigTypeLaunchMotion.PartOutStagger)
+        moving |= leaving || covered ? (leaving ? left : coveredFor) < BigTypeLaunchMotion.PartOutMilliseconds + (BarIndex * BigTypeLaunchMotion.PartOutStagger)
             : arrived < BigTypeLaunchMotion.PartsInTotal(BarIndex + 1);
         moving |= tab.Offset != 0f || tab.Opacity < 1f;
 

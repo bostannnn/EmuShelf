@@ -115,6 +115,8 @@ public sealed partial class HandheldCompanionViewModel
     {
         _secondTimer?.Stop();
         _shotsLoad?.Cancel();
+        _reelLoad?.Cancel();
+        ReleaseReel();
         OnPropertyChanged(nameof(ShowsBigTypeBody));
     }
 

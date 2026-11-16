@@ -732,7 +732,7 @@
 
         <!-- ===================== Every badge (A on the panel; the Title page's Achievements) ===================== -->
         <Grid x:Name="GridLayer" Classes="layer" Background="{x:Static vm:HandheldTokens.CompanionLayerGround}" RowDefinitions="Auto,Auto,*,Auto"
-              IsVisible="{Binding IsAchievementsLayer}">
+              IsVisible="{Binding ShowsClassicGrid}">
           <Grid.RenderTransform>
             <TranslateTransform />
           </Grid.RenderTransform>
@@ -776,7 +776,7 @@
           <!-- The outer badges' 25 px margins sit inside the 48 px edge, so the grid lines up with the header. -->
           <!-- Whole rows only: the view fits the list to the most 170 px rows the space holds (HandheldScrolling). -->
           <Panel x:Name="BadgeHost" Grid.Row="2" Margin="23,16,23,0">
-            <ListBox x:Name="BadgeList" ItemsSource="{Binding Model.AchievementRows}" IsVisible="{Binding IsAchievementsLayer}"
+            <ListBox x:Name="BadgeList" ItemsSource="{Binding Model.AchievementRows}" IsVisible="{Binding ShowsClassicGrid}"
                      Background="Transparent" BorderThickness="0" Padding="0" ClipToBounds="True" VerticalAlignment="Top"
                      AutoScrollToSelectedItem="False" HorizontalAlignment="Center"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Hidden">
@@ -881,7 +881,7 @@
 
         <!-- ===================== All apps (the dock's first button, or Y on a slot to change it) ===================== -->
         <Grid x:Name="DrawerLayer" Classes="layer" Classes.light="{Binding IsDrawerLight}" RowDefinitions="Auto,*,Auto"
-              IsVisible="{Binding IsDrawerLayer}">
+              IsVisible="{Binding ShowsClassicDrawer}">
           <Grid.RenderTransform>
             <TranslateTransform />
           </Grid.RenderTransform>
@@ -959,6 +959,9 @@
             </ItemsControl.ItemTemplate>
           </ItemsControl>
         </Grid>
+
+        <!-- Big Type (M47 B15): All apps, every badge and the photo viewer as the owner picked them (proposals-screens.html 2, 4 and 9). -->
+        <vh:HandheldBigTypeScreens IsVisible="{x:Static vm:HandheldTokens.IsBigType}" />
       </Grid>
     </Viewbox>
 
@@ -967,7 +970,7 @@
       Full window and unscaled: the muted video is a native Android view, which sits above Avalonia at the control's own
       bounds, so it is not put under the canvas's scaling. Screenshots, then the video, which only downloads on play.
     -->
-    <Panel x:Name="ViewerLayer" Background="{x:Static vm:HandheldTokens.CompanionViewerGround}" IsVisible="{Binding IsPhotosLayer}" ClipToBounds="True"
+    <Panel x:Name="ViewerLayer" Background="{x:Static vm:HandheldTokens.CompanionViewerGround}" IsVisible="{Binding ShowsClassicViewer}" ClipToBounds="True"
            PointerPressed="OnViewerPointerPressed" PointerReleased="OnViewerPointerReleased">
       <Image Source="{Binding Model.MediaImage}" Stretch="Uniform" />
       <ProgressBar IsIndeterminate="True" IsVisible="{Binding Model.IsMediaLoading}" Height="2" Width="72"
@@ -1036,6 +1039,20 @@
         </ItemsControl>
       </Grid>
     </Panel>
+
+    <!--
+      Big Type (M47 B15): the muted video plays over the Reel's picture shown, outside the canvas's scaling as today's does (on the Thor the
+      canvas is drawn at its own size, so the box is the Reel's).
+    -->
+    <ContentControl IsVisible="{Binding ShowsBigTypeVideo}" Content="{Binding Model.PlayingVideoPath}" Width="{x:Static vm:HandheldTokens.ReelWidth}"
+                    Height="{x:Static vm:HandheldTokens.ReelHeight}" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.ReelVideoMargin}"
+                    HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch">
+      <ContentControl.ContentTemplate>
+        <DataTemplate>
+          <controls:CompanionVideoHost Source="{Binding}" AttachedToVisualTree="OnVideoAttached" />
+        </DataTemplate>
+      </ContentControl.ContentTemplate>
+    </ContentControl>
 
     <!--
       ===================== Resting =====================

@@ -1,0 +1,154 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:EmuShelf.App.ViewModels"
+             xmlns:vh="using:EmuShelf.App.Views.Handheld"
+             x:Class="EmuShelf.App.Views.Handheld.HandheldBigTypeScreens"
+             x:DataType="vm:HandheldCompanionViewModel"
+             RenderOptions.TextRenderingMode="Antialias" ClipToBounds="False">
+
+  <!--
+    The companion's layers in the Big Type look (M47 B15), the owner's picks from proposals-screens.html on 16 November 2026: All apps as the
+    Shelf (option 2), every achievement as the Wall (option 4), the photo viewer as the Reel (option 9). Each sits on the in-game colour (All
+    apps opened from home's dock on the Launcher's colour) over the companion, whose own parts drop out under it. Text is white on the
+    colour, set in line boxes 1.15 of its size as the page's, every top tokens.js's. HandheldScreensMotion shows and hides each layer and
+    moves the hints; the grids, the wall and the reel move themselves.
+  -->
+  <UserControl.Styles>
+    <Style Selector="TextBlock.sc-line">
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="HorizontalAlignment" Value="Left" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+      <Setter Property="ClipToBounds" Value="False" />
+    </Style>
+    <Style Selector="TextBlock.sc-figure">
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightDisplay}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="LetterSpacing" Value="{x:Static vm:HandheldTokens.HeadingSpacing}" />
+      <Setter Property="FontFeatures" Value="+tnum" />
+      <Setter Property="ClipToBounds" Value="False" />
+    </Style>
+    <Style Selector="StackPanel.sc-filter">
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.WallFilterRestOpacity}" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="{x:Static vm:HandheldTokens.InGameTabFade}" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="StackPanel.sc-filter.on">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.sc-key">
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="BorderThickness" Value="{x:Static vm:HandheldTokens.WallFilterKeyThickness}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.WallFilterKeyCorner}" />
+      <Setter Property="Padding" Value="{x:Static vm:HandheldTokens.WallFilterKeyPadding}" />
+      <Setter Property="Opacity" Value="{x:Static vm:HandheldTokens.WallFilterKeyOpacity}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.sc-key > TextBlock">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.WallFilterKey}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightDisplay}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <!-- ===================== 2 Shelf: All apps ===================== -->
+    <Panel x:Name="Shelf" IsVisible="False" Background="{Binding LayerGround}">
+      <vh:HandheldShelfGrid x:Name="ShelfGrid" VerticalAlignment="Top" Height="{x:Static vm:HandheldTokens.ShelfHeight}" Margin="{x:Static vm:HandheldTokens.ShelfClipMargin}" />
+      <vh:HandheldRollingText Classes="bt-label" Text="{Binding ShelfKicker}" Margin="{x:Static vm:HandheldTokens.ShelfKickerMargin}" ClipToBounds="False" />
+      <vh:HandheldScreenHeading x:Name="ShelfName" Text="{Binding ShelfName}" Size="{x:Static vm:HandheldTokens.ShelfName}"
+                                MaxTextWidth="{x:Static vm:HandheldTokens.ShelfNameMaxWidth}" Side="{Binding ScreenSide}" Quick="{Binding ScreenQuick}"
+                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.ShelfNameMargin}" />
+      <vh:HandheldRollingText Classes="sc-figure" Text="{Binding ShelfCount}" FontSize="{x:Static vm:HandheldTokens.ShelfCount}" LineHeight="{x:Static vm:HandheldTokens.ShelfCountLine}"
+                              Opacity="{x:Static vm:HandheldTokens.ShelfCountOpacity}" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.ShelfCountMargin}" />
+    </Panel>
+
+    <!-- ===================== 4 Wall: every achievement ===================== -->
+    <Panel x:Name="Wall" IsVisible="False" Background="{Binding LayerGround}">
+      <vh:HandheldBadgeWall x:Name="BadgeWall" VerticalAlignment="Top" Height="{x:Static vm:HandheldTokens.WallHeight}" Margin="{x:Static vm:HandheldTokens.WallClipMargin}" />
+      <vh:HandheldRollingText Classes="bt-label" Text="{Binding WallKicker}" Margin="{x:Static vm:HandheldTokens.WallKickerMargin}" ClipToBounds="False" />
+      <vh:HandheldRollingText Classes="sc-figure" Text="{Binding ProgressCount}" IsVisible="{Binding HasAchievementSet}" FontSize="{x:Static vm:HandheldTokens.WallFigure}"
+                              LineHeight="{x:Static vm:HandheldTokens.WallFigureLine}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.WallFigureMargin}" />
+      <!-- All / Locked / Unlocked with their counts between LB and RB; a tap on a word picks it. -->
+      <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.WallFilterGap}" HorizontalAlignment="Right" VerticalAlignment="Top"
+                  Margin="{x:Static vm:HandheldTokens.WallFiltersMargin}" IsVisible="{Binding HasAchievementSet}">
+        <Border Classes="sc-key" Tapped="OnPreviousFilterTapped" Background="Transparent"><TextBlock Text="LB" /></Border>
+        <StackPanel Classes="sc-filter" Classes.on="{Binding IsAllFilter}" Orientation="Horizontal" Tapped="OnAllFilterTapped">
+          <TextBlock Classes="sc-line" Text="All" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}" />
+          <vh:HandheldRollingText Classes="sc-line" Text="{Binding Model.AchievementCount}" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}"
+                                  Opacity="{x:Static vm:HandheldTokens.WallFilterCountOpacity}" Margin="{x:Static vm:HandheldTokens.WallFilterCountMargin}" />
+        </StackPanel>
+        <StackPanel Classes="sc-filter" Classes.on="{Binding IsLockedFilter}" Orientation="Horizontal" Tapped="OnLockedFilterTapped">
+          <TextBlock Classes="sc-line" Text="Locked" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}" />
+          <vh:HandheldRollingText Classes="sc-line" Text="{Binding Model.LockedAchievementCount}" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}"
+                                  Opacity="{x:Static vm:HandheldTokens.WallFilterCountOpacity}" Margin="{x:Static vm:HandheldTokens.WallFilterCountMargin}" />
+        </StackPanel>
+        <StackPanel Classes="sc-filter" Classes.on="{Binding IsUnlockedFilter}" Orientation="Horizontal" Tapped="OnUnlockedFilterTapped">
+          <TextBlock Classes="sc-line" Text="Unlocked" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}" />
+          <vh:HandheldRollingText Classes="sc-line" Text="{Binding Model.UnlockedAchievementCount}" FontSize="{x:Static vm:HandheldTokens.WallFilter}" LineHeight="{x:Static vm:HandheldTokens.WallFilterLine}"
+                                  Opacity="{x:Static vm:HandheldTokens.WallFilterCountOpacity}" Margin="{x:Static vm:HandheldTokens.WallFilterCountMargin}" />
+        </StackPanel>
+        <Border Classes="sc-key" Tapped="OnNextFilterTapped" Background="Transparent"><TextBlock Text="RB" /></Border>
+      </StackPanel>
+      <vh:HandheldScreenHeading x:Name="WallName" Text="{Binding WallName}" Size="{x:Static vm:HandheldTokens.WallName}"
+                                MaxTextWidth="{x:Static vm:HandheldTokens.WallNameMaxWidth}" Side="{Binding ScreenSide}" Quick="{Binding ScreenQuick}"
+                                HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.WallNameMargin}" />
+      <vh:HandheldRollingText Classes="sc-line" Text="{Binding WallDescription}" FontSize="{x:Static vm:HandheldTokens.WallDesc}" LineHeight="{x:Static vm:HandheldTokens.WallDescLine}"
+                              Opacity="{x:Static vm:HandheldTokens.WallDescOpacity}" Margin="{x:Static vm:HandheldTokens.WallDescMargin}"
+                              MaxWidth="{x:Static vm:HandheldTokens.WallNameMaxWidth}" TextTrimming="CharacterEllipsis" />
+      <vh:HandheldRollingText Classes="sc-line" Text="{Binding WallMeta}" FontSize="{x:Static vm:HandheldTokens.WallMeta}" LineHeight="{x:Static vm:HandheldTokens.WallMetaLine}"
+                              Opacity="{x:Static vm:HandheldTokens.WallMetaOpacity}" Margin="{x:Static vm:HandheldTokens.WallMetaMargin}" />
+    </Panel>
+
+    <!-- ===================== 9 Reel: the photo viewer ===================== -->
+    <Panel x:Name="Reel" IsVisible="False" Background="{Binding LayerGround}">
+      <vh:HandheldPhotoReel x:Name="PhotoReel" />
+      <Panel x:Name="ReelChrome" IsHitTestVisible="False">
+        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" MaxWidth="{x:Static vm:HandheldTokens.ReelFigureMaxWidth}" ClipToBounds="False"
+                 HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{x:Static vm:HandheldTokens.ReelFigureMargin}">
+          <vh:HandheldRollingText Classes="sc-figure" Text="{Binding ReelFigure}" FontSize="{x:Static vm:HandheldTokens.ReelFigure}" LineHeight="{x:Static vm:HandheldTokens.ReelFigureLine}" />
+        </Viewbox>
+        <vh:HandheldRollingText Classes="sc-line" Text="{Binding ReelKind}" FontSize="{x:Static vm:HandheldTokens.ReelKind}" LineHeight="{x:Static vm:HandheldTokens.ReelKindLine}"
+                                Margin="{x:Static vm:HandheldTokens.ReelKindMargin}" />
+        <TextBlock Classes="sc-line" Text="{Binding ReelTitle}" FontSize="{x:Static vm:HandheldTokens.ReelTitle}" LineHeight="{x:Static vm:HandheldTokens.ReelTitleLine}"
+                   Opacity="{x:Static vm:HandheldTokens.ReelTitleOpacity}" Margin="{x:Static vm:HandheldTokens.ReelTitleMargin}" />
+      </Panel>
+    </Panel>
+
+    <!-- ===================== The hints at the foot, each a touch button ===================== -->
+    <ItemsControl x:Name="ScreenHints" ItemsSource="{Binding ScreenHints}" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                  Margin="{x:Static vm:HandheldTokens.ScreenHintsMargin}" ClipToBounds="False">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.ScreenHintGap}" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:HandheldHint">
+          <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.ScreenHintKeyGap}" Background="Transparent"
+                      Opacity="{x:Static vm:HandheldTokens.ScreenHintOpacity}" Tapped="OnHintTapped">
+            <Border IsVisible="{Binding !IsWide}" Width="{x:Static vm:HandheldTokens.ScreenHintKey}" Height="{x:Static vm:HandheldTokens.ScreenHintKey}"
+                    CornerRadius="{x:Static vm:HandheldTokens.ScreenHintKeyCorner}" BorderThickness="{x:Static vm:HandheldTokens.ScreenHintKeyThickness}"
+                    BorderBrush="{x:Static vm:HandheldTokens.OnColour}" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.ScreenHintKeyLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
+                         Foreground="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <Border IsVisible="{Binding IsWide}" MinWidth="{x:Static vm:HandheldTokens.ScreenHintKey}" Height="{x:Static vm:HandheldTokens.ScreenHintKey}"
+                    CornerRadius="{x:Static vm:HandheldTokens.ScreenHintKeyWideCorner}" Padding="{x:Static vm:HandheldTokens.ScreenHintKeyWidePadding}"
+                    BorderThickness="{x:Static vm:HandheldTokens.ScreenHintKeyThickness}" BorderBrush="{x:Static vm:HandheldTokens.OnColour}" VerticalAlignment="Center">
+              <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.ScreenHintKeyLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
+                         Foreground="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+            <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.ScreenHint}" LineHeight="{x:Static vm:HandheldTokens.ScreenHintLine}"
+                       FontWeight="{x:Static vm:HandheldTokens.WeightStrong}" Foreground="{x:Static vm:HandheldTokens.OnColour}" VerticalAlignment="Center" />
+          </StackPanel>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </Panel>
+</UserControl>

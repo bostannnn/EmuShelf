@@ -266,6 +266,7 @@ internal sealed partial class HandheldNativeStageFeed
         _veilsSent = null;
         _inkSent = null;
         _nameSent = null;
+        ResendPorthole();
         // The backdrop is not resent: its pictures are 1920 wide on either screen (the narrow one shows their middle),
         // and the native side keeps them.
         Schedule(centre: true, pop: true, chrome: true);
@@ -321,7 +322,7 @@ internal sealed partial class HandheldNativeStageFeed
     {
         if (!_active || IsPaused || _stage is not { } stage)
             return;
-        if (OnModelProperty(stage, e.PropertyName))
+        if (OnModelProperty(stage, e.PropertyName) || OnPortholeProperty(stage, e.PropertyName))
             return;
         switch (e.PropertyName)
         {
@@ -671,7 +672,7 @@ internal sealed partial class HandheldNativeStageFeed
         _backdropSent = _stage?.Backdrop;
         _backdropSentOnce = true;
         _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated,
-            Drift: _stage?.IsDrift == true, WipeOriginX: WipeOriginX()));
+            Drift: _stage?.IsDrift == true, WipeOriginX: DriftWipeOriginX() ?? WipeOriginX()));
     }
 
     /// <summary>

@@ -250,7 +250,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         // Big Type's name and presses (M47 B6) are text and moments, as the corner pieces are: they do not wake it either.
         if (command is not (StageMediumPoseCommand or StageChromeCommand or StageCentreCommand { Drift: true } or
             StageBackdropCommand { Drift: true } or StageMotionCommand or StageBackdropResumeCommand or StageNameCommand or
-            StageInputCommand))
+            StageInputCommand or StagePortholeCommand))
             _lastNavigation = now;
         switch (command)
         {
@@ -270,6 +270,10 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                 break;
             case StageModelCommand model:
                 ApplyModel(model, now);
+                break;
+            // M47 B15: the idle artwork's round window (the Porthole).
+            case StagePortholeCommand porthole:
+                ApplyPorthole(porthole, now);
                 break;
             case StageModelHoldCommand hold:
                 ApplyModelHold(hold, now);
@@ -744,6 +748,8 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         }
         foreach (var layer in _hero)
             DrawLayer(layer, content, 1f, 0, 0);
+        // M47 B15: the idle artwork's round window, over the backdrop and its veils, under the name.
+        animating |= DrawPorthole(now);
 
         if (DrawModel(now, ref animating))
         {
@@ -1659,6 +1665,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         DeleteLayers(_leavingHero);
         Replace(ref _fly, null, false);
         DisposeTakeover();
+        DeletePorthole();
         foreach (var state in _beneath)
             DeleteBackdrop(state);
         _beneath.Clear();

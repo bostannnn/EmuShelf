@@ -1074,10 +1074,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium && !IsModelView;
 
     /// <summary>The name's box: narrower only when cover search's case or candidate stands beside it (M47 B12: a game's name has the whole box).</summary>
-    public double NameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: false);
+    public double NameBoxWidth => HasPorthole ? HandheldTokens.PortNameWidth(narrow: false) : HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: false);
 
     /// <summary>The name's box on the narrow screen (the screens swapped, M47 B11): its own widths, beside a medium or not.</summary>
-    public double NarrowNameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: true);
+    public double NarrowNameBoxWidth => HasPorthole ? HandheldTokens.PortNameWidth(narrow: true) : HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: true);
 
     /// <summary>
     /// Something stands beside the name: since M47 B12 only cover search's case or candidate (a game's medium is the model view's, in the

@@ -119,6 +119,15 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
 14. **A Recent folder is made for you,** like the platform folders: the last twelve games played,
     newest first, so two presses of A resume last night's game. After fifteen seconds without
     input the top screen drifts through those games; the first press only wakes it.
+    Under Big Type (M47 B15; the owner's pick of option 12, "Porthole", from
+    `docs/prototypes/handheld-big-type/proposals-screens.html` on 2026-11-16) the drift keeps the console's
+    backdrop: each game's console's backdrop (its circle growing from behind the window), "Recently played" over
+    the game's name in big type beside a round window holding its fan art, its play time and achievements on the
+    line, its console and when it was last played on the second line, no hints. The window rises through the
+    hinge, floats, takes the next game's art through a circle from its bottom and drops back on a press. A game
+    with no fan art is shown as when browsing (no window, no cover). **A game's logo picture is not shown** (today
+    it replaces the name): the owner was told and picked without comment; it waits for their word. The timing, the
+    games walked and the wake rule are unchanged.
 15. **Fan art and logos on the top screen from day one.** They are not deferred work: Fanart and
     Wheel media are scraped and stored, and Gamepad mode's spotlight hero already draws them.
     The artwork palette engine tints the selector glow, the Title page and the backdrop.
@@ -274,6 +283,33 @@ comfy look so it doesn't pull your eye from the game.
 - **Photos:** screenshots, then the video. The video plays muted and only downloads when asked.
 - **New:** the D-pad reaches every part of it. Today the dock, drawer and the buttons that open
   overlays are touch-only.
+- **Big Type (M47 B8, B15).** The companion is the mock's in-game screen (Now playing, the title, the Session /
+  Achievements / Photos tabs, the dock row; B8). Its three layers are the owner's picks of 2026-11-16 from
+  `docs/prototypes/handheld-big-type/proposals-screens.html` (B15), each on the in-game colour, the companion's parts
+  dropping out under it and rising back after, its hints at the foot as plain type, each a touch button (they replace
+  the round close, refresh and clear-slot buttons):
+  - **All apps is the Shelf** (option 2): every app's icon on the colour in a grid like home (five across, eight on
+    the 16:9 screen, four rows at a time, whole rows scrolling), the focused one grown with its neighbours stepping
+    away under the one ring; its name in big type at the top, its place ("7 / 18") at the right, and over it the title
+    ("All apps", "Choose an app for slot n") or what a pin did. A opens (Pin here when changing a slot), Y pins to the
+    first free slot (Clear slot), B closes; a tap opens, a held finger pins, a drag scrolls. **Opened from home's dock**
+    it sits on the Launcher's colour and the Stage names the focused app in big type: the title over it, where it is in
+    the dock under it ("In the dock, slot 3", "Not in the dock", or what a pin did), "7 of 18 · everything on this
+    device" on the second line and its hints in the Stage's corner, each a touch button (today the Stage only says
+    "All apps"; new, built because the chosen option draws it).
+  - **Every badge is the Wall** (option 4): all of the set's badges on the colour, seven across (eleven on the 16:9
+    screen), three rows at a time; locked ones grey and dimmed, a hardcore unlock edged in gold, a hidden one a
+    question mark until A reveals it; the count as a big figure top left with "Achievements · 60 pts" (or what a
+    refresh is doing) over it; All / Locked / Unlocked with their counts between LB and RB (each word a touch button);
+    the focused badge's name in big type under the wall, what it asks and its points and date under that; "Nothing
+    here yet" where the name goes under an empty filter. Y refreshes, B closes; a tap selects a badge, a drag scrolls.
+  - **The photo viewer is the Reel** (option 9): the game's pictures side by side, the one shown a fifth smaller than the
+    screen (1000 × 562 on the 1240-wide screen), one either side at its edge; the place as a big figure ("2 / 6"), the
+    kind beside it ("Screenshot", "Playing muted", "Loading…"), the game's title under that. Left and right slide the
+    row (going round at the ends), A plays the video muted (it still downloads only then) and stops it, Y fetches
+    missing artwork, B or a downward swipe closes and the Photos tab lands on that picture; a sideways swipe pages, a tap
+    on the play mark plays, a tap on the picture hides the figure, the lines and the hints. The picture grows out of its
+    small picture on the Photos tab and goes back into it.
 
 ### Top screen — the Stage
 
@@ -388,6 +424,8 @@ code font is a tokens.js entry.
 | A folder | Opening: home falls away from it, its games deal in, the name lands, the count rolls, the ring pops in. Closing: the games drop, home pops back in around it | `FolderOut`, `FolderDeal`, `FolderClose`, `FolderPopIn`, `RingPop` |
 | The launch | The tile flies up through the hinge, the case bumps, the console's colour takes the Stage through a circle with the title's letters, the Launcher floods to the in-game colour | `Launch` |
 | In game | The companion's parts rise in, tabs slide, it rests after 9 s; at the end the parts drop, the colour fades, the ground floods back, the tiles pop in | `InGameIn`, `InGameTab`, `InGameRest`, `InGameOut`, `SessionAchievementBar`, `UnlockLine` |
+| The companion's layers (M47 B15, `proposals-screens.html`) | A layer fades in over the companion as its parts drop out, and its name's letters land from below; a move's name lands from the side pressed as the old one leaves the other way (all together in a run). The Shelf's icons grow in from the focused one and move away from it on closing; the focused icon grows, its neighbours step away and it bobs; rows scroll on the soft curve. The Wall's badges grow in by column and row and drop away by column; a filter slides the kept ones to their places and shrinks the rest; a new unlock pulses. The Reel slides a picture's pitch; the picture grows out of its small picture on the Photos tab and goes back into it; a tap fades the type. The hints rise in. Held or quick presses glide on, never restart | `ScreenLettersIn`, `ScreenLettersOut`, `ScreenHintsIn`, `ScreenLayerFade`, `ShelfIn`, `ShelfOut`, `ShelfFocus`, `ShelfScroll`, `ShelfBob`, `WallIn`, `WallOut`, `WallMove`, `WallFilterOut`, `Pulse`, `ReelSlide`, `PhotoOpen`, `PhotoClose`, `ReelChrome` |
+| The idle artwork (M47 B15) | The round window rises through the hinge, floats, takes the next game's art through a circle from its bottom while the backdrop changes through its circle behind it; a press drops it back through the hinge | `PortIn`, `PortOut`, `PortFloat`, `PortWipe` |
 | Messages | The line under the name rolls to the message and back; an error shakes and holds longer; work still running holds until the app replaces it; a press moves on | `Message` |
 | Typing | The keys rise in, the ring lands on the first key, a key pulses when pressed; the typed word is the Stage's name: new letters drop in, a deleted one falls off, the word resizes; Search's hits arrive from above; closing, the keys drop; a folder made is born on its slot | `KeysIn`, `KeyFocus`, `KeyPress`, `TypedLetterIn`, `TypedLetterOut`, `TypedResize`, `TypedNameOut`, `ResultsIn`, `KeysOut`, `FolderBorn` |
 | Moving | A held tile grows and rocks; each direction trades places with the next slot; A puts it down with a squash, B walks every step back | `HeldScale`, `Held`, `Swap`, `PutDown` |
