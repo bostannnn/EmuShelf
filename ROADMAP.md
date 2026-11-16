@@ -3258,7 +3258,7 @@ falls back to the emulator and says so.
       ~190; held moves in a folder, the Y sheet, the menu, Settings, a panel, the keyboard and Search's hits, quick taps, A/B open and close,
       X during a move and the same on swapped screens were recorded (the session's notes, `m47-b11-renders`). Home, the swap, Sounds and Reduce
       motion left as found. Built, awaiting the owner's look.
-- [ ] **B13 — The owner's backdrop choices, under Big Type.** One animation per console (the 3DS keeps its three), recoloured toward
+- [ ] **B13 — The owner's backdrop choices, under Big Type.** One animation per console (the 3DS's three replaced in part 2), recoloured toward
       the console's ground where chosen, drawn sharp or crisp by the owner's rule; Recent's own `arc-checker`; Dreamcast's ground sea
       blue `#0E7AB5`; Wii's gradient smoothed; `psp-ribbon` ported. (Choices and words in `DECISIONS.md` 2026-11-15 "M47 B13".)
       **Built:** `BigTypeBackdrops` (tokens.js `backdrops`), the recolour in the output pass (`BackdropRecolour` is the tested
@@ -3273,4 +3273,12 @@ falls back to the emulator and says so.
       owner's library and Recent in its one animation and colour, text readable, NES's pixels whole 8 × 8, PSP's ribbons sharp, Wii's
       gradient smooth; GameCube's fur still soft at the size the GPU allows. Classic as before. Home, swap, Sounds and Reduce motion as
       found (files byte-identical), `bigtype`, this build installed. Evidence: `m47-b13-renders` in the build sessions' notes.
+      **Part 2 (2026-11-16):** the 3DS's "Through the screen" (`3ds-screen`) replaces its three under Big Type, and "Lift-off"
+      (`lift-off`) is the default background for every focus without a platform but Recent, in the Launcher's colour for it, one
+      running backdrop changing colour between such items. Both ported from `ideas-3ds.js` / `ideas-bg.js`: Through the screen reads
+      the same as the drawing (mean ΔE 0.0); Lift-off the same scene (mean ΔE 0.5–1.5; which blocks are aloft differs). Legibility
+      baked: Lift-off white at the resting veils in all 72 colours a ground can be (lowest 5.81); Through the screen a fixed white
+      (0.5, 0.4, 0.5; lowest 4.11 on the app). Both at a cautious 1440 × 810: **the Thor was off adb, so their GPU cost is not
+      measured** (on the Mac they cost about what PS2's orbs do). Seen on the emulator (Lift-off) and the Mac (both). Classic
+      byte-identical to a render made after merging B11; Big Type's design frames unchanged; tests three times running.
       Built, awaiting the owner's look.

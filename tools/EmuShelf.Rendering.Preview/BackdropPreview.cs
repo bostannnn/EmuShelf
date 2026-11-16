@@ -111,7 +111,24 @@ internal static class BackdropPreview
                     PngWriter.Write(Path.Combine(outputDirectory, $"{owner}-{entry.Id}-{time:0.#}s.png"), width, height, Read(gl, framebuffer, width, height));
                 }
                 var error = gl.GetError();
-                Console.WriteLine($"  {owner,-12} {entry.Id,-16} {instance.Width}×{instance.Height} pull {entry.Pull:0.##}  {started.ElapsedMilliseconds,5} ms{(error == GLEnum.NoError ? "" : $"  GL error {error}")}");
+                var timing = string.Empty;
+                if (Environment.GetEnvironmentVariable("EMUSHELF_BACKDROP_TIME") is { Length: > 0 })
+                {
+                    // A rough cost on this Mac's GPU (M47 B13): 120 steps, each drawn and shown, waited for; milliseconds per step.
+                    gl.Finish();
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    var from = times[^1] * 1000f;
+                    for (var step = 1; step <= 120; step++)
+                    {
+                        renderer.Update(instance, from + (step * BackdropCatalog.StepMilliseconds));
+                        gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+                        gl.Viewport(0, 0, width, height);
+                        renderer.Present(instance, 1f);
+                        gl.Finish();
+                    }
+                    timing = $"  {clock.Elapsed.TotalMilliseconds / 120:0.000} ms a step here";
+                }
+                Console.WriteLine($"  {owner,-12} {entry.Id,-16} {instance.Width}×{instance.Height} pull {entry.Pull:0.##}  {started.ElapsedMilliseconds,5} ms{timing}{(error == GLEnum.NoError ? "" : $"  GL error {error}")}");
                 renderer.Stop(instance);
             }
         }

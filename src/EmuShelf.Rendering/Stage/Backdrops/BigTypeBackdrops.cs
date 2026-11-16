@@ -71,7 +71,8 @@ public static class BigTypeBackdrops
         ("wii", [new("wii-pointer-v2", 1f, 640, 360, BackdropUpscale.Sharp, BloomThreshold: 251f / 255f)]),
         // The owner, of the 3DS's three: "I don't like all 3ds one"; of ten new ideas, "1 or 2 is great (probably 2)": Through the
         // screen, drawn from the console's colour (no recolour).
-        ("3ds", [new("3ds-screen", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
+        // Not measured on the Thor (it was off adb): a cautious step up, as PS3's (on the Mac's GPU it costs about what PS2's orbs do).
+        ("3ds", [new("3ds-screen", 0f, 1440, 810, BackdropUpscale.Sharp)]),
         ("megadrive", [new("md-pipe-v2", 1f, 320, 180, BackdropUpscale.Crisp)]),
         ("dreamcast", [new("dc-sea-v2", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
         ("playstation", [new("tide", 0f, 320, 180, BackdropUpscale.Crisp)]),
@@ -83,7 +84,8 @@ public static class BigTypeBackdrops
         (Recent, [new("arc-checker", 1f, 320, 180, BackdropUpscale.Crisp)]),
         // "Settings and activity and other menus don't have background", then of ten ideas "2 or 3 (probably 3)": Lift-off, drawn from
         // the focused item's colour.
-        (Default, [new("lift-off", 0f, 1920, 1080, BackdropUpscale.Sharp)]),
+        // Not measured on the Thor either: the same cautious step.
+        (Default, [new("lift-off", 0f, 1440, 810, BackdropUpscale.Sharp)]),
     ];
 
     private static readonly Dictionary<string, string[]> IdsByOwner =

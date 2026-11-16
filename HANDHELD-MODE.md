@@ -140,9 +140,14 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
       Game Boy Color `gbc-attr`, Game Boy Advance `gba-iso`, GameCube `gc-fur`, Nintendo DS `ds-dots`, Wii
       `wii-pointer-v2`, Mega Drive `md-pipe-v2`, Dreamcast `dc-sea-v2`, PlayStation `tide`, PlayStation 2
       `ps2-orbs-v3`, PSP `psp-ribbon` (new to the app), PlayStation 3 `ps3-sheet`, Arcade `arc-vector-v3`,
-      Steam `steam-mesh`; the 3DS keeps today's three, rotating, while new ones are designed. **Recent** has its
-      own, `arc-checker`; Settings, Activity and the other tiles keep the backdrop showing (a default for them is
-      being designed). Where the owner chose it, an animation is **recoloured toward its console's ground**:
+      Steam `steam-mesh`, Nintendo 3DS `3ds-screen` ("Through the screen": an endless run of openings shaped like
+      its top screen; the owner, 2026-11-16, of ten ideas). **Recent** has its own, `arc-checker`. Everything else
+      focused without a platform (Settings, Activity, your folders, the dock and its menu, an empty slot) shows
+      the **default background**, `lift-off` ("Lift-off": blocks come loose from a floor of blocks and float up
+      into a spotlight), drawn in the colour the Launcher has for it; moving between two such items it stays one
+      running backdrop and changes colour over the Launcher's flood. Inside a console's folder (its header, an
+      app tile there) and on a game's own panel the console's backdrop stays. These two are drawn from the colour
+      they are given. Where the owner chose it, an animation is **recoloured toward its console's ground**:
       the colour laid over it with CSS `mix-blend-mode: color` at the chosen pull (0.5 to 1), done in the
       backdrop's output pass (`BackdropRecolour` is the reference). Pixels are kept, crisp, where they are the
       console's character (NES, SNES, GBC, GBA, DS, Mega Drive, PlayStation, Arcade, Recent's checker: the

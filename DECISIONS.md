@@ -15284,6 +15284,44 @@ design frames are byte-identical to the render made before any change.
   `dotnet run --project tools/EmuShelf.Rendering.Preview -- --stage-b13 [--out dir] [--at seconds]`: the real compositor under Big
   Type, one full-size frame per console (all three for the 3DS) and Recent, with the veils and stand-ins for the text in the baked ink
   (each checked); `--backdrops --bigtype` draws the animations alone.
+- **Part 2 (the owner, 16 November 2026): the 3DS's animation and a default background.** Of the 3DS's three: "I don't like all 3ds
+  one"; of ten new ideas (`ideas-3ds.js`), "1 or 2 is great (probably 2)": **Through the screen** (`3ds-screen`), now the 3DS's only one
+  under Big Type. For the rest: "Settings and activity and other menus don't have background. We should have default background -
+  propose something elegant, minimal and animated", then of ten ideas (`ideas-bg.js`) "2 or 3 (probably 3)": **Lift-off**
+  (`lift-off`). The runners-up (Pearl sheet, Loose pixels) were not built. B11 was merged in first (the design branch at 6ddfe6a; the
+  narrow Stage's left veils and Big Type's answers now combine in one lookup, `ForBigType(id, narrow)`).
+  - **Ported** as the others were, from the drawings' own code: Through the screen as 13 walls × 4 bands × 32 quads round the
+    rounded-rectangle opening, lit per pixel with the drawing's lookup tables written as functions (soft diffuse ramp, gloss, Fresnel
+    rim), the lip's tint, fog into the glowing sky, then its contrast curve and grain, and its bloom (190, 0.4, the far glow 0.55; a new
+    `BackdropOutput.BloomWide`, read only by Big Type's output pass). Lift-off as its sky, a plane and 27 × 33 blocks (each block's
+    inset top drawn in its fragment, not a second quad, so a 16-bit depth buffer cannot fight), the beam, the floating blocks (56 cells,
+    turning about their own axis, faces dropped as the drawing drops them) with their glows, 110 motes of dust, and the drawing's own
+    veil and dither as a finish pass, then its bloom (175, 0.5). Its passes share `backdrop-lift-off-common` (`BackdropSpec.Include`;
+    today's specs include nothing more, so their text is unchanged). Both are drawn from `uColour`, the colour they are given; no pull.
+  - **How close to the drawings** (the drawings in headless Chrome and the app's frames on this Mac's GL at 4, 8 and 12 s, both
+    1920 × 1080): Through the screen's mean colour is identical (ΔE 0.0) and a 16 × 9 grid's median ΔE 0.6–0.7, 90th 1.2–1.6: the same
+    picture. Lift-off's mean colour is within 0.5–1.5 and the grid's median 1.4; its 90th percentile, 6–9, is where blocks happen to be
+    in the air: which cells lift when comes from the drawing's sine hash, which a GPU's floats work out differently from JavaScript's
+    doubles, so the same scene has different blocks aloft at a given moment. The drawings' FXAA edge smoothing is not ported; drawn
+    sharp, there are no stair-steps for it to smooth.
+  - **The default background's colour** is the Launcher's ground for the focus (`LauncherGround`), which a new Launcher colour updates;
+    the same list each time, so the native Stage keeps the one backdrop running and eases its colour (`BackdropInstance.SetGround`) over
+    the Launcher's flood (640 ms, its ease; at once when holding still). Checked through the real compositor: indigo to a folder's rose
+    with no new start, part way at 320 ms, there at 700 ms (`--stage-b13`).
+  - **Legibility.** Lift-off is drawn in whatever is focused, so it was baked with the stress sheet's rule in 72 colours: Settings'
+    indigo, your folders' six colours as Big Type darkens them, the sixteen console grounds and Recent's (an empty slot keeps the last),
+    and 24 hues at two saturations darkened by `HandheldGround.Derive` until white holds its floors, which is every colour a ground can
+    take. All 72 gave white ink with the resting veils (lowest 5.81), so one answer serves any colour, a user folder's included; on the
+    app's frames in four colours the lowest is 6.07. Through the screen: the rule changed ink between moments on the left and at the
+    hints (the bright core against the dark walls), so those are a fixed white with a 0.5 veil (marked as a fixed choice, as `ps2-sea`'s
+    hints are), the clock white at 0.4: lowest 4.21 on the drawing and 4.11 on the app's frames.
+  - **Draw size: not measured on the Thor**, which was off adb for this part. Both are at a cautious 1440 × 810. On this Mac's GPU at
+    1920 × 1080 a step costs 1.13 ms (Through the screen) and 1.2 ms (Lift-off), against 0.88 for PS2's orbs and 0.66 for Steam, which the
+    Thor ran at full size for about 1.1 and 0.9 ms a frame, and 13.1 for the fur. So both should afford more; the measurement switch
+    (`debug.emushelf.bdsize`, probe `rest`) is in the build for when the Thor is back.
+  - **The emulator** (`emushelf-b3`, `-no-snapshot-save`, Release AOT, `adb install -r`): Lift-off behind Settings, Activity and an empty
+    slot in Settings' indigo on Android's GL, one start for the three; Recent's checker and PS2's orbs as before. Its library has no 3DS,
+    so Through the screen was seen only on the Mac. Left as found: home on Settings, `debug.emushelf.look` unset.
 - **Touches other sessions' files lightly:** `HandheldNativeStageFeed.SendBackdrop` (one argument), `StageCompositor` (the look on four
   starts, Big Type's ink lookup), `BackdropLegibility` (a second table), `NativeSceneSurface`'s probe (the `rest` value). B11 changed
   `SendBackdrop` and `BackdropLegibility` too, on its own branch.
