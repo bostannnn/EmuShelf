@@ -186,18 +186,53 @@ public sealed class HandheldTypingViewModel : ObservableObject
     /// <summary>The Stage's name with nothing typed (the mock's "Name", "Search").</summary>
     public string Placeholder { get; }
 
-    /// <summary>What is typed: the owner's text (the invisible field binds it two-way, so a hardware keyboard types there too).</summary>
+    /// <summary>
+    /// What is typed: the owner's text (the invisible field binds it two-way, so a hardware keyboard types there too). A key typed there
+    /// moves the ring to that key on the keys shown, as the mock's <c>kbJump</c> does for a typed letter (M47 B14): Delete for a letter
+    /// taken off, Space for a space; a character not on this page leaves the ring where it is.
+    /// </summary>
     public string Text
     {
         get => _text();
         set
         {
+            var before = _text();
             if (Naming is { } naming)
                 naming.Text = value;
             else if (Owner is HandheldTextKeyboardViewModel keyboard)
                 keyboard.Text = value;
+            FollowTyped(before, _text());
         }
     }
+
+    private void FollowTyped(string before, string after)
+    {
+        if (!HandheldTokens.IsBigType || before == after)
+            return;
+        HandheldKeyViewModel? key = null;
+        var keys = KeyRows.SelectMany(row => row.Keys).ToList();
+        if (after.Length == before.Length + 1 && after.StartsWith(before, StringComparison.Ordinal))
+        {
+            var typed = after[^1];
+            key = typed == ' '
+                ? keys.FirstOrDefault(candidate => candidate.Kind == HandheldKeyKind.Space)
+                : keys.FirstOrDefault(candidate => candidate.Kind == HandheldKeyKind.Character &&
+                    string.Equals(candidate.Value, typed.ToString(), StringComparison.OrdinalIgnoreCase));
+        }
+        else if (after.Length == before.Length - 1 && before.StartsWith(after, StringComparison.Ordinal))
+        {
+            key = keys.FirstOrDefault(candidate => candidate.Kind == HandheldKeyKind.Delete);
+        }
+        if (key is null)
+            return;
+        if (Naming is { } naming)
+            naming.FocusKey(key);
+        else if (Search is { } search)
+            search.FocusTypedKey(key);
+        else if (Owner is HandheldTextKeyboardViewModel keyboard)
+            keyboard.FocusKey(key);
+    }
+
 
     /// <summary>What is typed, as the Stage shows it (a secret as dots until Y shows it).</summary>
     public string Shown => _mask() is var mask && mask != '\0' ? new string(mask, _text().Length) : _text();
