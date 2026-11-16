@@ -318,7 +318,8 @@ public partial class HandheldShellViewModelTests
                 for (var i = 0; i < keys.Count; i++)
                     Assert.Equal((66 + indent[r] + (i * 112), 424 + (r * 112), 100.0), (keys[i].X, keys[i].Y, keys[i].Width));
             }
-            Assert.Equal([("Space", 66.0, 548.0), ("Delete", 626.0, 268.0), ("Done", 906.0, 268.0)],
+            // Nothing typed yet: Delete reads Cancel (M47 B14, the keyboard by touch alone), in the mock's Delete's place.
+            Assert.Equal([("Space", 66.0, 548.0), ("Cancel", 626.0, 268.0), ("Done", 906.0, 268.0)],
                 naming.KeyRows[3].Keys.Select(key => (key.Label, key.X, key.Width)));
             Assert.All(naming.KeyRows[3].Keys, key => Assert.Equal(760, key.Y));
             // The app's other characters: the key at the end of the third row (or RB) turns the page; no Shift for a name.
