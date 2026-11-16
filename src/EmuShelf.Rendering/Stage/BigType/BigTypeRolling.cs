@@ -86,10 +86,16 @@ public static class BigTypeRollDraw
 
         void Add(BigTypeRollSource source, StageTextCell cell, float offsetEm, float opacity)
         {
-            // Wholly out of its window: nothing to draw.
-            if (opacity <= 0f || Math.Abs(offsetEm * cell.Em) >= cell.Height)
+            // The mock's travel is 1.1 em, which clears a browser's line box (1.15 em). A cell here is its text block's whole height
+            // (the face's own line, about 1.5 em; a message on two lines, twice that), so at 1.1 em the bottom of a leaving glyph stayed
+            // in the top of its window until the roll ended, and the top of an arriving one sat in the bottom of its window before it
+            // rose (M47 B11, the owner on the Thor). The travel is the mock's, or the window's height where that is more, so a glyph
+            // that has left, or not yet come, is wholly out of its window.
+            var travel = Math.Max(BigTypeMotion.DigitTravelEm * cell.Em, cell.Height);
+            var offset = offsetEm / BigTypeMotion.DigitTravelEm * travel;
+            if (opacity <= 0f || Math.Abs(offset) >= cell.Height)
                 return;
-            pieces.Add(new BigTypeRollPiece(source, cell.X, cell.Y, cell.Width, cell.Height, offsetEm * cell.Em, opacity));
+            pieces.Add(new BigTypeRollPiece(source, cell.X, cell.Y, cell.Width, cell.Height, offset, opacity));
         }
     }
 }
