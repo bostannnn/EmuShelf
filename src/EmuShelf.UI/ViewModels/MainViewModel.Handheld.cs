@@ -83,7 +83,7 @@ public partial class MainViewModel
 
     private IHandheldSoundPlayer? _handheldSoundPlayer;
 
-    /// <summary>The Sounds switch changed (the Start menu, or Settings → Display): remembered for the next start.</summary>
+    /// <summary>The Sounds switch changed (the Start menu or handheld Settings): remembered for the next start.</summary>
     private void SaveHandheldSounds(bool enabled)
     {
         if (_settingsService is not { } settings)
@@ -103,7 +103,7 @@ public partial class MainViewModel
 
     private Task _handheldSoundsSave = Task.CompletedTask;
 
-    /// <summary>The reduced-motion switch changed (Settings → Display under Big Type, M47 B10): remembered for the next start.</summary>
+    /// <summary>The reduced-motion switch changed (Settings → Sound &amp; motion under Big Type, M47 B10): remembered for the next start.</summary>
     private void SaveHandheldReduceMotion(bool enabled)
     {
         if (_settingsService is not { } settings)
@@ -126,7 +126,7 @@ public partial class MainViewModel
     /// <summary>Waits for the last remembered switch to reach the settings file (tests read it back).</summary>
     internal Task HandheldSettingsSaved => Task.WhenAll(_handheldSoundsSave, _handheldReduceMotionSave);
 
-    // Settings → Display's Reduce motion row (M47 B10): Big Type only, so today's look keeps its Settings exactly as it was.
+    // The Big Type renderer honours the launcher’s reduced-motion preference.
     internal GamepadSettingsSwitch? HandheldReduceMotionSwitch() => Handheld is { } shell && HandheldTokens.IsBigType
         ? new GamepadSettingsSwitch(() => shell.ReduceMotion, enabled =>
         {
@@ -137,16 +137,15 @@ public partial class MainViewModel
         })
         : null;
 
-    // Settings → Display's Sounds row in Handheld mode: the shell's switch, so the menu row and the Settings row agree.
-    private GamepadSettingsSwitch? HandheldSoundsSwitch() => Handheld is { } shell
-        ? new GamepadSettingsSwitch(() => shell.SoundsEnabled, enabled =>
+    // Both the Start menu and handheld Settings use the shell's sound switch.
+    private static GamepadSettingsSwitch HandheldSoundsSwitch(HandheldShellViewModel shell) =>
+        new(() => shell.SoundsEnabled, enabled =>
         {
             if (shell.SoundsEnabled == enabled)
                 return;
             shell.SoundsEnabled = enabled;
             shell.SaveSounds?.Invoke(enabled);
-        })
-        : null;
+        });
 
     /// <summary>
     /// The setup wizard on a first start in Handheld mode (M45 H6d): once home has been read and nothing else is running,
@@ -237,7 +236,7 @@ public partial class MainViewModel
 
     private async Task<GamepadSettingsViewModel?> CreateHandheldSettingsAsync(bool setup = false)
     {
-        if (!IsHandheldMode || _openingHandheldSettings || _handheldSettings is not null)
+        if (Handheld is not { } shell || !IsHandheldMode || _openingHandheldSettings || _handheldSettings is not null)
             return null;
         if (IsBusy)
         {
@@ -249,13 +248,12 @@ public partial class MainViewModel
         try
         {
             // No Hotkeys overlay (Android has none). The setup wizard is this projection in setup mode, and "Run setup again"
-            // reopens it the same way (M45 H6d); the Sounds switch is Handheld mode's own row in Display.
+            // reopens it the same way (M45 H6d).
             var settings = await CreateGamepadSettingsProjectionAsync(
                 setup: setup ? BuildSetupWizardOptions() : null,
                 openHotkeys: null,
                 runSetup: setup || !OperatingSystem.IsAndroid() ? null : RunHandheldSetupAgainAsync,
-                handheldSounds: HandheldSoundsSwitch(),
-                handheldReduceMotion: HandheldReduceMotionSwitch());
+                handheld: new HandheldSettingsControls(HandheldSoundsSwitch(shell), HandheldReduceMotionSwitch()));
             if (!IsHandheldMode)
             {
                 settings.Dispose();

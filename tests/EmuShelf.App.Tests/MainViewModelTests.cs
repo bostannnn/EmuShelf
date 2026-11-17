@@ -5587,7 +5587,7 @@ public class MainViewModelTests : IDisposable
     /// it made later tests that read the look fail, depending on their order).
     /// </summary>
     /// <summary>
-    /// M47 B10: Handheld mode's own reduced-motion switch. Under Big Type, Settings → Display offers it; on, Handheld mode holds
+    /// M47 B10: Handheld mode's own reduced-motion switch. Under Big Type, Settings offers it; on, Handheld mode holds
     /// still at once with the system's switch off, and it survives a restart in the portable settings file. Today's look offers
     /// no row and does not read it.
     /// </summary>
@@ -5609,8 +5609,13 @@ public class MainViewModelTests : IDisposable
                 Assert.False(shell.ReduceMotion);
                 Assert.False(shell.HoldsStill);
 
-                var row = Assert.IsType<GamepadSettingsSwitch>(vm.HandheldReduceMotionSwitch());
-                row.Set(true);
+                await shell.OpenSettingsAsync();
+                var menu = Assert.IsType<HandheldSettingsViewModel>(shell.Settings);
+                Assert.DoesNotContain(menu.Sections, section => section.Section == SettingsSection.Themes);
+                Assert.DoesNotContain(menu.Rows, row => row.Key == "general.empty-platforms");
+                menu.TapSection(menu.Sections.Single(section => section.Section == SettingsSection.Display));
+                Assert.Equal(["display.sounds", "display.reduce-motion"], menu.Rows.Where(row => !row.IsSaveRow).Select(row => row.Key));
+                await menu.Rows.Single(row => row.Key == "display.reduce-motion").SelectCommand.ExecuteAsync(null);
                 Assert.True(shell.ReduceMotion);
                 Assert.True(shell.HoldsStill); // at once, with no restart
                 await vm.HandheldSettingsSaved;

@@ -68,14 +68,12 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         _settingsCanvas = this.FindControl<Control>("SettingsCanvas")!;
         _settingsRows = this.FindControl<ItemsControl>("SettingsRows")!;
         _settingsSections = this.FindControl<ItemsControl>("SettingsSections")!;
-        _settingsThemes = this.FindControl<ItemsControl>("SettingsThemes")!;
         _settingsChoices = this.FindControl<ItemsControl>("SettingsChoices")!;
         // Settings' lists show whole rows: each scroller is fitted to its space whenever that or its rows change size.
         foreach (var (hostName, scrollerName, items) in new[]
         {
             ("SettingsSectionHost", "SettingsSectionScroller", _settingsSections),
             ("SettingsRowHost", "SettingsRowScroller", _settingsRows),
-            ("SettingsThemeHost", "SettingsThemeScroller", _settingsThemes),
         })
         {
             var hostPanel = this.FindControl<Panel>(hostName)!;
@@ -133,7 +131,6 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private readonly Control _settingsCanvas;
     private readonly ItemsControl _settingsRows;
     private readonly ItemsControl _settingsSections;
-    private readonly ItemsControl _settingsThemes;
     private readonly ItemsControl _settingsChoices;
     private readonly Control _panelCanvas;
     private readonly HandheldBigTypeLists _btLists;
@@ -207,8 +204,6 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         var projection = settings.Projection;
         if (projection.IsChoicePickerOpen)
             Reveal(_settingsChoices, projection.FocusedChoiceIndex);
-        else if (projection.IsThemesSection)
-            Reveal(_settingsThemes, projection.FocusedThemeIndex);
         else
             Reveal(_settingsRows, projection.FocusedRowIndex);
         Reveal(_settingsSections, settings.Sections.ToList().FindIndex(section => section.IsSelected));
@@ -586,11 +581,6 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         else if (Find<HandheldSettingsSectionViewModel>(source) is { } section)
         {
             settings.TapSection(section);
-            e.Handled = true;
-        }
-        else if (Find<ThemeChoiceViewModel>(source) is { } theme)
-        {
-            settings.TapTheme(theme);
             e.Handled = true;
         }
         else if (Find<GamepadSettingsRowViewModel>(source) is { } row)

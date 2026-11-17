@@ -21,7 +21,6 @@ public partial class HandheldBigTypeLists : UserControl
         SheetTitle = Find<HandheldBigTypeHeading>("SheetTitlePart");
         Rail = Find<Control>("RailPart");
         SettingsRows = Find<Control>("SettingsRowsPart");
-        SettingsThemes = Find<Control>("SettingsThemesPart");
         SettingsTitle = Find<HandheldBigTypeHeading>("SettingsTitlePart");
         ChoiceRows = Find<Control>("ChoiceRowsPart");
         ChoiceTitle = Find<HandheldBigTypeHeading>("ChoiceTitlePart");
@@ -51,7 +50,6 @@ public partial class HandheldBigTypeLists : UserControl
     internal HandheldBigTypeHeading SheetTitle { get; }
     internal Control Rail { get; }
     internal Control SettingsRows { get; }
-    internal Control SettingsThemes { get; }
     internal HandheldBigTypeHeading SettingsTitle { get; }
     internal Control ChoiceRows { get; }
     internal HandheldBigTypeHeading ChoiceTitle { get; }

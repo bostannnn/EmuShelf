@@ -10,7 +10,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// <summary>
 /// A list's label in the Big Type look (M47 B7): set at <see cref="Size"/>, or smaller to fit its room as the mock's <c>setHead</c>
 /// fits a heading (size × room ÷ natural width), but no smaller than <see cref="HandheldTokens.LabelFitMin"/> of it; past that it
-/// ends in an ellipsis. No label is cut mid-letter or runs into what ends its row.
+/// uses the label's wrapping and trimming rules. No label is cut mid-letter or runs into what ends its row.
 /// </summary>
 public sealed class HandheldFitText : TextBlock
 {
@@ -36,7 +36,18 @@ public sealed class HandheldFitText : TextBlock
             var room = Math.Max(0, availableSize.Width - Padding.Left - Padding.Right);
             using var natural = new TextLayout(Text, new Typeface(FontFamily, FontStyle, FontWeight, FontStretch), Size, null,
                 letterSpacing: LetterSpacing);
-            fitted = Fit(Size, natural.WidthIncludingTrailingWhitespace, room, HandheldTokens.LabelFitMin);
+            var width = natural.WidthIncludingTrailingWhitespace;
+            fitted = Fit(Size, width, room, HandheldTokens.LabelFitMin);
+            if (TextWrapping == TextWrapping.Wrap && MaxLines == 2)
+            {
+                // The bundled rounded font has generous leading. Give a wrapped label two equal lines
+                // inside its slot, and keep the font's own line metrics for labels that fit on one line.
+                var wraps = width * (fitted / Size) > room + 0.01;
+                var height = availableSize.Height - Padding.Top - Padding.Bottom;
+                var lineHeight = wraps && double.IsFinite(height) && height >= 2 ? Math.Floor(height / 2) : double.NaN;
+                if (!LineHeight.Equals(lineHeight))
+                    SetCurrentValue(LineHeightProperty, lineHeight);
+            }
         }
         if (!FontSize.Equals(fitted))
             SetCurrentValue(FontSizeProperty, fitted);

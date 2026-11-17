@@ -527,23 +527,6 @@
     <Style Selector="Border.settings-row.focused Border.switch.on > Border">
       <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
-    <Style Selector="Border.theme-card">
-      <Setter Property="Width" Value="248" />
-      <Setter Property="Height" Value="184" />
-      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ThemeCardRadius}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
-      <Setter Property="ClipToBounds" Value="True" />
-    </Style>
-    <Style Selector="Border.theme-ring">
-      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ThemeRingRadius}" />
-      <Setter Property="Padding" Value="8" />
-      <Setter Property="BorderThickness" Value="4" />
-      <Setter Property="BorderBrush" Value="Transparent" />
-    </Style>
-    <Style Selector="Border.theme-ring.focused">
-      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
-    </Style>
     <Style Selector="Border.key.mid">
       <Setter Property="Width" Value="160" />
     </Style>
@@ -1689,7 +1672,7 @@
                   <Border Classes="settings-section" Classes.selected="{Binding IsSelected}" Classes.focused="{Binding IsFocused}"
                           Margin="0,0,0,8">
                     <StackPanel VerticalAlignment="Center" Spacing="2">
-                      <TextBlock Classes="title" Text="{Binding Title}" />
+                      <vh:HandheldFitText Classes="title" Size="{x:Static vm:HandheldTokens.RailRow}" Text="{Binding Title}" />
                       <TextBlock Classes="status" Classes.warning="{Binding IsWarning}" Text="{Binding Status}"
                                  IsVisible="{Binding HasStatus}" />
                     </StackPanel>
@@ -1701,80 +1684,37 @@
           </Panel>
 
           <!-- The rows: label left, then the one thing that ends a row (a switch, ‹ a choice ›, a value, a chevron). -->
-          <Panel Grid.Row="1" Grid.Column="1" x:Name="SettingsRowHost" Margin="40,24,0,0" IsVisible="{Binding IsRows}">
+          <Panel Grid.Row="1" Grid.Column="1" x:Name="SettingsRowHost" Margin="40,24,0,0">
           <ScrollViewer x:Name="SettingsRowScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
             <ItemsControl x:Name="SettingsRows" ItemsSource="{Binding Rows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
                   <Border Classes="settings-row" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}"
                           Classes.save="{Binding IsSaveRow}" Classes.disabled="{Binding !IsEnabled}" Margin="0,0,0,12">
-                    <Grid ColumnDefinitions="Auto,*,Auto">
-                      <Border Width="56" Height="56" CornerRadius="{x:Static vm:HandheldTokens.IconPlateRadius}" Background="{x:Static vm:HandheldTokens.ClassicIconPlate}" Margin="0,0,20,0"
-                              IsVisible="{Binding HasPlatformIcon}" VerticalAlignment="Center">
-                        <Image Width="40" Height="40" Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
-                               RenderOptions.BitmapInterpolationMode="None" />
-                      </Border>
-                      <TextBlock Grid.Column="1" Classes="label" Classes.destructive="{Binding IsDestructive}" Text="{Binding Label}" />
-                      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="12" Margin="24,0,0,0" VerticalAlignment="Center">
-                        <!-- A switch. -->
-                        <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
-                          <Border />
+                    <vh:HandheldRowLine>
+                      <Grid ColumnDefinitions="Auto,*">
+                        <Border Width="56" Height="56" CornerRadius="{x:Static vm:HandheldTokens.IconPlateRadius}" Background="{x:Static vm:HandheldTokens.ClassicIconPlate}" Margin="0,0,20,0"
+                                IsVisible="{Binding HasPlatformIcon}" VerticalAlignment="Center">
+                          <Image Width="40" Height="40" Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
+                                 RenderOptions.BitmapInterpolationMode="None" />
                         </Border>
-                        <!-- ‹ A choice ›: Left/Right step it, A opens the list. -->
-                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronLeft}" IsVisible="{Binding IsChoice}" />
-                        <TextBlock Classes="value" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Text="{Binding Value}" IsVisible="{Binding IsChoice}"
-                                   MaxWidth="380" />
-                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsChoice}" />
-                        <!-- A value to edit (text, secret, folder, file), a platform's summary, or something to read. -->
-                        <TextBlock Classes="value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}" MaxWidth="420"
-                                   IsVisible="{Binding IsEditableValue}" />
-                        <TextBlock Classes="value" Classes.warning="{Binding IsWarning}" Text="{Binding Value}" MaxWidth="420"
-                                   IsVisible="{Binding IsSummary}" />
-                        <TextBlock Classes="value" Text="{Binding Value}" MaxWidth="460" IsVisible="{Binding IsInformation}" />
-                        <!-- What an action does when its label does not say ("Sync now"), or that it is running. -->
-                        <TextBlock Classes="value" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Text="{Binding ActionText}" IsVisible="{Binding HasActionText}" />
-                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding ShowsChevron}" />
-                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsSummary}"
-                                  RenderTransform="{Binding IsExpanded, Converter={x:Static vm:HandheldViewConverters.ExpandedTurn}}" />
-                      </StackPanel>
-                    </Grid>
-                  </Border>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </ScrollViewer>
-          </Panel>
-
-          <!-- Themes: the gallery, three to a row as the pad moves through it. -->
-          <Panel Grid.Row="1" Grid.Column="1" x:Name="SettingsThemeHost" Margin="40,24,0,0" IsVisible="{Binding IsThemes}">
-          <ScrollViewer x:Name="SettingsThemeScroller" VerticalAlignment="Top" VerticalScrollBarVisibility="Hidden">
-            <ItemsControl x:Name="SettingsThemes" ItemsSource="{Binding ThemeChoices}" HorizontalAlignment="Left">
-              <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                  <UniformGrid Columns="3" />
-                </ItemsPanelTemplate>
-              </ItemsControl.ItemsPanel>
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:ThemeChoiceViewModel">
-                  <Border Classes="theme-ring" Classes.focused="{Binding IsFocused}" Margin="0,0,16,16">
-                    <StackPanel Spacing="10">
-                      <Border Classes="theme-card" Background="{Binding PreviewBackground}">
-                        <Grid RowDefinitions="Auto,*" Margin="18">
-                          <Border Background="{Binding PreviewSurface}" CornerRadius="{x:Static vm:HandheldTokens.ThemePreviewSurfaceRadius}" Height="48">
-                            <Border Width="48" Height="12" CornerRadius="{x:Static vm:HandheldTokens.ThemePreviewAccentRadius}" Background="{Binding PreviewAccent}"
-                                    HorizontalAlignment="Left" Margin="14,0" />
-                          </Border>
-                          <TextBlock Grid.Row="1" Text="Aa" FontSize="{x:Static vm:HandheldTokens.ThemeSample}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{Binding PreviewText}"
-                                     VerticalAlignment="Bottom" />
-                        </Grid>
+                        <vh:HandheldFitText Grid.Column="1" Classes="label" Classes.destructive="{Binding IsDestructive}" Size="{x:Static vm:HandheldTokens.Row}"
+                                            Text="{Binding Label}" TextWrapping="Wrap" MaxLines="2" />
+                      </Grid>
+                      <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}" Margin="24,0,0,0">
+                        <Border />
                       </Border>
-                      <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0">
-                        <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="24" Height="24" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}"
-                                  IsVisible="{Binding IsSelected}" />
-                        <TextBlock Text="{Binding Name}" FontSize="{x:Static vm:HandheldTokens.ThemeName}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
-                                   TextTrimming="CharacterEllipsis" MaxWidth="200" />
-                      </StackPanel>
-                    </StackPanel>
+                      <Grid ColumnDefinitions="Auto,*,Auto" IsVisible="{Binding !IsToggle}" Margin="24,0,0,0" VerticalAlignment="Center">
+                        <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronLeft}" IsVisible="{Binding IsChoice}" Margin="0,0,12,0" />
+                        <TextBlock Grid.Column="1" Classes="value" Classes.warning="{Binding IsWarning}" Text="{Binding RowValue}" />
+                        <Panel Grid.Column="2" Margin="12,0,0,0">
+                          <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding ShowsChevron}" />
+                          <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsChoice}" />
+                          <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsSummary}"
+                                    RenderTransform="{Binding IsExpanded, Converter={x:Static vm:HandheldViewConverters.ExpandedTurn}}" />
+                        </Panel>
+                      </Grid>
+                    </vh:HandheldRowLine>
                   </Border>
                 </DataTemplate>
               </ItemsControl.ItemTemplate>

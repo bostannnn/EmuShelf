@@ -9,10 +9,9 @@ using EmuShelf.Core.Settings;
 
 namespace EmuShelf.App.ViewModels;
 
-/// <summary>One section in Settings' list on the Launcher (Library, Emulators, …, Themes, Display, About).</summary>
+/// <summary>One section in the Launcher’s Settings list.</summary>
 public sealed partial class HandheldSettingsSectionViewModel(SettingsSection section, string title) : ObservableObject
 {
-    /// <summary>The section; <see cref="SettingsSection.Themes"/> is the theme gallery.</summary>
     public SettingsSection Section { get; } = section;
 
     /// <summary>In the setup wizard (M45 H6d) the list holds its steps instead of sections: this entry's step.</summary>
@@ -44,8 +43,8 @@ public sealed record HandheldSettingsCard(string Eyebrow, string Title, string V
     bool IsWarning);
 
 /// <summary>
-/// Settings in Handheld mode (M45 H6a): Gamepad mode's controller projection (<see cref="GamepadSettingsViewModel"/>,
-/// the same sections, rows, row kinds, choosers and confirmations, the same Save and close) laid across the two screens.
+/// Settings in Handheld mode (M45 H6a): the shared controller projection (<see cref="GamepadSettingsViewModel"/>)
+/// lays out the handheld sections across the two screens.
 /// The Launcher lists the sections and the rows; the Stage shows the focused row's value and description
 /// (<see cref="Card"/>). Text rows type on the drawn keyboard (<see cref="Keyboard"/>), since Android's own cannot
 /// open on the Thor's second screen. Everything else is the projection's: this only routes the pad and says what to show.
@@ -70,7 +69,7 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         else
         {
             foreach (var page in projection.Pages)
-                Sections.Add(new HandheldSettingsSectionViewModel(page, TitleOf(page)));
+                Sections.Add(new HandheldSettingsSectionViewModel(page, projection.TitleFor(page)));
         }
         projection.PropertyChanged += OnProjectionChanged;
         projection.Rows.CollectionChanged += (_, _) => RaiseChanged();
@@ -84,8 +83,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     public ObservableCollection<HandheldSettingsSectionViewModel> Sections { get; } = [];
 
     public ObservableCollection<GamepadSettingsRowViewModel> Rows => Projection.Rows;
-
-    public IReadOnlyList<ThemeChoiceViewModel> ThemeChoices => Projection.ThemeChoices;
 
     public ObservableCollection<GamepadChoiceOptionViewModel> ChoiceOptions => Projection.ChoiceOptions;
 
@@ -115,10 +112,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             return current < 0 ? string.Empty : $"Step {current + 1} of {steps.Count}";
         }
     }
-
-    public bool IsThemes => Projection.IsThemesSection;
-
-    public bool IsRows => !Projection.IsThemesSection;
 
     public bool IsChoicePickerOpen => Projection.IsChoicePickerOpen;
 
@@ -179,8 +172,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             return;
         if (section.Step is { } step)
             Projection.GoToSetupStep(step);
-        else if (section.Section == SettingsSection.Themes)
-            Projection.SelectThemesCommand.Execute(null);
         else
             Projection.SelectSectionCommand.Execute(section.Section);
     }
@@ -214,12 +205,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             Projection.ChooseConfirmationConfirmCommand.Execute(null);
         else
             Projection.ChooseConfirmationCancelCommand.Execute(null);
-    }
-
-    public void TapTheme(ThemeChoiceViewModel theme)
-    {
-        if (Projection.IsNormal)
-            Projection.SelectThemeChoiceCommand.Execute(theme);
     }
 
     /// <summary>A tap outside the open chooser or confirmation: it closes, as B does.</summary>
@@ -288,7 +273,7 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             // In the wizard the eyebrow says where it is ("Step 3 of 6 · Games & emulators"), and with nothing else to report
             // the status line says what Continue leads to.
             var section = IsSetup && StepText.Length > 0 ? $"{StepText} · {Projection.SectionTitle}" : Projection.SectionTitle;
-            var status = Projection.HasStatus && !Projection.IsThemesSection ? Projection.StatusText
+            var status = Projection.HasStatus ? Projection.StatusText
                 : IsSetup ? StartDetail : string.Empty;
             if (Projection.IsTextEntryOpen)
             {
@@ -313,13 +298,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 var focused = Sections.FirstOrDefault(item => item.IsSelected);
                 return new(IsSetup ? $"Setup · {StepText}" : HandheldSettingsText.Name, Projection.SectionTitle,
                     focused?.Status ?? string.Empty, Projection.SectionDescription, status, focused?.IsWarning == true);
-            }
-            if (Projection.IsThemesSection)
-            {
-                var theme = ThemeChoices.ElementAtOrDefault(Projection.FocusedThemeIndex);
-                return theme is null
-                    ? new(HandheldSettingsText.Name, section, string.Empty, Projection.SectionDescription, status, false)
-                    : new(section, theme.Name, theme.IsSelected ? "In use" : string.Empty, theme.Description, status, false);
             }
             if (Projection.FocusedRow is not { } row)
                 return new(HandheldSettingsText.Name, section, string.Empty, Projection.SectionDescription, status, false);
@@ -379,10 +357,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             {
                 yield return new HandheldHint("A", "Open");
             }
-            else if (Projection.IsThemesSection)
-            {
-                yield return new HandheldHint("A", "Use");
-            }
             else if (Projection.FocusedRow is { } row && row.CanActivate && !row.IsSaveRow)
             {
                 yield return new HandheldHint("A", row.Kind switch
@@ -424,10 +398,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 break;
             case nameof(GamepadSettingsViewModel.RevealSecret):
                 Keyboard?.OnRevealChanged();
-                break;
-            case nameof(GamepadSettingsViewModel.IsThemesSection):
-                OnPropertyChanged(nameof(IsThemes));
-                OnPropertyChanged(nameof(IsRows));
                 break;
             case nameof(GamepadSettingsViewModel.IsChoicePickerOpen):
                 OnPropertyChanged(nameof(IsChoicePickerOpen));
@@ -491,7 +461,7 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             }
             return;
         }
-        var current = Projection.IsThemesSection ? SettingsSection.Themes : Projection.SelectedSection;
+        var current = Projection.SelectedSection;
         foreach (var item in Sections)
         {
             item.IsSelected = item.Section == current;
@@ -504,7 +474,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 SettingsSection.ArtworkMetadata => (Projection.ArtworkRailStatus, false),
                 SettingsSection.Saves => (Projection.SavesRailStatus, Projection.IsSavesRailWarning),
                 SettingsSection.TexturePacks => (Projection.TexturePacksRailStatus, false),
-                SettingsSection.Themes => (Projection.ThemesRailStatus, false),
                 SettingsSection.Display => (Projection.DisplayRailStatus, false),
                 SettingsSection.About => (Projection.AboutRailStatus, false),
                 _ => (Projection.LibraryRailStatus, false),
@@ -519,20 +488,6 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         if (!_disposed)
             Changed?.Invoke();
     }
-
-    internal static string TitleOf(SettingsSection section) => section switch
-    {
-        SettingsSection.Emulators => "Emulators",
-        SettingsSection.Hotkeys => "Hotkeys",
-        SettingsSection.RetroAchievements => "Achievements",
-        SettingsSection.ArtworkMetadata => "Artwork & metadata",
-        SettingsSection.Saves => "Saves",
-        SettingsSection.TexturePacks => "Texture packs",
-        SettingsSection.Themes => "Themes",
-        SettingsSection.Display => "Display",
-        SettingsSection.About => "About",
-        _ => "Library",
-    };
 
     public void Dispose()
     {

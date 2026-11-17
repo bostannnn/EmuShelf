@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.App.Views;
@@ -15,6 +17,61 @@ namespace EmuShelf.App.Tests.Handheld;
 // the 16:9 one, M45 H5), since both Thor displays are FLAG_SECURE. Set EMUSHELF_SNAPSHOT_DIR to get the frames as PNGs.
 public partial class HandheldShellViewModelTests
 {
+    [Collection(nameof(HandheldTokenLookCollection))]
+    public class ArtworkSettingsLayout
+    {
+        [AvaloniaTheory]
+        [InlineData(HandheldLook.Classic, false)]
+        [InlineData(HandheldLook.Classic, true)]
+        [InlineData(HandheldLook.BigType, false)]
+        [InlineData(HandheldLook.BigType, true)]
+        public async Task ExpandedArtworkSettingsFitTheLauncher(HandheldLook look, bool wide)
+        {
+            HandheldTokens.Use(look);
+            Window? window = null;
+            try
+            {
+                using var shell = await CreateWithSettingsAsync(new FakeLibrary().WithPlatform("ps2", 3));
+                var view = new HandheldLauncherView(null, pinnedWide: wide) { DataContext = shell };
+                window = new Window { Content = view, Width = wide ? 1920 : 1240, Height = 1080 };
+                window.Show();
+                await shell.OpenSettingsAsync();
+                var settings = shell.Settings!;
+                settings.TapSection(settings.Sections.Single(s => s.Section == SettingsSection.ArtworkMetadata));
+                settings.TapRow(settings.Rows.Single(r => r.Key == "scraper.account.signin"));
+                await SettleAsync();
+                Dump(window, $"settings-artwork-{look}-{(wide ? "wide" : "narrow")}");
+
+                var visibleText = view.GetVisualDescendants().OfType<TextBlock>()
+                    .Where(t => t.IsEffectivelyVisible).ToArray();
+                var rail = visibleText.Single(t => t.DataContext is HandheldSettingsSectionViewModel section
+                    && section.Section == SettingsSection.ArtworkMetadata && t.Text == section.Title);
+                var labels = visibleText.Where(t => t.DataContext is GamepadSettingsRowViewModel row && t.Text == row.Label);
+                Assert.Contains(labels, t => t.Text == "Fetch missing metadata");
+                Assert.Contains(labels, t => t.Text == "Password");
+                foreach (var text in labels.Append(rail))
+                {
+                    var lines = text.TextLayout.TextLines;
+                    Assert.DoesNotContain(lines, line => line.HasCollapsed);
+                    Assert.True(lines[^1].FirstTextSourceIndex + lines[^1].Length >= text.Text!.Length, $"{text.Text} lost its last line");
+                    Assert.True(text.TextLayout.Width <= text.Bounds.Width + 1, $"{text.Text} exceeds its column");
+                    Assert.True(text.TextLayout.Height <= text.Bounds.Height + 1, $"{text.Text} exceeds its row");
+                }
+                var account = labels.Single(t => t.Text == "ScreenScraper");
+                var value = visibleText.Single(t => t.DataContext == account.DataContext && t.Text == "Not signed in");
+                var labelEnd = account.TranslatePoint(new Point(account.Bounds.Width, 0), view)!.Value.X;
+                var valueStart = value.TranslatePoint(default, view)!.Value.X;
+                Assert.True(labelEnd <= valueStart);
+                Assert.InRange(valueStart + value.Bounds.Width, view.Bounds.Width * 0.85, view.Bounds.Width);
+            }
+            finally
+            {
+                window?.Close();
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData(false)]
     [InlineData(true)]

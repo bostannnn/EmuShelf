@@ -297,10 +297,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
     private bool _storageGrantedRead;
     private readonly IAppUsageAccess? _usageAccess;
 
-    // Handheld mode's interface sounds (M45 H6d): a Display row only when Handheld mode builds this projection.
-    private readonly GamepadSettingsSwitch? _handheldSounds;
-    // Handheld mode's own reduced-motion switch (M47 B10): a Display row only when the Big Type look builds this projection.
-    private readonly GamepadSettingsSwitch? _handheldReduceMotion;
+    private readonly HandheldSettingsControls? _handheld;
     private readonly IRelayCommand _requestUsageAccessCommand;
     private bool _usageAccessGranted;
     private bool _usageAccessRead;
@@ -486,7 +483,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     public GamepadSettingsRowViewModel? SaveRow => Rows.FirstOrDefault(row => row.IsSaveRow);
 
-    public string SectionTitle => IsSetupMode ? SetupTitle : IsThemesSection ? "Themes" : SelectedSection switch
+    public string SectionTitle => IsSetupMode ? SetupTitle : TitleFor(IsThemesSection ? SettingsSection.Themes : SelectedSection);
+
+    internal string TitleFor(SettingsSection section) => section switch
     {
         SettingsSection.Emulators => "Emulators",
         SettingsSection.Hotkeys => "Hotkeys",
@@ -494,7 +493,9 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SettingsSection.ArtworkMetadata => "Artwork & Metadata",
         SettingsSection.Saves => "Saves",
         SettingsSection.TexturePacks => "Texture Packs",
+        SettingsSection.Display when _handheld is not null => _handheld.ReduceMotion is null ? "Sound" : "Sound & motion",
         SettingsSection.Display => "Display",
+        SettingsSection.Themes => "Themes",
         SettingsSection.About => "About",
         _ => "Library",
     };
@@ -511,17 +512,23 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             "Write one in-game hotkey scheme into each emulator and see the Steam Input mapping.",
         SettingsSection.RetroAchievements =>
             "Read achievement sets and your progress. Emulators still own unlocks and submission.",
+        SettingsSection.ArtworkMetadata when _handheld is not null =>
+            "Fetch game details and covers. Manage web image search and your ScreenScraper account.",
         SettingsSection.ArtworkMetadata =>
             "Fetch titles and artwork from the built-in catalogue or ScreenScraper, and toggle web image search. Game files are never uploaded.",
         SettingsSection.Saves =>
             "Reconcile emulator saves through your own Google Drive. Game files are never included.",
         SettingsSection.TexturePacks =>
             "Inspect installed replacement textures without changing packs or emulator configuration.",
-        SettingsSection.Display => _handheldSounds is null
-            ? "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them."
-            : "How EmuShelf looks and sounds in the couch modes. Each setting takes effect as you change it.",
+        SettingsSection.Display when _handheld is not null => _handheld.ReduceMotion is null
+            ? "Choose whether the handheld plays interface sounds."
+            : "Choose whether the handheld plays interface sounds and animates the launcher.",
+        SettingsSection.Display =>
+            "How the shelf itself is drawn. Both settings apply to gaming mode only, and take effect as you change them.",
+        SettingsSection.About when _handheld is not null => "View the installed version and check for updates.",
         SettingsSection.About =>
             "Version, build, and updates. Updating in place keeps gaming mode without dropping to the desktop.",
+        SettingsSection.General when _handheld is not null => "Rescan your games and manage storage, play time, and device setup.",
         _ => "Library visibility, metadata consent, and safe maintenance.",
     };
 
@@ -586,16 +593,21 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _savesRailStatus = "Google Drive";
     }
     public string TexturePacksRailStatus => string.Empty;
-    /// <summary>What is switched on, so the rail answers "is the tube on?" without opening the page.
-    /// Silent when neither is, like the Artwork rail line — and short enough to survive the rail's
-    /// ~98px status column, which cut the longer wording mid-word.</summary>
-    public string DisplayRailStatus => (CrtScreenEffect, AmbientThemeFromArtwork) switch
+    public string DisplayRailStatus
     {
-        (true, true) => "Both on",
-        (true, false) => "CRT on",
-        (false, true) => "Artwork colours on",
-        _ => string.Empty,
-    };
+        get
+        {
+            if (_handheld is not null)
+                return _handheld.Sounds.Get() ? "Sounds on" : "Sounds off";
+            return (CrtScreenEffect, AmbientThemeFromArtwork) switch
+            {
+                (true, true) => "Both on",
+                (true, false) => "CRT on",
+                (false, true) => "Artwork colours on",
+                _ => string.Empty,
+            };
+        }
+    }
     public string ThemesRailStatus => _themeChoices.FirstOrDefault(choice => choice.IsSelected)?.Name ?? string.Empty;
     public string AboutRailStatus => _settings.AppVersionDisplay;
 
@@ -759,12 +771,10 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SetupWizardOptions? setup = null,
         Func<Task>? runSetup = null,
         IAppUsageAccess? usageAccess = null,
-        GamepadSettingsSwitch? handheldSounds = null,
-        GamepadSettingsSwitch? handheldReduceMotion = null)
+        HandheldSettingsControls? handheld = null)
     {
         _settings = settings;
-        _handheldSounds = handheldSounds;
-        _handheldReduceMotion = handheldReduceMotion;
+        _handheld = handheld;
         _usageAccess = usageAccess;
         // The grant is made on Android's own screen; the answer is read again on return (RefreshDeviceState).
         _requestUsageAccessCommand = new RelayCommand(() => _usageAccess?.RequestGrant());
@@ -777,7 +787,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         _closeOnReturnWarning = closeOnReturnWarning;
         _grantCloseOnReturnPrivilege = grantCloseOnReturnPrivilege;
         _onScreenKeyboard = onScreenKeyboard ?? UnsupportedOnScreenKeyboardService.Instance;
-        _themeChoices = themeChoices ?? [];
+        _themeChoices = handheld is null ? themeChoices ?? [] : [];
         _applyTheme = applyTheme;
         _openHotkeys = openHotkeys;
         _androidEmulatorChoices = androidEmulatorChoices
@@ -795,10 +805,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         var sections = settings.Sections
             .Where(section => section is not SettingsSection.Themes)
             .ToList();
-        // Display is couch-only, so it is spliced in here rather than coming from the settings model:
-        // the CRT tube and artwork-matched colours change how the shelf behind this panel is drawn, and
-        // Desktop deliberately offers neither (a toggle whose effect is invisible from its own window is
-        // worse than no toggle). It sits next to Themes so appearance is two neighbouring pages.
+        // This slot holds shelf effects in Gamepad mode and the dual-screen shell's own controls in Handheld mode.
         var beforeAbout = sections.IndexOf(SettingsSection.About);
         sections.Insert(beforeAbout >= 0 ? beforeAbout : sections.Count, SettingsSection.Display);
         Sections = sections;
@@ -1665,7 +1672,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         yield return ActionRow(
             "common.save",
             "Save and close",
-            "Keep these changes and return to Menu.",
+            _handheld is null ? "Keep these changes and return to Menu." : "Keep these changes and return to the launcher.",
             _settings.IsSaving ? "Saving…" : "A SAVE",
             _settings.SaveCommand,
             !_settings.IsWorking);
@@ -1720,16 +1727,19 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     private IEnumerable<GamepadSettingsRowSpec> BuildGeneralRows()
     {
-        yield return ToggleRow(
-            "general.empty-platforms",
-            "Show empty platforms",
-            _settings.ShowEmptyPlatforms
-                ? "platforms with no games stay in the top bar"
-                : "platforms with no games stay out of the top bar",
-            _settings.ShowEmptyPlatforms,
-            value => _settings.ShowEmptyPlatforms = value,
-            onLabel: "Shown",
-            offLabel: "Hidden");
+        if (_handheld is null)
+        {
+            yield return ToggleRow(
+                "general.empty-platforms",
+                "Show empty platforms",
+                _settings.ShowEmptyPlatforms
+                    ? "platforms with no games stay in the top bar"
+                    : "platforms with no games stay out of the top bar",
+                _settings.ShowEmptyPlatforms,
+                value => _settings.ShowEmptyPlatforms = value,
+                onLabel: "Shown",
+                offLabel: "Hidden");
+        }
         yield return ActionRow(
             "general.rescan",
             "Rescan all consoles",
@@ -2239,12 +2249,29 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
             !_settings.IsRetroAchievementsBusy);
     }
 
-    /// <summary>Couch-only: how the shelf itself is drawn. Both are excluded from the Desktop↔couch
-    /// field sweep because Desktop deliberately offers neither — there is no field to be in parity with.
-    /// They were the two rows stacked above the theme gallery; on their own page the gallery starts at
-    /// the top and these stop competing with it for the first thing you look at.</summary>
+    /// <summary>Each shell supplies the preferences its own renderer and input feedback use.</summary>
     private IEnumerable<GamepadSettingsRowSpec> BuildDisplayRows()
     {
+        if (_handheld is { } handheld)
+        {
+            yield return ToggleRow(
+                "display.sounds",
+                "Interface sounds",
+                "play a tone when navigating menus",
+                handheld.Sounds.Get(),
+                handheld.Sounds.Set) with { ExcludeFromParity = true };
+            if (handheld.ReduceMotion is { } still)
+            {
+                yield return ToggleRow(
+                    "display.reduce-motion",
+                    "Reduce motion",
+                    "skip transitions and hold the backdrop still",
+                    still.Get(),
+                    still.Set) with { ExcludeFromParity = true };
+            }
+            yield break;
+        }
+
         yield return ToggleRow(
             "display.crt",
             "CRT screen effect",
@@ -2259,24 +2286,6 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 : "the theme is used everywhere",
             AmbientThemeFromArtwork,
             value => AmbientThemeFromArtwork = value) with { ExcludeFromParity = true };
-        if (_handheldSounds is { } sounds)
-        {
-            yield return ToggleRow(
-                "display.sounds",
-                "Sounds",
-                "a soft tone as you move, open, close, confirm and go back · Handheld mode",
-                sounds.Get(),
-                sounds.Set) with { ExcludeFromParity = true };
-        }
-        if (_handheldReduceMotion is { } still)
-        {
-            yield return ToggleRow(
-                "display.reduce-motion",
-                "Reduce motion",
-                "everything arrives in place at once and the backdrop holds still · Android's own setting does this too",
-                still.Get(),
-                still.Set) with { ExcludeFromParity = true };
-        }
     }
 
     private IEnumerable<GamepadSettingsRowSpec> BuildArtworkMetadataRows()

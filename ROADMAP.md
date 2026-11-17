@@ -3392,3 +3392,7 @@ falls back to the emulator and says so.
       A headless regression now checks the Shelf is opaque on the first layout after handing off the native Launcher.
       **Open on the Thor:** confirm the Shelf appears and scrolls on the lower display, exercise the Wall and Reel in
       a game, and check the Porthole through idle, wake and a screen swap. B10's default-look change awaits owner review.
+
+- [x] **AYN Thor settings review.** Scoped the menu to controls used by the handheld launcher and
+      fitted section names, labels and values to both screen sizes. Added layout coverage for the
+      expanded Artwork & Metadata page in Classic and Big Type.

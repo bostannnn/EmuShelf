@@ -127,3 +127,6 @@ public sealed record SetupWizardOptions(
 
 /// <summary>A switch a head adds to the Settings projection, read and written through the head (Handheld mode's sounds).</summary>
 public sealed record GamepadSettingsSwitch(Func<bool> Get, Action<bool> Set);
+
+/// <summary>The controls supplied by the dual-screen shell when it opens Settings.</summary>
+public sealed record HandheldSettingsControls(GamepadSettingsSwitch Sounds, GamepadSettingsSwitch? ReduceMotion = null);

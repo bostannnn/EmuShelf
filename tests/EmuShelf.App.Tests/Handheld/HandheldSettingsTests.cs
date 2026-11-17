@@ -129,11 +129,16 @@ public partial class HandheldShellViewModelTests
             retroAchievements: new RetroAchievementsSettingsContext(null, false,
                 (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(RetroAchievementsConnectionResult.Connected)),
                 _ => Task.CompletedTask),
+            screenScraper: new ScreenScraperSettingsContext(false, null,
+                (_, _, _) => Task.FromResult(new ScreenScraperConnectionSummary(ScreenScraperConnectionResult.Connected)),
+                _ => Task.CompletedTask),
             fixedEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
-        // Under Big Type, Display carries the app's Reduce motion switch as Handheld mode's does (M47 B10; off, as by default).
+        // Both looks support interface sounds. Big Type also honours Reduce motion.
+        var sounds = true;
         var reduceMotion = false;
         return new GamepadSettingsViewModel(settings, androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
-            handheldReduceMotion: HandheldTokens.IsBigType ? new GamepadSettingsSwitch(() => reduceMotion, value => reduceMotion = value) : null);
+            handheld: new(new(() => sounds, value => sounds = value),
+                HandheldTokens.IsBigType ? new(() => reduceMotion, value => reduceMotion = value) : null));
     }
 
     private static async Task<HandheldShellViewModel> CreateWithSettingsAsync(FakeLibrary library, InMemoryHandheldHomeLayoutStore? store = null)
@@ -168,9 +173,8 @@ public partial class HandheldShellViewModelTests
         var settings = Assert.IsType<HandheldSettingsViewModel>(shell.Settings);
         Assert.True(shell.IsLauncherOverlayOpen);
         Assert.Equal(1, library.SettingsOpened);
-        // The Launcher lists Gamepad mode's sections in its order (the ones this settings model has: an account, no cloud
-        // saves, no themes) and the rows…
-        Assert.Equal(["Library", "Emulators", "Achievements", "Display", "About"], settings.Sections.Select(section => section.Title));
+        // The Launcher lists the sections available to this handheld.
+        Assert.Equal(["Library", "Emulators", "Achievements", "Artwork & Metadata", "Sound", "About"], settings.Sections.Select(section => section.Title));
         Assert.True(settings.Sections[0].IsSelected);
         // …and the Stage shows what the focused row is, its value and its description, with no plate under it.
         Assert.Equal(HandheldStageKind.Setting, shell.Stage.Kind);
@@ -202,10 +206,10 @@ public partial class HandheldShellViewModelTests
         var settings = Assert.IsType<HandheldSettingsViewModel>(shell.Settings);
         Assert.False(shell.IsMenuOpen);
 
-        // Down moves through the rows (the Stage follows); RB moves to the next section; X is Settings' own.
-        var first = shell.Stage.Title;
-        Press(shell, GamepadAction.NavigateDown);
-        Assert.NotEqual(first, shell.Stage.Title);
+        // Up reaches Save from the first library action. The Stage follows, and RB changes section.
+        Assert.Equal("Rescan all consoles", shell.Stage.Title);
+        Press(shell, GamepadAction.NavigateUp);
+        Assert.Equal("Save and close", shell.Stage.Title);
         Assert.Equal(settings.Projection.FocusedRow!.Label, shell.Stage.Title);
         Press(shell, GamepadAction.NextPlatform);
         Assert.True(settings.Sections[1].IsSelected);
@@ -216,7 +220,6 @@ public partial class HandheldShellViewModelTests
 
         // Left with a non-choice row focused goes to the list of sections; the Stage then describes the section.
         Press(shell, GamepadAction.PreviousPlatform);
-        Press(shell, GamepadAction.NavigateUp);
         Press(shell, GamepadAction.NavigateLeft);
         Assert.True(settings.Projection.IsRailFocused);
         Assert.True(settings.Sections[0].IsFocused);
@@ -237,8 +240,8 @@ public partial class HandheldShellViewModelTests
         await shell.OpenSettingsAsync();
         var settings = shell.Settings!;
 
-        // Display's first switch: the CRT tube.
-        while (!settings.Sections.Single(section => section.Title == "Display").IsSelected)
+        // The handheld sound preference is applied immediately.
+        while (!settings.Sections.Single(section => section.Section == SettingsSection.Display).IsSelected)
             Press(shell, GamepadAction.NextPlatform);
         Press(shell, GamepadAction.NavigateDown);
         var row = settings.Projection.FocusedRow!;

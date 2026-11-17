@@ -532,18 +532,6 @@ public static partial class HandheldTokens
     /// <summary>A switch's knob.</summary>
     public static CornerRadius SwitchKnobRadius { get; private set; }
 
-    /// <summary>A theme's preview card.</summary>
-    public static CornerRadius ThemeCardRadius { get; private set; }
-
-    /// <summary>A theme's focus ring.</summary>
-    public static CornerRadius ThemeRingRadius { get; private set; }
-
-    /// <summary>A theme preview's surface bar.</summary>
-    public static CornerRadius ThemePreviewSurfaceRadius { get; private set; }
-
-    /// <summary>A theme preview's accent bar.</summary>
-    public static CornerRadius ThemePreviewAccentRadius { get; private set; }
-
     /// <summary>A screen card in the screen chooser.</summary>
     public static CornerRadius ScreenCardRadius { get; private set; }
 
@@ -768,12 +756,6 @@ public static partial class HandheldTokens
 
     /// <summary>The Continue button's detail line.</summary>
     public static double StartDetail { get; private set; }
-
-    /// <summary>A theme preview's type sample.</summary>
-    public static double ThemeSample { get; private set; }
-
-    /// <summary>A theme's name.</summary>
-    public static double ThemeName { get; private set; }
 
     /// <summary>A panel's filter chip.</summary>
     public static double Filter { get; private set; }
@@ -1593,10 +1575,6 @@ public static partial class HandheldTokens
         ColourChipRadius = new CornerRadius(44);
         SwitchRadius = new CornerRadius(24);
         SwitchKnobRadius = new CornerRadius(18);
-        ThemeCardRadius = new CornerRadius(28);
-        ThemeRingRadius = new CornerRadius(40);
-        ThemePreviewSurfaceRadius = new CornerRadius(12);
-        ThemePreviewAccentRadius = new CornerRadius(6);
         ScreenCardRadius = new CornerRadius(40);
         TitleCoverRadius = new CornerRadius(32);
         ProgressRadius = new CornerRadius(6);
@@ -1673,8 +1651,6 @@ public static partial class HandheldTokens
         KeyboardHintGlyphWeight = FontWeight.Bold;
         StartLabel = 28;
         StartDetail = 20;
-        ThemeSample = 34;
-        ThemeName = 24;
         Filter = 24;
         PanelStatus = 26;
         PanelEmpty = 30;

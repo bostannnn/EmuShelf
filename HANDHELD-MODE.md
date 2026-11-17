@@ -479,7 +479,7 @@ code font is a tokens.js entry.
 **Holding still.** Handheld mode holds still when any of these asks:
 - battery saver, or Android's own reduced-motion setting (the animator scale at 0), read by
   `IDeviceStatusService` (`DeviceStatus.HoldsStill`, M45 H7c);
-- under Big Type, the app's own **Reduce motion** switch in Settings → Display (M47 B10, off by
+- under Big Type, the app's own **Reduce motion** switch in Settings → Sound & motion (M47 B10, off by
   default, saved as `AppSettings.HandheldReduceMotion` in the portable `Settings/` folder). It holds
   still whether or not the system asks; either one is enough, and turning it on or off takes effect
   at once, on the Avalonia screens and both native compositors, with no restart. Today's look shows
@@ -573,7 +573,7 @@ The motions:
 - **Sounds** (Phase 5): soft original effects for move, open, close, swap and launch, and an off
   switch in Settings. They must be self-made or CC0-licensed. No Nintendo sounds. *As built (M45 H6d):* move, open,
   close, confirm and back, synthesised in code; Play is confirm and the swap is silent; the switch is the Start menu's
-  Sounds row and Settings → Display.
+  Sounds row and the Interface sounds switch in Settings.
 
 **Numbers as built (M45 H3, 2026-11-07; folder open/close and the backdrop revised in M45 H4).** One
 table, in code as `HandheldMotion`; the device tuning edits both. They are still the mockup's and the
@@ -624,11 +624,12 @@ The new work is mostly views and motion. There are four real pieces of new logic
 | Batch scraper | Configure, run, done | `GamepadBatchScraperViewModel` |
 | Search | Filters by title | `LibraryViewProjection` (on X today; in the Start menu here) |
 | Add games | Android folder picker, then the system chooser (under Big Type, setup's first question and its "which system", M47 B14) | `MainViewModel` import flow |
-| Settings: Library | Show empty platforms, rescan all, change data folder, run setup again | `GamepadSettingsViewModel` |
+| Settings: Library | Rescan all, change data folder, accurate play time, run setup again | `GamepadSettingsViewModel` |
 | Settings: Emulators | Close emulator on return (Shizuku), per-platform emulator choice, launch screen, game folders | `GamepadSettingsViewModel`, `EmulatorSettingsViewModel` |
 | Settings: Achievements | Steam profile and key, RetroAchievements account, refresh matches | same |
 | Settings: Artwork & metadata | Fetch after import, fetch missing, web image search, ScreenScraper sign-in | same |
 | Settings: Saves | Google Drive, cloud folder, per-platform save and state folders, replace cloud/local, export | same |
+| Settings: Sound (Classic) or Sound & motion (Big Type) | Interface sounds, plus Reduce motion in Big Type | same |
 | Settings: About | Version, check for and install updates (`AndroidUpdateApplier`) | same |
 | On-screen keyboard | The app's own couch keyboard, mirrored onto the Thor's second screen | `AndroidOnScreenKeyboardService` |
 | Setup wizard | Storage access, data folder, second screen, closing games, games and emulators, saves | `SetupWizardViewModel`, `StartupViewModel` |

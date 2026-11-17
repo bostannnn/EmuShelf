@@ -4,6 +4,7 @@
 using System;
 using Avalonia;
 using Avalonia.Animation.Easings;
+using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Media.Transformation;
 using EmuShelf.Rendering.Stage.BigType;
@@ -98,8 +99,15 @@ public static partial class HandheldTokens
 
     public static double SettingsRowsHeight => SettingsRowsVisible * RowPitchSettings;
     public static Thickness SettingsHeadMargin => new(SettingsLeft, SettingsHeadTop, 0, 0);
-    public static Thickness RailMargin => new(SettingsLeft, SettingsTop, 0, 0);
-    public static Thickness SettingsRowsMargin => new(SettingsRowsLeft, SettingsTop, 0, 0);
+    public static Thickness SettingsContentMargin => new(SettingsLeft, SettingsTop, SettingsLeft, 0);
+
+    // Preserve the narrow Launcher's column proportions and give both columns the extra width after a screen swap.
+    public static ColumnDefinitions SettingsColumns => new()
+    {
+        new ColumnDefinition(RailWidth, GridUnitType.Star),
+        new ColumnDefinition(SettingsRowsLeft - SettingsLeft - RailWidth, GridUnitType.Pixel),
+        new ColumnDefinition(SettingsRowsWidth, GridUnitType.Star),
+    };
 
     // ===== A panel =====
 

@@ -304,21 +304,25 @@ public sealed class GamepadSettingsViewModelTests
         Assert.StartsWith("On · ", viewModel.Rows.Single(row => row.Key == "display.crt").Description);
     }
 
-    /// <summary>
-    /// M47 B10: Handheld mode's Display section adds the Sounds switch and, under Big Type, the Reduce motion switch, after the
-    /// shelf's two; neither is Desktop's. Without them (Gamepad mode, or Handheld's Classic look) the section is as it was.
-    /// </summary>
     [AvaloniaFact]
-    public void DisplaySection_InHandheldMode_CarriesTheReduceMotionSwitch_OnlyWhenGivenOne()
+    public void HandheldSettingsOfferOnlyControlsUsedByTheLauncher()
     {
         var sounds = true;
         var still = false;
-        using var withBoth = new GamepadSettingsViewModel(CreateSettings(),
-            handheldSounds: new GamepadSettingsSwitch(() => sounds, value => sounds = value),
-            handheldReduceMotion: new GamepadSettingsSwitch(() => still, value => still = value));
+        var soundSwitch = new GamepadSettingsSwitch(() => sounds, value => sounds = value);
+        var choices = ThemeCatalog.All.Select(theme => new ThemeChoiceViewModel(theme)).ToArray();
+        using var withBoth = new GamepadSettingsViewModel(CreateSettings(), themeChoices: choices,
+            handheld: new(soundSwitch, new(() => still, value => still = value)));
+        Assert.DoesNotContain(withBoth.Rows, r => r.Key == "general.empty-platforms");
+        Assert.DoesNotContain(SettingsSection.Themes, withBoth.Pages);
+        withBoth.SelectThemesCommand.Execute(null);
+        Assert.False(withBoth.IsThemesSection);
+
         withBoth.SelectedSection = SettingsSection.Display;
+        Assert.Equal("Sound & motion", withBoth.SectionTitle);
+        Assert.Equal("Sounds on", withBoth.DisplayRailStatus);
         var rows = withBoth.Rows.Where(row => !row.IsSaveRow).ToArray();
-        Assert.Equal(["display.crt", "display.ambient", "display.sounds", "display.reduce-motion"], rows.Select(row => row.Key));
+        Assert.Equal(["display.sounds", "display.reduce-motion"], rows.Select(row => row.Key));
         var row = rows.Single(r => r.Key == "display.reduce-motion");
         Assert.True(row.IsToggle);
         Assert.Equal("Reduce motion", row.Label);
@@ -331,9 +335,13 @@ public sealed class GamepadSettingsViewModelTests
         Assert.StartsWith("On · ", withBoth.Rows.Single(r => r.Key == "display.reduce-motion").Description);
 
         using var soundsOnly = new GamepadSettingsViewModel(CreateSettings(),
-            handheldSounds: new GamepadSettingsSwitch(() => sounds, value => sounds = value));
+            handheld: new(soundSwitch));
         soundsOnly.SelectedSection = SettingsSection.Display;
-        Assert.Equal(["display.crt", "display.ambient", "display.sounds"],
+        Assert.Equal("Sound", soundsOnly.SectionTitle);
+        soundsOnly.Rows.Single(r => r.Key == "display.sounds").SelectCommand.Execute(null);
+        Assert.False(sounds);
+        Assert.Equal("Sounds off", soundsOnly.DisplayRailStatus);
+        Assert.Equal(["display.sounds"],
             soundsOnly.Rows.Where(r => !r.IsSaveRow).Select(r => r.Key));
     }
 

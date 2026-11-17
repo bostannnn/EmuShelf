@@ -264,85 +264,72 @@
         <Panel x:Name="SettingsBody" IsVisible="{Binding Projection.IsNormal}">
           <vh:HandheldBigTypeHeading x:Name="SettingsTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.Heading}" MaxTextWidth="{x:Static vm:HandheldTokens.SettingsHeadMaxWidth}"
                                      SpacingEm="{x:Static vm:HandheldTokens.DisplayLetterSpacing}" Margin="{x:Static vm:HandheldTokens.SettingsHeadMargin}" />
-          <StackPanel Margin="{x:Static vm:HandheldTokens.RailMargin}" Width="{x:Static vm:HandheldTokens.RailWidth}" HorizontalAlignment="Left" VerticalAlignment="Top">
-          <Panel Classes="rows-window" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
-            <ItemsControl x:Name="RailPart" Classes="window" ItemsSource="{Binding Sections}" vh:HandheldRowWindow.Focus="{Binding SelectedSectionIndex}"
-                          vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:HandheldSettingsSectionViewModel">
-                  <Panel Classes="slot" Height="{x:Static vm:HandheldTokens.RowHeightSettings}" Margin="{x:Static vm:HandheldTokens.RowSpacing}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
-                    <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
-                    <Panel Classes="arrive">
-                      <Panel Classes="row" Classes.focused="{Binding IsFocused}" Classes.current="{Binding IsSelected}">
-                        <vh:HandheldFitText Classes="label rail" Size="{x:Static vm:HandheldTokens.RailRow}" Text="{Binding Title}" />
+          <Grid Margin="{x:Static vm:HandheldTokens.SettingsContentMargin}" ColumnDefinitions="{x:Static vm:HandheldTokens.SettingsColumns}" VerticalAlignment="Top">
+            <StackPanel>
+              <Panel Classes="rows-window" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
+                <ItemsControl x:Name="RailPart" Classes="window" ItemsSource="{Binding Sections}" vh:HandheldRowWindow.Focus="{Binding SelectedSectionIndex}"
+                              vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:HandheldSettingsSectionViewModel">
+                      <Panel Classes="slot" Background="Transparent" Height="{x:Static vm:HandheldTokens.RowHeightSettings}" Margin="{x:Static vm:HandheldTokens.RowSpacing}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
+                        <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
+                        <Panel Classes="arrive">
+                          <Panel Classes="row" Classes.focused="{Binding IsFocused}" Classes.current="{Binding IsSelected}">
+                            <vh:HandheldFitText Classes="label rail" Size="{x:Static vm:HandheldTokens.RailRow}" Text="{Binding Title}" TextWrapping="Wrap" MaxLines="2" />
+                          </Panel>
+                        </Panel>
                       </Panel>
-                    </Panel>
-                  </Panel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Panel>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </Panel>
 
-          <!-- The setup wizard's way forward (M45 H6d): its next step, as a line of type under the steps (≡ or a tap goes on). -->
-          <StackPanel x:Name="SettingsStart" IsVisible="{Binding IsSetup}">
-            <TextBlock Classes="label rail" Text="{Binding StartLabel}" />
-            <TextBlock Classes="value" Margin="0" Text="{Binding StartDetail}" TextWrapping="Wrap" />
-          </StackPanel>
-          </StackPanel>
+              <!-- The setup wizard's way forward (M45 H6d): its next step, as a line of type under the steps (≡ or a tap goes on). -->
+              <StackPanel x:Name="SettingsStart" IsVisible="{Binding IsSetup}">
+                <TextBlock Classes="label rail" Text="{Binding StartLabel}" />
+                <TextBlock Classes="value" Margin="0" Text="{Binding StartDetail}" TextWrapping="Wrap" />
+              </StackPanel>
+            </StackPanel>
 
-          <!-- The rows: label at the left; at the right a switch, or the value. While the rail has the pad, none of them is lit. -->
-          <Panel Classes="rows-window" Classes.rail="{Binding Projection.IsRailFocused}" Margin="{x:Static vm:HandheldTokens.SettingsRowsMargin}" Width="{x:Static vm:HandheldTokens.SettingsRowsWidth}" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}"
-                 HorizontalAlignment="Left" VerticalAlignment="Top">
-            <ItemsControl x:Name="SettingsRowsPart" Classes="window" ItemsSource="{Binding Rows}" IsVisible="{Binding IsRows}" vh:HandheldRowWindow.Focus="{Binding Projection.FocusedRowIndex}"
-                          vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
-                  <Panel Classes="slot" Height="{x:Static vm:HandheldTokens.RowHeightSettings}" Margin="{x:Static vm:HandheldTokens.RowSpacing}">
-                    <vh:HandheldSelectorAnchor.IsFocused>
-                      <MultiBinding Converter="{x:Static BoolConverters.And}">
-                        <Binding Path="IsFocused" />
-                        <Binding Path="!$parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).Settings.Projection.IsRailFocused" FallbackValue="False" />
-                      </MultiBinding>
-                    </vh:HandheldSelectorAnchor.IsFocused>
-                    <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
-                    <Panel Classes="arrive">
-                      <Panel Classes="row" Classes.locked="{Binding !IsEnabled}" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}">
-                        <vh:HandheldRowLine>
-                          <vh:HandheldFitText Classes="label" Classes.danger="{Binding IsDestructive}" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" />
-                          <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
-                            <Panel>
-                              <Border Background="{x:Static vm:HandheldTokens.OnColour}" />
-                              <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
-                            </Panel>
-                          </Border>
-                          <TextBlock Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding RowValue}" IsVisible="{Binding !IsToggle}" />
-                        </vh:HandheldRowLine>
+            <!-- The rows: label at the left; at the right a switch, or the value. While the rail has the pad, none of them is lit. -->
+            <Panel Classes="rows-window" Classes.rail="{Binding Projection.IsRailFocused}" Grid.Column="2" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
+              <ItemsControl x:Name="SettingsRowsPart" Classes="window" ItemsSource="{Binding Rows}" vh:HandheldRowWindow.Focus="{Binding Projection.FocusedRowIndex}"
+                            vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:GamepadSettingsRowViewModel">
+                    <Panel Classes="slot" Background="Transparent" Height="{x:Static vm:HandheldTokens.RowHeightSettings}" Margin="{x:Static vm:HandheldTokens.RowSpacing}">
+                      <vh:HandheldSelectorAnchor.IsFocused>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                          <Binding Path="IsFocused" />
+                          <Binding Path="!$parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).Settings.Projection.IsRailFocused" FallbackValue="False" />
+                        </MultiBinding>
+                      </vh:HandheldSelectorAnchor.IsFocused>
+                      <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
+                      <Panel Classes="arrive">
+                        <Panel Classes="row" Classes.locked="{Binding !IsEnabled}" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}">
+                          <vh:HandheldRowLine>
+                            <vh:HandheldFitText Classes="label" Classes.danger="{Binding IsDestructive}" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Label}" TextWrapping="Wrap" MaxLines="2" />
+                            <Border Classes="switch" Classes.on="{Binding IsToggleOn}" IsVisible="{Binding IsToggle}">
+                              <Panel>
+                                <Border Background="{x:Static vm:HandheldTokens.OnColour}" />
+                                <Border Classes="tint" Background="{Binding $parent[vh:HandheldBigTypeLists].((vh:HandheldListsShown)DataContext).LauncherGroundBrush, FallbackValue={x:Null}}" />
+                              </Panel>
+                            </Border>
+                            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding !IsToggle}">
+                              <TextBlock Classes="value" Classes.danger="{Binding IsWarning}" Text="{Binding RowValue}" />
+                              <PathIcon Grid.Column="1" IsVisible="{Binding IsSummary}" Data="{x:Static vm:HandheldIcons.ChevronRight}"
+                                        Width="24" Height="24" Margin="12,0,0,0" Foreground="{x:Static vm:HandheldTokens.OnColour}"
+                                        RenderTransform="{Binding IsExpanded, Converter={x:Static vm:HandheldViewConverters.ExpandedTurn}}" />
+                            </Grid>
+                          </vh:HandheldRowLine>
+                        </Panel>
                       </Panel>
                     </Panel>
-                  </Panel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-            <!-- Themes: a row each, the one in use marked. -->
-            <ItemsControl x:Name="SettingsThemesPart" Classes="window" ItemsSource="{Binding ThemeChoices}" IsVisible="{Binding IsThemes}" vh:HandheldRowWindow.Focus="{Binding Projection.FocusedThemeIndex}"
-                          vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:ThemeChoiceViewModel">
-                  <Panel Classes="slot" Height="{x:Static vm:HandheldTokens.RowHeightSettings}" Margin="{x:Static vm:HandheldTokens.RowSpacing}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}">
-                    <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="{x:Static vm:HandheldTokens.RowRingMargin}" />
-                    <Panel Classes="arrive">
-                      <Panel Classes="row" Classes.focused="{Binding IsFocused}">
-                        <vh:HandheldRowLine>
-                          <vh:HandheldFitText Classes="label" Size="{x:Static vm:HandheldTokens.Row}" Text="{Binding Name}" />
-                          <TextBlock Classes="value" Text="In use" IsVisible="{Binding IsSelected}" />
-                        </vh:HandheldRowLine>
-                      </Panel>
-                    </Panel>
-                  </Panel>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Panel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Panel>
+          </Grid>
 
         </Panel>
 

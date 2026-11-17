@@ -2666,8 +2666,7 @@ public partial class MainViewModel : ViewModelBase
     /// and Handheld mode across its two screens (M45 H6a).
     /// </summary>
     private async Task<GamepadSettingsViewModel> CreateGamepadSettingsProjectionAsync(SetupWizardOptions? setup,
-        Func<Task>? openHotkeys, Func<Task>? runSetup, GamepadSettingsSwitch? handheldSounds = null,
-        GamepadSettingsSwitch? handheldReduceMotion = null)
+        Func<Task>? openHotkeys, Func<Task>? runSetup, HandheldSettingsControls? handheld = null)
     {
         var settings = await CreateSettingsViewModelAsync();
         // Per-platform game counts for the Emulators summaries, read off the UI thread (SQLite)
@@ -2700,8 +2699,7 @@ public partial class MainViewModel : ViewModelBase
             setup: setup,
             runSetup: runSetup,
             usageAccess: EmuShelf.App.App.UsageAccess,
-            handheldSounds: handheldSounds,
-            handheldReduceMotion: handheldReduceMotion,
+            handheld: handheld,
             refreshGameCounts: async () =>
             {
                 try
@@ -7877,7 +7875,8 @@ public partial class MainViewModel : ViewModelBase
         FetchAllMetadataFromSettingsAsync,
         SyncRpcs3LibraryFromSettingsAsync,
         () => ShowEmptyPlatforms,
-        SetShowEmptyPlatformsAsync,
+        // Saving on the Thor should not rebuild the other modes' platform bar or write its view state.
+        SetShowEmptyPlatforms: IsHandheldMode ? null : SetShowEmptyPlatformsAsync,
         // Android only: the emulator is fired at as another app, so nothing exits it for us; this opt-in
         // asks Android to close it on return. Left null on desktop, where the child process exits on its own.
         GetCloseEmulatorOnReturn: OperatingSystem.IsAndroid()

@@ -168,7 +168,7 @@ internal sealed partial class HandheldLauncherMotion
             : ListsShown.Panel is not null ? BigTypeListMotion.PanelOut
             : next is HandheldSheetViewModel ? BigTypeListMotion.SheetSwap
             : BigTypeListMotion.SheetOut;
-        Control[] roots = ListsShown.Settings is not null ? [lists.Rail, lists.SettingsRows, lists.SettingsThemes, lists.ChoiceRows, lists.ConfirmRows]
+        Control[] roots = ListsShown.Settings is not null ? [lists.Rail, lists.SettingsRows, lists.ChoiceRows, lists.ConfirmRows]
             : ListsShown.Panel is not null ? [lists.PanelRows]
             : ListsShown.IsMenuOpen ? [lists.MenuRows]
             : [lists.SheetRows];
@@ -288,7 +288,6 @@ internal sealed partial class HandheldLauncherMotion
             {
                 var rise = _shell?.LastMoveDirection == HandheldDirection.Up ? -BigTypeListMotion.SectionInRise : BigTypeListMotion.SectionInRise;
                 Arrive(lists.SettingsRows, rise, section: true);
-                Arrive(lists.SettingsThemes, rise, section: true);
             }
             RequestTick();
             return;
@@ -314,7 +313,6 @@ internal sealed partial class HandheldLauncherMotion
             case ListKind.Settings:
                 Arrive(lists.Rail, BigTypeListMotion.RowsInRailSlide);
                 Arrive(lists.SettingsRows, BigTypeListMotion.RowsInSlide);
-                Arrive(lists.SettingsThemes, BigTypeListMotion.RowsInSlide);
                 // Back from a choice or a confirmation the heading is already there.
                 if (was.Kind is not (ListKind.SettingsChoice or ListKind.SettingsConfirm))
                     lists.SettingsTitle.Arrive();
