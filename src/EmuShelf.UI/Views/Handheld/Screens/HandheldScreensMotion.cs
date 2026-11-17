@@ -74,6 +74,8 @@ internal sealed class HandheldScreensMotion
         companion.PropertyChanged += OnChanged;
         companion.Model.PropertyChanged += OnModelChanged;
         HandheldRollingText.SetRolls(_view, !companion.HoldsStill);
+        // The look is read now, not when the view was built (on the Thor the companion's views are built before the look is set).
+        _view.IsVisible = HandheldTokens.IsBigType;
         Follow(companion.Layer, first: true);
     }
 
@@ -138,6 +140,7 @@ internal sealed class HandheldScreensMotion
 
     private void Follow(HandheldCompanionLayer layer, bool first)
     {
+        _view.IsVisible = HandheldTokens.IsBigType;
         if (!HandheldTokens.IsBigType || layer == _shown && !first)
             return;
         var still = Still || first;

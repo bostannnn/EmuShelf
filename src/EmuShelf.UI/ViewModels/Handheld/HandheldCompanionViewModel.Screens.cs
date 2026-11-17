@@ -129,7 +129,7 @@ public sealed partial class HandheldCompanionViewModel
     /// The layer's hints at the foot of the bottom screen: All apps' (none when it was opened from home's dock: they are on the Stage then),
     /// every badge's, the viewer's.
     /// </summary>
-    public ObservableCollection<HandheldHint> ScreenHints => Layer switch
+    public ObservableCollection<HandheldHint> ScreenHints => !HandheldTokens.IsBigType ? NoHints : Layer switch
     {
         HandheldCompanionLayer.Drawer when IsGameRunning => DrawerHints,
         HandheldCompanionLayer.Achievements => GridHints,

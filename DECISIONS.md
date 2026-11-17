@@ -15289,3 +15289,57 @@ keep the small line", "I like one big-type mode and separate model - approve"). 
   half turn the way you moved if less is showing, over `LetterRun.ms`; it never adds another half turn on top (no stacking) and never
   jumps back to a whole flip (no restart). A held direction keeps the app's once-per-move rule (the Stage waits until the focus rests), and
   the game it rests on flips whole, from the turn on screen.
+
+## 2026-11-16 — M47 B15: All apps, every achievement, the photo viewer and the idle artwork in Big Type
+
+- **The owner's picks (16 November 2026).** Shown three numbered options for each of the four screens still drawn the old way
+  (`docs/prototypes/handheld-big-type/proposals-screens.html` with its `screens-*.js`), the owner answered: "all apps - 2 / every
+  achievement - 4 / photo viewer - 9 / idle artwork - 12". So **All apps is the Shelf** (option 2), **every achievement is the Wall**
+  (option 4), **the photo viewer is the Reel** (option 9) and **the idle artwork is the Porthole** (option 12). Built under Big Type only;
+  today's look (Classic) keeps its own layers and drift, byte-identical on all 158 design frames. The page's code was taken as the
+  behaviour, not its prose; its numbers went into tokens.js first (a new `screens` block and new `motion` entries, each marked
+  "proposals-screens.html, picked 2026-11-16", doubled from the page's half-size drawing) and through `HandheldTokens.Screens.cs`.
+- **Where each is drawn.** The Shelf, the Wall and the Reel are the companion's (`Views/Handheld/Screens/HandheldBigTypeScreens`, hosted
+  in `HandheldCompanionView` under Big Type; the Classic layers now show on `ShowsClassicGrid`, `ShowsClassicDrawer`, `ShowsClassicViewer`).
+  The companion is an Avalonia view on the device, so these need no native drawing. The Porthole is the Stage's: the Avalonia Stage
+  (`HandheldStagePorthole`) and the native Stage (`StageCompositor.Porthole.cs`, fed a round picture of the window by
+  `HandheldNativeStageFeed.Porthole.cs` as `StagePortholeCommand`), both from the shared maths `BigTypeScreensMotion` beside the other
+  `BigType*Motion` classes. All apps opened from home's dock also names its focused app on the Stage (the chosen option draws it):
+  `HandheldShellViewModel.Screens.cs`.
+- **The grids are one control each** (`HandheldShelfGrid`, `HandheldBadgeWall`): they draw only the rows in sight and the Wall loads only
+  their badges, so a device with hundreds of apps or a set with hundreds of badges costs what four or three rows cost (`CLAUDE.md`'s
+  "virtualize" in the form these drawings need: the page's tiles move between slots under a filter, which recycled row containers
+  cannot show). The ring and the focused icon are children placed after the draw pass, the ring on B5's path with B11's glide
+  (`BigTypeLauncherMotion`, `HandheldScreenRing`), and the ring's breath and the focused icon's bob run on the compositor, as the
+  Launcher's do, so a frame drawn from the controls is at rest. A locked badge is grey at `WallLockedBrightness` (the page's
+  grayscale and brightness), made once per badge picture.
+- **B11's rule.** Every move is interruptible: the rows scrolling and the reel sliding glide on from where they are drawn and how fast
+  they go when another press comes (`BigTypeGlide`, a critically damped spring like `BigTypeRingGlide`, the eased curve for a single
+  press); a focus's grow and its neighbours' step are CSS transitions from the drawn value; a name's letters take B11's short form in a
+  run (`LetterRun`). Nothing restarts from rest, stacks or jumps under a held direction (a test holds the glide to it).
+- **Everything today's screens do is kept** (where each lives is in the B15 hand-over and the owner's report): All apps' title or "Choose
+  an app for slot n", every app with its icon (its name for the focused one), today's moves and columns, A open / pin here, Y pin to the
+  first free slot / clear the slot, B close, the line after a pin; touch: tap opens, a held finger pins, a drag scrolls, and every hint is a
+  touch button (replacing the round close and Clear slot buttons). The Wall: the count and points, All / Locked / Unlocked with counts on
+  LB / RB (each word and key tappable), every badge (locked grey, hardcore gold, hidden "?" until A reveals), the focused one's name, what it
+  asks, its points and date, Y refresh, the status line (the kicker rolls to it), "Nothing here yet" with its sentence, B close; tap a
+  badge, drag to scroll. The Reel: the picture (a fifth smaller, as the option says), the title, which one and what kind, left / right
+  going round, the video's poster under its mark and A play muted / A stop (still downloaded only on play; the native video sits over the
+  picture shown), Y fetch artwork, B / a downward swipe / a tap on B close and the Photos tab lands on that picture, a tap hides the type,
+  the status line ("Loading…", what a fetch found) on the kind's line. The drift: 15 s, at home with nothing open, never while held still,
+  the last twelve played newest first, 6 s each, once round then rests on the newest, no hints, the clock stays, any press or touch wakes
+  it (A, B, X, Y only wake; a direction wakes and moves, B11), it waits in the model view (B12), the bottom screen never changes.
+- **Not as the option draws it, and why.** (1) The Reel's figure is fitted to `ReelFigureMaxWidth` (app's own): the page's six pictures
+  never make a figure wider than its room, a game with ten or more pictures would run "10 / 12" into the kind beside it. (2) The picture
+  grows out of its own small picture on the Photos tab when it is one of the tab's six (the page always grows the first). (3) The swapped
+  Stage's window (`PortNarrow…`) and the 16:9 companion's Shelf and Wall columns (eight and eleven, today's) are the app's own: the page
+  draws neither. (4) A game with no fan art in the drift is shown as when browsing under B12 (its name over its console's backdrop): the
+  page's table says "with its case", but B12's name view has no case. (5) The Porthole's backdrop circle grows from behind the window on
+  the native Stage (the page's x 670 doubled); the Avalonia Stage (desktop) keeps its own wipe origin. (6) Opened from home, All apps' exit
+  is not seen on the device: the controller hands the bottom screen back to the Launcher the moment the overlay closes (today's).
+- **Added by the chosen options, not asked for (built, listed for the owner):** All apps from home names the focused app on the Stage with
+  its place in the dock and "n of N · everything on this device", and its hints on the Stage are touch buttons there; the Shelf's count
+  "7 / 18"; the Wall's figure and filter counts roll; a refresh's new unlock pulses; the Reel's neighbours at the edges and the picture
+  growing from the Photos tab; the companion's parts drop out under a layer and rise back after; the drift's window floats.
+- **Awaiting the owner's word: the logo.** Today a game's logo picture replaces its name on the idle page; in all three idle options the
+  name is in big type and no logo is shown. The owner was told this and picked option 12 without comment, so it is built without the logo.

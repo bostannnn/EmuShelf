@@ -961,7 +961,8 @@
         </Grid>
 
         <!-- Big Type (M47 B15): All apps, every badge and the photo viewer as the owner picked them (proposals-screens.html 2, 4 and 9). -->
-        <vh:HandheldBigTypeScreens IsVisible="{x:Static vm:HandheldTokens.IsBigType}" />
+        <!-- Shown by its own motion while the look is Big Type (read when it attaches: on the Thor this view is built before the look is set). -->
+        <vh:HandheldBigTypeScreens IsVisible="False" />
       </Grid>
     </Viewbox>
 

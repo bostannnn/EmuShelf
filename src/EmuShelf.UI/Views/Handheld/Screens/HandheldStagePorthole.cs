@@ -61,8 +61,8 @@ public sealed class HandheldStagePorthole : Control
             return;
         var now = Now;
         var still = Still;
-        var next = change.GetNewValue<Bitmap?>();
-        if (next is null)
+        var art = change.GetNewValue<Bitmap?>();
+        if (art is null)
         {
             if (_shown is not null && float.IsNaN(_leaveStart))
                 _leaveStart = still ? float.NegativeInfinity : now;
@@ -70,18 +70,21 @@ public sealed class HandheldStagePorthole : Control
         }
         else if (_shown is null || !float.IsNaN(_leaveStart))
         {
-            // The drift began: the window rises through the hinge with the first game's artwork.
-            _shown = next;
-            _under = null;
+            // The drift began: the window rises through the hinge with the first game's artwork. The window draws its own copy of
+            // it (the shell lets the artwork go as soon as the next one comes; the native Stage keeps its own picture too).
+            Release(ref _shown);
+            Release(ref _under);
+            _shown = Snapshot(art);
             _leaveStart = float.NaN;
             _arriveStart = still ? float.NegativeInfinity : now;
             _changeStart = float.NegativeInfinity;
         }
-        else if (!ReferenceEquals(next, _shown))
+        else
         {
             // The next game: its artwork grows inside the window through a circle from the window's bottom.
+            Release(ref _under);
             _under = _shown;
-            _shown = next;
+            _shown = Snapshot(art);
             _changeStart = still ? float.NegativeInfinity : now;
         }
         Request();
@@ -104,8 +107,9 @@ public sealed class HandheldStagePorthole : Control
             (drop, scale, opacity) = BigTypeScreensMotion.PortOut(since, still);
             if (since >= BigTypeScreensMotion.PortOutTotal(still))
             {
-                // Gone: the bitmaps were the shell's (it lets them go); the window holds none of them.
-                _shown = _under = null;
+                // Gone: the window lets its copies go.
+                Release(ref _shown);
+                Release(ref _under);
                 return;
             }
             moving = true;
@@ -132,21 +136,52 @@ public sealed class HandheldStagePorthole : Control
             var wiping = _under is not null && wipe < BigTypeScreensMotion.PortWipeShare * window.Width;
             if (wiping)
             {
-                context.DrawImage(_under!, Cover(_under!, box), box);
+                context.DrawImage(_under!, box);
                 var radius = wipe * scale;
                 var bottom = new Point(box.Center.X, box.Bottom);
                 using (context.PushGeometryClip(new EllipseGeometry(new Rect(bottom.X - radius, bottom.Y - radius, radius * 2, radius * 2))))
-                    context.DrawImage(shown, Cover(shown, box), box);
+                    context.DrawImage(shown, box);
                 moving = true;
             }
             else
             {
-                _under = null;
-                context.DrawImage(shown, Cover(shown, box), box);
+                // The next game has taken the whole window: the copy under it goes (after this pass).
+                Release(ref _under);
+                context.DrawImage(shown, box);
             }
         }
         if (moving)
             Request();
+    }
+
+    // The window's own copy of the artwork, cropped square to fill it (at the wide Stage's size; the narrow window draws it smaller).
+    private static Bitmap Snapshot(Bitmap art)
+    {
+        var side = (int)HandheldTokens.PortSize;
+        var copy = new RenderTargetBitmap(new PixelSize(side, side));
+        using (var context = copy.CreateDrawingContext())
+        {
+            var box = new Rect(0, 0, side, side);
+            context.DrawImage(art, Cover(art, box), box);
+        }
+        return copy;
+    }
+
+    // A copy no longer drawn is let go after the pass that may still hold it.
+    private static void Release(ref Bitmap? copy)
+    {
+        var old = copy;
+        copy = null;
+        if (old is not null)
+            Avalonia.Threading.Dispatcher.UIThread.Post(old.Dispose, Avalonia.Threading.DispatcherPriority.Background);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        Release(ref _shown);
+        Release(ref _under);
+        _leaveStart = float.NaN;
     }
 
     // The part of the artwork that fills the round window (UniformToFill, centred: the page's canvas is square).

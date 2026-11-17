@@ -298,6 +298,40 @@ public partial class HandheldShellViewModelTests
         });
 
         [AvaloniaFact]
+        public Task Porthole_DrawnByTheStage_NeverDrawsArtworkTheShellLetGo() => BigType(async () =>
+        {
+            // Found on the Thor (2026-11-17): the window drew a picture the shell had already disposed. The window now draws its own
+            // copy; walk the drift with the Stage drawing (art, none, art, the newest again, a press) and draw every frame between.
+            var library = new FakeLibrary().WithPlatform("ps2", 4).Played("ps2", 1, 2, 3);
+            library.ArtMaker = (game, kind) => kind == HandheldArtKind.Fanart && game.Id % 1000 != 2 ? MakeCover(game) : null;
+            using var shell = await CreateAsync(library);
+            shell.StartStatusUpdates();
+            var stage = new HandheldStageView(null, pinnedNarrow: false) { DataContext = shell };
+            var window = new Window { Content = stage, Width = 1920, Height = 1080 };
+            window.Show();
+            try
+            {
+                for (var step = 0; step < 5; step++)
+                {
+                    await shell.OnIdleAsync();
+                    for (var frame = 0; frame < 6; frame++)
+                    {
+                        await SettleAsync();
+                        _ = new Avalonia.Media.Imaging.RenderTargetBitmap(new Avalonia.PixelSize(480, 270)).Also(bitmap => bitmap.Render(stage));
+                    }
+                }
+                Assert.True(shell.DispatchGamepadAction(GamepadAction.NavigateLeft));
+                for (var frame = 0; frame < 6; frame++)
+                    await SettleAsync();
+                Assert.Null(shell.Stage.PortholeArt);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
+        [AvaloniaFact]
         public async Task Porthole_TodaysLook_KeepsTheFanArtHero()
         {
             var library = new FakeLibrary().WithPlatform("ps2", 3).Played("ps2", 1);
@@ -308,5 +342,14 @@ public partial class HandheldShellViewModelTests
             Assert.True(shell.Stage.IsHeroArt);
             Assert.Null(shell.Stage.PortholeArt);
         }
+    }
+}
+
+internal static class B15TestExtensions
+{
+    public static T Also<T>(this T value, Action<T> action)
+    {
+        action(value);
+        return value;
     }
 }

@@ -2,7 +2,6 @@ using System;
 using System.ComponentModel;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
-using Avalonia.Threading;
 using EmuShelf.Rendering.Stage.BigType;
 
 namespace EmuShelf.App.ViewModels;
@@ -124,8 +123,12 @@ public sealed partial class HandheldShellViewModel
         // The logo and the cover today's hero would use are not drawn here: let them go now.
         frame.Logo?.Dispose();
         frame.Cover?.Dispose();
-        SetPortholeArt(frame.Fanart);
+        // A frame shown again after its artwork was let go (the drift resumed on it) shows no window rather than a disposed picture.
+        SetPortholeArt(frame.Fanart is { } fanart && !_releasedPortholeArt.TryGetValue(fanart, out _) ? fanart : null);
     }
+
+    // Artwork the drift's window has let go of (disposed): never handed out again.
+    private readonly System.Runtime.CompilerServices.ConditionalWeakTable<Bitmap, object> _releasedPortholeArt = [];
 
     /// <summary>Anything but the drift on the Stage: the window drops back through the hinge.</summary>
     private void SyncPorthole()
@@ -140,19 +143,11 @@ public sealed partial class HandheldShellViewModel
         if (ReferenceEquals(old, art))
             return;
         Stage.PortholeArt = art;
+        // Each Stage took its own copy as the property changed (the Avalonia window its picture, the native Stage its pixels): the
+        // artwork goes at once.
         if (old is null)
             return;
-        // The window still draws the old artwork while it drops or the next one wipes in over it: let it go once both are done.
-        var timer = new DispatcherTimer
-        {
-            Interval = TimeSpan.FromMilliseconds(Math.Max(BigTypeScreensMotion.PortWipeMilliseconds, BigTypeScreensMotion.PortOutTotal()) + 200),
-        };
-        timer.Tick += (_, _) =>
-        {
-            timer.Stop();
-            if (!ReferenceEquals(Stage.PortholeArt, old))
-                old.Dispose();
-        };
-        timer.Start();
+        _releasedPortholeArt.AddOrUpdate(old, old);
+        old.Dispose();
     }
 }
