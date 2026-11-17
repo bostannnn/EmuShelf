@@ -64,19 +64,20 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.AllApps));
         DockItems.Add(new HandheldDockItemViewModel(HandheldDockKind.Menu));
         // The Start menu stays a list (decision 18); Settings is also a tile on home. Sounds is its switch, with its state (H6d).
-        MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync));
-        MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()));
+        // Each row's hint is what the Big Type Stage says under it (M47 B7, the mock's START); today's look does not show it.
+        MenuItems.Add(new HandheldMenuItemViewModel("Search", OpenSearchAsync) { Hint = "Find a game by name" });
+        MenuItems.Add(new HandheldMenuItemViewModel("Add games", AddGamesAsync) { Hint = "Point EmuShelf at a folder" });
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldSettingsText.Name, OpenSettingsAsync) { Hint = "Emulators, library, display" });
+        MenuItems.Add(new HandheldMenuItemViewModel(HandheldActivityText.Name, () => OpenActivityAsync()) { Hint = "What you played, day by day" });
         _soundsMenuItem = new HandheldMenuItemViewModel("Sounds", () =>
         {
             ToggleSounds();
             return Task.CompletedTask;
         })
-        { Note = SoundsNote };
+        { Note = SoundsNote, IsToggle = true, IsOn = SoundsEnabled };
         MenuItems.Add(_soundsMenuItem);
-        MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)));
-        MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }));
+        MenuItems.Add(new HandheldMenuItemViewModel("Switch to Gamepad mode", () => _library.SwitchModeAsync(InterfaceMode.Gamepad)) { Hint = "Leave Handheld mode" });
+        MenuItems.Add(new HandheldMenuItemViewModel("Quit EmuShelf", () => { _library.Quit(); return Task.CompletedTask; }) { Hint = "Close EmuShelf" });
         // A move into a wall is not a move: the sounds hear about it (M45 H6d).
         Bumped += _ => _soundBumped = true;
         RefreshStatus();
@@ -114,6 +115,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>The open Title page (A on a game), drawn over the grid it was opened from; null while browsing.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTitleOpen))]
+    [NotifyPropertyChangedFor(nameof(ShowsTitlePage))]
     [NotifyPropertyChangedFor(nameof(TitleGame))]
     public partial HandheldTitlePageViewModel? TitlePage { get; private set; }
 
@@ -180,11 +182,35 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     });
 
     /// <summary>
-    /// The device asks for stillness (M45 H7c): battery saver is on, or the system's reduced-motion setting. The Stage's
-    /// idle motion (the animated backdrop, the medium's sway) holds a still frame while this is set.
+    /// Handheld mode holds still (M45 H7c): the device asks for it (battery saver, or the system's reduced-motion setting),
+    /// or, under Big Type, the app's own switch does (<see cref="ReduceMotion"/>, M47 B10); either one is enough. The Stage's
+    /// idle motion (the animated backdrop, the medium's sway) holds a still frame while this is set, and every Big Type move
+    /// takes its held-still form.
     /// </summary>
     [ObservableProperty]
     public partial bool HoldsStill { get; private set; }
+
+    // What the device said at the last read (DeviceStatus.HoldsStill).
+    private bool _deviceHoldsStill;
+    private bool _reduceMotion;
+
+    /// <summary>
+    /// The app's own reduced-motion switch (M47 B10, Settings → Display under Big Type): holds still whether or not the system
+    /// asks. Remembered through <see cref="SaveReduceMotion"/>. Today's look shows no row for it and does not read it, so a
+    /// switch it cannot turn off never holds it still.
+    /// </summary>
+    public bool ReduceMotion
+    {
+        get => _reduceMotion;
+        set
+        {
+            if (SetProperty(ref _reduceMotion, value))
+                ApplyHoldsStill();
+        }
+    }
+
+    /// <summary>Remembers <see cref="ReduceMotion"/> for the next start; set by the app.</summary>
+    public Action<bool>? SaveReduceMotion { get; set; }
 
     /// <summary>The app's current status message (a launch in progress, a failure), shown on the Stage.</summary>
     [ObservableProperty]
@@ -237,7 +263,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             CompanionScreen = value is null
                 ? null
                 : new HandheldCompanionViewModel(value, (entry, token) =>
-                    _library.LoadCoverAsync(entry, HandheldCompanionViewModel.CoverDecodeWidth, fullSize: false, token));
+                    _library.LoadCoverAsync(entry, HandheldCompanionViewModel.CoverDecodeWidth, fullSize: false, token), _clock);
             RebuildDock();
             // The Title page's Achievements button depends on a companion to open in.
             if (TitlePage is { } title)
@@ -279,6 +305,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         var firstRead = !_libraryRead;
         _libraryRead = true;
         _recentIds = recent;
+        _ = LoadRecentGamesAsync();
         // A carried tile and an open sheet were arranged against the layout being replaced: they go. A name being
         // typed stays (Done finds a free slot if its own was taken meanwhile).
         if (_move is not null)
@@ -335,31 +362,42 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         BatteryText = status.BatteryPercent is { } percent ? $"{percent}%" : null;
         IsCharging = status.IsCharging;
         IsWifiConnected = status.IsWifiConnected;
-        if (status.HoldsStill != HoldsStill)
+        _deviceHoldsStill = status.HoldsStill;
+        ApplyHoldsStill();
+    }
+
+    // The device's say or the app's switch (Big Type only): either one holds still, and the change takes effect at once.
+    private void ApplyHoldsStill()
+    {
+        var still = _deviceHoldsStill || (_reduceMotion && HandheldTokens.IsBigType);
+        if (still == HoldsStill)
+            return;
+        HoldsStill = still;
+        _medium.HoldsStill = still;
+        // A game's companion already up follows too (it reads the say when a launch starts).
+        if (Playing is not null && CompanionScreen is { } companion)
+            companion.HoldsStill = still;
+        // The sway's timer stops once the sway has eased to a stop (or at once, if it was already at rest).
+        UpdateMediumTimer();
+        // The idle drift holds too: a drift on the Stage gives way to what is selected, and none starts until the
+        // say is lifted, when the fifteen seconds start again.
+        if (still)
         {
-            HoldsStill = status.HoldsStill;
-            _medium.HoldsStill = status.HoldsStill;
-            // The sway's timer stops once the sway has eased to a stop (or at once, if it was already at rest).
-            UpdateMediumTimer();
-            // The idle drift holds too: a drift on the Stage gives way to what is selected, and none starts until the
-            // device's say is lifted, when the fifteen seconds start again.
-            if (status.HoldsStill)
-            {
-                _idleTimer?.Stop();
-                StopDrift(refreshStage: true);
-            }
-            else
-            {
-                ArmIdle();
-            }
+            _idleTimer?.Stop();
+            StopDrift(refreshStage: true);
+        }
+        else
+        {
+            ArmIdle();
         }
     }
 
     /// <summary>The single entry point for pad input, from either display. Returns whether it was consumed.</summary>
     public bool DispatchGamepadAction(GamepadAction action)
     {
-        // The first press after the idle drift only wakes the Stage (decision 14).
-        if (WakeOnInput())
+        // The first press after the idle drift only wakes the Stage (decision 14); under Big Type a direction wakes it and moves too
+        // (M47 B11, the owner's decision: DirectionWakesAndMoves).
+        if (WakeOnInput() && !DirectionWakesAndMoves(action))
         {
             PlaySound(EmuShelf.Core.Handheld.HandheldSound.Move);
             return true;
@@ -377,6 +415,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private bool DispatchGamepadActionCore(GamepadAction action)
     {
+        // A move inside a list is a move too: the Big Type Stage's next name (the focused row) arrives from it (M47 B7).
+        if (IsListOpen && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft or GamepadAction.NavigateRight)
+            LastMoveDirection = ToDirection(action);
         // A game runs (the companion is the bottom screen), or the companion's All apps or badge grid is open over the
         // Launcher: it owns the pad until that ends.
         if (CompanionScreen is { OwnsPad: true } companion)
@@ -402,8 +443,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         if (_move is { } move)
             return DispatchMoveAction(move, action);
 
+        // Big Type (M47 B8): a game launching or running, with the companion not owning the pad.
+        if (Playing is { } play && DispatchPlaying(play, action))
+            return true;
+
         if (TitlePage is { } title)
             return DispatchTitleAction(title, action);
+
+        // A press moves on: a message on the Stage's line gives way.
+        DropLineMessage();
 
         switch (action)
         {
@@ -440,6 +488,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 // X swaps the screens (M45 H5); the selection, an open folder and its scroll go along.
                 _ = SwapScreensAsync();
                 return true;
+            // M47 B12: on a focused game (home or a folder) LB and RB switch between the name and the model; elsewhere on home they
+            // still turn the page.
+            case GamepadAction.NextPlatform or GamepadAction.PreviousPlatform when CanSwitchGameView:
+                SwitchGameView();
+                return true;
             case GamepadAction.NextPlatform when OpenFolder is null:
                 TurnPage(1);
                 return true;
@@ -451,6 +504,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return true;
         }
     }
+
+    /// <summary>
+    /// M47 B11 (the owner's decision, 15 November 2026, "A direction also moves"; DECISIONS.md "M47 B11"): under Big Type a direction
+    /// press that ends the idle drift also moves the focus, so on the Thor it never reads as a dropped press; A, B, X and Y still only end
+    /// the drift, so A can never start a game from an idle screen. Classic keeps decision 14 whole. To undo, return false here.
+    /// </summary>
+    private static bool DirectionWakesAndMoves(GamepadAction action) =>
+        HandheldTokens.IsBigType && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft
+            or GamepadAction.NavigateRight;
 
     /// <summary>
     /// The system Back button. Closes whatever is open (menu, drawer, folder, dock/header focus) and returns
@@ -508,8 +570,21 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _ => true,
     };
 
+    /// <summary>
+    /// The direction of the last press when it was a move (null after any other press). The Big Type Stage's letters arrive from it
+    /// (M47 B6, the mock's <c>ENTER</c>).
+    /// </summary>
+    public HandheldDirection? LastMoveDirection { get; private set; }
+
+    /// <summary>
+    /// Whether the last press opened a folder (true) or closed one (false); null when it did neither. The Big Type Stage's letters
+    /// rise from the hinge into a folder and drop in out of one (M47 B6).
+    /// </summary>
+    public bool? LastFolderOpened { get; private set; }
+
     private void Move(HandheldDirection direction)
     {
+        LastMoveDirection = direction;
         // The top screen changes once per move: a held direction waits until it settles (Motion spec).
         _stageHold = null;
         _stageDefer = _heldDirection.Press() ? HandheldMotion.HeldDirectionSettle : null;
@@ -690,7 +765,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             else if (folder.SelectedTile is { IsActivity: true })
                 _ = OpenActivityAsync();
             else if (folder.SelectedTile is { } tile)
-                OpenTitle(tile.Entry);
+                OpenOrPlay(tile.Entry);
             return;
         }
 
@@ -713,11 +788,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
                 return;
             case HandheldSlotKind.Empty:
                 // A on an empty slot makes a folder there, the 3DS gesture (decision 11).
-                StartNaming(isNew: true, HomeIndex, [], null, -1);
+                StartNaming(isNew: true, HomeIndex, [], null, -1, NotePickedSlot);
                 return;
             case HandheldSlotKind.Game:
                 if (_pins.TryGetValue(slot.GameId, out var pinned))
-                    OpenTitle(pinned);
+                    OpenOrPlay(pinned);
                 return;
         }
         if (FolderSourceFor(slot) is { } source)
@@ -761,6 +836,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             RibbonIndex = !source.IsSearch && index < _layout.SlotCount && _layout.SlotAt(index).IsNew ? index : -1,
         };
         OpenFolder = folder;
+        LastFolderOpened = true;
         Zone = HandheldZone.Grid;
         // The top screen stays on the open folder while the page zooms in, then moves on to the first one.
         _stageHold = _clock.GetTimestamp();
@@ -849,6 +925,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         // A Title page belongs to its folder's entries, which are released below.
         CloseTitle();
         _stageHold = null;
+        LastFolderOpened = false;
         FolderClosing?.Invoke(folder);
         _folderLoad?.Cancel();
         _folderLoad?.Dispose();
@@ -885,12 +962,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         // Settings, then Activity, when they are in one of your folders, come first whatever the sort (decision 18, M46 P4).
         var apps = new List<HandheldGameTileViewModel>();
         if (folder.Source.HoldsSettings)
-            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.SettingsEntry, isSettings: true));
+            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.SettingsEntry, isSettings: true) { GroundBrush = AppGroundBrush });
         if (folder.Source.HoldsActivity)
-            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.ActivityEntry, isActivity: true));
+            apps.Add(new HandheldGameTileViewModel(apps.Count, HandheldGameTileViewModel.ActivityEntry, isActivity: true) { GroundBrush = AppGroundBrush });
         var appCount = apps.Count;
         folder.Items = apps
-            .Concat(sorted.Select((entry, index) => new HandheldGameTileViewModel(index + appCount, entry)))
+            .Concat(sorted.Select((entry, index) => new HandheldGameTileViewModel(index + appCount, entry) { GroundBrush = GameGroundBrush(entry) }))
             .ToList();
         // Your folders remember the sort chip they were left on.
         if (folder.Source is { IsUser: true, FolderId: { } folderId } && folder.Sort != sort &&
@@ -1059,6 +1136,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void OpenMenu()
     {
         IsMenuOpen = true;
+        ListOpened = true;
         MenuIndex = 0;
         UpdateMenuFocus();
         UpdateHints();
@@ -1067,6 +1145,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void CloseMenu()
     {
         IsMenuOpen = false;
+        ListOpened = false;
+        RefreshListStage();
         UpdateHints();
     }
 
@@ -1099,6 +1179,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         for (var i = 0; i < MenuItems.Count; i++)
             MenuItems[i].IsFocused = i == MenuIndex;
+        RefreshListStage();
     }
 
     /// <summary>There is a page to the left / right of the one on screen (the edge hints).</summary>
@@ -1171,6 +1252,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             DockItems[i].IsFocused = Zone == HandheldZone.Dock && i == DockIndex;
 
         UpdateHomePeek();
+        UpdateGround();
         if (StageDelay() is { } delay)
             ScheduleStage(delay);
         else
@@ -1191,8 +1273,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
     public void SettleStage()
     {
-        if (IsStagePending)
-            UpdateStage();
+        if (!IsStagePending)
+            return;
+        // A held direction's Stage lands as a single press's (M47 B11: QuickChange is off until the next press).
+        _stageSettledSincePress = true;
+        UpdateStage();
     }
 
     private TimeSpan? StageDelay()
@@ -1231,7 +1316,14 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         IsStagePending = false;
         _stageTimer?.Stop();
+        SyncTyping();
+        TakeBigTypeListText();
         UpdateStageCore();
+        ApplyModelView();
+        ApplyBigTypeListText();
+        if (_lineMessage is { } message)
+            Stage.Line = message;
+        DressCaseWithCandidate();
         RaiseStageChanged();
     }
 
@@ -1252,6 +1344,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             ShowSettingsStage(settings);
             return;
         }
+        // Big Type (M47 B9): on one of Search's hits, the Stage is that game's (the mock's focusRes).
+        if (Panel is HandheldSearchPanel { FocusedHit: { } hit } && HandheldTokens.IsBigType)
+        {
+            ShowGameStage(hit.Entry, hit.Cover);
+            return;
+        }
         if (Panel is { } panel)
         {
             ShowPanelStage(panel);
@@ -1267,7 +1365,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             ShowMoveStage(move);
             return;
         }
-        if (TitlePage is { } title)
+        // Under Big Type the Title page is never drawn: the Stage stays on the game the press was on (M47 B8).
+        if (TitlePage is { } title && !HandheldTokens.IsBigType)
         {
             ShowHeroStage(title.Entry);
             return;
@@ -1392,8 +1491,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         Stage.AchievementText = null;
         Stage.AppIcon = null;
         Stage.IsDrift = false;
-        // Set once per change, never cleared first: the view crossfades only when colour or era really change.
-        Stage.Backdrop = backdrop;
+        // Set once per change, never cleared first: the view crossfades only when colour or era really change. In the Big Type
+        // look something with no backdrop of its own (an app, an empty slot, the dock) keeps the one showing, as the mock does.
+        Stage.Backdrop = backdrop ?? (HandheldTokens.IsBigType ? Stage.Backdrop : null);
         Stage.Medium = null;
         Stage.PeekA = Stage.PeekB = Stage.PeekC = null;
         Stage.Glyph = kind switch
@@ -1406,13 +1506,17 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldStageKind.ActivityTile => HandheldGlyph.Activity,
             _ => HandheldGlyph.None,
         };
+        ApplyBigTypeText(kind, title, subtitle);
     }
 
     private void ShowFolderStage(HandheldFolderSource source, string subtitle)
     {
         // A platform's folder sits on its own backdrop; yours and Recent on the soft tile grid in their colour.
         ShowStage(HandheldStageKind.Folder, source.Name, subtitle,
-            backdrop: source.Platform is { } platform ? BackdropFor(platform) : FolderBackdrop(source.AccentColor));
+            backdrop: source.Platform is { } platform ? BackdropFor(platform)
+                : HandheldTokens.IsBigType && HandheldTokens.LauncherColour(source) is { } ground
+                    ? new HandheldBackdrop(ground, EmuShelf.Core.Systems.SystemEra.Cartridge)
+                    : FolderBackdrop(source.AccentColor));
         Stage.Monogram = source.Monogram;
         Stage.FolderGlyph = source.Kind switch
         {
@@ -1421,7 +1525,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             HandheldFolderKind.Search => HandheldGlyph.Search,
             _ => HandheldGlyph.None,
         };
-        Stage.AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        Stage.AccentBrush = HandheldTokens.FolderBrush(source);
+        ApplyBigTypeFolderText(source, subtitle);
         ApplyPeek(source, Stage);
     }
 
@@ -1429,11 +1534,13 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The backdrop behind your folders and Recent: the tile grid, in the folder's colour (as in the mockup).</summary>
     internal static HandheldBackdrop? FolderBackdrop(string color) =>
-        Color.TryParse(color, out var parsed) ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
+        HandheldTokens.ColourOf(color) is { } parsed ? new HandheldBackdrop(parsed, EmuShelf.Core.Systems.SystemEra.Cartridge) : null;
 
     /// <summary>The era motif for a system's folder and games, in its colour; null for an unknown system.</summary>
     internal static HandheldBackdrop? BackdropFor(HandheldPlatform? platform) =>
-        platform is not null && Color.TryParse(platform.AccentColor, out var color) ? new HandheldBackdrop(color, platform.Era, platform.Backdrops) : null;
+        HandheldTokens.ConsoleColour(platform) is { } color
+            ? new HandheldBackdrop(color, platform!.Era, platform.Backdrops)
+            : null;
 
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {
@@ -1445,7 +1552,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
-        if (platform is not null && Color.TryParse(platform.AccentColor, out var accent))
+        ApplyBigTypeGameText(game);
+        if (HandheldTokens.ConsoleColour(platform) is { } accent)
         {
             Stage.MediumAccent = accent;
         }
@@ -1473,6 +1581,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         ShowStage(HandheldStageKind.Hero, game.Title, HeroSubtitle(game), backdrop: BackdropFor(platform));
         _stageGameId = game.Id;
         Stage.AchievementText = game.AchievementText;
+        ApplyBigTypeGameText(game);
         _ = LoadStageArtAsync(game, hero: true);
     }
 
@@ -1650,7 +1759,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             AddArrangeHints();
             return;
         }
-        if (TitlePage is { } title)
+        // Big Type (M47 B8): the launch covers the Stage and shows no hints; a page still waiting for its details keeps the grid's.
+        if (Playing is not null)
+            return;
+        if (TitlePage is { } title && !HandheldTokens.IsBigType)
         {
             AddTitleHints(title);
             return;
@@ -1670,6 +1782,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         }
         if (OpenFolder is { } folder)
         {
+            if (AddGameViewHints())
+                return;
             if (folder.SelectedTile is { } selected)
             {
                 _nextHints.Add(new HandheldHint("A", selected.IsApp ? "Open" : "Play"));
@@ -1678,6 +1792,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             _nextHints.Add(new HandheldHint("B", "Back"));
             return;
         }
+        // M47 B12: a game pinned to home has the game hints (and RB for the other view).
+        if (AddGameViewHints())
+            return;
         var focused = HomeSlotAt(HomeIndex);
         _nextHints.Add(new HandheldHint("A", focused.IsEmpty ? IsLibraryEmpty ? "Add games" : "New folder" : "Open"));
         _nextHints.Add(new HandheldHint("Y", "More"));

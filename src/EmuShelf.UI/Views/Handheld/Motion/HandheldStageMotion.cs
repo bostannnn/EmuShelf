@@ -15,7 +15,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// page crossfades in, and a launch lands the cover from below and zooms into the emulator. All compositor
 /// animations on fixed-size wrappers, scale and opacity only.
 /// </summary>
-internal sealed class HandheldStageMotion
+internal sealed partial class HandheldStageMotion
 {
     // 1920 on the 16:9 screen, 1240 on the narrow one once the screens are swapped (M45 H5).
     private double CanvasWidth => _isNarrow() ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
@@ -61,12 +61,27 @@ internal sealed class HandheldStageMotion
     /// False while the native Stage draws the top screen (this view is then only pictured): its own pops and
     /// the launch flight stand down, while the folder's flap still follows the shell, since it is pictured.
     /// </summary>
-    public bool IsOnScreen { get; set; } = true;
+    public bool IsOnScreen
+    {
+        get => _onScreen;
+        set
+        {
+            _onScreen = value;
+            UpdateRolls();
+        }
+    }
+
+    private bool _onScreen = true;
+
+    // Big Type's rolling text (M47 B5) rolls only on screen and while the device does not ask for stillness: a picture taken for
+    // the native Stage must be the text at rest.
+    private void UpdateRolls() => HandheldRollingText.SetRolls(_view, _onScreen && _shell?.HoldsStill != true);
 
     public void Attach(HandheldShellViewModel? shell)
     {
         if (ReferenceEquals(shell, _shell))
             return;
+        AttachModel(_shell, shell);
         if (_shell is { } old)
         {
             old.StageChanging -= OnStageChanging;
@@ -83,6 +98,7 @@ internal sealed class HandheldStageMotion
         shell.LaunchStarting += OnLaunchStarting;
         shell.PropertyChanged += OnShellChanged;
         shell.FolderClosing += OnFolderClosing;
+        UpdateRolls();
         UpdateFolderState(peekNow: true);
     }
 
@@ -90,7 +106,13 @@ internal sealed class HandheldStageMotion
 
     // The old art is not pictured: rendering a full-resolution snapshot on the UI thread for every settled
     // change cost more than it showed (the 3D medium could never be pictured anyway). It gives way at once.
-    private void OnStageChanging() => _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
+    private void OnStageChanging()
+    {
+        _outgoingKind = _shell?.Stage.Kind ?? HandheldStageKind.None;
+        // Big Type's name (M47 B6): its letters arrive from the move that brought it.
+        if (_shell is { } shell && _view.FindControl<HandheldBigTypeName>("BtName") is { } name)
+            name.Entrance = HandheldStageEntrance.Of(shell);
+    }
 
     private void OnStageChanged()
     {
@@ -137,11 +159,15 @@ internal sealed class HandheldStageMotion
             case nameof(HandheldShellViewModel.OpenFolder):
                 UpdateFolderState(peekNow: true);
                 break;
+            case nameof(HandheldShellViewModel.HoldsStill):
+                UpdateRolls();
+                break;
             case nameof(HandheldShellViewModel.TitlePage) when _shell?.TitlePage is null:
                 // The page's cover is disposed right after this: take it off the Stage first.
                 EndLaunch();
                 break;
         }
+        OnBigTypeShellChanged(e.PropertyName);
     }
 
     // A closing folder comes back to the Stage still open, from the centre, and closes a beat later.
@@ -189,6 +215,12 @@ internal sealed class HandheldStageMotion
 
     private void OnLaunchStarting(HandheldTitlePageViewModel page)
     {
+        // Big Type (M47 B8): the takeover is the launch layer's, timed from the press (HandheldStageMotion.BigType).
+        if (HandheldTokens.IsBigType)
+        {
+            RequestBigTypeFrame();
+            return;
+        }
         var launch = ++_launch;
         if (!IsOnScreen)
             return;

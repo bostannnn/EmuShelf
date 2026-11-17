@@ -130,7 +130,10 @@ public partial class HandheldShellViewModelTests
                 (_, _, _, _) => Task.FromResult(new RetroAchievementsConnectionSummary(RetroAchievementsConnectionResult.Connected)),
                 _ => Task.CompletedTask),
             fixedEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
-        return new GamepadSettingsViewModel(settings, androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem);
+        // Under Big Type, Display carries the app's Reduce motion switch as Handheld mode's does (M47 B10; off, as by default).
+        var reduceMotion = false;
+        return new GamepadSettingsViewModel(settings, androidEmulatorChoices: AndroidEmulatorChoiceCatalog.BySystem,
+            handheldReduceMotion: HandheldTokens.IsBigType ? new GamepadSettingsSwitch(() => reduceMotion, value => reduceMotion = value) : null);
     }
 
     private static async Task<HandheldShellViewModel> CreateWithSettingsAsync(FakeLibrary library, InMemoryHandheldHomeLayoutStore? store = null)

@@ -34,6 +34,12 @@ namespace EmuShelf.Core.Systems;
 /// ids into <c>EmuShelf.Rendering</c>'s backdrop catalog. The Stage rotates through them; null or empty
 /// keeps the era motif. Purely a look, like <see cref="Era"/>.
 /// </param>
+/// <param name="GroundColor">
+/// The flat colour this system gives Handheld mode's Launcher in the Big Type look (M47 B2), as <c>#RRGGBB</c>: tuned by
+/// hand and approved by the owner (tokens.js <c>colour.consoles</c>, beside docs/prototypes/handheld-big-type/index.html),
+/// dark enough for white type (<see cref="Handheld.HandheldGround"/>'s floors). Null derives one from
+/// <see cref="AccentColor"/>. Purely a look, like <see cref="Era"/>; today's look keeps using <see cref="AccentColor"/>.
+/// </param>
 public sealed record GameSystem(
     string Id,
     string Name,
@@ -43,7 +49,8 @@ public sealed record GameSystem(
     string Manufacturer = "",
     bool IsDualScreen = false,
     SystemEra Era = SystemEra.Disc,
-    IReadOnlyList<string>? Backdrops = null);
+    IReadOnlyList<string>? Backdrops = null,
+    string? GroundColor = null);
 
 /// <summary>The kind of media a system's games shipped on; see <see cref="GameSystem.Era"/>.</summary>
 public enum SystemEra

@@ -15,8 +15,10 @@ using EmuShelf.Core.Systems;
 namespace EmuShelf.App.ViewModels;
 
 /// <summary>A platform that has games, as a home folder shows it.</summary>
+/// <remarks><paramref name="GroundColor"/> is the system's Big Type ground (<see cref="GameSystem.GroundColor"/>); its colour in
+/// either look is <see cref="HandheldTokens.ConsoleColour(HandheldPlatform?)"/>.</remarks>
 public sealed record HandheldPlatform(string SystemId, string Name, string ShortName, string AccentColor, int GameCount,
-    SystemEra Era = SystemEra.Disc, IReadOnlyList<string>? Backdrops = null);
+    SystemEra Era = SystemEra.Disc, IReadOnlyList<string>? Backdrops = null, string? GroundColor = null);
 
 /// <summary>
 /// The Stage's era backdrop: a pixel grid (cartridge) or scanlines (disc), in one colour. Value equality, so
@@ -353,7 +355,7 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 {
     public HandheldHomeSlotViewModel(int index, HandheldSlot slot, HandheldFolderSource? folder, HandheldGameEntry? game = null,
         Bitmap? cover = null, bool isMoving = false, HandheldMoveLook moveLook = HandheldMoveLook.None,
-        Bitmap? carriedCover = null, string? carriedTitle = null, bool isAddGames = false)
+        Bitmap? carriedCover = null, string? carriedTitle = null, bool isAddGames = false, IBrush? ground = null)
     {
         IsAddGames = isAddGames && slot.IsEmpty;
         CarriedCover = carriedCover;
@@ -365,8 +367,8 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
         Cover = cover;
         _isMoving = isMoving;
         MoveLook = moveLook;
-        var colour = folder?.AccentColor;
-        AccentBrush = colour is not null && Color.TryParse(colour, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        AccentBrush = HandheldTokens.FolderBrush(folder);
+        GroundBrush = ground ?? HandheldTokens.GroundBrush(HandheldTokens.LauncherColour(folder));
     }
 
     public int Index { get; }
@@ -412,6 +414,29 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
 
     public bool HasFolderGlyph => FolderGlyph != HandheldGlyph.None;
     public IBrush AccentBrush { get; }
+
+    // ---- The Big Type face (M47 B3): a flat tile with its monogram or glyph, white with the colour as ink while focused ----
+
+    /// <summary>The colour this slot stands for on the Launcher: its folder's, its game's console's, or the apps' ground.</summary>
+    public IBrush GroundBrush { get; }
+
+    /// <summary>A folder or an app (or the way to add games): a flat tile carrying a monogram or a glyph.</summary>
+    public bool IsFlatTile => IsFolder || IsSettings || IsActivity || IsAddGames;
+
+    /// <summary>The glyph on a flat tile: an app's, your folders' star, Recent's clock, or the plus that adds games.</summary>
+    public HandheldGlyph FaceGlyph => IsSettings ? HandheldGlyph.Settings
+        : IsActivity ? HandheldGlyph.Activity
+        : IsAddGames ? HandheldGlyph.Add
+        : FolderGlyph;
+
+    public bool HasFaceGlyph => IsFlatTile && FaceGlyph != HandheldGlyph.None;
+    public bool HasFaceMonogram => IsFolder && !HasFolderGlyph;
+
+    /// <summary>An empty slot that is only a place (not the way to add games): a dot, a plus while focused.</summary>
+    public bool IsPlainEmpty => IsEmpty && !IsAddGames;
+
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? GroundBrush : HandheldTokens.OnColour;
     public string CountText => Folder is null ? string.Empty : HandheldText.GameCount(Folder.GameCount);
 
     private bool _isMoving;
@@ -445,6 +470,8 @@ public sealed partial class HandheldHomeSlotViewModel : ObservableObject
     private static int RuntimeRef(object? value) => value is null ? 0 : System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(value);
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
 
     // The first three covers peeking out of a focused folder (owned by the shell's peek cache, shared with the Stage).
@@ -506,6 +533,15 @@ public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEnt
     public bool IsUnavailable => !Entry.IsAvailable;
     public int Column => Index / HandheldFolderNavigation.Rows;
 
+    /// <summary>The colour this tile stands for on the Launcher (its console's, or the apps' ground), M47 B3.</summary>
+    public IBrush GroundBrush { get; init; } = Brushes.Gray;
+
+    /// <summary>The Settings or Activity tile in the Big Type look: its glyph on a flat tile, white with the colour as ink while focused.</summary>
+    public HandheldGlyph AppGlyph => IsSettings ? HandheldGlyph.Settings : IsActivity ? HandheldGlyph.Activity : HandheldGlyph.None;
+
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? GroundBrush : HandheldTokens.OnColour;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasCover))]
     public partial Bitmap? Cover { get; set; }
@@ -513,6 +549,8 @@ public sealed partial class HandheldGameTileViewModel(int index, HandheldGameEnt
     public bool HasCover => Cover is not null;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
 
     internal CancellationTokenSource? CoverLoad { get; set; }
@@ -538,7 +576,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
     {
         Source = source;
         HomeSlot = homeSlot;
-        AccentBrush = Color.TryParse(source.AccentColor, out var color) ? new SolidColorBrush(color) : Brushes.Gray;
+        AccentBrush = HandheldTokens.FolderBrush(source);
     }
 
     /// <summary>Where the folder's games come from (a platform, one of your folders, Recent).</summary>
@@ -583,6 +621,7 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
             _items = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(CountText));
+            OnPropertyChanged(nameof(CountNumber));
             OnPropertyChanged(nameof(IsEmpty));
             OnPropertyChanged(nameof(HasGames));
         }
@@ -595,12 +634,19 @@ public sealed partial class HandheldFolderViewModel : ObservableObject
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CountText))]
+    [NotifyPropertyChangedFor(nameof(CountNumber))]
     [NotifyPropertyChangedFor(nameof(IsEmpty))]
     [NotifyPropertyChangedFor(nameof(HasGames))]
     public partial bool IsLoaded { get; set; }
 
     // The Settings tile, when it is in the folder, is not a game.
     public string CountText => IsLoaded ? HandheldText.GameCount(Items.Count(tile => tile.IsGame)) : string.Empty;
+
+    /// <summary>The count beside the name in the Big Type header: the number alone (M47 B3).</summary>
+    public string CountNumber => IsLoaded ? Items.Count(tile => tile.IsGame).ToString(System.Globalization.CultureInfo.CurrentCulture) : string.Empty;
+
+    /// <summary>The colour this folder stands for on the Launcher (M47 B3).</summary>
+    public IBrush GroundBrush => HandheldTokens.GroundBrush(HandheldTokens.LauncherColour(Source));
     public bool IsEmpty => IsLoaded && Items.Count == 0;
     public bool HasGames => Items.Count > 0;
 
@@ -672,7 +718,18 @@ public sealed partial class HandheldDockItemViewModel(HandheldDockKind kind, Sec
     public bool IsMenu => Kind == HandheldDockKind.Menu;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(FaceBrush))]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
     public partial bool IsFocused { get; set; }
+
+    /// <summary>The Launcher's colour, the focused button's ink in the Big Type look (the shell keeps it current), M47 B3.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InkBrush))]
+    public partial IBrush Ground { get; set; } = Brushes.Gray;
+
+    /// <summary>All apps and the menu in the Big Type look: a flat button with a white glyph, white with the colour as ink while focused.</summary>
+    public IBrush FaceBrush => IsFocused ? HandheldTokens.TileFocus : HandheldTokens.TileRest;
+    public IBrush InkBrush => IsFocused ? Ground : HandheldTokens.OnColour;
 }
 
 public enum HandheldStageKind
@@ -721,6 +778,12 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsActivityTile))]
     [NotifyPropertyChangedFor(nameof(IsSetting))]
     [NotifyPropertyChangedFor(nameof(IsPanel))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth), nameof(NarrowNameBoxWidth))]
+    [NotifyPropertyChangedFor(nameof(ShowsSettingCard))]
+    [NotifyPropertyChangedFor(nameof(ShowsPanelCard))]
     public partial HandheldStageKind Kind { get; set; }
 
     [ObservableProperty]
@@ -781,6 +844,10 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(IsGame))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
     [NotifyPropertyChangedFor(nameof(ShowAchievementPill))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
+    [NotifyPropertyChangedFor(nameof(NameBoxWidth), nameof(NarrowNameBoxWidth))]
     public partial Bitmap? Fanart { get; set; }
 
     /// <summary>The game's logo over the fan art; without one the hero sets the title in type.</summary>
@@ -806,6 +873,8 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     public partial EmuShelf.Rendering.Shells.MediaShell? Medium { get; set; }
 
     /// <summary>The platform colour the medium's studio and unprinted faces take.</summary>
@@ -839,10 +908,19 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasMedium))]
     [NotifyPropertyChangedFor(nameof(HasFlatCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeCover))]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeMedium))]
     public partial bool IsMediumUnavailable { get; set; }
 
-    /// <summary>A browsed game is drawn as its physical medium.</summary>
-    public bool HasMedium => Kind == HandheldStageKind.Game && Medium is not null && !IsMediumUnavailable;
+    /// <summary>
+    /// A browsed game is drawn as its physical medium. Under Big Type only in the model view (M47 B12) or on cover search's case: the
+    /// name view shows the name alone.
+    /// </summary>
+    public bool HasMedium => (Kind == HandheldStageKind.Game || IsCoverOnCase) && Medium is not null && !IsMediumUnavailable &&
+        (HandheldTokens.IsClassic || IsModelView || IsCoverOnCase);
+
+    /// <summary>Big Type's cover search (M47 B7, the mock's): the game's case stands beside the name wearing the candidate.</summary>
+    private bool IsCoverOnCase => HandheldTokens.IsBigType && Kind == HandheldStageKind.Panel && ListCover is not null;
 
     /// <summary>A game (or a Title page without fan art) is drawn as its flat cover.</summary>
     public bool HasFlatCover => IsGame && !HasMedium;
@@ -918,10 +996,96 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     public bool HasAchievements => !string.IsNullOrEmpty(AchievementText);
 
     /// <summary>The corner achievements pill; the fan-art hero carries the count in its meta line instead.</summary>
-    public bool ShowAchievementPill => HasAchievements && !IsHeroArt;
-    // Settings' card carries its own title, so it has no plate under it.
+    /// <remarks>Never in the Big Type look, which has no pills: the count is on the line under the name (M47 B4).</remarks>
+    public bool ShowAchievementPill => HasAchievements && !IsHeroArt && HandheldTokens.IsClassic;
+    // Settings' card carries its own title, so it has no plate under it. The Big Type look has no plate at all (M47 B4).
     public bool HasPlate => Kind is not (HandheldStageKind.None or HandheldStageKind.Setting or HandheldStageKind.Panel) && !IsHeroArt &&
-        !string.IsNullOrEmpty(Title);
+        !string.IsNullOrEmpty(Title) && HandheldTokens.IsClassic;
+
+    // ---- The Big Type look (M47 B4): the name is the picture, with plain type in the four corners ----
+
+    /// <summary>Top left: the console's full name, or what kind of thing is focused ("Your folder", "Dock", "Home").</summary>
+    [ObservableProperty]
+    public partial string Label { get; set; } = string.Empty;
+
+    /// <summary>The name fitted across the Stage: a console folder's short name, a game's full title, anything else's own name.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBigTypeName))]
+    public partial string Name { get; set; } = string.Empty;
+
+    /// <summary>The line under the name: a folder's game count; a game's play time and achievements; what an item does.</summary>
+    [ObservableProperty]
+    public partial string Line { get; set; } = string.Empty;
+
+    /// <summary>The second line: a game's emulator, when it was last played and its disc; a folder's last played game.</summary>
+    [ObservableProperty]
+    public partial string Facts { get; set; } = string.Empty;
+
+    /// <summary>A game whose file is missing: its name is dimmed and the line says so.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NameOpacity))]
+    public partial bool IsMissing { get; set; }
+
+    /// <summary>
+    /// The fitted name shows (Big Type, and not under a fan-art hero's own card). Under Settings and a panel it is the focused row's
+    /// name (M47 B7); while anything types it is the word being typed (M47 B9).
+    /// </summary>
+    public bool HasBigTypeName => HandheldTokens.IsBigType && !string.IsNullOrEmpty(Name) && Kind is not HandheldStageKind.None && !IsHeroArt;
+
+    /// <summary>Settings or a panel is typing (B7 kept today's card for it under Big Type; B9's keyboard puts the word on the Stage).</summary>
+    [ObservableProperty]
+    public partial bool IsListTyping { get; set; }
+
+    /// <summary>
+    /// The name is a word being typed (M47 B9, the mock's typeWord): it stays one layer, only new letters drop in and a deleted one
+    /// falls off its end.
+    /// </summary>
+    [ObservableProperty]
+    public partial bool IsTyped { get; set; }
+
+    /// <summary>The typed word is empty: the name shows the placeholder ("Name", "Search") faintly.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NameOpacity))]
+    public partial bool IsPlaceholder { get; set; }
+
+    /// <summary>Settings' card: today's look only.</summary>
+    public bool ShowsSettingCard => IsSetting && HandheldTokens.IsClassic;
+
+    /// <summary>A panel's card: today's look only.</summary>
+    public bool ShowsPanelCard => IsPanel && HandheldTokens.IsClassic;
+
+    /// <summary>
+    /// A cover the focused row stands for (cover search's candidate, M47 B7): Big Type sets it where a game's cover sits, beside the
+    /// name. Owned by the panel's view models.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasListCover), nameof(HasBigTypeCover), nameof(NameBoxWidth), nameof(NarrowNameBoxWidth), nameof(HasMedium), nameof(HasBigTypeMedium))]
+    public partial Avalonia.Media.Imaging.Bitmap? ListCover { get; set; }
+
+    public bool HasListCover => HandheldTokens.IsBigType && ListCover is not null && Kind == HandheldStageKind.Panel;
+
+    /// <summary>
+    /// A cover beside the name under Big Type: only cover search's candidate (M47 B7). A game's own flat cover is the model view's
+    /// (<see cref="HasModelCover"/>, M47 B12); the name view has none.
+    /// </summary>
+    public bool HasBigTypeCover => HandheldTokens.IsBigType && HasListCover && !HasMedium;
+
+    /// <summary>A medium beside the name under Big Type: only cover search's case wearing the candidate (M47 B7).</summary>
+    public bool HasBigTypeMedium => HandheldTokens.IsBigType && HasMedium && !IsModelView;
+
+    /// <summary>The name's box: narrower only when cover search's case or candidate stands beside it (M47 B12: a game's name has the whole box).</summary>
+    public double NameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: false);
+
+    /// <summary>The name's box on the narrow screen (the screens swapped, M47 B11): its own widths, beside a medium or not.</summary>
+    public double NarrowNameBoxWidth => HandheldTokens.StageNameBoxWidth(IsNameBesideMedium, narrow: true);
+
+    /// <summary>
+    /// Something stands beside the name: since M47 B12 only cover search's case or candidate (a game's medium is the model view's, in the
+    /// middle, and the name view has none).
+    /// </summary>
+    public bool IsNameBesideMedium => HasListCover;
+
+    public double NameOpacity => IsPlaceholder ? HandheldTokens.PlaceholderOpacity : IsMissing ? HandheldTokens.StageNameDimmedOpacity : 1;
 }
 
 /// <summary>A line glyph the Handheld views draw; the views map it to a vector (see <c>HandheldIcons</c>).</summary>
@@ -964,6 +1128,9 @@ public enum HandheldGlyph
 public sealed record HandheldHint(string Button, string Label, HandheldGlyph Icon = HandheldGlyph.None)
 {
     public bool HasIcon => Icon != HandheldGlyph.None;
+
+    /// <summary>A key of more than one letter (RB, RS): Big Type draws it as a rounded key, not a circle (M47 B12, proposals.html).</summary>
+    public bool IsWide => Button.Length > 1;
 }
 
 public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> invoke) : ObservableObject
@@ -980,6 +1147,15 @@ public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> i
     public partial string? Note { get; set; }
 
     public bool HasNote => !string.IsNullOrEmpty(Note);
+
+    /// <summary>What the row does, said on the Stage under its name in the Big Type look (M47 B7, the mock's <c>START</c> hints).</summary>
+    public string? Hint { get; init; }
+
+    /// <summary>A switch (Sounds): the Big Type look draws it as one, <see cref="IsOn"/> or off (M47 B7).</summary>
+    public bool IsToggle { get; init; }
+
+    [ObservableProperty]
+    public partial bool IsOn { get; set; }
 }
 
 /// <summary>The words the Settings tile uses wherever it appears.</summary>

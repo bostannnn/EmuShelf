@@ -23,9 +23,7 @@ public sealed partial class HandheldShellViewModel
         CloseTitle();
         var page = new HandheldTitlePageViewModel(entry, OpenFolder?.Name ?? "Home", entry.SystemName, _clock.GetLocalNow())
         {
-            AccentBrush = _platforms.TryGetValue(entry.SystemId, out var platform) && Color.TryParse(platform.AccentColor, out var accent)
-                ? new SolidColorBrush(accent)
-                : Brushes.Gray,
+            AccentBrush = HandheldTokens.ConsoleBrush(_platforms.GetValueOrDefault(entry.SystemId)),
             PlayWhenReady = playWhenReady,
         };
         BuildTitleButtons(page);
@@ -69,6 +67,7 @@ public sealed partial class HandheldShellViewModel
     {
         if (TitlePage is { } page)
             page.IsSyncingSaves = blocking;
+        PlaySyncing(blocking);
     }
 
     private async Task LoadTitleAsync(HandheldTitlePageViewModel page, CancellationToken token)
@@ -141,6 +140,11 @@ public sealed partial class HandheldShellViewModel
         {
             case HandheldTitleState.Launching:
                 // Nothing interrupts a launch in progress; the panel says what it is waiting for.
+                return true;
+            case HandheldTitleState.Buttons when HandheldTokens.IsBigType:
+                // Big Type (M47 B8): an unseen page waiting for its details to play; B lets the press go, nothing else does anything.
+                if (action == GamepadAction.Cancel)
+                    CloseTitle();
                 return true;
             case HandheldTitleState.Buttons when action == GamepadAction.Search:
                 // X swaps the screens on the Title page too, as on the mockup.
@@ -219,6 +223,10 @@ public sealed partial class HandheldShellViewModel
             return Task.CompletedTask;
         switch (details.Screen)
         {
+            case LaunchScreenDecision.Prompt when HandheldTokens.IsBigType:
+                // Big Type (M47 B8): the chooser is a sheet in the lists' style (the mock's startGame).
+                ShowScreenSheet(page);
+                return Task.CompletedTask;
             case LaunchScreenDecision.Prompt:
                 OpenScreenChooser(page);
                 return Task.CompletedTask;
@@ -232,14 +240,23 @@ public sealed partial class HandheldShellViewModel
     private async Task LaunchFromTitleAsync(HandheldTitlePageViewModel page, GameLaunchScreen screen)
     {
         page.State = HandheldTitleState.Launching;
+        // Big Type (M47 B8): the tile flies up through the hinge and the console's colour takes the Stage over.
+        var bigType = HandheldTokens.IsBigType;
+        if (bigType)
+        {
+            BeginPlay(page);
+            // The mock's launch sound, a rising run (M47 B11).
+            PlaySound(EmuShelf.Core.Handheld.HandheldSound.Launch);
+        }
         UpdateHints();
         LaunchStarting?.Invoke(page);
         bool started;
         try
         {
             // The cover lifts off the Launcher and lands on the Stage before the emulator takes the screen.
-            if (LaunchLead > TimeSpan.Zero)
-                await Task.Delay(LaunchLead, _clock);
+            var lead = bigType ? BigTypeLaunchLead : LaunchLead;
+            if (lead > TimeSpan.Zero)
+                await Task.Delay(lead, _clock);
             // The companion comes up as the emulator starts (M45 H6b): it has the game's row, and its cover, by then.
             if (ReferenceEquals(TitlePage, page))
                 CompanionScreen?.SetNowPlaying(page.Entry, page.PlatformName);
@@ -251,8 +268,14 @@ public sealed partial class HandheldShellViewModel
             started = false;
         }
         if (!ReferenceEquals(TitlePage, page))
+        {
+            if (bigType)
+                PlayLaunched(false);
             return;
+        }
         page.IsSyncingSaves = false;
+        if (bigType)
+            PlayLaunched(started);
         if (started)
         {
             // Back to the grid, as the 3DS returns to HOME: that is what is on screen when the game closes.
@@ -262,6 +285,12 @@ public sealed partial class HandheldShellViewModel
             return;
         }
         page.State = HandheldTitleState.Buttons;
+        // Big Type has no page to come back to: the launch that failed closes it (the app's status line says why).
+        if (bigType)
+        {
+            CloseTitle();
+            return;
+        }
         UpdateHints();
     }
 
@@ -380,7 +409,7 @@ public sealed partial class HandheldShellViewModel
     /// Y: the game's actions sheet (M45 H6c), the same one Y opens on the game's tile, with what the page itself can do
     /// first (Play, another screen, the disc). It is the Launcher's sheet, which scrolls when the rows outgrow it.
     /// </summary>
-    private void OpenTitleActions(HandheldTitlePageViewModel page) => ShowSheet(GameSheet(page.Entry, OpenFolder, page));
+    private void OpenTitleActions(HandheldTitlePageViewModel page) => ShowItemSheet(GameSheet(page.Entry, OpenFolder, page));
 
     private void DispatchTitleOptions(HandheldTitlePageViewModel page, GamepadAction action)
     {

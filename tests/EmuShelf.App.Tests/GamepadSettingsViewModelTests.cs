@@ -304,6 +304,39 @@ public sealed class GamepadSettingsViewModelTests
         Assert.StartsWith("On · ", viewModel.Rows.Single(row => row.Key == "display.crt").Description);
     }
 
+    /// <summary>
+    /// M47 B10: Handheld mode's Display section adds the Sounds switch and, under Big Type, the Reduce motion switch, after the
+    /// shelf's two; neither is Desktop's. Without them (Gamepad mode, or Handheld's Classic look) the section is as it was.
+    /// </summary>
+    [AvaloniaFact]
+    public void DisplaySection_InHandheldMode_CarriesTheReduceMotionSwitch_OnlyWhenGivenOne()
+    {
+        var sounds = true;
+        var still = false;
+        using var withBoth = new GamepadSettingsViewModel(CreateSettings(),
+            handheldSounds: new GamepadSettingsSwitch(() => sounds, value => sounds = value),
+            handheldReduceMotion: new GamepadSettingsSwitch(() => still, value => still = value));
+        withBoth.SelectedSection = SettingsSection.Display;
+        var rows = withBoth.Rows.Where(row => !row.IsSaveRow).ToArray();
+        Assert.Equal(["display.crt", "display.ambient", "display.sounds", "display.reduce-motion"], rows.Select(row => row.Key));
+        var row = rows.Single(r => r.Key == "display.reduce-motion");
+        Assert.True(row.IsToggle);
+        Assert.Equal("Reduce motion", row.Label);
+        Assert.Empty(withBoth.CollectParityIds("display."));
+
+        // Off by default; A turns it on through the switch, and the row says so.
+        Assert.False(still);
+        row.SelectCommand.Execute(null);
+        Assert.True(still);
+        Assert.StartsWith("On · ", withBoth.Rows.Single(r => r.Key == "display.reduce-motion").Description);
+
+        using var soundsOnly = new GamepadSettingsViewModel(CreateSettings(),
+            handheldSounds: new GamepadSettingsSwitch(() => sounds, value => sounds = value));
+        soundsOnly.SelectedSection = SettingsSection.Display;
+        Assert.Equal(["display.crt", "display.ambient", "display.sounds"],
+            soundsOnly.Rows.Where(r => !r.IsSaveRow).Select(r => r.Key));
+    }
+
     [AvaloniaFact]
     public void ThemesGallery_HoldsNothingButThemes_AndUpFromTheTopRowStaysPut()
     {
@@ -1126,6 +1159,11 @@ public sealed class GamepadSettingsViewModelTests
         Assert.True(action.ShowsChevron);
         Assert.False(action.HasActionText);
         Assert.Same(viewModel.Rows.Single(row => row.IsSaveRow), viewModel.SaveRow);
+        // Handheld Big Type rows (M47 B11) show no "A …" prompt at their end; a value row its value.
+        Assert.StartsWith("A ", action.Value);
+        Assert.Equal(string.Empty, action.RowValue);
+        Assert.Equal(string.Empty, viewModel.SaveRow!.RowValue);
+        Assert.Equal(toggle.Value, toggle.RowValue);
 
         viewModel.SelectedSection = SettingsSection.RetroAchievements;
         await viewModel.Rows.Single(row => row.Key == "retro.summary").SelectCommand.ExecuteAsync(null);
@@ -1139,6 +1177,7 @@ public sealed class GamepadSettingsViewModelTests
         var drive = viewModel.Rows.Single(row => row.Key == "saves.connect");
         Assert.True(drive.HasActionText);
         Assert.Equal("Connect", drive.ActionText);
+        Assert.Equal("Connect", drive.RowValue);
         await viewModel.Rows.Single(row => row.Key == "saves.playstation2.summary").SelectCommand.ExecuteAsync(null);
         var folder = viewModel.Rows.Single(row => row.Key == "saves.playstation2.folder");
         Assert.True(folder.IsEditableValue);

@@ -21,8 +21,8 @@
   <!-- The gradient fills the whole window, including any letterbox bands around the fitted canvas. -->
   <UserControl.Background>
     <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-      <GradientStop Offset="0" Color="#FAFBFD" />
-      <GradientStop Offset="1" Color="#E4E8EF" />
+      <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />
+      <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicGroundBottom}" />
     </LinearGradientBrush>
   </UserControl.Background>
 
@@ -37,16 +37,30 @@
       <Setter Property="IsHitTestVisible" Value="False" />
     </Style>
     <Style Selector="Border.selector-ring">
-      <Setter Property="BorderBrush" Value="White" />
-      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicRingKeyline}" />
+      <Setter Property="BorderThickness" Value="{x:Static vm:HandheldTokens.ClassicRingKeylineThickness}" />
     </Style>
     <Style Selector="Border.selector-ring > Border">
-      <Setter Property="BorderBrush" Value="#5B58D9" />
-      <Setter Property="BorderThickness" Value="14" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.Ring}" />
+      <Setter Property="BorderThickness" Value="{x:Static vm:HandheldTokens.RingStrokeThickness}" />
     </Style>
     <Style Selector="Border.selector-ring > Border > Border">
-      <Setter Property="BorderBrush" Value="White" />
-      <Setter Property="BorderThickness" Value="4" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicRingKeyline}" />
+      <Setter Property="BorderThickness" Value="{x:Static vm:HandheldTokens.ClassicRingKeylineThickness}" />
+    </Style>
+    <!-- Big Type (M47 B3): one white band, no keylines and no glow. The root carries the look's class (view wiring). -->
+    <Style Selector="Panel.bigtype Border.selector-ring">
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.RingBand}" />
+      <Setter Property="BorderThickness" Value="{x:Static vm:HandheldTokens.RingStrokeThickness}" />
+    </Style>
+    <Style Selector="Panel.bigtype Border.selector-ring > Border">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Panel.bigtype Border.selector-ring > Border > Border">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Panel.bigtype vh|HandheldShadow#SelectorGlow">
+      <Setter Property="IsVisible" Value="False" />
     </Style>
     <!-- The focus lift lives on the element itself (fly-ins and pops live on its container). -->
     <Style Selector="Panel.focusable">
@@ -64,6 +78,28 @@
     <Style Selector="Panel.focusable.focused">
       <Setter Property="RenderTransform" Value="scale(1.13)" />
     </Style>
+    <!-- Big Type's lifts (tokens.js shape.FocusScale and DockFocusScale; HandheldTokens.FocusScale and DockFocusScale). -->
+    <Style Selector="Panel.bigtype Panel.focusable.focused">
+      <Setter Property="RenderTransform" Value="scale(1.1)" />
+    </Style>
+    <Style Selector="Panel.bigtype Panel.focusable.dock-tile.focused">
+      <Setter Property="RenderTransform" Value="scale(1.14)" />
+    </Style>
+    <!-- Big Type's lift lands (M47 B5: tokens.js FocusLift, 380 ms on the Land curve); held still (battery saver), it simply lands. -->
+    <Style Selector="Panel.bigtype Panel.focusable">
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.38">
+            <TransformOperationsTransition.Easing>
+              <SplineEasing X1="0.2" Y1="1.5" X2="0.35" Y2="1" />
+            </TransformOperationsTransition.Easing>
+          </TransformOperationsTransition>
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Panel.bigtype.still Panel.focusable">
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
     <!-- A lifted tile casts a deeper shadow: a second pre-rendered shadow fades in under it. -->
     <Style Selector="vh|HandheldShadow.lift">
       <Setter Property="Opacity" Value="0" />
@@ -73,7 +109,7 @@
         </Transitions>
       </Setter>
     </Style>
-    <Style Selector="Panel.focusable.focused > vh|HandheldShadow.lift">
+    <Style Selector="Panel.focusable.focused vh|HandheldShadow.lift">
       <Setter Property="Opacity" Value="1" />
     </Style>
 
@@ -102,88 +138,93 @@
       <Setter Property="RenderTransform" Value="translateY(-14px) scale(1.16)" />
       <Setter Property="Opacity" Value="0.92" />
     </Style>
+    <!-- Big Type (M47 B9, the mock's .tile.held): the held tile grows above its neighbours; its face rocks (the Launcher's motion). -->
+    <Style Selector="Panel.bigtype Panel.home-slot.carried">
+      <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.HeldTransform}" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
     <Style Selector="Border.empty-slot.landing">
-      <Setter Property="BorderBrush" Value="#805B58D9" />
-      <Setter Property="Background" Value="#265B58D9" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccentOutline}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicLandingFill}" />
     </Style>
     <Style Selector="Border.ribbon">
-      <Setter Property="Background" Value="#5B58D9" />
-      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicRibbonRadius}" />
       <Setter Property="Padding" Value="14,4" />
       <Setter Property="Margin" Value="0,6,-12,0" />
-      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicEdge}" />
       <Setter Property="BorderThickness" Value="2" />
-      <Setter Property="BoxShadow" Value="0 3 8 0 #405B58D9" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicRibbonShadow}" />
     </Style>
     <Style Selector="Border.ribbon TextBlock">
-      <Setter Property="FontSize" Value="20" />
-      <Setter Property="FontWeight" Value="Bold" />
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.Ribbon}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RibbonWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <Style Selector="Border.edge">
       <Setter Property="Width" Value="40" />
       <Setter Property="Height" Value="96" />
-      <Setter Property="CornerRadius" Value="20" />
-      <Setter Property="Background" Value="#B3FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicEdgeHintRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicEdgeHintFill}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.edge PathIcon">
       <Setter Property="Width" Value="24" />
       <Setter Property="Height" Value="24" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
     </Style>
     <!-- The actions sheet's and the naming panel's rows. -->
     <!-- One height, so the sheet and the choice list scroll in whole rows. -->
     <Style Selector="Border.sheet-row">
-      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.SheetRowRadius}" />
       <Setter Property="Height" Value="88" />
       <Setter Property="Padding" Value="28,12" />
       <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Border.sheet-row.focused">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.sheet-row TextBlock.label">
-      <Setter Property="FontSize" Value="30" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.SheetRow}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
     </Style>
     <Style Selector="Border.sheet-row TextBlock.note">
-      <Setter Property="FontSize" Value="24" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.RowValue}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
     </Style>
     <Style Selector="Border.sheet-row.focused TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <!-- Remove from library: the one row that takes a game away, in the warning colour until focused. -->
     <Style Selector="Border.sheet-row TextBlock.label.destructive">
-      <Setter Property="Foreground" Value="#C23B3B" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Danger}" />
     </Style>
     <Style Selector="Border.sheet-row.focused TextBlock.label.destructive">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <Style Selector="Border.colour-chip">
       <Setter Property="Width" Value="88" />
       <Setter Property="Height" Value="88" />
-      <Setter Property="CornerRadius" Value="44" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ColourChipRadius}" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="BorderBrush" Value="White" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicEdge}" />
     </Style>
     <Style Selector="Border.colour-chip.focused">
       <Setter Property="BorderThickness" Value="6" />
-      <Setter Property="BoxShadow" Value="0 0 0 6 #5B58D9" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicChipFocusRing}" />
     </Style>
     <Style Selector="Border.name-field">
-      <Setter Property="CornerRadius" Value="28" />
-      <Setter Property="Background" Value="#F2F4F8" />
-      <Setter Property="BorderBrush" Value="#29465088" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.FieldRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicFieldFill}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicFieldEdge}" />
       <Setter Property="BorderThickness" Value="2" />
       <Setter Property="Padding" Value="24,8" />
     </Style>
     <Style Selector="Border.name-field.focused">
-      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
       <Setter Property="BorderThickness" Value="4" />
     </Style>
     <!-- The name field is the panel's own pill: the TextBox inside draws no box of its own in any state. -->
@@ -200,18 +241,18 @@
       <Setter Property="BorderThickness" Value="0" />
     </Style>
     <Style Selector="Border.key">
-      <Setter Property="Width" Value="100" />
-      <Setter Property="Height" Value="100" />
-      <Setter Property="CornerRadius" Value="24" />
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.Key}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.Key}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.KeyRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BoxShadow" Value="0 2 6 0 #12000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicKeyShadow}" />
     </Style>
     <Style Selector="Border.key TextBlock">
-      <Setter Property="FontSize" Value="36" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeyLabel}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
       <Setter Property="HorizontalAlignment" Value="Center" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
@@ -219,96 +260,96 @@
       <Setter Property="Width" Value="300" />
     </Style>
     <Style Selector="Border.key.wide TextBlock">
-      <Setter Property="FontSize" Value="30" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeyWide}" />
     </Style>
     <Style Selector="Border.key.done">
-      <Setter Property="Background" Value="#E9E8FB" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccentTint}" />
     </Style>
     <Style Selector="Border.key.focused">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
       <Setter Property="BorderThickness" Value="0" />
       <Setter Property="RenderTransform" Value="scale(1.08)" />
     </Style>
     <Style Selector="Border.key.focused TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
 
     <!-- Header chips: a raised white surface with a hairline. -->
     <Style Selector="Border.chip">
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicChipRadius}" />
       <Setter Property="Height" Value="56" />
       <Setter Property="Padding" Value="24,0" />
-      <Setter Property="BoxShadow" Value="0 2 8 0 #0F000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicRaisedShadow}" />
     </Style>
     <!-- Title page: the big pill buttons (Play is the accent), the fact rows, the chooser cards. -->
     <Style Selector="Border.title-button">
       <Setter Property="Height" Value="88" />
-      <Setter Property="CornerRadius" Value="44" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ClassicButtonRadius}" />
       <Setter Property="Padding" Value="32,0" />
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BoxShadow" Value="0 4 14 0 #14000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicButtonShadow}" />
     </Style>
     <Style Selector="Border.title-button.play">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
       <Setter Property="BorderThickness" Value="0" />
-      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicAccentShadow}" />
     </Style>
     <Style Selector="Border.title-button TextBlock.label">
-      <Setter Property="FontSize" Value="32" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.TitleButton}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.title-button TextBlock.note">
-      <Setter Property="FontSize" Value="24" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.TitleButtonNote}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
     <Style Selector="Border.title-button.play TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <Style Selector="Border.title-button PathIcon">
       <Setter Property="Width" Value="32" />
       <Setter Property="Height" Value="32" />
-      <Setter Property="Foreground" Value="#4B5274" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Glyph}" />
     </Style>
     <Style Selector="Border.title-button.play PathIcon">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <Style Selector="TextBlock.fact-label">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.Facts}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
       <Setter Property="Margin" Value="0,0,24,12" />
     </Style>
     <Style Selector="TextBlock.fact-value">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.Facts}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
       <Setter Property="Margin" Value="0,0,0,12" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
     <Style Selector="Border.hint-glyph">
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
-      <Setter Property="CornerRadius" Value="18" />
-      <Setter Property="Background" Value="#4B5274" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.HintGlyph}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.HintGlyph}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.HintGlyphRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.HintGlyphFill}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.screen-card">
       <Setter Property="Width" Value="400" />
       <Setter Property="Height" Value="296" />
-      <Setter Property="CornerRadius" Value="40" />
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ScreenCardRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BoxShadow" Value="0 6 20 0 #14000000" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicCardShadow}" />
       <Setter Property="Padding" Value="32" />
     </Style>
 
@@ -316,8 +357,8 @@
     <Style Selector="Border.settings-face">
       <Setter Property="Background">
         <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-          <GradientStop Offset="0" Color="#6865DE" />
-          <GradientStop Offset="1" Color="#5450CF" />
+          <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicSettingsFaceTop}" />
+          <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicSettingsFaceBottom}" />
         </LinearGradientBrush>
       </Setter>
     </Style>
@@ -325,8 +366,8 @@
     <Style Selector="Border.activity-face">
       <Setter Property="Background">
         <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-          <GradientStop Offset="0" Color="#33AE9F" />
-          <GradientStop Offset="1" Color="#26918A" />
+          <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicActivityFaceTop}" />
+          <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicActivityFaceBottom}" />
         </LinearGradientBrush>
       </Setter>
     </Style>
@@ -338,7 +379,7 @@
       <Setter Property="Margin" Value="0,24,0,128" />
     </Style>
     <Style Selector="Border.settings-section">
-      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.RailRowRadius}" />
       <Setter Property="Height" Value="88" />
       <Setter Property="Padding" Value="24,10" />
       <Setter Property="Background" Value="Transparent" />
@@ -346,162 +387,162 @@
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
     <Style Selector="Border.settings-section.selected">
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
-      <Setter Property="BoxShadow" Value="0 2 8 0 #0F000000" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicRaisedShadow}" />
     </Style>
     <Style Selector="Border.settings-section.focused">
-      <Setter Property="Background" Value="#5B58D9" />
-      <Setter Property="BorderBrush" Value="#5B58D9" />
-      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicAccentShadow}" />
     </Style>
     <Style Selector="Border.settings-section TextBlock.title">
-      <Setter Property="FontSize" Value="28" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.RailRow}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
     </Style>
     <Style Selector="Border.settings-section TextBlock.status">
-      <Setter Property="FontSize" Value="21" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.RailRowStatus}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
     </Style>
     <Style Selector="Border.settings-section TextBlock.status.warning">
-      <Setter Property="Foreground" Value="#B4531A" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <Style Selector="Border.settings-section.focused TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <!-- One height for every row, so the lists scroll in whole rows and never show one cut at an edge. -->
     <Style Selector="Border.settings-row">
-      <Setter Property="CornerRadius" Value="24" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.RowRadius}" />
       <Setter Property="Height" Value="92" />
       <Setter Property="Padding" Value="28,12" />
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
     <Style Selector="Border.settings-row.grouped">
       <Setter Property="Margin" Value="48,0,0,0" />
     </Style>
     <Style Selector="Border.settings-row.save">
-      <Setter Property="Background" Value="#E9E8FB" />
-      <Setter Property="BorderBrush" Value="#335B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccentTint}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccentHairline}" />
     </Style>
     <Style Selector="Border.settings-row.focused">
-      <Setter Property="Background" Value="#5B58D9" />
-      <Setter Property="BorderBrush" Value="#5B58D9" />
-      <Setter Property="BoxShadow" Value="0 6 18 0 #455B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
+      <Setter Property="BoxShadow" Value="{x:Static vm:HandheldTokens.ClassicAccentShadow}" />
     </Style>
     <Style Selector="Border.settings-row TextBlock.label">
-      <Setter Property="FontSize" Value="28" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.Row}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.settings-row.disabled TextBlock.label">
-      <Setter Property="Foreground" Value="#8A90A3" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundDisabled}" />
     </Style>
     <Style Selector="Border.settings-row TextBlock.value">
-      <Setter Property="FontSize" Value="24" />
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.RowValue}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
       <Setter Property="TextTrimming" Value="CharacterEllipsis" />
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
     <Style Selector="Border.settings-row TextBlock.value.warning">
-      <Setter Property="Foreground" Value="#B4531A" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Warning}" />
     </Style>
     <Style Selector="Border.settings-row TextBlock.destructive">
-      <Setter Property="Foreground" Value="#C23B3B" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Danger}" />
     </Style>
     <Style Selector="Border.settings-row.focused TextBlock">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <!-- While the list of sections has the pad, the row it will come back to keeps only an outline. -->
     <Style Selector="Grid.rail Border.settings-row.focused">
-      <Setter Property="Background" Value="#FFFFFF" />
-      <Setter Property="BorderBrush" Value="#805B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSurface}" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccentOutline}" />
       <Setter Property="BorderThickness" Value="2" />
       <Setter Property="BoxShadow" Value="none" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.save.focused">
-      <Setter Property="Background" Value="#E9E8FB" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccentTint}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused TextBlock.label">
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused TextBlock.value">
-      <Setter Property="Foreground" Value="#5B6176" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGroundMuted}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused PathIcon">
-      <Setter Property="Foreground" Value="#8A90A3" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Chevron}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused Border.switch">
-      <Setter Property="Background" Value="#D5D9E4" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.SwitchTrack}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused Border.switch.on">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Grid.rail Border.settings-row.focused Border.switch.on > Border">
-      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.SwitchKnobFill}" />
     </Style>
     <Style Selector="Border.settings-row PathIcon.chevron">
       <Setter Property="Width" Value="28" />
       <Setter Property="Height" Value="28" />
-      <Setter Property="Foreground" Value="#8A90A3" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.Chevron}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.settings-row.focused PathIcon">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <!-- A switch: a pill with its knob left (off) or right (on). -->
     <Style Selector="Border.switch">
-      <Setter Property="Width" Value="88" />
-      <Setter Property="Height" Value="48" />
-      <Setter Property="CornerRadius" Value="24" />
-      <Setter Property="Background" Value="#D5D9E4" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.SwitchWidth}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.SwitchHeight}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.SwitchRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.SwitchTrack}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
     <Style Selector="Border.switch.on">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.settings-row.focused Border.switch">
-      <Setter Property="Background" Value="#7F7CE6" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSwitchTrackFocused}" />
     </Style>
     <Style Selector="Border.settings-row.focused Border.switch.on">
-      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicSwitchOnFocused}" />
     </Style>
     <Style Selector="Border.switch > Border">
-      <Setter Property="Width" Value="36" />
-      <Setter Property="Height" Value="36" />
-      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.SwitchKnob}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.SwitchKnob}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.SwitchKnobRadius}" />
       <Setter Property="Margin" Value="6" />
       <Setter Property="HorizontalAlignment" Value="Left" />
-      <Setter Property="Background" Value="#FFFFFF" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.SwitchKnobFill}" />
     </Style>
     <Style Selector="Border.switch.on > Border">
       <Setter Property="HorizontalAlignment" Value="Right" />
     </Style>
     <Style Selector="Border.settings-row.focused Border.switch.on > Border">
-      <Setter Property="Background" Value="#5B58D9" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.theme-card">
       <Setter Property="Width" Value="248" />
       <Setter Property="Height" Value="184" />
-      <Setter Property="CornerRadius" Value="28" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ThemeCardRadius}" />
       <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="BorderBrush" Value="#141C2033" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicHairline}" />
       <Setter Property="ClipToBounds" Value="True" />
     </Style>
     <Style Selector="Border.theme-ring">
-      <Setter Property="CornerRadius" Value="40" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.ThemeRingRadius}" />
       <Setter Property="Padding" Value="8" />
       <Setter Property="BorderThickness" Value="4" />
       <Setter Property="BorderBrush" Value="Transparent" />
     </Style>
     <Style Selector="Border.theme-ring.focused">
-      <Setter Property="BorderBrush" Value="#5B58D9" />
+      <Setter Property="BorderBrush" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.key.mid">
       <Setter Property="Width" Value="160" />
@@ -510,22 +551,56 @@
       <Setter Property="Width" Value="252" />
     </Style>
     <Style Selector="Border.key.space TextBlock">
-      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeySpace}" />
     </Style>
     <Style Selector="Border.sheet-row PathIcon.pick">
-      <Setter Property="Foreground" Value="#5B58D9" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.ClassicAccent}" />
     </Style>
     <Style Selector="Border.sheet-row.focused PathIcon.pick">
-      <Setter Property="Foreground" Value="White" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnAccent}" />
     </Style>
     <Style Selector="Border.key.mid TextBlock">
-      <Setter Property="FontSize" Value="28" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.KeyMid}" />
+    </Style>
+
+    <!-- Big Type (M47 B3): the white corner mark on a missing file's tile ("!") and on a new folder (a dot). -->
+    <Style Selector="Border.corner-mark">
+      <Setter Property="Width" Value="{x:Static vm:HandheldTokens.CornerMark}" />
+      <Setter Property="Height" Value="{x:Static vm:HandheldTokens.CornerMark}" />
+      <Setter Property="CornerRadius" Value="{x:Static vm:HandheldTokens.CornerMarkRadius}" />
+      <Setter Property="Background" Value="{x:Static vm:HandheldTokens.TileFocus}" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Margin" Value="{x:Static vm:HandheldTokens.CornerMarkMargin}" />
+    </Style>
+    <Style Selector="Border.corner-mark TextBlock">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.CornerMarkLetter}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightDisplay}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.bt-tile-title">
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.TileTitleWeight}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="TextAlignment" Value="Left" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="MaxLines" Value="4" />
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+    </Style>
+    <Style Selector="TextBlock.dock-corner">
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.DockCorner}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.WeightStrong}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnColour}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="FontFeatures" Value="+tnum" />
     </Style>
 
     <Style Selector="TextBlock.chip-text">
-      <Setter Property="FontSize" Value="26" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-      <Setter Property="Foreground" Value="#1C2033" />
+      <Setter Property="FontSize" Value="{x:Static vm:HandheldTokens.Chip}" />
+      <Setter Property="FontWeight" Value="{x:Static vm:HandheldTokens.RowWeight}" />
+      <Setter Property="Foreground" Value="{x:Static vm:HandheldTokens.OnGround}" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
   </UserControl.Styles>
@@ -541,12 +616,25 @@
   </UserControl.Resources>
 
   <Panel x:Name="Root">
+  <!--
+    Big Type (M47 B3): the whole screen is the focused item's flat colour, letterbox bands included. The native Launcher clears
+    to the same colour, so a sheet that hands the screen back to this view shows the same ground.
+  -->
+  <Border x:Name="Ground" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Background="{Binding LauncherGroundBrush}">
+    <Border.Transitions>
+      <Transitions>
+        <BrushTransition Property="Background" Duration="{x:Static vm:HandheldTokens.GroundFade}" />
+      </Transitions>
+    </Border.Transitions>
+  </Border>
+  <!-- Big Type (M47 B7): a new colour floods in as a circle over the ground (the view's motion grows it; the native Launcher has its own). -->
+  <Border x:Name="GroundWave" IsVisible="False" IsHitTestVisible="False" />
   <Viewbox Stretch="Uniform" ClipToBounds="False">
     <Grid x:Name="Canvas" Width="1240" Height="1080" RowDefinitions="*,144">
 
       <!-- ===== Home: every page on one track that slides on the track spring ===== -->
       <!-- Home on this Launcher's screen: the view gives this layer its HandheldHomeScreenViewModel (M45 H5). -->
-      <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="0,48,0,0" x:DataType="vm:HandheldHomeScreenViewModel">
+      <Grid x:Name="HomeLayer" RowDefinitions="*,40" Margin="{x:Static vm:HandheldTokens.HomeLayerMargin}" x:DataType="vm:HandheldHomeScreenViewModel">
         <Panel x:Name="HomeClip" ClipToBounds="True">
           <ItemsControl x:Name="PageTrack" ItemsSource="{Binding Pages}" HorizontalAlignment="Left" ClipToBounds="False">
             <ItemsControl.ItemsPanel>
@@ -562,7 +650,7 @@
                 -->
                 <Panel Width="{Binding Width}">
                   <ItemsControl ItemsSource="{Binding Slots}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
-                                ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="{x:Static vm:HandheldTokens.HomeGridAlignment}">
                     <ItemsControl.ItemsPanel>
                       <ItemsPanelTemplate>
                         <UniformGrid Columns="{ReflectionBinding $parent[ItemsControl].DataContext.Columns}"
@@ -574,18 +662,20 @@
                         <!-- Room for the folder's shadow when the native Launcher pictures it; layout unchanged. -->
                         <Border Classes="shot" Padding="48" Margin="-48">
                         <Panel Classes="focusable home-slot" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}"
-                               Classes.carried="{Binding IsCarried}" Width="176" Height="176" Margin="24,10" Background="Transparent">
+                               Classes.carried="{Binding IsCarried}" Width="{x:Static vm:HandheldTokens.TileHome}" Height="{x:Static vm:HandheldTokens.TileHome}" Margin="{x:Static vm:HandheldTokens.HomeSlotMargin}" Background="Transparent">
+                          <!-- Today's look (M47 B3 keeps it whole behind the look switch). -->
+                          <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
                           <!-- A folder (a platform's, yours, Recent): its flap tilts while focused so the first covers peek out. -->
                           <vh:HandheldFolderArt IsVisible="{Binding IsFolder}" Classes.peek="{Binding IsFocused}" Margin="-8" />
                           <!-- A game pinned to home: its cover, cropped to the tile; dimmed when its file is missing. -->
                           <!-- Same footprint as a folder beside it (its back plate starts lower and sits a little wider). -->
                           <Panel IsVisible="{Binding IsGame}" Margin="-3,17,-3,0">
-                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
-                            <Border CornerRadius="40" ClipToBounds="True" Background="#D5D9E4"
+                            <vh:HandheldShadow Radius="{x:Static vm:HandheldTokens.ClassicHomeTileShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicHomeTileShadowBlur}" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border CornerRadius="{x:Static vm:HandheldTokens.TileRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}"
                                     Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
                               <Panel>
-                                <TextBlock Text="{Binding Name}" IsVisible="{Binding !HasCover}" FontSize="20" FontWeight="SemiBold"
-                                           Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center" Margin="16"
+                                <TextBlock Text="{Binding Name}" IsVisible="{Binding !HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleHome}" FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}"
+                                           Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextWrapping="Wrap" TextAlignment="Center" Margin="16"
                                            HorizontalAlignment="Center" VerticalAlignment="Center" MaxLines="4"
                                            TextTrimming="CharacterEllipsis" />
                                 <Border IsVisible="{Binding HasCover}">
@@ -601,31 +691,31 @@
                             platform's monogram nor your folder's star. Same footprint as a pinned game.
                           -->
                           <Panel IsVisible="{Binding IsSettings}" Margin="-3,17,-3,0">
-                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
-                            <Border Classes="settings-face" CornerRadius="40">
-                              <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="80" Height="80" Foreground="White" />
+                            <vh:HandheldShadow Radius="{x:Static vm:HandheldTokens.ClassicHomeTileShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicHomeTileShadowBlur}" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border Classes="settings-face" CornerRadius="{x:Static vm:HandheldTokens.TileRadius}">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="80" Height="80" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                             </Border>
                           </Panel>
                           <!-- Activity (M46 P4): the play log, an app beside Settings with the same footprint. -->
                           <Panel IsVisible="{Binding IsActivity}" Margin="-3,17,-3,0">
-                            <vh:HandheldShadow Radius="40" Blur="16" Margin="-16,-10,-16,-22" Filled="True" />
-                            <Border Classes="activity-face" CornerRadius="40">
-                              <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="80" Height="80" Foreground="White" />
+                            <vh:HandheldShadow Radius="{x:Static vm:HandheldTokens.ClassicHomeTileShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicHomeTileShadowBlur}" Margin="-16,-10,-16,-22" Filled="True" />
+                            <Border Classes="activity-face" CornerRadius="{x:Static vm:HandheldTokens.TileRadius}">
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="80" Height="80" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                             </Border>
                           </Panel>
                           <!-- An empty slot: home is a place with slots, so it is drawn faintly, not left out; in move mode it lights up. -->
                           <Border IsVisible="{Binding IsEmpty}" Classes="empty-slot" Classes.landing="{Binding IsLandingPlace}"
-                                  CornerRadius="44" BorderBrush="#29465088" BorderThickness="2" Background="#40FFFFFF" />
+                                  CornerRadius="{x:Static vm:HandheldTokens.SlotRadius}" BorderBrush="{x:Static vm:HandheldTokens.ClassicEmptySlotEdge}" BorderThickness="2" Background="{x:Static vm:HandheldTokens.ClassicEmptySlotFill}" />
                           <!--
                             No games yet (M45 H6d): the first empty slot says where games come from. A on any empty slot adds
                             games then, since there is nothing to put in a folder.
                           -->
-                          <Border IsVisible="{Binding IsAddGames}" CornerRadius="44" BorderBrush="#995B58D9"
-                                  BorderThickness="3" Background="#D9FFFFFF">
+                          <Border IsVisible="{Binding IsAddGames}" CornerRadius="{x:Static vm:HandheldTokens.SlotRadius}" BorderBrush="{x:Static vm:HandheldTokens.ClassicAddGamesEdge}"
+                                  BorderThickness="3" Background="{x:Static vm:HandheldTokens.ClassicAddGamesFill}">
                             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                              <PathIcon Data="{x:Static vm:HandheldIcons.Add}" Width="64" Height="64" Foreground="#5B58D9"
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Add}" Width="64" Height="64" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}"
                                         HorizontalAlignment="Center" />
-                              <TextBlock Text="Add games" FontSize="22" FontWeight="SemiBold" Foreground="#5B58D9"
+                              <TextBlock Text="Add games" FontSize="{x:Static vm:HandheldTokens.AddGames}" FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}"
                                          HorizontalAlignment="Center" />
                             </StackPanel>
                           </Border>
@@ -633,17 +723,68 @@
                           <Border IsVisible="{Binding IsNew}" Classes="ribbon" HorizontalAlignment="Right" VerticalAlignment="Top">
                             <TextBlock Text="New" />
                           </Border>
+                          </Panel>
+                          <!--
+                            Big Type (M47 B3): matte squarer tiles. A folder or an app is a flat tile with its monogram fitted to it
+                            (76% of its width, at most 56% of its side) or its glyph; focused, it is white with its colour as the ink.
+                            A game is its cover cropped square. Nothing has a shadow, a gloss or a gradient.
+                          -->
+                          <Panel Classes="bt-face" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+                            <Border IsVisible="{Binding IsFlatTile}" CornerRadius="{x:Static vm:HandheldTokens.TileRadius}" Background="{Binding FaceBrush}">
+                              <Panel>
+                                <Viewbox IsVisible="{Binding HasFaceMonogram}" Width="{x:Static vm:HandheldTokens.MonogramHomeWidth}" Stretch="Uniform" StretchDirection="DownOnly"
+                                         HorizontalAlignment="Center" VerticalAlignment="Center">
+                                  <TextBlock Text="{Binding Monogram}" FontSize="{x:Static vm:HandheldTokens.MonogramHome}" FontWeight="{x:Static vm:HandheldTokens.MonogramWeight}"
+                                             LetterSpacing="{x:Static vm:HandheldTokens.MonogramHomeSpacing}" Foreground="{Binding InkBrush}" />
+                                </Viewbox>
+                                <PathIcon IsVisible="{Binding HasFaceGlyph}" Data="{Binding FaceGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                                          Width="{x:Static vm:HandheldTokens.GlyphHome}" Height="{x:Static vm:HandheldTokens.GlyphHome}" Foreground="{Binding InkBrush}" />
+                              </Panel>
+                            </Border>
+                            <Border IsVisible="{Binding IsGame}" CornerRadius="{x:Static vm:HandheldTokens.TileRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.TileRest}"
+                                    Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
+                              <Panel>
+                                <TextBlock Classes="bt-tile-title" Text="{Binding Name}" IsVisible="{Binding !HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleBigHome}"
+                                           LineHeight="{x:Static vm:HandheldTokens.TileTitleBigHomeLine}" Margin="{x:Static vm:HandheldTokens.TileTitleBigHomeMargin}" />
+                                <Border IsVisible="{Binding HasCover}">
+                                  <Border.Background>
+                                    <ImageBrush Source="{Binding Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                                  </Border.Background>
+                                </Border>
+                              </Panel>
+                            </Border>
+                            <!-- An empty slot is a place: a faint dot; focused, a plus. -->
+                            <Panel IsVisible="{Binding IsPlainEmpty}">
+                              <Border IsVisible="{Binding !IsFocused}" Width="{x:Static vm:HandheldTokens.EmptySlotDot}" Height="{x:Static vm:HandheldTokens.EmptySlotDot}"
+                                      CornerRadius="{x:Static vm:HandheldTokens.EmptySlotDotRadius}" Background="{x:Static vm:HandheldTokens.OnColour}"
+                                      Opacity="{x:Static vm:HandheldTokens.EmptySlotDotOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              <Panel IsVisible="{Binding IsFocused}" Opacity="{x:Static vm:HandheldTokens.EmptySlotPlusOpacity}">
+                                <Border Width="{x:Static vm:HandheldTokens.EmptySlotPlus}" Height="{x:Static vm:HandheldTokens.EmptySlotDot}" CornerRadius="{x:Static vm:HandheldTokens.EmptySlotDotRadius}"
+                                        Background="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                <Border Width="{x:Static vm:HandheldTokens.EmptySlotDot}" Height="{x:Static vm:HandheldTokens.EmptySlotPlus}" CornerRadius="{x:Static vm:HandheldTokens.EmptySlotDotRadius}"
+                                        Background="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Panel>
+                            </Panel>
+                            <!-- A missing file: the tile fades and carries a white mark with "!"; a new folder's mark holds a dot. -->
+                            <Border Classes="corner-mark" IsVisible="{Binding IsUnavailable}">
+                              <TextBlock Text="!" Foreground="{Binding GroundBrush}" />
+                            </Border>
+                            <Border Classes="corner-mark" IsVisible="{Binding IsNew}">
+                              <Ellipse Width="{x:Static vm:HandheldTokens.CornerMarkDot}" Height="{x:Static vm:HandheldTokens.CornerMarkDot}" Fill="{Binding GroundBrush}"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                          </Panel>
                           <!-- Move mode: the game or folder the carried game would merge with. -->
                           <!-- Move mode: a game held over another game or one of your folders, about to merge with it. -->
                           <Panel IsVisible="{Binding IsDropTarget}">
-                            <Border CornerRadius="44" Margin="-3,17,-3,0" Background="#335B58D9" />
+                            <Border CornerRadius="{x:Static vm:HandheldTokens.SlotRadius}" Margin="-3,17,-3,0" Background="{x:Static vm:HandheldTokens.ClassicDropFill}" />
                             <Panel Width="116" Height="116" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,-14,-18,0"
                                    RenderTransform="rotate(8deg)">
-                              <vh:HandheldShadow Radius="28" Blur="14" Margin="-14,-8,-14,-20" Color="#40000000" Filled="True" />
-                              <Border CornerRadius="28" ClipToBounds="True" Background="#D5D9E4" BorderBrush="White" BorderThickness="4">
+                              <vh:HandheldShadow Radius="{x:Static vm:HandheldTokens.ClassicCarriedShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicCarriedShadowBlur}" Margin="-14,-8,-14,-20" Color="{x:Static vm:HandheldTokens.ClassicDropShadow}" Filled="True" />
+                              <Border CornerRadius="{x:Static vm:HandheldTokens.CarriedTileRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}" BorderBrush="{x:Static vm:HandheldTokens.ClassicEdge}" BorderThickness="4">
                                 <Panel>
-                                  <TextBlock Text="{Binding CarriedTitle}" IsVisible="{Binding !HasCarriedCover}" FontSize="16"
-                                             FontWeight="SemiBold" Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center"
+                                  <TextBlock Text="{Binding CarriedTitle}" IsVisible="{Binding !HasCarriedCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleCarried}"
+                                             FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextWrapping="Wrap" TextAlignment="Center"
                                              Margin="8" VerticalAlignment="Center" MaxLines="3" TextTrimming="CharacterEllipsis" />
                                   <Border IsVisible="{Binding HasCarriedCover}">
                                     <Border.Background>
@@ -653,12 +794,12 @@
                                 </Panel>
                               </Border>
                             </Panel>
-                            <Border Width="52" Height="52" CornerRadius="26" Background="#5B58D9" BorderBrush="White" BorderThickness="3"
+                            <Border Width="52" Height="52" CornerRadius="{x:Static vm:HandheldTokens.ClassicMergeBadgeRadius}" Background="{x:Static vm:HandheldTokens.ClassicAccent}" BorderBrush="{x:Static vm:HandheldTokens.ClassicEdge}" BorderThickness="3"
                                     HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10,0,0,10">
-                              <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="28" Height="28" Foreground="White" />
+                              <PathIcon Data="{x:Static vm:HandheldIcons.Plus}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                             </Border>
                           </Panel>
-                          <Border Classes="ring" CornerRadius="68" Margin="-24" />
+                          <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusTile}" Margin="{x:Static vm:HandheldTokens.RingOutsetTile}" />
                         </Panel>
                         </Border>
                       </DataTemplate>
@@ -670,10 +811,12 @@
           </ItemsControl>
         </Panel>
 
+        <!-- Today's look: the page's name, the edge hints and the dots (Big Type puts "1 / 2" in the dock row's corner). -->
+        <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
         <!-- The 16:9 screen's spare height above the 7×3 grid names the page (M45 H5). -->
         <TextBlock x:Name="PageLabel" Text="{Binding PageLabel}" IsVisible="{Binding IsWide}"
                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,40,0,0"
-                   FontSize="28" FontWeight="SemiBold" Foreground="#5B6176" FontFeatures="+tnum" />
+                   FontSize="{x:Static vm:HandheldTokens.PageLabel}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" FontFeatures="+tnum" />
 
         <!-- Edge hints: another page that way (a tap turns to it). -->
         <Border x:Name="EdgeLeft" Classes="edge" IsVisible="{Binding CanPageLeft}" HorizontalAlignment="Left" Margin="8,0,0,0">
@@ -682,23 +825,26 @@
         <Border x:Name="EdgeRight" Classes="edge" IsVisible="{Binding CanPageRight}" HorizontalAlignment="Right" Margin="0,0,8,0">
           <PathIcon Data="{x:Static vm:HandheldIcons.ChevronRight}" />
         </Border>
+        </Panel>
 
         <!-- Page dots, with the current-page pill riding the track's position. -->
-        <Panel Grid.Row="1" IsVisible="{Binding HasMultiplePages}" HorizontalAlignment="Center" VerticalAlignment="Center">
+        <Panel Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
+        <Panel IsVisible="{Binding HasMultiplePages}" HorizontalAlignment="Center" VerticalAlignment="Center">
           <ItemsControl x:Name="PageDots" ItemsSource="{Binding PageDots}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
-                <StackPanel Orientation="Horizontal" Spacing="12" />
+                <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.PageDotGap}" />
               </ItemsPanelTemplate>
             </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HandheldPageDotViewModel">
-                <Border Width="18" Height="16" CornerRadius="8" Background="#38465088" />
+                <Border Width="{x:Static vm:HandheldTokens.PageDotWidth}" Height="{x:Static vm:HandheldTokens.PageDotHeight}" CornerRadius="{x:Static vm:HandheldTokens.PageDotRadius}" Background="{x:Static vm:HandheldTokens.PageDot}" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Border x:Name="PageIndicator" Width="52" Height="16" CornerRadius="8" Background="#5B58D9"
+          <Border x:Name="PageIndicator" Width="{x:Static vm:HandheldTokens.PageIndicatorWidth}" Height="{x:Static vm:HandheldTokens.PageDotHeight}" CornerRadius="{x:Static vm:HandheldTokens.PageDotRadius}" Background="{x:Static vm:HandheldTokens.ClassicAccent}"
                   HorizontalAlignment="Left" />
+        </Panel>
         </Panel>
       </Grid>
 
@@ -710,30 +856,30 @@
       <!--
         One surface for the Zoom through: header and grid scale together from the pressed folder's place.
       -->
-      <Panel x:Name="FolderPage" IsVisible="{Binding IsFolderOpen}" ClipToBounds="True" Margin="32,0,0,0">
-      <Grid RowDefinitions="Auto,*" Margin="16,40,0,0">
+      <Panel x:Name="FolderPage" IsVisible="{Binding IsFolderOpen}" ClipToBounds="True" Margin="{x:Static vm:HandheldTokens.FolderPageMargin}">
+      <Grid RowDefinitions="Auto,*" Margin="{x:Static vm:HandheldTokens.FolderGridMargin}">
         <!-- Header: Back, the folder's name and count, the sort chip; aligned to the grid's left edge. -->
-        <Grid x:Name="FolderHeader" ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0">
+        <Grid x:Name="FolderHeader" ColumnDefinitions="Auto,*,Auto" Margin="0,0,48,0" IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
           <Border x:Name="BackShot" Classes="shot" Padding="24" Margin="-24">
           <Panel Classes="focusable" Classes.focused="{Binding OpenFolder.IsBackFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
             <Border Classes="chip">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.Glyph}" />
                 <TextBlock Classes="chip-text" Text="Back" />
               </StackPanel>
             </Border>
-            <Border Classes="ring" CornerRadius="44" Margin="-16">
-              <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
+            <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusChip}" Margin="-16">
+              <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusChip}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusChip}" /></Border>
             </Border>
           </Panel>
           </Border>
           <StackPanel x:Name="FolderTitle" Grid.Column="1" Orientation="Horizontal" Spacing="16" HorizontalAlignment="Center"
                       VerticalAlignment="Center">
-            <Border Width="20" Height="20" CornerRadius="10" Background="{Binding OpenFolder.AccentBrush}"
+            <Border Width="20" Height="20" CornerRadius="{x:Static vm:HandheldTokens.FolderDotRadius}" Background="{Binding OpenFolder.AccentBrush}"
                     VerticalAlignment="Center" />
-            <TextBlock Text="{Binding OpenFolder.Name}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+            <TextBlock Text="{Binding OpenFolder.Name}" FontSize="{x:Static vm:HandheldTokens.FolderHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="520" />
-            <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="24" Foreground="#5B6176"
+            <TextBlock Text="{Binding OpenFolder.CountText}" FontSize="{x:Static vm:HandheldTokens.HeadingCount}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                        VerticalAlignment="Center" FontFeatures="+tnum" />
           </StackPanel>
           <Border x:Name="SortShot" Grid.Column="2" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
@@ -741,8 +887,8 @@
             <Border Classes="chip">
               <TextBlock Classes="chip-text" Text="{Binding OpenFolder.SortLabel}" />
             </Border>
-            <Border Classes="ring" CornerRadius="44" Margin="-16">
-              <Border CornerRadius="40"><Border CornerRadius="28" /></Border>
+            <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusChip}" Margin="-16">
+              <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusChip}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusChip}" /></Border>
             </Border>
           </Panel>
           </Border>
@@ -754,33 +900,35 @@
           the right edge, plus the one just behind the left edge) is realized; the track spring slides it.
         -->
         <ItemsControl x:Name="FolderTiles" Grid.Row="1" ItemsSource="{Binding OpenFolder.VisibleTiles}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
-                      ClipToBounds="False" VerticalAlignment="Center" IsVisible="{Binding OpenFolder.HasGames}">
+                      ClipToBounds="False" VerticalAlignment="{x:Static vm:HandheldTokens.FolderTrackAlignment}" IsVisible="{Binding OpenFolder.HasGames}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <WrapPanel Orientation="Vertical" Height="768" ItemWidth="264" ItemHeight="256" ClipToBounds="False" />
+              <WrapPanel Orientation="Vertical" Height="{x:Static vm:HandheldTokens.FolderTrackHeight}" ItemWidth="{x:Static vm:HandheldTokens.FolderPitch}" ItemHeight="{x:Static vm:HandheldTokens.FolderRowPitch}" ClipToBounds="False" />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldGameTileViewModel">
               <Border Classes="shot" Padding="48" Margin="-48" HorizontalAlignment="Left" VerticalAlignment="Center">
-              <Panel Classes="focusable folder-tile" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="232" Height="232"
+              <Panel Classes="focusable folder-tile" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="{x:Static vm:HandheldTokens.TileFolder}" Height="{x:Static vm:HandheldTokens.TileFolder}"
                      HorizontalAlignment="Left" VerticalAlignment="Center">
-                <vh:HandheldShadow Radius="56" Blur="20" Margin="-20,-12,-20,-28" Filled="True" />
-                <vh:HandheldShadow Classes="lift" Radius="56" Blur="32" Margin="-32,-16,-32,-48" Color="#33000000" Filled="True" />
+                <!-- Today's look (M47 B3 keeps it whole behind the look switch). -->
+                <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
+                <vh:HandheldShadow Radius="{x:Static vm:HandheldTokens.ClassicFolderTileShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicFolderTileShadowBlur}" Margin="-20,-12,-20,-28" Filled="True" />
+                <vh:HandheldShadow Classes="lift" Radius="{x:Static vm:HandheldTokens.ClassicFolderTileShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicLiftShadowBlur}" Margin="-32,-16,-32,-48" Color="{x:Static vm:HandheldTokens.ClassicLiftShadow}" Filled="True" />
                 <!-- Settings, put in one of your folders: the same face as on home. -->
-                <Border Classes="settings-face" CornerRadius="56" IsVisible="{Binding IsSettings}">
-                  <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="104" Height="104" Foreground="White" />
+                <Border Classes="settings-face" CornerRadius="{x:Static vm:HandheldTokens.TileRadiusFolder}" IsVisible="{Binding IsSettings}">
+                  <PathIcon Data="{x:Static vm:HandheldIcons.Settings}" Width="104" Height="104" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                 </Border>
                 <!-- Activity, put in one of your folders (M46 P4): the same face as on home. -->
-                <Border Classes="activity-face" CornerRadius="56" IsVisible="{Binding IsActivity}">
-                  <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="104" Height="104" Foreground="White" />
+                <Border Classes="activity-face" CornerRadius="{x:Static vm:HandheldTokens.TileRadiusFolder}" IsVisible="{Binding IsActivity}">
+                  <PathIcon Data="{x:Static vm:HandheldIcons.Activity}" Width="104" Height="104" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
                 </Border>
                 <!-- Covers crop from the top, where a box's title and art usually are. -->
-                <Border CornerRadius="56" ClipToBounds="True" Background="#D5D9E4" IsVisible="{Binding IsGame}"
+                <Border CornerRadius="{x:Static vm:HandheldTokens.TileRadiusFolder}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}" IsVisible="{Binding IsGame}"
                         Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
                   <Panel>
-                    <TextBlock Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="24" FontWeight="SemiBold"
-                               Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center" Margin="24"
+                    <TextBlock Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleFolder}" FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}"
+                               Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextWrapping="Wrap" TextAlignment="Center" Margin="24"
                                HorizontalAlignment="Center" VerticalAlignment="Center" MaxLines="4"
                                TextTrimming="CharacterEllipsis" />
                     <Border IsVisible="{Binding HasCover}">
@@ -790,8 +938,31 @@
                     </Border>
                   </Panel>
                 </Border>
-                <Border Classes="ring" CornerRadius="80" Margin="-24">
-                  <Border CornerRadius="76"><Border CornerRadius="64" /></Border>
+                </Panel>
+                <!-- Big Type (M47 B3): the cover cropped square and nothing else; Settings and Activity as flat tiles with their glyph. -->
+                <Panel IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+                  <Border IsVisible="{Binding IsApp}" CornerRadius="{x:Static vm:HandheldTokens.TileRadiusFolder}" Background="{Binding FaceBrush}">
+                    <PathIcon Data="{Binding AppGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
+                              Width="{x:Static vm:HandheldTokens.GlyphFolder}" Height="{x:Static vm:HandheldTokens.GlyphFolder}" Foreground="{Binding InkBrush}" />
+                  </Border>
+                  <Border IsVisible="{Binding IsGame}" CornerRadius="{x:Static vm:HandheldTokens.TileRadiusFolder}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.TileRest}"
+                          Opacity="{Binding IsUnavailable, Converter={x:Static vm:HandheldViewConverters.UnavailableOpacity}}">
+                    <Panel>
+                      <TextBlock Classes="bt-tile-title" Text="{Binding Title}" IsVisible="{Binding !HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleBigFolder}"
+                                 LineHeight="{x:Static vm:HandheldTokens.TileTitleBigFolderLine}" Margin="{x:Static vm:HandheldTokens.TileTitleBigFolderMargin}" />
+                      <Border IsVisible="{Binding HasCover}">
+                        <Border.Background>
+                          <ImageBrush Source="{Binding Cover}" Stretch="UniformToFill" AlignmentY="Top" />
+                        </Border.Background>
+                      </Border>
+                    </Panel>
+                  </Border>
+                  <Border Classes="corner-mark" IsVisible="{Binding IsUnavailable}">
+                    <TextBlock Text="!" Foreground="{Binding GroundBrush}" />
+                  </Border>
+                </Panel>
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusTileFolder}" Margin="{x:Static vm:HandheldTokens.RingOutsetTile}">
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusTileFolder}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusTileFolder}" /></Border>
                 </Border>
               </Panel>
               </Border>
@@ -802,50 +973,93 @@
         <!-- Empty folder: say so rather than show nothing. -->
         <StackPanel x:Name="FolderEmpty" Grid.Row="1" IsVisible="{Binding OpenFolder.IsEmpty}" HorizontalAlignment="Center"
                     VerticalAlignment="Center" Spacing="8" Margin="0,0,48,0">
-          <TextBlock Text="This folder is empty" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+          <TextBlock Text="This folder is empty" FontSize="{x:Static vm:HandheldTokens.FolderEmptyHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.FolderEmptyInk}"
                      HorizontalAlignment="Center" />
-          <TextBlock Text="{Binding OpenFolder.EmptyHint}" FontSize="24" Foreground="#5B6176"
+          <TextBlock Text="{Binding OpenFolder.EmptyHint}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.FolderEmptyHintInk}"
                      HorizontalAlignment="Center" />
         </StackPanel>
+      </Grid>
+      <!--
+        Big Type (M47 B3): the header is plain type on the colour, the folder's name at the left and its count at the right, with
+        no Back or sort chip. Up from the top row still reaches Back and the sort (B7 moves the sort into the Y menu): the ring
+        then frames the name, or the sort's value in the dock row's corner.
+      -->
+      <Grid x:Name="BtFolderHeader" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" ColumnDefinitions="*,Auto" VerticalAlignment="Top"
+            Margin="{x:Static vm:HandheldTokens.HeaderMargin}" Height="{x:Static vm:HandheldTokens.HeaderHeight}">
+        <Border x:Name="BtBackShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="{x:Static vm:HandheldTokens.HeaderNameShotMargin}" HorizontalAlignment="Left" VerticalAlignment="Bottom">
+          <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsBackFocused}">
+            <!-- M47 B8: the name's letters land as the folder opens (the mock's lettersIn(fname, .9)); set smaller to fit as setHead does. -->
+            <vh:HandheldBigTypeHeading x:Name="BtFolderName" Text="{Binding OpenFolder.Name, FallbackValue={x:Null}}" Size="{x:Static vm:HandheldTokens.FolderHeading}"
+                                       MaxTextWidth="{x:Static vm:HandheldTokens.HeaderNameMaxWidth}" FitsRoom="True" FixedSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}"
+                                       FromEm="{x:Static vm:HandheldTokens.HeadingInFromEm}" Foreground="{x:Static vm:HandheldTokens.OnColour}" HorizontalAlignment="Left" />
+            <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
+          </Panel>
+        </Border>
+        <vh:HandheldRollingText x:Name="BtFolderCount" RenderOptions.TextRenderingMode="Antialias" Grid.Column="1" Text="{Binding OpenFolder.CountNumber}" VerticalAlignment="Bottom" Margin="{x:Static vm:HandheldTokens.HeaderCountMargin}"
+                   FontSize="{x:Static vm:HandheldTokens.HeadingCount}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnColour}"
+                   Opacity="{x:Static vm:HandheldTokens.HeadingCountOpacity}" LineHeight="{x:Static vm:HandheldTokens.HeaderLineHeight}" FontFeatures="+tnum"
+                   LetterSpacing="{x:Static vm:HandheldTokens.HeadingSpacing}" />
       </Grid>
       </Panel>
 
       <!-- ===== Dock: All apps, the five pinned apps, the menu button ===== -->
-      <vh:HandheldShadow x:Name="DockShadow" Grid.Row="1" Margin="28,0,28,6" Height="152" Radius="40" Blur="20" Color="#14000000"
+      <vh:HandheldShadow x:Name="DockShadow" Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsClassic}" Margin="28,0,28,6" Height="152" Radius="{x:Static vm:HandheldTokens.ClassicDockShadowRadius}" Blur="{x:Static vm:HandheldTokens.ClassicDockShadowBlur}" Color="{x:Static vm:HandheldTokens.ClassicDockShadow}"
                          VerticalAlignment="Bottom" />
-      <Border x:Name="DockPill" Grid.Row="1" Margin="48,0,48,32" Height="112" CornerRadius="40" Background="#C7FFFFFF"
-              BorderBrush="#141C2033" BorderThickness="1" ClipToBounds="False"
+      <Border x:Name="DockPill" Grid.Row="1" Margin="48,0,48,32" Height="{x:Static vm:HandheldTokens.DockBarHeight}" CornerRadius="{x:Static vm:HandheldTokens.ClassicDockPillRadius}" Background="{x:Static vm:HandheldTokens.DockBarFill}"
+              BorderBrush="{x:Static vm:HandheldTokens.DockBarEdge}" BorderThickness="1" ClipToBounds="False"
               VerticalAlignment="Bottom">
         <ItemsControl x:Name="DockItems" ItemsSource="{Binding DockItems}" ItemContainerTheme="{StaticResource HandheldTileContainer}"
                       ClipToBounds="False" HorizontalAlignment="Center" VerticalAlignment="Center">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
-              <StackPanel Orientation="Horizontal" Spacing="32" ClipToBounds="False" />
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockGap}" ClipToBounds="False" />
             </ItemsPanelTemplate>
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldDockItemViewModel">
               <Border Classes="shot" Padding="16" Margin="-16">
-              <Panel Classes="focusable" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="80" Height="80">
+              <Panel Classes="focusable dock-tile" Classes.focused="{Binding IsFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding IsFocused}" Width="{x:Static vm:HandheldTokens.DockTile}" Height="{x:Static vm:HandheldTokens.DockTile}">
+                <!-- Today's look (M47 B3 keeps it whole behind the look switch). -->
+                <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
                 <!-- System buttons are quiet: a raised surface and a muted glyph, never a dark block. -->
-                <Border CornerRadius="24" Background="#FFFFFF" BorderBrush="#141C2033" BorderThickness="1"
+                <Border CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" Background="{x:Static vm:HandheldTokens.ClassicSurface}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1"
                         IsVisible="{Binding !IsApp}">
                   <Panel>
-                    <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="36" Height="36" Foreground="#4B5274"
+                    <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="36" Height="36" Foreground="{x:Static vm:HandheldTokens.Glyph}"
                               IsVisible="{Binding IsAllApps}" />
-                    <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="36" Height="36" Foreground="#4B5274"
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="36" Height="36" Foreground="{x:Static vm:HandheldTokens.Glyph}"
                               IsVisible="{Binding IsMenu}" />
                   </Panel>
                 </Border>
                 <Panel IsVisible="{Binding IsApp}">
-                  <Border CornerRadius="24" BorderBrush="#29465088" BorderThickness="2" Background="#40FFFFFF"
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" BorderBrush="{x:Static vm:HandheldTokens.ClassicEmptySlotEdge}" BorderThickness="2" Background="{x:Static vm:HandheldTokens.ClassicEmptySlotFill}"
                           IsVisible="{Binding Slot.IsEmpty}" />
-                  <Border CornerRadius="24" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon}">
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon}">
                     <Image Source="{Binding Slot.Icon}" Stretch="Uniform" />
                   </Border>
                 </Panel>
-                <Border Classes="ring" CornerRadius="40" Margin="-16">
-                  <Border CornerRadius="36"><Border CornerRadius="24" /></Border>
+                </Panel>
+                <!-- Big Type (M47 B3): each app is its own icon; All apps and the menu are flat buttons with white glyphs. -->
+                <Panel IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+                  <Border IsVisible="{Binding !IsApp}" CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" Background="{Binding FaceBrush}">
+                    <Panel>
+                      <PathIcon Data="{x:Static vm:HandheldIcons.AllApps}" Width="{x:Static vm:HandheldTokens.GlyphDock}" Height="{x:Static vm:HandheldTokens.GlyphDock}"
+                                Foreground="{Binding InkBrush}" IsVisible="{Binding IsAllApps}" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="{x:Static vm:HandheldTokens.GlyphDock}" Height="{x:Static vm:HandheldTokens.GlyphDock}"
+                                Foreground="{Binding InkBrush}" IsVisible="{Binding IsMenu}" />
+                    </Panel>
+                  </Border>
+                  <Panel IsVisible="{Binding IsApp}">
+                    <Border IsVisible="{Binding Slot.IsEmpty}" Width="{x:Static vm:HandheldTokens.EmptySlotDot}" Height="{x:Static vm:HandheldTokens.EmptySlotDot}"
+                            CornerRadius="{x:Static vm:HandheldTokens.EmptySlotDotRadius}" Background="{x:Static vm:HandheldTokens.OnColour}"
+                            Opacity="{x:Static vm:HandheldTokens.EmptySlotDotOpacity}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border CornerRadius="{x:Static vm:HandheldTokens.DockRadius}" ClipToBounds="True" IsVisible="{Binding Slot.HasIcon}">
+                      <Image Source="{Binding Slot.Icon}" Stretch="Uniform" />
+                    </Border>
+                  </Panel>
+                </Panel>
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusDock}" Margin="{x:Static vm:HandheldTokens.RingOutsetDock}">
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusDock}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusDock}" /></Border>
                 </Border>
               </Panel>
               </Border>
@@ -853,6 +1067,53 @@
           </ItemsControl.ItemTemplate>
         </ItemsControl>
       </Border>
+
+      <!--
+        Big Type (M47 B3): the dock row's two corners, plain type on the colour, centred on the dock's buttons. At the left the
+        swap hint; at the right the page ("1 / 2") on home, or an open folder's sort, which the ring frames when Up from the
+        top row reaches it (the sort chip's place in today's look).
+      -->
+      <!--
+        Each piece pictured for the native Launcher sets grey-scale antialiasing on itself (a piece pictured alone does not inherit its
+        parent's): on Android the default draws pictured text with a black box behind each glyph (M47 B6, as B4 found on the Stage).
+      -->
+      <Panel x:Name="BtCorners" Grid.Row="1" IsVisible="{x:Static vm:HandheldTokens.IsBigType}" Margin="{x:Static vm:HandheldTokens.DockCornerMargin}"
+             Height="{x:Static vm:HandheldTokens.DockTile}" VerticalAlignment="Bottom">
+        <!-- Only while X really swaps the screens (M47 B9): a sheet, a list, a keyboard, a held tile or a launch takes X for something else. -->
+        <StackPanel x:Name="BtSwap" IsVisible="{Binding $parent[UserControl].((vm:HandheldShellViewModel)DataContext).XSwaps, FallbackValue=True}" RenderOptions.TextRenderingMode="Antialias" Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.DockCornerGap}" HorizontalAlignment="Left" VerticalAlignment="Center"
+                    Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}">
+          <Border Width="{x:Static vm:HandheldTokens.DockCornerGlyph}" Height="{x:Static vm:HandheldTokens.DockCornerGlyph}" CornerRadius="{x:Static vm:HandheldTokens.DockCornerGlyphRadius}"
+                  BorderBrush="{x:Static vm:HandheldTokens.OnColour}" BorderThickness="{x:Static vm:HandheldTokens.DockCornerGlyphStroke}" VerticalAlignment="Center">
+            <TextBlock Text="X" FontSize="{x:Static vm:HandheldTokens.DockCornerGlyphLetter}" FontWeight="ExtraBold" Foreground="{x:Static vm:HandheldTokens.OnColour}"
+                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+          </Border>
+          <TextBlock Classes="dock-corner" Text="Swap" />
+        </StackPanel>
+        <!-- The page, or (M47 B7, the mock's) Settings' version while Settings is open: it rolls from one to the other. -->
+        <vh:HandheldRollingText x:Name="BtPage" RenderOptions.TextRenderingMode="Antialias" Classes="dock-corner" x:DataType="vm:HandheldHomeScreenViewModel"
+                   HorizontalAlignment="Right" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" >
+          <vh:HandheldRollingText.Text>
+            <MultiBinding Converter="{x:Static vm:HandheldViewConverters.FirstText}">
+              <Binding Path="$parent[UserControl].((vm:HandheldShellViewModel)DataContext).Settings.Version" FallbackValue="" />
+              <Binding Path="PageCountText" />
+            </MultiBinding>
+          </vh:HandheldRollingText.Text>
+          <vh:HandheldRollingText.IsVisible>
+            <MultiBinding Converter="{x:Static BoolConverters.Or}">
+              <Binding Path="IsPageCountShown" />
+              <Binding Path="$parent[UserControl].((vm:HandheldShellViewModel)DataContext).IsSettingsOpen" FallbackValue="False" />
+            </MultiBinding>
+          </vh:HandheldRollingText.IsVisible>
+        </vh:HandheldRollingText>
+        <Panel x:Name="BtSortCorner" IsVisible="{Binding IsFolderOpen}" HorizontalAlignment="Right" VerticalAlignment="Center">
+          <Border x:Name="BtSortShot" RenderOptions.TextRenderingMode="Antialias" Classes="shot" Padding="24" Margin="-24" IsVisible="{Binding OpenFolder.CanSort}">
+            <Panel vh:HandheldSelectorAnchor.IsFocused="{Binding OpenFolder.IsSortFocused}">
+              <TextBlock Classes="dock-corner" Text="{Binding OpenFolder.SortLabel}" Opacity="{x:Static vm:HandheldTokens.DockCornerOpacity}" />
+              <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusRow}" Margin="-16" />
+            </Panel>
+          </Border>
+        </Panel>
+      </Panel>
 
       <!-- A picture of a closing folder's page, shrinking back into its folder. -->
       <Canvas x:Name="GhostLayer" Grid.RowSpan="2" IsHitTestVisible="False" />
@@ -864,19 +1125,19 @@
     Covers the grid and the dock, as the mockup's page does; the facts on the left of a row of big buttons,
     and the disc chooser, the screen chooser, the actions sheet and the launching panel as its states.
   -->
-  <Panel x:Name="TitleLayer" IsVisible="{Binding IsTitleOpen}">
+  <Panel x:Name="TitleLayer" IsVisible="{Binding ShowsTitlePage}">
     <Panel.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-        <GradientStop Offset="0" Color="#FAFBFD" />
-        <GradientStop Offset="1" Color="#E4E8EF" />
+        <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />
+        <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicGroundBottom}" />
       </LinearGradientBrush>
     </Panel.Background>
     <!-- The platform's colour as a soft wash from the top. -->
     <Border Background="{Binding TitlePage.AccentBrush}" Opacity="0.14">
       <Border.OpacityMask>
         <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-          <GradientStop Offset="0" Color="#FF000000" />
-          <GradientStop Offset="0.7" Color="#00000000" />
+          <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicWashOpaque}" />
+          <GradientStop Offset="0.7" Color="{x:Static vm:HandheldTokens.ClassicWashClear}" />
         </LinearGradientBrush>
       </Border.OpacityMask>
     </Border>
@@ -888,21 +1149,21 @@
           <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
             <Border Classes="chip">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.Glyph}" />
                 <TextBlock Classes="chip-text" Text="Back" />
               </StackPanel>
             </Border>
-            <TextBlock Text="{Binding TitlePage.CrumbLine}" FontSize="26" FontWeight="SemiBold" Foreground="#5B6176"
+            <TextBlock Text="{Binding TitlePage.CrumbLine}" FontSize="{x:Static vm:HandheldTokens.Crumb}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                        VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="860" />
           </StackPanel>
 
           <!-- Body: the cover, then the facts. -->
           <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,24">
-            <Border Width="392" Height="552" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
-                    BoxShadow="0 16 40 0 #2E000000" VerticalAlignment="Center">
+            <Border Width="392" Height="552" CornerRadius="{x:Static vm:HandheldTokens.TitleCoverRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}"
+                    BoxShadow="{x:Static vm:HandheldTokens.ClassicCoverShadow}" VerticalAlignment="Center">
               <Panel>
-                <TextBlock Text="{Binding TitlePage.Title}" IsVisible="{Binding !TitlePage.HasCover}" FontSize="32"
-                           FontWeight="SemiBold" Foreground="#5B6176" TextWrapping="Wrap" TextAlignment="Center"
+                <TextBlock Text="{Binding TitlePage.Title}" IsVisible="{Binding !TitlePage.HasCover}" FontSize="{x:Static vm:HandheldTokens.TileTitleCover}"
+                           FontWeight="{x:Static vm:HandheldTokens.TileTitleWeight}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextWrapping="Wrap" TextAlignment="Center"
                            Margin="32" HorizontalAlignment="Center" VerticalAlignment="Center" />
                 <Border IsVisible="{Binding TitlePage.HasCover}">
                   <Border.Background>
@@ -912,9 +1173,9 @@
               </Panel>
             </Border>
             <StackPanel Grid.Column="1" Margin="48,0,0,0" VerticalAlignment="Center" Spacing="8">
-              <TextBlock Text="{Binding TitlePage.Title}" FontSize="48" FontWeight="SemiBold" Foreground="#1C2033"
+              <TextBlock Text="{Binding TitlePage.Title}" FontSize="{x:Static vm:HandheldTokens.TitleName}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                          TextWrapping="Wrap" MaxLines="3" TextTrimming="CharacterEllipsis" />
-              <TextBlock Text="{Binding TitlePage.PlatformLine}" FontSize="28" Foreground="#5B6176"
+              <TextBlock Text="{Binding TitlePage.PlatformLine}" FontSize="{x:Static vm:HandheldTokens.TitlePlatform}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                          TextTrimming="CharacterEllipsis" />
               <!-- The play facts (first played and per session from the play log, M46 P4), then how it runs. -->
               <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" Margin="0,32,0,0">
@@ -935,12 +1196,12 @@
                            IsVisible="{Binding TitlePage.HasDiscs}" />
               </Grid>
               <StackPanel Orientation="Horizontal" Spacing="16" Margin="0,16,0,0" IsVisible="{Binding TitlePage.HasAchievements}">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="#C98A12" />
-                <TextBlock Text="{Binding TitlePage.AchievementLine}" FontSize="26" FontWeight="SemiBold"
-                           Foreground="#1C2033" VerticalAlignment="Center" FontFeatures="+tnum" />
-                <ProgressBar Width="160" Height="12" MinHeight="12" CornerRadius="6" VerticalAlignment="Center"
+                <PathIcon Data="{x:Static vm:HandheldIcons.Trophy}" Width="32" Height="32" Foreground="{x:Static vm:HandheldTokens.Trophy}" />
+                <TextBlock Text="{Binding TitlePage.AchievementLine}" FontSize="{x:Static vm:HandheldTokens.Facts}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}"
+                           Foreground="{x:Static vm:HandheldTokens.OnGround}" VerticalAlignment="Center" FontFeatures="+tnum" />
+                <ProgressBar Width="160" Height="{x:Static vm:HandheldTokens.ProgressHeight}" MinHeight="{x:Static vm:HandheldTokens.ProgressHeight}" CornerRadius="{x:Static vm:HandheldTokens.ProgressRadius}" VerticalAlignment="Center"
                              Minimum="0" Maximum="1" Value="{Binding TitlePage.AchievementRatio}"
-                             Background="#29465088" Foreground="#F2AE2E" />
+                             Background="{x:Static vm:HandheldTokens.ProgressTrack}" Foreground="{x:Static vm:HandheldTokens.TrophyBright}" />
               </StackPanel>
             </StackPanel>
           </Grid>
@@ -966,8 +1227,8 @@
                       <TextBlock Classes="note" Text="{Binding Note}" IsVisible="{Binding HasNote}" />
                     </StackPanel>
                   </Border>
-                  <Border Classes="ring" CornerRadius="64" Margin="-20">
-                    <Border CornerRadius="60"><Border CornerRadius="48" /></Border>
+                  <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusButton}" Margin="-20">
+                    <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusButton}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusButton}" /></Border>
                   </Border>
                 </Panel>
                 </Border>
@@ -979,29 +1240,29 @@
           <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="32" HorizontalAlignment="Right" VerticalAlignment="Center">
             <StackPanel Orientation="Horizontal" Spacing="12">
               <Border Classes="hint-glyph">
-                <TextBlock Text="Y" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                <TextBlock Text="Y" FontSize="{x:Static vm:HandheldTokens.HintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.HintGlyphWeight}" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
-              <TextBlock Classes="chip-text" Text="More actions" Foreground="#5B6176" />
+              <TextBlock Classes="chip-text" Text="More actions" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" Spacing="12">
               <Border Classes="hint-glyph">
-                <TextBlock Text="B" FontSize="20" FontWeight="SemiBold" Foreground="White"
+                <TextBlock Text="B" FontSize="{x:Static vm:HandheldTokens.HintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.HintGlyphWeight}" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}"
                            HorizontalAlignment="Center" VerticalAlignment="Center" />
               </Border>
-              <TextBlock Classes="chip-text" Text="Back" Foreground="#5B6176" />
+              <TextBlock Classes="chip-text" Text="Back" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" />
             </StackPanel>
           </StackPanel>
         </Grid>
 
         <!-- State: the disc chooser or the actions sheet, a card over a scrim. -->
-        <Border x:Name="OptionSheet" IsVisible="{Binding TitlePage.IsOptionList}" Background="#521C2033" Margin="-400">
-          <Border x:Name="OptionCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="40"
-                  Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+        <Border x:Name="OptionSheet" IsVisible="{Binding TitlePage.IsOptionList}" Background="{x:Static vm:HandheldTokens.Scrim}" Margin="-400">
+          <Border x:Name="OptionCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="720" CornerRadius="{x:Static vm:HandheldTokens.ClassicSheetRadius}"
+                  Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,16,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}">
             <StackPanel Spacing="8">
               <StackPanel Margin="24,8,24,8" Spacing="4">
-                <TextBlock Text="{Binding TitlePage.OptionsHeading}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" />
-                <TextBlock Text="{Binding TitlePage.Title}" FontSize="24" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding TitlePage.OptionsHeading}" FontSize="{x:Static vm:HandheldTokens.TitleOptionsTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" />
+                <TextBlock Text="{Binding TitlePage.Title}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <ItemsControl ItemsSource="{Binding TitlePage.Options}">
                 <ItemsControl.ItemsPanel>
@@ -1011,13 +1272,13 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                   <DataTemplate x:DataType="vm:HandheldTitleOptionViewModel">
-                    <Border CornerRadius="16" Height="80" Padding="24,0"
+                    <Border CornerRadius="{x:Static vm:HandheldTokens.MenuRowRadius}" Height="80" Padding="24,0"
                             Background="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
                       <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                        <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.MenuRow}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" VerticalAlignment="Center"
                                    TextTrimming="CharacterEllipsis"
                                    Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
-                        <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="24"
+                        <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="{x:Static vm:HandheldTokens.MenuRowNote}"
                                    VerticalAlignment="Center" Margin="24,0,0,0" FontFeatures="+tnum"
                                    Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowNote}}" />
                       </Grid>
@@ -1030,26 +1291,26 @@
         </Border>
 
         <!-- State: the launch-screen chooser — two screen cards and "Always use this screen". -->
-        <Border x:Name="ScreenSheet" IsVisible="{Binding TitlePage.IsScreenChooser}" Background="#521C2033" Margin="-400">
-          <Border x:Name="ScreenCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="48"
-                  Background="#F5F6F9" Padding="48,40" BoxShadow="0 20 48 0 #33000000" ClipToBounds="False">
+        <Border x:Name="ScreenSheet" IsVisible="{Binding TitlePage.IsScreenChooser}" Background="{x:Static vm:HandheldTokens.Scrim}" Margin="-400">
+          <Border x:Name="ScreenCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="1000" CornerRadius="{x:Static vm:HandheldTokens.ClassicChooserRadius}"
+                  Background="{x:Static vm:HandheldTokens.ClassicSheetSurface}" Padding="48,40" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}" ClipToBounds="False">
             <StackPanel Spacing="32" ClipToBounds="False">
               <StackPanel Spacing="4">
-                <TextBlock Text="Which screen?" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033" />
-                <TextBlock Text="{Binding TitlePage.Title}" FontSize="26" Foreground="#5B6176" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="Which screen?" FontSize="{x:Static vm:HandheldTokens.ChooserTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" />
+                <TextBlock Text="{Binding TitlePage.Title}" FontSize="{x:Static vm:HandheldTokens.ChooserSubtitle}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextTrimming="CharacterEllipsis" />
               </StackPanel>
               <StackPanel Orientation="Horizontal" Spacing="48" HorizontalAlignment="Center" ClipToBounds="False">
                 <Border x:Name="ScreenTopShot" Classes="shot" Padding="40" Margin="-40" ZIndex="{Binding TitlePage.IsTopScreenFocused, Converter={x:Static vm:HandheldViewConverters.FocusZIndex}}">
                 <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsTopScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsTopScreenFocused}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
-                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenTop}" Width="96" Height="96" Foreground="#5B58D9" />
-                      <TextBlock Text="Top screen" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" HorizontalAlignment="Center" />
-                      <TextBlock Text="The companion stays below" FontSize="24" Foreground="#5B6176" HorizontalAlignment="Center" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenTop}" Width="96" Height="96" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}" />
+                      <TextBlock Text="Top screen" FontSize="{x:Static vm:HandheldTokens.ScreenCardTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" HorizontalAlignment="Center" />
+                      <TextBlock Text="The companion stays below" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" HorizontalAlignment="Center" />
                     </StackPanel>
                   </Border>
-                  <Border Classes="ring" CornerRadius="60" Margin="-20">
-                    <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
+                  <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusCard}" Margin="-20">
+                    <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusCard}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusCard}" /></Border>
                   </Border>
                 </Panel>
                 </Border>
@@ -1057,13 +1318,13 @@
                 <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsBottomScreenFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsBottomScreenFocused}">
                   <Border Classes="screen-card">
                     <StackPanel Spacing="16" VerticalAlignment="Center">
-                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenBottom}" Width="96" Height="96" Foreground="#5B58D9" />
-                      <TextBlock Text="Bottom screen" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" HorizontalAlignment="Center" />
-                      <TextBlock Text="The companion moves up" FontSize="24" Foreground="#5B6176" HorizontalAlignment="Center" />
+                      <PathIcon Data="{x:Static vm:HandheldIcons.ScreenBottom}" Width="96" Height="96" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}" />
+                      <TextBlock Text="Bottom screen" FontSize="{x:Static vm:HandheldTokens.ScreenCardTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" HorizontalAlignment="Center" />
+                      <TextBlock Text="The companion moves up" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" HorizontalAlignment="Center" />
                     </StackPanel>
                   </Border>
-                  <Border Classes="ring" CornerRadius="60" Margin="-20">
-                    <Border CornerRadius="56"><Border CornerRadius="44" /></Border>
+                  <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusCard}" Margin="-20">
+                    <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusCard}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusCard}" /></Border>
                   </Border>
                 </Panel>
                 </Border>
@@ -1071,18 +1332,18 @@
               <!-- The remember toggle: a row with a check box. -->
               <Border x:Name="RememberShot" Classes="shot" Padding="24" Margin="-24" HorizontalAlignment="Center">
               <Panel Classes="focusable" Classes.focused="{Binding TitlePage.IsRememberFocused}" vh:HandheldSelectorAnchor.IsFocused="{Binding TitlePage.IsRememberFocused}" HorizontalAlignment="Center">
-                <Border Classes="chip" Height="72" CornerRadius="36" Padding="24,0">
+                <Border Classes="chip" Height="72" CornerRadius="{x:Static vm:HandheldTokens.ClassicRememberRadius}" Padding="24,0">
                   <StackPanel Orientation="Horizontal" Spacing="16">
-                    <Border Width="40" Height="40" CornerRadius="12" BorderBrush="#5B58D9" BorderThickness="3" VerticalAlignment="Center"
+                    <Border Width="40" Height="40" CornerRadius="{x:Static vm:HandheldTokens.CheckboxRadius}" BorderBrush="{x:Static vm:HandheldTokens.ClassicAccent}" BorderThickness="3" VerticalAlignment="Center"
                             Background="{Binding TitlePage.RememberScreen, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
-                      <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="28" Height="28" Foreground="White"
+                      <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.OnAccent}"
                                 IsVisible="{Binding TitlePage.RememberScreen}" />
                     </Border>
                     <TextBlock Classes="chip-text" Text="{Binding TitlePage.RememberScreenLabel}" />
                   </StackPanel>
                 </Border>
-                <Border Classes="ring" CornerRadius="56" Margin="-20">
-                  <Border CornerRadius="52"><Border CornerRadius="40" /></Border>
+                <Border Classes="ring" CornerRadius="{x:Static vm:HandheldTokens.RingRadiusTitleChip}" Margin="-20">
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingBandRadiusRow}"><Border CornerRadius="{x:Static vm:HandheldTokens.ClassicRingInnerRadiusRow}" /></Border>
                 </Border>
               </Panel>
               </Border>
@@ -1093,8 +1354,8 @@
         <!-- State: launching — the pre-launch save sync (the blocking sync panel), then the emulator start. -->
         <StackPanel x:Name="LaunchPanel" IsVisible="{Binding TitlePage.IsLaunching}" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="32">
           <Border x:Name="LaunchCoverShot" Classes="shot" Padding="64" Margin="-64" HorizontalAlignment="Center">
-          <Border x:Name="LaunchCover" Width="280" Height="392" CornerRadius="32" ClipToBounds="True" Background="#D5D9E4"
-                  BoxShadow="0 16 40 0 #2E000000" HorizontalAlignment="Center">
+          <Border x:Name="LaunchCover" Width="280" Height="392" CornerRadius="{x:Static vm:HandheldTokens.TitleCoverRadius}" ClipToBounds="True" Background="{x:Static vm:HandheldTokens.CoverPlaceholder}"
+                  BoxShadow="{x:Static vm:HandheldTokens.ClassicCoverShadow}" HorizontalAlignment="Center">
             <Border IsVisible="{Binding TitlePage.HasCover}">
               <Border.Background>
                 <ImageBrush Source="{Binding TitlePage.Cover}" Stretch="UniformToFill" AlignmentY="Top" />
@@ -1103,17 +1364,25 @@
           </Border>
           </Border>
           <StackPanel x:Name="LaunchText" Spacing="8">
-            <TextBlock Text="{Binding TitlePage.LaunchingHeading}" FontSize="40" FontWeight="SemiBold" Foreground="#1C2033"
+            <TextBlock Text="{Binding TitlePage.LaunchingHeading}" FontSize="{x:Static vm:HandheldTokens.LaunchHeading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                        HorizontalAlignment="Center" />
-            <TextBlock Text="{Binding TitlePage.LaunchingDetail}" FontSize="26" Foreground="#5B6176"
+            <TextBlock Text="{Binding TitlePage.LaunchingDetail}" FontSize="{x:Static vm:HandheldTokens.LaunchDetail}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                        HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="1000" />
           </StackPanel>
-          <ProgressBar x:Name="LaunchProgress" Classes="launch" Width="320" Height="8" MinHeight="8" CornerRadius="4"
-                       HorizontalAlignment="Center" Background="#29465088" Foreground="#5B58D9" />
+          <ProgressBar x:Name="LaunchProgress" Classes="launch" Width="320" Height="{x:Static vm:HandheldTokens.LaunchProgressHeight}" MinHeight="{x:Static vm:HandheldTokens.LaunchProgressHeight}" CornerRadius="{x:Static vm:HandheldTokens.LaunchProgressRadius}"
+                       HorizontalAlignment="Center" Background="{x:Static vm:HandheldTokens.ProgressTrack}" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}" />
         </StackPanel>
       </Grid>
     </Viewbox>
   </Panel>
+
+  <!--
+    Big Type (M47 B7): the Start menu, the Y sheet, Settings and the panels as type on the colour, under the one ring (so drawn before
+    it). Today's look keeps its cards below; Big Type still shows those for typing (the keyboard is B9's).
+  -->
+  <Viewbox Stretch="Uniform" ClipToBounds="False" IsVisible="{x:Static vm:HandheldTokens.IsBigType}">
+    <vh:HandheldBigTypeLists x:Name="BtLists" Width="1240" Height="1080" />
+  </Viewbox>
 
   <!--
     ===== The selector =====
@@ -1123,7 +1392,7 @@
   -->
   <Viewbox Stretch="Uniform" ClipToBounds="False" IsHitTestVisible="False">
     <Canvas x:Name="SelectorLayer" Width="1240" Height="1080" ClipToBounds="False">
-      <vh:HandheldShadow x:Name="SelectorGlow" Blur="28" Color="#B05B58D9" Width="1" Height="1" />
+      <vh:HandheldShadow x:Name="SelectorGlow" Blur="{x:Static vm:HandheldTokens.ClassicRingGlowBlur}" Color="{x:Static vm:HandheldTokens.ClassicRingGlow}" Width="1" Height="1" />
       <Panel x:Name="Selector">
         <Border x:Name="SelectorRing" Classes="selector-ring">
           <Border><Border /></Border>
@@ -1132,14 +1401,16 @@
     </Canvas>
   </Viewbox>
 
+  <!-- Today's look (Big Type draws the menu and the sheet as type, M47 B7). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <!-- The menu's scrim covers the whole window, letterbox bands included. -->
-      <Border IsVisible="{Binding IsMenuOpen}" Background="#521C2033">
+      <Border IsVisible="{Binding IsMenuOpen}" Background="{x:Static vm:HandheldTokens.Scrim}">
         <Viewbox Stretch="Uniform">
         <Border Width="1240" Height="1080" Background="Transparent">
-        <Border x:Name="MenuCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" CornerRadius="40"
-                Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+        <Border x:Name="MenuCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="640" CornerRadius="{x:Static vm:HandheldTokens.ClassicSheetRadius}"
+                Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,16,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}">
           <StackPanel Spacing="8">
-            <TextBlock Text="Menu" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033" Margin="24,8,0,8" />
+            <TextBlock Text="Menu" FontSize="{x:Static vm:HandheldTokens.SheetTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" Margin="24,8,0,8" />
             <ItemsControl ItemsSource="{Binding MenuItems}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -1149,13 +1420,13 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:HandheldMenuItemViewModel">
                   <!-- Card radius 40 − padding 24 = 16 for the rows inside it. -->
-                  <Border CornerRadius="16" Height="80" Padding="24,0"
+                  <Border CornerRadius="{x:Static vm:HandheldTokens.MenuRowRadius}" Height="80" Padding="24,0"
                           Background="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowBrush}}">
                     <Grid ColumnDefinitions="*,Auto">
-                      <TextBlock Text="{Binding Label}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                      <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.MenuRow}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" VerticalAlignment="Center"
                                  Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
                       <!-- A switch's state (Sounds, M45 H6d). -->
-                      <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="26"
+                      <TextBlock Grid.Column="1" Text="{Binding Note}" IsVisible="{Binding HasNote}" FontSize="{x:Static vm:HandheldTokens.MenuRowState}"
                                  VerticalAlignment="Center" Margin="24,0,0,0" Opacity="0.75"
                                  Foreground="{Binding IsFocused, Converter={x:Static vm:HandheldViewConverters.MenuRowText}}" />
                     </Grid>
@@ -1174,36 +1445,36 @@
     Slides up over the Launcher's lower half on a scrim; the focused row is filled with the accent. Every
     "Remove" row names its place. A tap runs a row; a tap on the scrim closes the sheet.
   -->
-  <Border x:Name="SheetLayer" IsVisible="{Binding IsSheetOpen}" Background="#521C2033">
+  <Border x:Name="SheetLayer" IsVisible="{Binding IsSheetOpen}" Background="{x:Static vm:HandheldTokens.Scrim}">
     <Viewbox Stretch="Uniform">
       <Border Width="1240" Height="1080" Background="Transparent">
         <Border x:Name="SheetCard" VerticalAlignment="Bottom" HorizontalAlignment="Center" Width="880" Margin="0,0,0,48"
-                CornerRadius="48" Background="#FFFFFF" Padding="24,32,24,24" BoxShadow="0 24 56 0 #40000000">
+                CornerRadius="{x:Static vm:HandheldTokens.ClassicBottomSheetRadius}" Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,32,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicBottomSheetShadow}">
           <StackPanel Spacing="16">
             <Grid ColumnDefinitions="Auto,*" Margin="20,0,28,8">
               <!-- What the sheet acts on: the game's cover, or the folder's colour with its glyph. -->
               <Panel Width="104" Height="104" Margin="0,0,24,0" VerticalAlignment="Center"
                      IsVisible="{Binding Sheet.HasThumbnail}">
-                <Border CornerRadius="26" ClipToBounds="True" BoxShadow="0 4 12 0 #26000000">
+                <Border CornerRadius="{x:Static vm:HandheldTokens.SwatchRadius}" ClipToBounds="True" BoxShadow="{x:Static vm:HandheldTokens.ClassicThumbShadow}">
                   <Border.Background>
                     <ImageBrush Source="{Binding Sheet.Thumbnail}" Stretch="UniformToFill" AlignmentY="Top" />
                   </Border.Background>
                 </Border>
               </Panel>
-              <Border Width="104" Height="104" Margin="0,0,24,0" CornerRadius="26" VerticalAlignment="Center"
-                      Background="{Binding Sheet.Swatch}" BorderBrush="#141C2033" BorderThickness="1"
-                      IsVisible="{Binding Sheet.HasSwatch}" BoxShadow="0 4 12 0 #1F000000">
+              <Border Width="104" Height="104" Margin="0,0,24,0" CornerRadius="{x:Static vm:HandheldTokens.SwatchRadius}" VerticalAlignment="Center"
+                      Background="{Binding Sheet.Swatch}" BorderBrush="{x:Static vm:HandheldTokens.ClassicHairline}" BorderThickness="1"
+                      IsVisible="{Binding Sheet.HasSwatch}" BoxShadow="{x:Static vm:HandheldTokens.ClassicSwatchShadow}">
                 <Panel>
                   <PathIcon Data="{Binding Sheet.SwatchGlyph, Converter={x:Static vm:HandheldViewConverters.GlyphGeometry}}"
-                            IsVisible="{Binding Sheet.HasSwatchGlyph}" Width="52" Height="52" Foreground="White" />
-                  <TextBlock Text="{Binding Sheet.SwatchText}" FontSize="30" FontWeight="Bold" Foreground="White"
+                            IsVisible="{Binding Sheet.HasSwatchGlyph}" Width="52" Height="52" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
+                  <TextBlock Text="{Binding Sheet.SwatchText}" FontSize="{x:Static vm:HandheldTokens.SwatchMonogram}" FontWeight="{x:Static vm:HandheldTokens.SwatchMonogramWeight}" Foreground="{x:Static vm:HandheldTokens.OnAccent}"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Panel>
               </Border>
               <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
-                <TextBlock Text="{Binding Sheet.Title}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                <TextBlock Text="{Binding Sheet.Title}" FontSize="{x:Static vm:HandheldTokens.BottomSheetTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                            TextTrimming="CharacterEllipsis" />
-                <TextBlock Text="{Binding Sheet.Subtitle}" IsVisible="{Binding Sheet.HasSubtitle}" FontSize="24" Foreground="#5B6176"
+                <TextBlock Text="{Binding Sheet.Subtitle}" IsVisible="{Binding Sheet.HasSubtitle}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}"
                            TextTrimming="CharacterEllipsis" TextWrapping="Wrap" MaxLines="2" />
               </StackPanel>
             </Grid>
@@ -1238,16 +1509,20 @@
     </Viewbox>
   </Border>
 
+  </Panel>
+
   <!--
     ===== A panel (M45 H6c): the scraper, the batch scraper, cover search, achievements, Search, Edit title =====
     Laid across the screens the way Settings is: its rows (or the keyboard) here, the focused row's card on the Stage. It
     takes this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets PanelCanvas's width.
   -->
+  <!-- Today's look (Big Type draws a panel's rows as type, M47 B7, and its keyboard as the mock's, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="PanelLayer" IsVisible="{Binding IsPanelOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-        <GradientStop Offset="0" Color="#FAFBFD" />
-        <GradientStop Offset="1" Color="#E4E8EF" />
+        <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />
+        <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicGroundBottom}" />
       </LinearGradientBrush>
     </Border.Background>
     <Viewbox Stretch="Uniform" ClipToBounds="False">
@@ -1256,6 +1531,7 @@
       </Grid>
     </Viewbox>
   </Border>
+  </Panel>
 
   <!--
     ===== Naming a folder (H4) =====
@@ -1263,11 +1539,13 @@
     moves over the keys (A types, B deletes, Y is a space, X or Start finishes) and up from the top row reaches
     the colours; taps work too. The Stage shows the folder with the name and colour as they change.
   -->
+  <!-- Today's look (Big Type names a folder on the mock's keyboard, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="NamingLayer" IsVisible="{Binding IsNaming}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-        <GradientStop Offset="0" Color="#FAFBFD" />
-        <GradientStop Offset="1" Color="#E4E8EF" />
+        <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />
+        <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicGroundBottom}" />
       </LinearGradientBrush>
     </Border.Background>
     <Viewbox Stretch="Uniform">
@@ -1276,17 +1554,17 @@
           <!-- The field: what the folder is called so far. -->
           <Border Classes="name-field" Classes.focused="True">
             <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Text="{Binding Naming.Heading}" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center"
+              <TextBlock Text="{Binding Naming.Heading}" FontSize="{x:Static vm:HandheldTokens.FieldLabel}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" VerticalAlignment="Center"
                          Margin="0,0,24,0" />
               <TextBox x:Name="NameField" Grid.Column="1" Classes="name-input" Text="{Binding Naming.Text, Mode=TwoWay}"
-                       PlaceholderText="{Binding Naming.Placeholder}" MaxLength="24" FontSize="40" FontWeight="SemiBold"
-                       Foreground="#1C2033" Background="Transparent" BorderThickness="0" MinHeight="80"
+                       PlaceholderText="{Binding Naming.Placeholder}" MaxLength="24" FontSize="{x:Static vm:HandheldTokens.NamingField}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}"
+                       Foreground="{x:Static vm:HandheldTokens.OnGround}" Background="Transparent" BorderThickness="0" MinHeight="80"
                        VerticalContentAlignment="Center" Focusable="True" />
             </Grid>
           </Border>
           <!-- Colour chips: up from the top row of keys. -->
           <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="32" Margin="0,32,0,0">
-            <TextBlock Text="Colour" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center" Width="120" />
+            <TextBlock Text="Colour" FontSize="{x:Static vm:HandheldTokens.FieldLabel}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" VerticalAlignment="Center" Width="120" />
             <ItemsControl x:Name="ColourChips" ItemsSource="{Binding Naming.Colors}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -1296,7 +1574,7 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:HandheldColorChipViewModel">
                   <Border Classes="colour-chip" Classes.focused="{Binding IsFocused}" Background="{Binding Brush}">
-                    <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="40" Height="40" Foreground="White"
+                    <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="40" Height="40" Foreground="{x:Static vm:HandheldTokens.OnAccent}"
                               IsVisible="{Binding IsChosen}" />
                   </Border>
                 </DataTemplate>
@@ -1340,10 +1618,10 @@
               <DataTemplate x:DataType="vm:HandheldHint">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                   <Border Classes="hint-glyph">
-                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="Bold" Foreground="White"
+                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.HintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.KeyboardHintGlyphWeight}" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Border>
-                  <TextBlock Text="{Binding Label}" FontSize="24" Foreground="#5B6176" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.Hint}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" VerticalAlignment="Center" />
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -1352,6 +1630,7 @@
       </Border>
     </Viewbox>
   </Border>
+  </Panel>
 
   <!--
     ===== Settings (M45 H6a, decision 18) =====
@@ -1360,11 +1639,13 @@
     Launcher's look; the choosers, the confirmations and the keyboard for text rows are states of this layer. It takes
     this Launcher's canvas (1240 wide, or 1920 on the 16:9 screen): the view sets SettingsCanvas's width.
   -->
+  <!-- Today's look (Big Type draws Settings as type, M47 B7, and its keyboard as the mock's, M47 B9). -->
+  <Panel IsVisible="{x:Static vm:HandheldTokens.IsClassic}">
   <Border x:Name="SettingsLayer" IsVisible="{Binding IsSettingsOpen}">
     <Border.Background>
       <LinearGradientBrush StartPoint="50%,0%" EndPoint="50%,100%">
-        <GradientStop Offset="0" Color="#FAFBFD" />
-        <GradientStop Offset="1" Color="#E4E8EF" />
+        <GradientStop Offset="0" Color="{x:Static vm:HandheldTokens.ClassicGroundTop}" />
+        <GradientStop Offset="1" Color="{x:Static vm:HandheldTokens.ClassicGroundBottom}" />
       </LinearGradientBrush>
     </Border.Background>
     <Viewbox Stretch="Uniform" ClipToBounds="False">
@@ -1377,26 +1658,26 @@
           <StackPanel Orientation="Horizontal" Spacing="24" VerticalAlignment="Center">
             <Border x:Name="SettingsBack" Classes="chip">
               <StackPanel Orientation="Horizontal" Spacing="8">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="#4B5274" />
+                <PathIcon Data="{x:Static vm:HandheldIcons.Back}" Width="28" Height="28" Foreground="{x:Static vm:HandheldTokens.Glyph}" />
                 <TextBlock Classes="chip-text" Text="Back" />
               </StackPanel>
             </Border>
-            <TextBlock Text="{Binding Heading}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033" VerticalAlignment="Center" />
+            <TextBlock Text="{Binding Heading}" FontSize="{x:Static vm:HandheldTokens.Heading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}" VerticalAlignment="Center" />
           </StackPanel>
-          <TextBlock Grid.Column="1" Text="{Binding SectionTitle}" FontSize="34" FontWeight="SemiBold" Foreground="#1C2033"
+          <TextBlock Grid.Column="1" Text="{Binding SectionTitle}" FontSize="{x:Static vm:HandheldTokens.Heading}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                      VerticalAlignment="Center" Margin="40,0,0,0" TextTrimming="CharacterEllipsis" />
 
           <!-- The setup wizard's way forward (M45 H6d): Start, or a tap here, goes to the next step (Finish on the last). -->
-          <Border Grid.Row="1" x:Name="SettingsStart" IsVisible="{Binding IsSetup}" VerticalAlignment="Bottom" CornerRadius="24"
-                  Padding="28,18" Background="#5B58D9" BoxShadow="0 10 24 0 #405B58D9">
+          <Border Grid.Row="1" x:Name="SettingsStart" IsVisible="{Binding IsSetup}" VerticalAlignment="Bottom" CornerRadius="{x:Static vm:HandheldTokens.StartButtonRadius}"
+                  Padding="28,18" Background="{x:Static vm:HandheldTokens.ClassicAccent}" BoxShadow="{x:Static vm:HandheldTokens.ClassicStartShadow}">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="2">
-                <TextBlock Text="{Binding StartLabel}" FontSize="28" FontWeight="SemiBold" Foreground="White" />
-                <TextBlock Text="{Binding StartDetail}" FontSize="20" Foreground="#D9FFFFFF" TextTrimming="CharacterEllipsis" />
+                <TextBlock Text="{Binding StartLabel}" FontSize="{x:Static vm:HandheldTokens.StartLabel}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
+                <TextBlock Text="{Binding StartDetail}" FontSize="{x:Static vm:HandheldTokens.StartDetail}" Foreground="{x:Static vm:HandheldTokens.OnAccentMuted}" TextTrimming="CharacterEllipsis" />
               </StackPanel>
-              <Border Grid.Column="1" Width="52" Height="52" CornerRadius="26" Background="#33FFFFFF" VerticalAlignment="Center"
+              <Border Grid.Column="1" Width="52" Height="52" CornerRadius="{x:Static vm:HandheldTokens.StartGlyphRadius}" Background="{x:Static vm:HandheldTokens.ClassicStartGlyphFill}" VerticalAlignment="Center"
                       Margin="16,0,0,0">
-                <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="26" Height="26" Foreground="White" />
+                <PathIcon Data="{x:Static vm:HandheldIcons.Menu}" Width="26" Height="26" Foreground="{x:Static vm:HandheldTokens.OnAccent}" />
               </Border>
             </Grid>
           </Border>
@@ -1428,7 +1709,7 @@
                   <Border Classes="settings-row" Classes.focused="{Binding IsFocused}" Classes.grouped="{Binding IsGrouped}"
                           Classes.save="{Binding IsSaveRow}" Classes.disabled="{Binding !IsEnabled}" Margin="0,0,0,12">
                     <Grid ColumnDefinitions="Auto,*,Auto">
-                      <Border Width="56" Height="56" CornerRadius="14" Background="#EEF0F5" Margin="0,0,20,0"
+                      <Border Width="56" Height="56" CornerRadius="{x:Static vm:HandheldTokens.IconPlateRadius}" Background="{x:Static vm:HandheldTokens.ClassicIconPlate}" Margin="0,0,20,0"
                               IsVisible="{Binding HasPlatformIcon}" VerticalAlignment="Center">
                         <Image Width="40" Height="40" Source="{Binding SystemId, Converter={x:Static vm:PlatformArtwork.Converter}}"
                                RenderOptions.BitmapInterpolationMode="None" />
@@ -1441,7 +1722,7 @@
                         </Border>
                         <!-- ‹ A choice ›: Left/Right step it, A opens the list. -->
                         <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronLeft}" IsVisible="{Binding IsChoice}" />
-                        <TextBlock Classes="value" FontWeight="SemiBold" Text="{Binding Value}" IsVisible="{Binding IsChoice}"
+                        <TextBlock Classes="value" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Text="{Binding Value}" IsVisible="{Binding IsChoice}"
                                    MaxWidth="380" />
                         <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsChoice}" />
                         <!-- A value to edit (text, secret, folder, file), a platform's summary, or something to read. -->
@@ -1451,7 +1732,7 @@
                                    IsVisible="{Binding IsSummary}" />
                         <TextBlock Classes="value" Text="{Binding Value}" MaxWidth="460" IsVisible="{Binding IsInformation}" />
                         <!-- What an action does when its label does not say ("Sync now"), or that it is running. -->
-                        <TextBlock Classes="value" FontWeight="SemiBold" Text="{Binding ActionText}" IsVisible="{Binding HasActionText}" />
+                        <TextBlock Classes="value" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Text="{Binding ActionText}" IsVisible="{Binding HasActionText}" />
                         <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding ShowsChevron}" />
                         <PathIcon Classes="chevron" Data="{x:Static vm:HandheldIcons.ChevronRight}" IsVisible="{Binding IsSummary}"
                                   RenderTransform="{Binding IsExpanded, Converter={x:Static vm:HandheldViewConverters.ExpandedTurn}}" />
@@ -1479,18 +1760,18 @@
                     <StackPanel Spacing="10">
                       <Border Classes="theme-card" Background="{Binding PreviewBackground}">
                         <Grid RowDefinitions="Auto,*" Margin="18">
-                          <Border Background="{Binding PreviewSurface}" CornerRadius="12" Height="48">
-                            <Border Width="48" Height="12" CornerRadius="6" Background="{Binding PreviewAccent}"
+                          <Border Background="{Binding PreviewSurface}" CornerRadius="{x:Static vm:HandheldTokens.ThemePreviewSurfaceRadius}" Height="48">
+                            <Border Width="48" Height="12" CornerRadius="{x:Static vm:HandheldTokens.ThemePreviewAccentRadius}" Background="{Binding PreviewAccent}"
                                     HorizontalAlignment="Left" Margin="14,0" />
                           </Border>
-                          <TextBlock Grid.Row="1" Text="Aa" FontSize="34" FontWeight="SemiBold" Foreground="{Binding PreviewText}"
+                          <TextBlock Grid.Row="1" Text="Aa" FontSize="{x:Static vm:HandheldTokens.ThemeSample}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{Binding PreviewText}"
                                      VerticalAlignment="Bottom" />
                         </Grid>
                       </Border>
                       <StackPanel Orientation="Horizontal" Spacing="8" Margin="4,0">
-                        <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="24" Height="24" Foreground="#5B58D9"
+                        <PathIcon Data="{x:Static vm:HandheldIcons.Check}" Width="24" Height="24" Foreground="{x:Static vm:HandheldTokens.ClassicAccent}"
                                   IsVisible="{Binding IsSelected}" />
-                        <TextBlock Text="{Binding Name}" FontSize="24" FontWeight="SemiBold" Foreground="#1C2033"
+                        <TextBlock Text="{Binding Name}" FontSize="{x:Static vm:HandheldTokens.ThemeName}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                                    TextTrimming="CharacterEllipsis" MaxWidth="200" />
                       </StackPanel>
                     </StackPanel>
@@ -1504,11 +1785,11 @@
 
         <!-- State: a choice's list, a card over a scrim (A picks, B leaves it as it was). -->
         <Border x:Name="SettingsChoiceSheet" DataContext="{Binding Settings}" x:DataType="vm:HandheldSettingsViewModel"
-                IsVisible="{Binding IsChoicePickerOpen}" Background="#521C2033" Margin="-400">
+                IsVisible="{Binding IsChoicePickerOpen}" Background="{x:Static vm:HandheldTokens.Scrim}" Margin="-400">
           <Border x:Name="SettingsChoiceCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="760" MaxHeight="900"
-                  CornerRadius="40" Background="#FFFFFF" Padding="24,16,24,24" BoxShadow="0 20 48 0 #33000000">
+                  CornerRadius="{x:Static vm:HandheldTokens.ClassicSheetRadius}" Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,16,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}">
             <Grid RowDefinitions="Auto,*">
-              <TextBlock Text="{Binding Projection.ChoicePickerTitle}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+              <TextBlock Text="{Binding Projection.ChoicePickerTitle}" FontSize="{x:Static vm:HandheldTokens.SheetTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                          Margin="24,8,24,12" TextTrimming="CharacterEllipsis" />
               <!-- Whole rows: eight 88 px choices with their 4 px gaps. -->
               <ScrollViewer Grid.Row="1" x:Name="SettingsChoiceScroller" MaxHeight="736" VerticalScrollBarVisibility="Hidden">
@@ -1533,14 +1814,14 @@
 
         <!-- State: a confirmation (a destructive row, or one that disconnects), Cancel first. -->
         <Border x:Name="SettingsConfirmSheet" DataContext="{Binding Settings}" x:DataType="vm:HandheldSettingsViewModel"
-                IsVisible="{Binding IsConfirmationOpen}" Background="#521C2033" Margin="-400">
+                IsVisible="{Binding IsConfirmationOpen}" Background="{x:Static vm:HandheldTokens.Scrim}" Margin="-400">
           <Border x:Name="SettingsConfirmCard" HorizontalAlignment="Center" VerticalAlignment="Center" Width="760"
-                  CornerRadius="40" Background="#FFFFFF" Padding="24,24,24,24" BoxShadow="0 20 48 0 #33000000">
+                  CornerRadius="{x:Static vm:HandheldTokens.ClassicSheetRadius}" Background="{x:Static vm:HandheldTokens.ClassicSurface}" Padding="24,24,24,24" BoxShadow="{x:Static vm:HandheldTokens.ClassicSheetShadow}">
             <StackPanel Spacing="12">
               <StackPanel Margin="24,0,24,12" Spacing="8">
-                <TextBlock Text="{Binding Projection.ConfirmationTitle}" FontSize="32" FontWeight="SemiBold" Foreground="#1C2033"
+                <TextBlock Text="{Binding Projection.ConfirmationTitle}" FontSize="{x:Static vm:HandheldTokens.SheetTitle}" FontWeight="{x:Static vm:HandheldTokens.HeadingWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                            TextWrapping="Wrap" />
-                <TextBlock Text="{Binding Projection.ConfirmationText}" FontSize="24" Foreground="#5B6176" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding Projection.ConfirmationText}" FontSize="{x:Static vm:HandheldTokens.Note}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" TextWrapping="Wrap" />
               </StackPanel>
               <Border x:Name="SettingsConfirmCancel" Classes="sheet-row" Classes.focused="{Binding IsCancelFocused}">
                 <TextBlock Classes="label" Text="Cancel" VerticalAlignment="Center" />
@@ -1561,10 +1842,10 @@
               RowDefinitions="Auto,*,Auto" Width="1112" Margin="0,48,0,40" HorizontalAlignment="Center">
           <Border Classes="name-field" Classes.focused="True">
             <Grid ColumnDefinitions="Auto,*">
-              <TextBlock Text="{Binding Title}" FontSize="26" Foreground="#5B6176" VerticalAlignment="Center"
+              <TextBlock Text="{Binding Title}" FontSize="{x:Static vm:HandheldTokens.FieldLabel}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" VerticalAlignment="Center"
                          Margin="0,0,24,0" MaxWidth="420" TextTrimming="CharacterEllipsis" />
               <TextBox x:Name="SettingsField" Grid.Column="1" Classes="name-input" Text="{Binding Text, Mode=TwoWay}"
-                       PasswordChar="{Binding MaskChar}" FontSize="36" FontWeight="SemiBold" Foreground="#1C2033"
+                       PasswordChar="{Binding MaskChar}" FontSize="{x:Static vm:HandheldTokens.KeyboardField}" FontWeight="{x:Static vm:HandheldTokens.RowWeight}" Foreground="{x:Static vm:HandheldTokens.OnGround}"
                        Background="Transparent" BorderThickness="0" MinHeight="80" VerticalContentAlignment="Center"
                        Focusable="True" />
             </Grid>
@@ -1606,10 +1887,10 @@
               <DataTemplate x:DataType="vm:HandheldHint">
                 <StackPanel Orientation="Horizontal" Spacing="12">
                   <Border Classes="hint-glyph">
-                    <TextBlock Text="{Binding Button}" FontSize="20" FontWeight="Bold" Foreground="White"
+                    <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.HintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.KeyboardHintGlyphWeight}" Foreground="{x:Static vm:HandheldTokens.HintGlyphInk}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" />
                   </Border>
-                  <TextBlock Text="{Binding Label}" FontSize="24" Foreground="#5B6176" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding Label}" FontSize="{x:Static vm:HandheldTokens.Hint}" Foreground="{x:Static vm:HandheldTokens.OnGroundMuted}" VerticalAlignment="Center" />
                 </StackPanel>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -1618,5 +1899,6 @@
       </Grid>
     </Viewbox>
   </Border>
+  </Panel>
   </Panel>
 </UserControl>

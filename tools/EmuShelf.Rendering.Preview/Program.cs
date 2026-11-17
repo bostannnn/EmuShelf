@@ -113,6 +113,49 @@ if (args.Contains("--backdrops"))
     return;
 }
 
+// The Stage compositor's Big Type drawing: ink per zone from the showing backdrop, veils, the narrow letterbox (M47 B4).
+if (args.Contains("--stage-bigtype"))
+{
+    Environment.ExitCode = StageBigTypeCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-bigtype");
+    return;
+}
+
+// The native Stage's own roll of a line, from real pictures the App tests write (M47 B11, "a pixel or two stuck on top").
+if (args.Contains("--stage-roll"))
+{
+    Environment.ExitCode = StageRollCheck.Run(gl, ArgumentValue("--stage-roll")!, ArgumentValue("--out") ?? "artifacts/stage-roll");
+    return;
+}
+
+// Whether the baked legibility table holds over the narrow Stage's crop of every backdrop (M47 B11).
+if (args.Contains("--stage-narrow-legibility"))
+{
+    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility");
+    return;
+}
+
+// The Launcher compositor's Big Type motion: the ring's path, the neighbours, a roll, the hop, the rest cadence, holding still (M47 B5).
+if (args.Contains("--launcher-bigtype"))
+{
+    Environment.ExitCode = LauncherBigTypeCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/launcher-bigtype");
+    return;
+}
+
+// The Stage compositor's Big Type motion: the letters mid-flight, their hop, holding still, the wipe and its ink, the backdrop
+// prepared after the frame its command lands on (M47 B6).
+if (args.Contains("--stage-letters"))
+{
+    Environment.ExitCode = StageLettersCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-letters");
+    return;
+}
+
+// The Stage compositor's model view: each real medium rising, at rest, showing its back, flipping, turned and swinging back (M47 B12).
+if (args.Contains("--stage-model"))
+{
+    Environment.ExitCode = StageModelCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-model");
+    return;
+}
+
 // The Stage compositor's rebuild after a lost context and its hold under battery saver / reduced motion (M45 H7c).
 if (args.Contains("--stage-resume"))
 {

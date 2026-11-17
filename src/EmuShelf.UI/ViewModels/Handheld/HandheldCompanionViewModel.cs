@@ -19,6 +19,9 @@ public enum HandheldCompanionTab
 {
     Achievements,
     Photos,
+
+    /// <summary>The session's time and totals: Big Type's first tab (M47 B8, the mock's Session); today's look has none.</summary>
+    Session,
 }
 
 /// <summary>Where the companion's selector is: the big panel, or the dock below it.</summary>
@@ -76,6 +79,11 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
 {
     /// <summary>How long the companion stays lit with nothing pressed (the mockup's twelve seconds).</summary>
     internal static readonly TimeSpan RestDelay = TimeSpan.FromSeconds(12);
+
+    /// <summary>Big Type rests sooner (tokens.js <c>InGameRest.afterMs</c>, M47 B8).</summary>
+    internal static TimeSpan RestDelayNow => HandheldTokens.IsBigType
+        ? TimeSpan.FromMilliseconds(EmuShelf.Rendering.Stage.BigType.BigTypeLaunchMotion.RestAfterMilliseconds)
+        : RestDelay;
 
     /// <summary>The badge grid's columns: seven on the 1240-wide screen, eleven on the 16:9 one, at the same pitch.</summary>
     public const int NarrowBadgeColumns = 7;
@@ -170,6 +178,12 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
 
     public bool IsGameRunning => Model.IsGameRunning;
 
+    /// <summary>Today's in-game body shows (Big Type draws its own, M47 B8).</summary>
+    public bool ShowsClassicBody => IsGameRunning && !HandheldTokens.IsBigType;
+
+    /// <summary>Today's resting wash shows (Big Type's companion fades instead, M47 B8).</summary>
+    public bool ShowsClassicRest => IsResting && !HandheldTokens.IsBigType;
+
     /// <summary>The full badge grid is open over the running game's companion (A on the Achievements panel).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Layer))]
@@ -210,6 +224,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAchievementsTab))]
     [NotifyPropertyChangedFor(nameof(IsPhotosTab))]
+    [NotifyPropertyChangedFor(nameof(IsSessionTab))]
     [NotifyPropertyChangedFor(nameof(PanelHint))]
     [NotifyPropertyChangedFor(nameof(HasPanelHint))]
     public partial HandheldCompanionTab Tab { get; private set; }
@@ -237,6 +252,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     // The session's minutes count only while someone can see them: resting stops the tick, waking catches the line up.
     partial void OnIsRestingChanged(bool value)
     {
+        OnPropertyChanged(nameof(ShowsClassicRest));
         if (value)
             StopSessionTimer();
         else if (_sessionStartedAt is not null)
@@ -436,6 +452,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(ProgressCount));
         OnPropertyChanged(nameof(ProgressPoints));
         OnPropertyChanged(nameof(AchievementsMessage));
+        OnPropertyChanged(nameof(UnlockedText));
         OnPropertyChanged(nameof(PanelHint));
         OnPropertyChanged(nameof(HasPanelHint));
         RaiseFilterChanged();
@@ -587,8 +604,10 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         DockIndex = 1;
         Model.AchievementFilter = AchievementDisplayFilter.All;
         Model.AchievementColumnCount = BadgeColumns;
-        Tab = _nowPlayingHasAchievements ? HandheldCompanionTab.Achievements : HandheldCompanionTab.Photos;
+        Tab = HandheldTokens.IsBigType ? HandheldCompanionTab.Session
+            : _nowPlayingHasAchievements ? HandheldCompanionTab.Achievements : HandheldCompanionTab.Photos;
         PhotoIndex = 0;
+        BeginBigType();
         RebuildPhotoDots();
         _ = LoadPanelPhotoAsync();
         Wake();
@@ -601,6 +620,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     {
         StopRestTimer();
         StopSessionTimer();
+        EndBigType();
         _sessionStartedAt = null;
         IsResting = false;
         IsGridOpen = false;
@@ -640,7 +660,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         }
         if (_restTimer is null)
         {
-            _restTimer = new DispatcherTimer { Interval = RestDelay };
+            _restTimer = new DispatcherTimer { Interval = RestDelayNow };
             _restTimer.Tick += (_, _) => Rest();
         }
         _restTimer.Stop();
@@ -702,6 +722,11 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
 
     private void DispatchBody(GamepadAction action)
     {
+        if (HandheldTokens.IsBigType)
+        {
+            DispatchBigTypeBody(action);
+            return;
+        }
         switch (action)
         {
             case GamepadAction.NavigateUp when Zone == HandheldCompanionZone.Dock:
@@ -900,6 +925,8 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
     public void OpenPanel()
     {
         Zone = HandheldCompanionZone.Panel;
+        if (Tab == HandheldCompanionTab.Session)
+            return;
         if (Tab == HandheldCompanionTab.Achievements)
         {
             if (!Model.HasAchievements)
@@ -1058,6 +1085,8 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
                     End();
                 RaiseLayerChanged();
                 OnPropertyChanged(nameof(IsGameRunning));
+                OnPropertyChanged(nameof(ShowsClassicBody));
+                OnPropertyChanged(nameof(ShowsBigTypeBody));
                 OnPropertyChanged(nameof(IsDrawerLight));
                 OnPropertyChanged(nameof(OwnsPad));
                 break;
@@ -1068,12 +1097,17 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
             case nameof(SecondScreenViewModel.AchievementCount):
                 RaiseAchievementsChanged();
                 break;
+            case nameof(SecondScreenViewModel.UnlockedAchievementCount):
+                OnPropertyChanged(nameof(ProgressCount));
+                OnPropertyChanged(nameof(ProgressRatio));
+                break;
             case nameof(SecondScreenViewModel.AchievementFilter):
             case nameof(SecondScreenViewModel.HasVisibleAchievements):
                 RaiseFilterChanged();
                 break;
             case nameof(SecondScreenViewModel.AchievementsStatus):
                 OnPropertyChanged(nameof(AchievementsMessage));
+                OnPropertyChanged(nameof(UnlockedText));
                 break;
             case nameof(SecondScreenViewModel.SelectedAchievement):
             case nameof(SecondScreenViewModel.CanRefresh):
@@ -1081,6 +1115,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
                 break;
             case nameof(SecondScreenViewModel.MediaItems):
                 RebuildPhotoDots();
+                _ = LoadShotsAsync();
                 if (HasPanelPhoto != HasPhotos || !HasPanelPhoto)
                     _ = LoadPanelPhotoAsync();
                 break;

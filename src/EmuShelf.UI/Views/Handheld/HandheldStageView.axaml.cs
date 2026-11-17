@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Markup.Xaml;
 using EmuShelf.App.Controls;
@@ -34,15 +35,80 @@ public partial class HandheldStageView : UserControl
     {
         PinnedNarrow = pinnedNarrow;
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
         _canvas = this.FindControl<Grid>("StageCanvas")!;
-        // View wiring only: a GPU path that cannot start tells the Stage to keep flat covers.
-        if (this.FindControl<Media3DControl>("Medium") is { } medium)
+        // View wiring (M47 B7): under Big Type the two lines under the name end before the hints' corner, in an ellipsis (the mock sets
+        // them no width; a long line, Activity's games, ran under the hints). On the narrow screen (M47 B11) the hints have a row of their
+        // own, so the lines run to the hints' right margin instead, and the console's name ends a gap before the battery and the clock.
+        if (HandheldTokens.IsBigType && this.FindControl<Control>("BtHintsShot") is { } hints)
         {
-            medium.InitializationFailed += (_, _) =>
+            var lines = new[] { this.FindControl<TextBlock>("BtLine"), this.FindControl<TextBlock>("BtFacts") };
+            var label = this.FindControl<TextBlock>("BtLabel");
+            var status = this.FindControl<Control>("BtStatusShot");
+            void Fit()
             {
-                if (DataContext is HandheldShellViewModel shell)
-                    shell.Stage.IsMediumUnavailable = true;
-            };
+                var narrow = _canvas.Classes.Contains("btnarrow");
+                foreach (var line in lines)
+                {
+                    if (line?.Parent is not Control shot || hints.Bounds.Width <= 0 ||
+                        hints.TranslatePoint(default, _canvas) is not { } hintsAt || shot.TranslatePoint(default, _canvas) is not { } shotAt)
+                    {
+                        continue;
+                    }
+                    // From the line's own left edge to a hint's gap before the hints' first glyph (each shot carries its padding); on the
+                    // narrow screen to the hints' right edge.
+                    var end = narrow ? hintsAt.X + hints.Bounds.Width - HandheldTokens.StageShotPad : hintsAt.X + HandheldTokens.StageShotPad - HandheldTokens.StageHintGap;
+                    var max = System.Math.Max(0, end - shotAt.X - HandheldTokens.StageShotPad);
+                    if (!line.MaxWidth.Equals(max))
+                        line.MaxWidth = max;
+                }
+                // A message on the line that runs to two lines (M47 B10) grows down into the second line's row, which gives way, rather
+                // than up into the name's descenders (M47 B11; found on the narrow screen, the same on the wide one).
+                if (lines[0] is { } message && message.Parent is Control messageShot && lines[1]?.Parent is Control factsShot)
+                {
+                    var wrapped = message.Classes.Contains("message") && message.TextLayout.TextLines.Count > 1;
+                    if (wrapped)
+                    {
+                        var by = message.TextLayout.TextLines[^1].Height;
+                        var margin = narrow ? HandheldTokens.StageNarrowLineShotMargin : HandheldTokens.StageLineShotMargin;
+                        var at = new Thickness(margin.Left, margin.Top, margin.Right, margin.Bottom - by);
+                        if (messageShot.Margin != at)
+                            messageShot.Margin = at;
+                        if (factsShot.Opacity != 0)
+                            factsShot.Opacity = 0;
+                    }
+                    else
+                    {
+                        messageShot.ClearValue(MarginProperty);
+                        factsShot.ClearValue(OpacityProperty);
+                    }
+                }
+                if (label?.Parent is Control labelShot && status is not null)
+                {
+                    var max = double.PositiveInfinity;
+                    if (narrow && status.Bounds.Width > 0 && status.TranslatePoint(default, _canvas) is { } statusAt &&
+                        labelShot.TranslatePoint(default, _canvas) is { } labelAt)
+                    {
+                        max = System.Math.Max(0, statusAt.X + HandheldTokens.StageShotPad - HandheldTokens.StageNarrowLabelGap - labelAt.X - HandheldTokens.StageShotPad);
+                    }
+                    if (!label.MaxWidth.Equals(max))
+                        label.MaxWidth = max;
+                }
+            }
+            hints.LayoutUpdated += (_, _) => Fit();
+        }
+        // View wiring only: a GPU path that cannot start tells the Stage to keep flat covers.
+        foreach (var name in new[] { "Medium", "BtMedium" })
+        {
+            if (this.FindControl<Media3DControl>(name) is { } medium)
+            {
+                medium.InitializationFailed += (_, _) =>
+                {
+                    if (DataContext is HandheldShellViewModel shell)
+                        shell.Stage.IsMediumUnavailable = true;
+                };
+            }
         }
         var motion = new HandheldStageMotion(this, () => IsNarrow);
         // On a platform with a native Stage this view stays laid out but invisible, and lends it its pieces.
@@ -84,11 +150,14 @@ public partial class HandheldStageView : UserControl
             ApplyCanvas();
     }
 
-    // View wiring: the canvas width and the narrow layout's class follow this Stage's screen.
+    // View wiring: the canvas width and the narrow layout's class follow this Stage's screen, in either look. Today's look moves its
+    // pieces with "narrow"; Big Type lays its Stage out again for the narrow screen with "btnarrow" (M47 B11; B4 had shown the 16:9
+    // canvas whole, letterboxed).
     private void ApplyCanvas()
     {
         _canvas.Width = IsNarrow ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
-        _canvas.Classes.Set("narrow", IsNarrow);
+        _canvas.Classes.Set("narrow", IsNarrow && HandheldTokens.IsClassic);
+        _canvas.Classes.Set("btnarrow", IsNarrow && HandheldTokens.IsBigType);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

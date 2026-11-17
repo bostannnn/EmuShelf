@@ -57,6 +57,7 @@ public sealed partial class HandheldShellViewModel
         _panelClosed = closed;
         _panelCard = null;
         Panel = panel;
+        ListOpened = true;
         UpdateFocus();
     }
 
@@ -68,9 +69,12 @@ public sealed partial class HandheldShellViewModel
         var closed = _panelClosed;
         _panelClosed = null;
         Panel = null;
+        ListOpened = false;
         _panelCard = null;
-        // The card's pictures belong to the panel's view models, which go now: the Stage lets go of them first.
+        // The card's pictures belong to the panel's view models, which go now: the Stage lets go of them first (the case's candidate too).
         Stage.PanelCard = null;
+        if (HandheldTokens.IsBigType)
+            ReturnCandidate();
         try
         {
             if (closed is not null)
@@ -117,6 +121,7 @@ public sealed partial class HandheldShellViewModel
                 RefreshPanelStage();
             _stageDefer = null;
         }
+        ForwardBump(panel.TakeBump(), action);
         return true;
     }
 
@@ -135,6 +140,9 @@ public sealed partial class HandheldShellViewModel
 
     private void RefreshPanelStage()
     {
+        // Big Type: the pad on one of Search's hits floods the ground to its console (M47 B9).
+        if (HandheldTokens.IsBigType && Panel is HandheldSearchPanel)
+            UpdateGround();
         // Only a held direction waits; anything else shows at once, since the card it replaces may hold pictures that are
         // about to go (a refreshed set's badges, a search's covers).
         if (_stageDefer is { } defer)
@@ -207,6 +215,7 @@ public sealed partial class HandheldShellViewModel
     {
         var panel = new HandheldSearchPanel(_library, _lastSearch, _clock) { Debounce = SearchDebounce };
         panel.ResultsRequested += (query, ids) => ShowSearchResults(panel, query, ids);
+        panel.PlayRequested += entry => _ = PlayFromSearchAsync(panel, entry.Id);
         OpenPanel(panel, closed =>
         {
             _lastSearch = ((HandheldSearchPanel)closed).Query.Trim();
@@ -345,7 +354,7 @@ public sealed partial class HandheldShellViewModel
             ShowNotice(_library.CoverSearchUnavailableReason, HandheldGlyph.Alert);
             return;
         }
-        var panel = new HandheldCoverSearchPanel(details, game.Title);
+        var panel = new HandheldCoverSearchPanel(details, game.Title) { SystemName = game.SystemName, Game = game };
         OpenPanel(panel, async _ =>
         {
             var picked = panel.Picked;

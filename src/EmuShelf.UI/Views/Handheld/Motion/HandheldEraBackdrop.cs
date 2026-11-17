@@ -39,7 +39,11 @@ public sealed class HandheldEraBackdrop : Decorator
     private readonly Grid _canvas = new() { Width = CanvasWidth, Height = CanvasHeight, ClipToBounds = true };
     private readonly List<Layer> _layers = [];
     private readonly DispatcherTimer _drift = new(DispatcherPriority.Background);
-    private readonly System.Diagnostics.Stopwatch _clock = System.Diagnostics.Stopwatch.StartNew();
+    // The drift's clock, taken when the control is made. Only the Handheld design snapshots (M47 B0) change
+    // DriftClock, to one that stands still, so every frame they render draws the drift where it starts.
+    internal static TimeProvider DriftClock { get; set; } = TimeProvider.System;
+    private readonly TimeProvider _clock = DriftClock;
+    private readonly long _started = DriftClock.GetTimestamp();
     private IActivatableLifetime? _lifetime;
     private bool _backgrounded;
     private readonly DispatcherTimer _settle = new(DispatcherPriority.Background)
@@ -220,7 +224,7 @@ public sealed class HandheldEraBackdrop : Decorator
             _drift.Stop();
             return;
         }
-        var progress = (_clock.Elapsed.TotalMilliseconds / layer.LoopMilliseconds) % 1;
+        var progress = (_clock.GetElapsedTime(_started).TotalMilliseconds / layer.LoopMilliseconds) % 1;
         var x = Math.Round(layer.Travel.X * progress);
         var y = Math.Round(layer.Travel.Y * progress);
         if (layer.Shift.X != x)
@@ -249,7 +253,7 @@ public sealed class HandheldEraBackdrop : Decorator
                 {
                     StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
                     EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-                    GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+                    GradientStops = { new GradientStop(HandheldTokens.ClassicStageGroundTop, 0), new GradientStop(HandheldTokens.ClassicStageGroundBottom, 1) },
                 },
             };
             return new StageBackdrop(HandheldStageShots.Picture(plain, 0, 0, (float)CanvasWidth, (float)CanvasHeight), null, null, null,
@@ -360,7 +364,7 @@ public sealed class HandheldEraBackdrop : Decorator
         {
             StartPoint = new RelativePoint(0.5, 0, RelativeUnit.Relative),
             EndPoint = new RelativePoint(0.5, 1, RelativeUnit.Relative),
-            GradientStops = { new GradientStop(Color.Parse("#F5F6F9"), 0), new GradientStop(Color.Parse("#E1E5EC"), 1) },
+            GradientStops = { new GradientStop(HandheldTokens.ClassicStageGroundTop, 0), new GradientStop(HandheldTokens.ClassicStageGroundBottom, 1) },
         }));
         // circle(80% at 92% 50%) on the 1920×1080 canvas: a radius of about 1246 px about (1766, 540).
         const double radius = 1246, centreX = 1766, centreY = 540;

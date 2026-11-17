@@ -34,6 +34,7 @@ public sealed partial class HandheldShellViewModel
             if (!SetProperty(ref _soundsEnabled, value))
                 return;
             _soundsMenuItem.Note = SoundsNote;
+            _soundsMenuItem.IsOn = value;
         }
     }
 
@@ -50,6 +51,21 @@ public sealed partial class HandheldShellViewModel
         ShowNotice(SoundsEnabled ? "Sounds on" : "Sounds off");
     }
 
+    // A message on the line played its sound during this press (M47 B11).
+    private bool _soundSaid;
+
+    /// <summary>
+    /// Big Type (M47 B11, the mock's toast): a message on the Stage's line sounds open, an error bump; work still running is silent
+    /// (the mock's <c>{sound: false}</c>).
+    /// </summary>
+    private void PlayMessageSound(bool error, bool working)
+    {
+        if (!HandheldTokens.IsBigType || working)
+            return;
+        _soundSaid = _soundDepth > 0;
+        PlaySound(error ? HandheldSound.Bump : HandheldSound.Open);
+    }
+
     private void PlaySound(HandheldSound sound)
     {
         if (SoundsEnabled && !_disposed)
@@ -58,7 +74,8 @@ public sealed partial class HandheldShellViewModel
 
     /// <summary>What the sounds compare: which layers are open (by identity) and where the selector is.</summary>
     internal readonly record struct SoundState(object? Folder, object? Title, object? Sheet, bool Menu, object? Panel,
-        object? Settings, object? Naming, bool Moving, bool Companion, string Selection, string Content);
+        object? Settings, object? Naming, bool Moving, bool Companion, string Selection, string Content, int Typed = -1,
+        bool TitlePlays = false);
 
     private SoundState CaptureSoundState()
     {
@@ -76,8 +93,9 @@ public sealed partial class HandheldShellViewModel
         var content = string.Join('|', Settings?.Card is { } card ? card with { Status = string.Empty } : null, settingsKeys?.Text, panelKeys?.Text, naming?.Text, naming?.ColorIndex,
             folder?.Sort, title?.State);
         var companion = CompanionOwnsPad || (_companion is { } model && model.Overlay != SecondScreenOverlayKind.None);
+        // M47 B11: how long the word being typed is (a letter typed sounds move, Delete back) and whether a game's page opened to play.
         return new SoundState(folder, title, Sheet, IsMenuOpen, Panel, Settings, naming, _move is not null, companion,
-            selection, content);
+            selection, content, Typing?.Text.Length ?? -1, title?.PlayWhenReady == true);
     }
 
     /// <summary>Opens one interaction (a press, or a touch when <paramref name="action"/> is null); nested ones join it.</summary>
@@ -88,6 +106,7 @@ public sealed partial class HandheldShellViewModel
             _soundBefore = CaptureSoundState();
             _soundAction = action;
             _soundBumped = false;
+            _soundSaid = false;
         }
         else
         {
@@ -103,6 +122,9 @@ public sealed partial class HandheldShellViewModel
         var before = _soundBefore;
         var after = CaptureSoundState();
         if (before.Companion || after.Companion)
+            return;
+        // Big Type (M47 B11): a message said on the line has had its own sound (the mock's toast plays instead of the press's).
+        if (_soundSaid && HandheldTokens.IsBigType)
             return;
         if (SoundFor(before, after, _soundAction, _soundBumped) is { } sound)
             PlaySound(sound);
@@ -139,18 +161,33 @@ public sealed partial class HandheldShellViewModel
         static bool Opened(object? was, object? now) => now is not null && !ReferenceEquals(was, now);
         static bool Closed(object? was, object? now) => was is not null && now is null;
 
+        // Big Type (M47 B11): A on a game opens its page to play at once; the launch has its own sound (the mock's startGame).
+        if (HandheldTokens.IsBigType && Opened(before.Title, after.Title) && after.TitlePlays)
+            return null;
         if (Opened(before.Folder, after.Folder) || Opened(before.Title, after.Title) || Opened(before.Sheet, after.Sheet) ||
             (!before.Menu && after.Menu) || Opened(before.Panel, after.Panel) || Opened(before.Settings, after.Settings) ||
             Opened(before.Naming, after.Naming) || (!before.Moving && after.Moving))
             return HandheldSound.Open;
         if (Closed(before.Folder, after.Folder) || Closed(before.Title, after.Title))
             return HandheldSound.Close;
+        // Big Type (M47 B9, the mock's endMove): a held tile put down with A sounds open, as picking it up did.
+        if (before.Moving && !after.Moving && action == GamepadAction.Confirm && HandheldTokens.IsBigType)
+            return HandheldSound.Open;
         if (Closed(before.Sheet, after.Sheet) || (before.Menu && !after.Menu) || Closed(before.Panel, after.Panel) ||
             Closed(before.Settings, after.Settings) || Closed(before.Naming, after.Naming) || (before.Moving && !after.Moving))
             return action == GamepadAction.Cancel ? HandheldSound.Back : HandheldSound.Confirm;
 
         var selected = before.Selection != after.Selection;
         var changed = selected || before.Content != after.Content;
+        if (HandheldTokens.IsBigType)
+        {
+            // The mock's keyboard: a letter typed sounds move, Delete back; a wall bumps.
+            if (action == GamepadAction.Confirm && before.Typed >= 0 && after.Typed >= 0 && before.Typed != after.Typed)
+                return after.Typed > before.Typed ? HandheldSound.Move : HandheldSound.Back;
+            if (bumped && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft
+                or GamepadAction.NavigateRight or GamepadAction.PreviousPlatform or GamepadAction.NextPlatform)
+                return HandheldSound.Bump;
+        }
         return action switch
         {
             GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft or GamepadAction.NavigateRight

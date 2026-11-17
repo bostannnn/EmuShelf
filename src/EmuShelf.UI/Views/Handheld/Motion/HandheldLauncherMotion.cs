@@ -22,7 +22,7 @@ namespace EmuShelf.App.Views.Handheld;
 /// (<see cref="TopLevel.RequestAnimationFrame"/>) only while something moves and write transforms; one-shot
 /// effects are compositor animations. The view model never knows about any of it.
 /// </summary>
-internal sealed class HandheldLauncherMotion
+internal sealed partial class HandheldLauncherMotion
 {
     // A page is the Launcher's canvas wide: 1240, or 1920 on the 16:9 screen (M45 H5).
     private double PageWidth => _screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
@@ -31,10 +31,10 @@ internal sealed class HandheldLauncherMotion
     private HandheldHomeScreenViewModel? _screen;
 
     private bool IsWide => _screen?.IsWide == true;
-    private const double ColumnPitch = 264;
-    private const double DotPitch = 30;   // an 18 px dot plus 12 px spacing
-    private const double IndicatorWidth = 52;
-    private const double GlowBlur = 28;
+    private static double ColumnPitch => HandheldTokens.FolderPitch;
+    private static double DotPitch => HandheldTokens.PageDotWidth + HandheldTokens.PageDotGap;
+    private static double IndicatorWidth => HandheldTokens.PageIndicatorWidth;
+    private static double GlowBlur => HandheldTokens.ClassicRingGlowBlur;
 
     private readonly Control _view;
     private readonly Visual _canvas;
@@ -132,8 +132,11 @@ internal sealed class HandheldLauncherMotion
                 return;
             _onScreen = value;
             _selectorLayer.IsVisible = value;
+            UpdateStill();
             if (!value)
             {
+                // Big Type's neighbours, bob and hop are this view's own; a picture for the native Launcher has none (M47 B5).
+                RestBigType();
                 _ticking = false;
                 _pageShift.X = 0;
                 _indicatorShift.X = 0;
@@ -153,8 +156,13 @@ internal sealed class HandheldLauncherMotion
 
     /// <summary>
     /// The element that holds the focus now (the most recently focused one still on screen): while a Title page
-    /// is up, only its own buttons and cards.
+    /// is up, only its own buttons and cards; on home, only a slot of the page on screen.
     /// </summary>
+    /// <remarks>
+    /// The shell marks focus on the page on screen only, so a slot left on another page keeps its mark. Moving from page 1's last
+    /// column onto page 2 and back to the same slot changed nothing on that slot (it never lost its mark), so page 2's slot stayed
+    /// the most recently focused and the ring and lift went there, off screen (M47 B6, seen in both looks).
+    /// </remarks>
     public Control? FocusedAnchor()
     {
         var title = _titleLayer.IsVisible;
@@ -162,13 +170,20 @@ internal sealed class HandheldLauncherMotion
         {
             var anchor = _anchors[i];
             if (anchor.IsAttachedToVisualTree() && anchor.IsEffectivelyVisible && HandheldSelectorAnchor.GetIsFocused(anchor) &&
-                _titleLayer.IsVisualAncestorOf(anchor) == title)
+                _titleLayer.IsVisualAncestorOf(anchor) == title && !OnAnotherPage(anchor))
             {
                 return anchor;
             }
         }
         return null;
     }
+
+    // A home slot on a page other than the one on screen.
+    private bool OnAnotherPage(Control anchor) =>
+        _screen?.CurrentPage is { } current &&
+        anchor.GetVisualAncestors().OfType<Control>().FirstOrDefault(control => control.DataContext is HandheldHomePageViewModel) is
+            { DataContext: HandheldHomePageViewModel page } &&
+        !ReferenceEquals(page, current);
 
     private T Find<T>(string name) where T : Control =>
         _view.FindControl<T>(name) ?? throw new InvalidOperationException($"The Launcher has no {name}.");
@@ -177,12 +192,14 @@ internal sealed class HandheldLauncherMotion
     {
         if (ReferenceEquals(shell, _shell))
             return;
+        AttachPickup(_shell, shell);
         if (_shell is { } old)
         {
             old.PropertyChanged -= OnShellChanged;
             old.Bumped -= OnBumped;
             old.FolderClosing -= OnFolderClosing;
             old.LaunchStarting -= OnLaunchStarting;
+            old.InputArrived -= OnInput;
         }
         _shell = shell;
         WatchFolder(shell?.OpenFolder);
@@ -195,6 +212,12 @@ internal sealed class HandheldLauncherMotion
         shell.Bumped += OnBumped;
         shell.FolderClosing += OnFolderClosing;
         shell.LaunchStarting += OnLaunchStarting;
+        shell.InputArrived += OnInput;
+        // Handheld mode opening counts as the first press: the resting motion lives its minute and the hop waits (M47 B5).
+        OnInput();
+        UpdateStill();
+        // The ground starts in the shell's colour (Big Type: this motion keeps it, M47 B7).
+        SettleGround(shell.LauncherGroundBrush);
         RequestTick();
     }
 
@@ -204,8 +227,10 @@ internal sealed class HandheldLauncherMotion
         if (isFocused)
         {
             _anchors.Add(anchor);
-            if (_onScreen)
+            if (_onScreen && HandheldTokens.IsClassic)
                 Breathe();
+            if (HandheldTokens.IsBigType)
+                FocusBigType(anchor);
         }
         RequestTick();
     }
@@ -238,6 +263,7 @@ internal sealed class HandheldLauncherMotion
     {
         if (e.PropertyName == nameof(HandheldHomeScreenViewModel.CurrentPage))
         {
+            _paged = true;
             _page.Retarget(-(_screen?.CurrentPage?.Index ?? 0) * PageWidth);
             RequestTick();
         }
@@ -249,19 +275,33 @@ internal sealed class HandheldLauncherMotion
     {
         switch (e.PropertyName)
         {
+            case nameof(HandheldShellViewModel.HoldsStill):
+                UpdateStill();
+                break;
             case nameof(HandheldShellViewModel.OpenFolder):
                 var folder = _shell?.OpenFolder;
                 if (folder is not null && !ReferenceEquals(folder, _folder))
                     OnFolderOpening(folder);
                 WatchFolder(folder);
                 break;
+            // Big Type (M47 B8): the game ended and its parts have left; home's tiles pop in around the focused one.
+            case nameof(HandheldShellViewModel.Playing) when _shell?.Playing is null && _gridMove is { Kind: GridMoveKind.Launch }:
+                if (_onScreen)
+                    ReturnBigType();
+                else
+                    EndGridMove();
+                break;
         }
+        UpdateLists();
+        if (e.PropertyName == nameof(HandheldShellViewModel.LauncherGroundBrush))
+            UpdateGround();
         RequestTick();
     }
 
     private void OnBumped(HandheldDirection direction)
     {
-        if (!_onScreen)
+        // Held still under Big Type (M47 B10, the mock's bump returns under reduced motion), the wall is not nudged.
+        if (!_onScreen || (HandheldTokens.IsBigType && Still))
             return;
         _bumpDirection = direction;
         _bumpStart = null; // stamped on the next frame
@@ -341,6 +381,12 @@ internal sealed class HandheldLauncherMotion
         _folderOrigin = HomeSlotCentre(folder) ?? new Point(PageWidth / 2, 400);
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): home's tiles fall away, the games deal in; no zoom.
+        if (HandheldTokens.IsBigType)
+        {
+            OpenFolderBigType(folder);
+            return;
+        }
         HideSelector();
         var ease = HandheldMotion.ZoomEase();
         if (HomeSlotContainer(folder) is { } slot)
@@ -376,6 +422,12 @@ internal sealed class HandheldLauncherMotion
         ++_zoom;
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): the games drop out, home's tiles pop back in; no zoom.
+        if (HandheldTokens.IsBigType)
+        {
+            CloseFolderBigType(folder);
+            return;
+        }
         HideSelector();
         var origin = HomeSlotCentre(folder) ?? _folderOrigin;
         var page = Ghost(_folderPage);
@@ -485,6 +537,12 @@ internal sealed class HandheldLauncherMotion
     {
         if (!_onScreen)
             return;
+        // Big Type (M47 B8): the focused tile flies up through the hinge and the grid goes as the takeover starts.
+        if (HandheldTokens.IsBigType)
+        {
+            LaunchBigType();
+            return;
+        }
         Dispatcher.UIThread.Post(() =>
         {
             var total = HandheldMotion.PressMilliseconds + HandheldMotion.LaunchLiftMilliseconds;
@@ -531,13 +589,30 @@ internal sealed class HandheldLauncherMotion
             }
             moving |= _page.Step(dt);
             _pageShift.X = _page.Value;
-            _indicatorShift.X = (-_page.Value / PageWidth * DotPitch) - ((IndicatorWidth - 18) / 2);
+            _indicatorShift.X = (-_page.Value / PageWidth * DotPitch) - ((IndicatorWidth - HandheldTokens.PageDotWidth) / 2);
         }
         moving |= _column.Step(dt);
         ApplyColumn();
 
+        if (HandheldTokens.IsBigType)
+        {
+            moving |= StepExit();
+            moving |= StepArrivals();
+            moving |= StepUnder();
+            moving |= StepGround();
+            moving |= StepGridMove();
+            moving |= StepKeyboard();
+            moving |= StepPickup();
+            // The neighbours' push before the ring: the tile the focus lands on may still be settling back from its own push, and the
+            // ring must take its target from where the tile is this frame, or it rests a fraction of a pixel off (M47 B7).
+            moving |= StepPushes();
+        }
         moving |= StepSelector(dt);
         moving |= StepSelectorFade();
+        if (!HandheldTokens.IsBigType)
+            moving |= StepPushes();
+        if (HandheldTokens.IsBigType)
+            CheckScreenHold();
         if (moving)
             RequestTick();
         else
@@ -553,7 +628,9 @@ internal sealed class HandheldLauncherMotion
             _selectorShown = false;
             return false;
         }
-        var (rect, radius) = target;
+        var (rect, radius, anchor) = target;
+        if (HandheldTokens.IsBigType)
+            return StepRing(anchor, rect, radius);
         if (!_selectorShown)
         {
             // The first appearance lands in place; after that the selector always travels.
@@ -575,32 +652,7 @@ internal sealed class HandheldLauncherMotion
         var moving = _x.Step(dt) | _y.Step(dt) | _width.Step(dt) | _height.Step(dt) | _radius.Step(dt);
 
         // The edge bump: a nudge toward the wall and back, on top of wherever the spring has the selector.
-        var bump = default(Vector);
-        if (_bumpPending)
-        {
-            _bumpPending = false;
-            _bumpStart = _now;
-        }
-        if (_bumpStart is { } start)
-        {
-            var progress = (_now - start).TotalMilliseconds / HandheldMotion.BumpMilliseconds;
-            if (progress >= 1)
-            {
-                _bumpStart = null;
-            }
-            else
-            {
-                var amount = BumpCurve(progress) * HandheldMotion.BumpFraction;
-                bump = _bumpDirection switch
-                {
-                    HandheldDirection.Left => new Vector(-amount * _width.Value, 0),
-                    HandheldDirection.Right => new Vector(amount * _width.Value, 0),
-                    HandheldDirection.Up => new Vector(0, -amount * _height.Value),
-                    _ => new Vector(0, amount * _height.Value),
-                };
-                moving = true;
-            }
-        }
+        var bump = StepBump(_width.Value, _height.Value, ref moving);
 
         _selector.Opacity = 1;
         _glow.Opacity = 1;
@@ -611,11 +663,13 @@ internal sealed class HandheldLauncherMotion
         if (Math.Abs(_selector.Height - height) > 0.05 || double.IsNaN(_selector.Height))
             _selector.Height = height;
         var r = Math.Max(0, _radius.Value);
-        if (Math.Abs(_ring.CornerRadius.TopLeft - r) > 0.25)
+        // Changes under a quarter pixel wait while the ring travels; once it settles it takes the exact radius, so it
+        // always rests the same however the frames fell (M47 B0: two renders were a fraction of a pixel apart).
+        if (Math.Abs(_ring.CornerRadius.TopLeft - r) > 0.25 || (_radius.IsSettled && _ring.CornerRadius.TopLeft != r))
         {
             _ring.CornerRadius = new CornerRadius(r);
-            ((Border)_ring.Child!).CornerRadius = new CornerRadius(Math.Max(0, r - 4));
-            ((Border)((Border)_ring.Child!).Child!).CornerRadius = new CornerRadius(Math.Max(0, r - 18));
+            ((Border)_ring.Child!).CornerRadius = new CornerRadius(Math.Max(0, r - HandheldTokens.ClassicRingKeylineWidth));
+            ((Border)((Border)_ring.Child!).Child!).CornerRadius = new CornerRadius(Math.Max(0, r - (HandheldTokens.ClassicRingKeylineWidth + HandheldTokens.RingStroke)));
         }
         _selectorShift.X = _x.Value + bump.X;
         _selectorShift.Y = _y.Value + bump.Y;
@@ -655,8 +709,53 @@ internal sealed class HandheldLauncherMotion
         return true;
     }
 
+    private Vector StepBump(double width, double height, ref bool moving)
+    {
+        if (_bumpPending)
+        {
+            _bumpPending = false;
+            _bumpStart = _now;
+        }
+        if (_bumpStart is not { } start)
+            return default;
+        // Big Type's bump is the mock's (M47 B11): the ring goes 18 px toward the wall and back in 220 ms, whatever its size.
+        if (HandheldTokens.IsBigType)
+        {
+            var since = (float)(_now - start).TotalMilliseconds;
+            if (since >= EmuShelf.Rendering.Stage.BigType.BigTypeMotion.BumpMilliseconds)
+            {
+                _bumpStart = null;
+                return default;
+            }
+            var by = EmuShelf.Rendering.Stage.BigType.BigTypeMotion.Bump(since);
+            moving = true;
+            return _bumpDirection switch
+            {
+                HandheldDirection.Left => new Vector(-by, 0),
+                HandheldDirection.Right => new Vector(by, 0),
+                HandheldDirection.Up => new Vector(0, -by),
+                _ => new Vector(0, by),
+            };
+        }
+        var progress = (_now - start).TotalMilliseconds / HandheldMotion.BumpMilliseconds;
+        if (progress >= 1)
+        {
+            _bumpStart = null;
+            return default;
+        }
+        var amount = BumpCurve(progress) * HandheldMotion.BumpFraction;
+        moving = true;
+        return _bumpDirection switch
+        {
+            HandheldDirection.Left => new Vector(-amount * width, 0),
+            HandheldDirection.Right => new Vector(amount * width, 0),
+            HandheldDirection.Up => new Vector(0, -amount * height),
+            _ => new Vector(0, amount * height),
+        };
+    }
+
     // Out to the wall fast (the first 35%), then eased back.
-    private static double BumpCurve(double progress) => progress < 0.35
+    internal static double BumpCurve(double progress) => progress < 0.35
         ? Math.Sin(progress / 0.35 * Math.PI / 2)
         : Math.Pow(Math.Cos((progress - 0.35) / 0.65 * Math.PI / 2), 2);
 
@@ -664,7 +763,7 @@ internal sealed class HandheldLauncherMotion
     /// Where the selector should be: around the most recently focused anchor that is on screen, at its ring's
     /// rectangle as it will be once the anchor's lift has finished (so the lift's own animation never drags it).
     /// </summary>
-    private (Rect Rect, double Radius)? ResolveTarget()
+    private (Rect Rect, double Radius, Control Anchor)? ResolveTarget()
     {
         for (var i = _anchors.Count - 1; i >= 0; i--)
         {
@@ -683,7 +782,8 @@ internal sealed class HandheldLauncherMotion
                 continue;
             var ring = anchor.GetVisualChildren().OfType<Border>().FirstOrDefault(border => border.Classes.Contains("ring"));
             var local = ring?.Bounds ?? new Rect(anchor.Bounds.Size).Inflate(16);
-            var lift = anchor.Classes.Contains("focusable") ? HandheldMotion.LiftScale : 1;
+            // Today's ring grows with the lift; Big Type's stays at its outset from the resting tile (M47 B3).
+            var lift = anchor.Classes.Contains("focusable") ? HandheldTokens.RingLift : 1;
             var centre = new Point(anchor.Bounds.Width / 2, anchor.Bounds.Height / 2);
             var lifted = new Rect(
                 centre.X + ((local.X - centre.X) * lift),
@@ -693,7 +793,7 @@ internal sealed class HandheldLauncherMotion
             var topLeft = lifted.TopLeft.Transform(matrix);
             var bottomRight = lifted.BottomRight.Transform(matrix);
             var radius = (ring?.CornerRadius.TopLeft ?? 32) * lift * matrix.M11;
-            return (new Rect(topLeft, bottomRight), radius);
+            return (new Rect(topLeft, bottomRight), radius, anchor);
         }
         return null;
     }

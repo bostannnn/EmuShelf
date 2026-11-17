@@ -1,3 +1,4 @@
+using EmuShelf.Core.Handheld;
 using EmuShelf.Core.Settings;
 using EmuShelf.Infrastructure.Settings;
 
@@ -48,6 +49,26 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
         Assert.True(loaded.MetadataConsentPromptShown);
         Assert.False(loaded.Scraping.WebImageSearchEnabled);
         Assert.True(loaded.Scraping.ScreenScraper.Enabled);
+    }
+
+    [Fact]
+    public void HandheldLook_IsTodaysLookUntilSaved_AndRoundTrips()
+    {
+        // M47 B0: the look switch the Big Type restyle is built behind.
+        var service = new JsonSettingsService(AppPaths);
+        Assert.Equal(HandheldLook.Classic, new AppSettings().HandheldLook);
+        Assert.Equal(HandheldLook.Classic, service.Load().HandheldLook);
+
+        service.Save(service.Load() with { HandheldLook = HandheldLook.BigType });
+
+        Assert.Contains("\"HandheldLook\": \"BigType\"", File.ReadAllText(AppPaths.SettingsFilePath));
+        Assert.Equal(HandheldLook.BigType, new JsonSettingsService(AppPaths).Load().HandheldLook);
+
+        // A settings file from before the switch existed reads as today's look.
+        File.WriteAllText(AppPaths.SettingsFilePath, """{ "HandheldSounds": false }""");
+        var older = service.Load();
+        Assert.False(older.HandheldSounds);
+        Assert.Equal(HandheldLook.Classic, older.HandheldLook);
     }
 
     [Fact]

@@ -81,7 +81,9 @@ public sealed partial class HandheldShellViewModel
     /// </summary>
     private bool CanDrift => _idleEnabled && !_disposed && !HoldsStill && IsLoaded && !CompanionOwnsPad &&
         (_companion is null || _companion.Overlay == SecondScreenOverlayKind.None) &&
-        Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null && _move is null && TitlePage is null;
+        Settings is null && Panel is null && !IsMenuOpen && Naming is null && Sheet is null && _move is null && TitlePage is null &&
+        // M47 B12: the model view is the Stage showing itself (its showcase, then its own rest after a minute), not a Stage to drift.
+        !Stage.IsModelView;
 
     private async Task StartDriftAsync()
     {
@@ -201,11 +203,42 @@ public sealed partial class HandheldShellViewModel
     /// </summary>
     private bool WakeOnInput()
     {
+        // A new press: what the last one moved is forgotten until this one moves (M47 B6, the letters' entrance).
+        LastMoveDirection = null;
+        LastFolderOpened = null;
+        LastListOpened = null;
         var woke = IsDrifting;
         StopDrift(refreshStage: true);
         ArmIdle();
+        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+        InputRun = _lastInputAt != 0 && EmuShelf.Rendering.Stage.BigType.BigTypeMotion.InRun(
+            (float)System.Diagnostics.Stopwatch.GetElapsedTime(_lastInputAt, now).TotalMilliseconds);
+        _lastInputAt = now;
+        _stageSettledSincePress = false;
+        InputArrived?.Invoke();
         return woke;
     }
+
+    private long _lastInputAt;
+    private bool _stageSettledSincePress;
+
+    /// <summary>
+    /// The last press came within a run of the one before (a held direction, quick taps; M47 B11, tokens.js <c>LetterRun.withinMs</c>).
+    /// </summary>
+    public bool InputRun { get; private set; }
+
+    /// <summary>
+    /// What changes now was brought by a press within a run of the one before (M47 B11): under Big Type the Stage's name follows in its
+    /// short form and texts swap rather than roll. Never once the Stage has settled after a held direction (today's once-per-move rule
+    /// keeps the Stage waiting while a direction is held): the name the focus rests on lands as the mock's.
+    /// </summary>
+    public bool QuickChange => InputRun && !_stageSettledSincePress;
+
+    /// <summary>
+    /// A press or a touch arrived (M47 B5): the Big Type Launcher's resting motion (the ring's breath, the bob) wakes for another
+    /// minute and its idle hop waits again. The drift is not input: it changes the Stage, never the Launcher.
+    /// </summary>
+    public event Action? InputArrived;
 
     /// <summary>
     /// A finger touched either screen (the views call this as the touch begins). True when it only woke the drift: the

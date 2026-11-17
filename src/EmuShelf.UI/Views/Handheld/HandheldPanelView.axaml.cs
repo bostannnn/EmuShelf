@@ -19,6 +19,8 @@ public partial class HandheldPanelView : UserControl
     public HandheldPanelView()
     {
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
         _rows = this.FindControl<ItemsControl>("PanelRows")!;
         var host = this.FindControl<Panel>("PanelScrollHost")!;
         var scroller = this.FindControl<ScrollViewer>("PanelScroller")!;

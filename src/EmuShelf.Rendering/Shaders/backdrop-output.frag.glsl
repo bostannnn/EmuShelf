@@ -16,6 +16,9 @@ uniform float uBloom;
 // The share of the frame's width cut off, half each side, so a 16:9 frame fills a narrower screen without
 // squashing (the swapped Stage on the Thor's 1240×1080 panel, M45 H5). Zero shows all of it.
 uniform float uCrop;
+// Big Type's wipe (M47 B6): a circle in the surface's pixels (x, y from the bottom-left, the radius) that the backdrop shows
+// only inside, with a one-pixel soft edge, while w is 1. All zero (unset) shows all of it, as before.
+uniform vec4 uClip;
 
 in vec2 vNdc;
 out vec4 fragColor;
@@ -73,5 +76,8 @@ void main()
     if (uBloom > 0.0)
         colour += texture(uBloomNear, uv).rgb * uBloom + texture(uBloomFar, uv).rgb * uBloom * 0.9;
 
-    fragColor = vec4(min(colour, vec3(1.0)) * uOpacity, uOpacity);
+    float opacity = uOpacity;
+    if (uClip.w > 0.5)
+        opacity *= clamp(uClip.z - distance(gl_FragCoord.xy, uClip.xy) + 0.5, 0.0, 1.0);
+    fragColor = vec4(min(colour, vec3(1.0)) * opacity, opacity);
 }

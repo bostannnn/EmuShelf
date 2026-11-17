@@ -136,6 +136,13 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
     public bool HasActionText =>
         IsAction && Value.Length > 0 && !Value.StartsWith("A ", StringComparison.OrdinalIgnoreCase);
     public string ActionText => HasActionText ? Value : string.Empty;
+
+    /// <summary>
+    /// The value a Handheld Big Type row shows at its end (M47 B11, as the mock sets a row's value): an action row's word only when it
+    /// says something its label does not ("Working…", "Sync now"), never Gamepad mode's "A …" prompt ("A SAVE", "A RESCAN"); any
+    /// other row its value.
+    /// </summary>
+    public string RowValue => IsAction ? ActionText : Value;
     internal Func<Task>? Activate { get; private set; }
     internal Func<Task>? SecondaryActivate { get; private set; }
     internal bool SecondaryIsDestructive { get; private set; }
@@ -202,6 +209,7 @@ public partial class GamepadSettingsRowViewModel : ObservableObject
         OnPropertyChanged(nameof(ShowsChevron));
         OnPropertyChanged(nameof(HasActionText));
         OnPropertyChanged(nameof(ActionText));
+        OnPropertyChanged(nameof(RowValue));
         OnPropertyChanged(nameof(SecondaryKey));
     }
 }
@@ -291,6 +299,8 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
 
     // Handheld mode's interface sounds (M45 H6d): a Display row only when Handheld mode builds this projection.
     private readonly GamepadSettingsSwitch? _handheldSounds;
+    // Handheld mode's own reduced-motion switch (M47 B10): a Display row only when the Big Type look builds this projection.
+    private readonly GamepadSettingsSwitch? _handheldReduceMotion;
     private readonly IRelayCommand _requestUsageAccessCommand;
     private bool _usageAccessGranted;
     private bool _usageAccessRead;
@@ -749,10 +759,12 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         SetupWizardOptions? setup = null,
         Func<Task>? runSetup = null,
         IAppUsageAccess? usageAccess = null,
-        GamepadSettingsSwitch? handheldSounds = null)
+        GamepadSettingsSwitch? handheldSounds = null,
+        GamepadSettingsSwitch? handheldReduceMotion = null)
     {
         _settings = settings;
         _handheldSounds = handheldSounds;
+        _handheldReduceMotion = handheldReduceMotion;
         _usageAccess = usageAccess;
         // The grant is made on Android's own screen; the answer is read again on return (RefreshDeviceState).
         _requestUsageAccessCommand = new RelayCommand(() => _usageAccess?.RequestGrant());
@@ -2255,6 +2267,15 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
                 "a soft tone as you move, open, close, confirm and go back · Handheld mode",
                 sounds.Get(),
                 sounds.Set) with { ExcludeFromParity = true };
+        }
+        if (_handheldReduceMotion is { } still)
+        {
+            yield return ToggleRow(
+                "display.reduce-motion",
+                "Reduce motion",
+                "everything arrives in place at once and the backdrop holds still · Android's own setting does this too",
+                still.Get(),
+                still.Set) with { ExcludeFromParity = true };
         }
     }
 

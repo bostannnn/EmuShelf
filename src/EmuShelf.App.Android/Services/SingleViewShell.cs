@@ -36,6 +36,10 @@ public sealed class SingleViewShell : IPlatformShell
         PlatformShellDependencies deps)
     {
         _singleView = singleView;
+        // A developer override of Handheld mode's look for this run (M47 B2), read before the view model can start Handheld mode.
+        HandheldLookProperty.Read();
+        // R1's frame probe (M47 B6), read once at start-up so the UI side's log is ready before the first name is sent.
+        _ = FrameProbeProperty.IsOn;
 
         InterfaceMode = new AndroidInterfaceModeService(boot.SettingsService, HasPresentationDisplay);
         Frontend = new AndroidFrontendController();
@@ -140,6 +144,10 @@ public sealed class SingleViewShell : IPlatformShell
 
     public void Show(MainViewModel viewModel, ShellCallbacks callbacks)
     {
+        // Handheld mode's views are built here with the first MainView (HandheldScreenHost), long before Handheld mode
+        // starts, and read the design tokens as they are built: so the tokens take the look now. MainViewModel gives
+        // them the same look again when Handheld mode starts (M47 B2).
+        HandheldTokens.Use(HandheldLookChoice.Resolve(_settingsService.Load().HandheldLook));
         // Handheld mode's status pill reads the battery and Wi-Fi from the system, and its sounds play here (M45 H6d).
         viewModel.HandheldDeviceStatus = new AndroidDeviceStatusService(global::Android.App.Application.Context);
         viewModel.HandheldSoundPlayer = new AndroidHandheldSoundPlayer(_logger);

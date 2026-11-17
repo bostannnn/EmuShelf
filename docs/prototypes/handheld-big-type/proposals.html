@@ -1,0 +1,368 @@
+<title>Big Type Proposals</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400..800&family=M+PLUS+Rounded+1c:wght@500;700;900&display=swap">
+<style>
+/* Layout: one column. Each proposal is a live picture first, then a few lines on what changes from the approved mock. Nothing here is approved. */
+:root{
+  --bg:#F2F1F6; --fg:#17162B; --mute:#5F5D78; --line:#D8D6E4; --card:#FFFFFF; --accent:#5247C8; --on-accent:#FFFFFF; --bad:#B3261E; --ok:#1B7A4B;
+  --disp:'M PLUS Rounded 1c','Hiragino Maru Gothic ProN','Arial Rounded MT Bold',system-ui,sans-serif;
+  --text:'Archivo',system-ui,-apple-system,'Segoe UI',sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF; --on-accent:#14122B; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#100F18; --fg:#ECEBF5; --mute:#A19FBA; --line:#2C2A41; --card:#1A1927; --accent:#A39BFF; --on-accent:#14122B; --bad:#FF8F80; --ok:#6FD6A0; color-scheme:dark }
+
+body{background:var(--bg);color:var(--fg);font:400 1rem/1.5 var(--text);padding-block:28px 72px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+main{max-width:980px;margin:0 auto;display:grid;gap:56px}
+h1,h2{font-family:var(--disp);font-weight:900;letter-spacing:-.01em;margin:0;text-wrap:balance}
+h1{font-size:clamp(2.2rem,6vw,3.4rem);line-height:1}
+h2{font-size:1.7rem;line-height:1.1}
+p{margin:0}
+.eyebrow{font:600 .78rem/1.3 var(--text);letter-spacing:.06em;text-transform:uppercase;color:var(--mute)}
+.lede{font-size:1.1rem;max-width:42rem}
+.mute{color:var(--mute)}
+header.top,section.prop{display:grid;gap:14px}
+.what{max-width:44rem;display:grid;gap:8px}
+.what ul{margin:0;padding-left:1.1rem;display:grid;gap:4px}
+.bar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.btn{font:600 .92rem/1 var(--text);color:var(--fg);background:var(--card);border:1.5px solid var(--line);border-radius:9px;padding:.7rem .9rem;cursor:pointer}
+.btn:hover{border-color:var(--mute)}
+.btn[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn:focus-visible,.stagewrap:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tag{font:700 .7rem/1 var(--text);letter-spacing:.05em;text-transform:uppercase;color:var(--accent)}
+kbd{font:600 .8rem/1 var(--text);border:1.5px solid var(--line);border-radius:5px;padding:.12rem .38rem}
+
+/* ---------- the top screen, at half the Thor's size (960 x 540), scaled to the page ---------- */
+.stagewrap{position:relative;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#C9D2F2;max-width:100%}
+.st{position:absolute;left:0;top:0;width:960px;height:540px;transform-origin:0 0;transform:scale(var(--k,1));font-family:var(--disp);color:var(--ink,#16204A);--ink:#16204A;--veil:rgba(255,255,255,.28)}
+.st canvas.bdc{position:absolute;inset:0;width:100%;height:100%}
+.st .veil{position:absolute;inset:0;background:linear-gradient(to right,var(--veil) 0,var(--veil) 46%,transparent 72%);transition:opacity .4s}
+.st.model .veil{opacity:0}
+.kick{position:absolute;left:44px;top:32px;font:700 22px/1.15 var(--disp)}
+.sys{position:absolute;right:44px;top:24px;display:flex;align-items:flex-end;gap:16px}
+.batt{font:700 18px/1.15 var(--disp);opacity:.85;padding-bottom:6px}
+.clock{font:900 46px/1.15 var(--disp);font-variant-numeric:tabular-nums}
+.word{position:absolute;left:40px;bottom:120px;width:680px;height:340px;font-weight:900;line-height:.9;letter-spacing:-.02em}
+.wl{position:absolute;left:0;bottom:0}
+.wl .w{display:inline-block;white-space:nowrap}
+.wl .l{display:inline-block}
+.meta{position:absolute;left:44px;bottom:66px;font:700 21px/1.15 var(--disp);font-variant-numeric:tabular-nums}
+.meta2{position:absolute;left:44px;bottom:38px;font:700 18px/1.15 var(--disp);opacity:.82;font-variant-numeric:tabular-nums}
+.hints{position:absolute;right:44px;bottom:36px;display:flex;gap:22px;font:700 19px/1 var(--disp)}
+.hint{display:flex;align-items:center;gap:8px}
+.hint i{min-width:29px;height:29px;box-sizing:border-box;border:2.5px solid currentColor;border-radius:50%;display:grid;place-items:center;font:800 14px/1 var(--disp);font-style:normal}
+.hint i.sh{padding:0 7px;border-radius:9px}
+
+/* the case: a whole object, six sides, the cover on the front, a printed back, the title down the spine */
+.case{position:absolute;right:124px;top:118px;width:196px;height:276px;perspective:1100px;transition:transform .55s cubic-bezier(.2,1.4,.3,1),opacity .25s,right .55s cubic-bezier(.2,1.4,.3,1),top .55s cubic-bezier(.2,1.4,.3,1)}
+.case.off{transform:translateY(190px) scale(.8);opacity:0}
+.case .kickr,.case .sway{position:absolute;inset:0;transform-style:preserve-3d}
+.case .sway{animation:sway 7s ease-in-out infinite alternate}
+@keyframes sway{from{transform:rotateY(32deg) rotateX(4deg)}to{transform:rotateY(14deg) rotateX(1deg)}}
+.case .front{position:absolute;inset:0;border-radius:3px 7px 7px 3px;overflow:hidden;transform:translateZ(14px)}
+.case .back{position:absolute;inset:0;border-radius:7px 3px 3px 7px;background:#15141f;overflow:hidden;transform:rotateY(180deg) translateZ(14px)}
+.case .spine{position:absolute;left:-14px;top:0;width:28px;height:100%;transform:rotateY(-90deg);display:grid;place-items:center;overflow:hidden}
+.case .spine b{writing-mode:vertical-rl;font:700 11px/1 var(--disp);color:#fff;opacity:.92;white-space:nowrap}
+.case .edge{position:absolute;right:-14px;top:0;width:28px;height:100%;background:#1b1a27;transform:rotateY(90deg)}
+.case .capt,.case .capb{position:absolute;left:0;width:100%;height:28px;background:#1b1a27}
+.case .capt{top:-14px;transform:rotateX(90deg)}
+.case .capb{bottom:-14px;transform:rotateX(-90deg)}
+.case .floor{position:absolute;left:8%;right:-6%;bottom:-30px;height:22px;border-radius:50%;background:rgba(8,8,20,.3);filter:blur(10px)}
+.cv{position:absolute;inset:0;background:var(--a);overflow:hidden}
+.cv i{position:absolute;width:90%;aspect-ratio:1;border-radius:50%;right:-28%;bottom:-28%;background:var(--b)}
+.cv b{position:absolute;left:8%;right:8%;top:8%;font:700 22px/1.15 var(--disp);color:#fff}
+.bk{position:absolute;inset:0;padding:13px 12px 11px;display:flex;flex-direction:column;gap:7px;background:linear-gradient(170deg,var(--b),#15141f 72%)}
+.bk .shots{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:3px}
+.bk .shots span{aspect-ratio:4/3;border-radius:2px;background:var(--a);opacity:.88}
+.bk p{height:5px;border-radius:2px;background:rgba(255,255,255,.5)}
+.bk p.s{width:60%}
+.bk .code{margin-top:auto;align-self:flex-end;width:46px;height:22px;background:repeating-linear-gradient(90deg,#fff 0 2px,transparent 2px 4px,#fff 4px 5px,transparent 5px 8px);opacity:.85}
+
+/* the model view: the model alone, in the middle of the screen */
+.case.big{right:382px;top:108px;transform:scale(1.36);cursor:grab;touch-action:none}
+.case.big .sway{animation:showcase 15s infinite}
+.case.big .kickr{animation:bob 4.6s ease-in-out infinite alternate}
+.case.big .floor{left:-4%;right:-10%;bottom:-28px;height:22px;animation:shade 4.6s ease-in-out infinite alternate}
+.case.big.held{cursor:grabbing}
+.case.big.held .sway{animation:none}
+@keyframes showcase{0%{transform:rotateX(4deg) rotateY(32deg);animation-timing-function:cubic-bezier(.45,0,.3,1)}
+  36%{transform:rotateX(2deg) rotateY(14deg)}50%{transform:rotateX(2deg) rotateY(14deg);animation-timing-function:cubic-bezier(.5,0,.25,1)}
+  100%{transform:rotateX(4deg) rotateY(-328deg)}}
+@keyframes bob{from{translate:0 3px}to{translate:0 -6px}}
+@keyframes shade{from{scale:1;opacity:1}to{scale:.9;opacity:.7}}
+@media (prefers-reduced-motion: reduce){ .case{transition:none} .case .sway,.case.big .kickr,.case.big .floor{animation:none} .case .sway{transform:rotateY(24deg) rotateX(3deg)} .case.big .sway{transform:rotateX(4deg) rotateY(32deg)} }
+
+/* ---------- backdrops beside their console's colour ---------- */
+.bdgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.bdcol{display:grid;gap:8px;min-width:0;align-content:start}
+.bdcol h3{margin:0;font:700 .9rem/1.2 var(--text)}
+.bd{border-radius:8px;overflow:hidden}
+.pic{position:relative;aspect-ratio:16/9;isolation:isolate;background:#22212e;display:block}
+.pic canvas{position:absolute;inset:0;width:100%;height:100%}
+.pic canvas.pixel{image-rendering:pixelated}
+.pic .tint{position:absolute;inset:0;mix-blend-mode:color}
+.pic .mono{position:absolute;left:6%;bottom:6%;font:900 1.5rem/.9 var(--disp);letter-spacing:-.02em;color:#fff;text-shadow:0 1px 10px rgba(10,10,30,.35)}
+.gr{height:16px}
+details.more{border:1.5px solid var(--line);border-radius:12px;padding:12px 14px}
+details.more summary{cursor:pointer;font-weight:600}
+.agrid{display:grid;gap:22px;margin-top:16px}
+.acon{display:grid;gap:8px}
+.acon .ah{display:flex;gap:8px;align-items:center;font-weight:600;font-size:.95rem}
+.acon .sw{display:inline-grid;place-items:center;min-width:44px;height:24px;padding:0 8px;border-radius:6px;color:#fff;font:900 .74rem/1 var(--disp)}
+.arow{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px}
+.ab{margin:0;display:grid;gap:6px;min-width:0}
+.ab .pic{border-radius:6px;overflow:hidden}
+.ab figcaption{font-size:.8rem;color:var(--mute);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.ab .dot{width:12px;height:12px;border-radius:50%;border:1px solid var(--line);flex:none}
+.ab .far{color:var(--bad);font-weight:700}
+.newgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px 16px}
+.nw{margin:0;display:grid;gap:8px;min-width:0;max-width:640px}
+.nw .frame{border-radius:10px;overflow:hidden}
+.nw .pic .mono{font-size:2rem}
+.nw figcaption{display:grid;gap:3px;font-size:.92rem;color:var(--mute)}
+.nw figcaption b{color:var(--fg);font-weight:700}
+@media (max-width:560px){ .bdgrid{gap:6px} .pic .mono{font-size:1rem} }
+a{color:var(--accent)}
+</style>
+
+<main>
+  <header class="top">
+    <p class="eyebrow">EmuShelf · Handheld mode on the Thor · not approved yet</p>
+    <h1>Big Type proposals</h1>
+    <p class="lede">Only what is new. The approved mock is untouched; nothing on this page is built until you say yes on the decisions page.</p>
+  </header>
+
+  <section class="prop" aria-labelledby="p1">
+    <h2 id="p1">The model view, on LB and RB</h2>
+    <div class="bar">
+      <div class="seg" role="group" aria-label="Which view">
+        <button class="btn" type="button" id="v-model" data-view="model" aria-pressed="true">New · model view</button>
+        <button class="btn" type="button" id="v-name" data-view="name" aria-pressed="false">New · name view</button>
+        <button class="btn" type="button" id="v-today" data-view="today" aria-pressed="false">Today · name and case</button>
+      </div>
+      <div class="seg" role="group" aria-label="Game">
+        <button class="btn" type="button" id="g-prev" aria-label="Previous game">◀</button>
+        <button class="btn" type="button" id="g-next" aria-label="Next game">▶</button>
+      </div>
+    </div>
+    <div class="stagewrap" id="wrap" tabindex="0" aria-label="The top screen. Q and E switch views, the arrow keys change game, drag the case to turn it.">
+      <div class="st model" id="st">
+        <div id="bd"></div><div class="veil"></div>
+        <div class="kick">PlayStation 2</div>
+        <div class="sys"><span class="batt">76%</span><span class="clock" id="clock">18:00</span></div>
+        <div class="case off" id="case"><div class="floor"></div><div class="kickr" id="kickr"><div class="sway" id="sway"><div class="back" id="back"></div><div class="spine" id="spine"></div><div class="edge"></div><div class="capt"></div><div class="capb"></div><div class="front" id="front"></div></div></div></div>
+        <div class="word" id="word"></div>
+        <div class="meta" id="meta"></div>
+        <div class="meta2" id="meta2"></div>
+        <div class="hints" id="hints"></div>
+      </div>
+    </div>
+    <p class="mute">This is the top screen only; the bottom screen does not change. <kbd>E</kbd> or <kbd>Q</kbd> is RB or LB, the arrow keys change game, and you can drag the model to turn it.</p>
+    <div class="what">
+      <p><span class="tag">What changes</span></p>
+      <ul>
+        <li><b>Today</b> a game shows its big name with the 3D case squeezed beside it.</li>
+        <li><b>New</b> the two are separate views. The name view is the big name alone. LB or RB switches to the model view: the model alone in the middle of the screen, no big name.</li>
+        <li>In the model view the game's name is only the small line at the bottom left. Say so if you want that gone too.</li>
+        <li>The model rises through the hinge, floats, and every 15 seconds turns once all the way round so the back and the spine show. The right stick turns it; let go and it swings back.</li>
+        <li>Moving to another game flips the model over into the next one. The view you chose stays as you browse.</li>
+        <li>The model drawn here is a stand-in box. The app uses its real models: keep case, jewel case, cartridges and cards.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="prop" aria-labelledby="p2">
+    <h2 id="p2">Backdrops in their console's colour</h2>
+    <p class="lede">Three of the backdrops furthest from their console's colour. The strip under each is that console's colour on the bottom screen.</p>
+    <div class="bdgrid" id="bdgrid"><p class="mute" style="grid-column:1/-1">Drawing the backdrops…</p></div>
+    <div class="what">
+      <p><span class="tag">What changes</span></p>
+      <ul>
+        <li><b>Today</b> each backdrop keeps the colours it was drawn with, before the console colours were chosen.</li>
+        <li><b>New</b> each backdrop is pulled toward its console's colour. Its shapes, its motion and its light and dark stay as they are.</li>
+      </ul>
+    </div>
+    <details class="more" id="amore"><summary>All 53 backdrops, measured against their console's colour</summary>
+      <p class="mute" style="margin-top:8px;font-size:.92rem">The dot is the backdrop's own average colour. The number is how far that is from the console's colour, ignoring light and dark: under 14 is the same family, over 28 is a different colour. Furthest consoles first.</p>
+      <p class="mute" id="asum" style="margin-top:6px"></p>
+      <div class="agrid" id="agrid"></div>
+    </details>
+  </section>
+
+  <section class="prop" aria-labelledby="p3">
+    <h2 id="p3">Ten ideas for Nintendo 3DS</h2>
+    <p class="lede">You said the last five were less interesting than what the other consoles have. These ten are drawn the way those are: real scenes with depth and light, in the console's colour.</p>
+    <div class="newgrid" id="new3ds"></div>
+  </section>
+
+  <section class="prop" aria-labelledby="p4">
+    <h2 id="p4">Ten ideas for the default background</h2>
+    <p class="lede">For Settings, Activity, your own folders and anything else without a console. You liked the rising motes but found them too passive and too small, and asked why stars on a gaming device. These ten are bigger, livelier and about play. Each takes the colour of whatever is focused; try the three colours.</p>
+    <div class="bar"><div class="seg" role="group" aria-label="Colour">
+      <button class="btn" type="button" id="bg-settings" data-bg="#4A43B8" aria-pressed="true">Settings</button>
+      <button class="btn" type="button" id="bg-green" data-bg="#2A8766" aria-pressed="false">A green folder</button>
+      <button class="btn" type="button" id="bg-rust" data-bg="#A8503C" aria-pressed="false">A rust folder</button>
+    </div></div>
+    <div class="newgrid" id="newbg"></div>
+  </section>
+
+  <section class="prop" aria-labelledby="p5">
+    <h2 id="p5">Recent gets the checker floor</h2>
+    <p class="lede">The arcade animation you liked, in Recent's own colour, as you chose. It is going into the build as it is shown here.</p>
+    <div class="newgrid">
+      <figure class="nw"><div class="frame"><div class="pic" id="recentpic"><div class="tint" style="background:#39465F"></div><span class="mono">Recent</span></div><div class="gr" style="background:#39465F"></div></div>
+        <figcaption><b>Checker floor</b><span>The floor rushing toward you, recoloured from green and pink to Recent's slate.</span></figcaption></figure>
+    </div>
+  </section>
+
+  <p class="mute">To answer: <a href="https://claude.ai/artifact/ErRBKCeDUNdvFkiyChAqfT">Big Type Decisions</a>. The approved mock, unchanged: <a href="https://claude.ai/artifact/8LvGnNyDLSZRWDSSLU2NEF">Handheld Big Type</a>.</p>
+</main>
+
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const RM=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SPRING='cubic-bezier(.2,1.5,.35,1)',FLIP='cubic-bezier(.2,1.3,.3,1)';
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const rgb=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16));
+const mixHex=(a,b,t)=>{const A=rgb(a),B=rgb(b);return '#'+A.map((v,i)=>Math.round(v+(B[i]-v)*t).toString(16).padStart(2,'0')).join('');};
+
+/* ---------- the model view ---------- */
+const GAMES=[['Okami','44 h 10 min','38 / 51 achievements','yesterday',205],['Shadow of the Colossus','12 h 40 min','9 / 31 achievements','last week',150],
+ ['Persona 4','81 h 05 min','22 / 50 achievements','3 days ago',48],['Gran Turismo 4','27 h 30 min','14 / 40 achievements','in October',0],['Katamari Damacy','6 h 20 min','5 / 18 achievements','2 weeks ago',318]];
+const st=$('st'),caseEl=$('case'),sway=$('sway'),kickr=$('kickr'),word=$('word');
+let view='model',gi=0,wl=null,shown=null,wasBig=false;
+function fit(){$('wrap').style.setProperty('--k',$('wrap').clientWidth/960);}
+function fitWord(el,W,H){let lo=28,hi=420;el.style.width=W+'px';for(let i=0;i<9;i++){const m=(lo+hi)/2;el.style.fontSize=m+'px';if(el.scrollWidth<=W+1&&el.offsetHeight<=H)lo=m;else hi=m;}el.style.fontSize=Math.floor(lo)+'px';}
+function setWord(text,W){
+ if(wl&&wl._t===text&&wl._W===W)return;
+ if(wl){const old=wl;wl=null;if(RM)old.remove();else old.animate([{opacity:1},{transform:'translateY(-.3em)',opacity:0}],{duration:170,easing:'ease-in',fill:'forwards'}).onfinish=()=>old.remove();}
+ if(!text)return;
+ const el=document.createElement('div');el.className='wl';el._t=text;el._W=W;
+ text.split(' ').forEach(w=>{const ws=document.createElement('span');ws.className='w';[...w].forEach(ch=>{const s=document.createElement('span');s.className='l';s.textContent=ch;ws.appendChild(s);});el.appendChild(ws);el.appendChild(document.createTextNode(' '));});
+ word.appendChild(el);fitWord(el,W,340);wl=el;if(RM)return;
+ const ls=[...el.querySelectorAll('.l')],per=Math.min(26,300/ls.length);
+ ls.forEach((l,i)=>l.animate([{transform:'translateY(.55em) rotate(6deg)',opacity:0},{transform:'none',opacity:1}],{duration:540,delay:90+i*per,easing:SPRING,fill:'backwards'}));}
+function setHints(list){const key=list.join('|'),hb=$('hints');if(hb._k===key)return;hb._k=key;
+ hb.innerHTML=list.map(([k,l])=>`<span class="hint"><i${k.length>1?' class="sh"':''}>${k}</i>${l}</span>`).join('');
+ if(!RM)[...hb.children].forEach((h,i)=>h.animate([{transform:'translateY(14px)',opacity:0},{transform:'none',opacity:1}],{duration:380,delay:i*50,easing:SPRING,fill:'backwards'}));}
+function dress(g){const a=`hsl(${g[4]} 40% 47%)`,b=`hsl(${(g[4]+28)%360} 46% 33%)`;
+ $('front').innerHTML=`<div class="cv" style="--a:${a};--b:${b}"><i></i><b>${esc(g[0])}</b></div>`;
+ $('spine').style.background=b;$('spine').innerHTML=`<b>${esc(g[0])}</b>`;
+ $('back').innerHTML=`<div class="bk" style="--a:${a};--b:${b}"><div class="shots"><span></span><span></span></div><p></p><p></p><p class="s"></p><div class="code"></div></div>`;}
+function render(dir){const g=GAMES[gi],big=view==='model',show=view!=='name';
+ st.classList.toggle('model',big);
+ document.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));
+ // the model view has no big name: the model is the picture, and the name is only the line at the bottom left
+ setWord(big?'':g[0],view==='today'?560:680);
+ $('meta').textContent=big?g[0]:`${g[1]}  ·  ${g[2]}`;
+ $('meta2').textContent=big?`${g[1]}  ·  ${g[2]}  ·  PCSX2`:`PCSX2  ·  last played ${g[3]}`;
+ setHints(big?[['A','Play'],['B','Back'],['RS','Turn'],['RB','Name']]:view==='name'?[['A','Play'],['Y','More'],['B','Back'],['RB','Model']]:[['A','Play'],['Y','More'],['B','Back']]);
+ const rose=big&&!wasBig;wasBig=big;
+ caseEl.classList.toggle('off',!show);caseEl.classList.toggle('big',big);
+ if(!show){shown=null;return;}
+ const changed=shown!==gi,first=shown===null;if(changed){shown=gi;dress(g);}
+ if(RM||!(changed||rose))return;
+ // it rises turning; a change of game is one whole flip to the next; beside the name it only kicks round a little
+ const from=big?(rose||first?-250:dir<0?-180:180):(dir<0?-70:70);
+ kickr.animate([{transform:`rotateY(${from}deg)`},{transform:'rotateY(0deg)'}],{duration:big?(rose||first?950:720):680,easing:FLIP});}
+function setView(v){if(v===view)return;view=v;render(1);}
+function step(d){gi=(gi+d+GAMES.length)%GAMES.length;render(d);}
+document.querySelectorAll('[data-view]').forEach(b=>b.onclick=()=>setView(b.dataset.view));
+$('g-prev').onclick=()=>step(-1);$('g-next').onclick=()=>step(1);
+addEventListener('keydown',e=>{if(e.metaKey||e.ctrlKey||e.altKey||(e.target.closest&&e.target.closest('textarea,input')))return;
+ if(e.key==='ArrowLeft'){e.preventDefault();step(-1);}else if(e.key==='ArrowRight'){e.preventDefault();step(1);}
+ else if(/^[qe]$/i.test(e.key)){if(view==='today')setView('model');else setView(view==='model'?'name':'model');}});
+// the model is taken hold of in whatever pose it has reached and turned from there (the right stick on the device); let go and it swings back
+(()=>{let p0=null,cur='',base='';const REST='rotateX(4deg) rotateY(32deg)';
+ caseEl.addEventListener('pointerdown',e=>{if(!caseEl.classList.contains('big'))return;p0=[e.clientX,e.clientY];try{caseEl.setPointerCapture(e.pointerId);}catch(_){}
+  base=getComputedStyle(sway).transform;if(!base||base==='none')base=REST;cur=base;sway.style.transform=cur;caseEl.classList.add('held');});
+ caseEl.addEventListener('pointermove',e=>{if(!p0)return;const ry=(e.clientX-p0[0])*.9,rx=Math.max(-28,Math.min(28,-(e.clientY-p0[1])*.35));cur=`rotateX(${rx}deg) rotateY(${ry}deg) ${base}`;sway.style.transform=cur;});
+ const up=()=>{if(!p0)return;p0=null;const back=()=>{sway.style.transform='';caseEl.classList.remove('held');};
+  if(RM){back();return;}sway.animate([{transform:cur},{transform:REST}],{duration:620,easing:FLIP}).onfinish=back;sway.style.transform=REST;};
+ caseEl.addEventListener('pointerup',up);caseEl.addEventListener('pointercancel',up);})();
+
+/* the Stage's backdrop, live, and ink that suits it */
+const BD={L:null};
+function stageBackdrop(){const B=window.Backdrops;if(!B)return;const v=B.VARIANTS.find(x=>x.id==='ps2-orbs-v3')||B.VARIANTS.find(x=>x.con==='playstation2');if(!v)return;
+ const cv=document.createElement('canvas');cv.className='bdc';const L=B.makeLayer(cv);try{B.prepare(L,v,8);B.render(L,1/30);}catch(e){return;}$('bd').appendChild(cv);BD.L=L;tone();}
+const tc=document.createElement('canvas');tc.width=32;tc.height=18;const tx=tc.getContext('2d',{willReadFrequently:true});
+function tone(){if(!BD.L)return;try{tx.drawImage(BD.L.canvas,0,0,32,18);const d=tx.getImageData(0,0,32,18).data;let y=0;for(let i=0;i<d.length;i+=4)y+=d[i]*.299+d[i+1]*.587+d[i+2]*.114;y/=d.length/4;
+  const light=y>135;st.style.setProperty('--ink',light?mixHex('#2B5BC7','#0B0A18',.74):'#fff');st.style.setProperty('--veil',light?'rgba(255,255,255,.3)':'rgba(11,10,24,.3)');}catch(e){}}
+let last=0,painted=0;
+function frame(now){requestAnimationFrame(frame);if(!BD.L||document.hidden||RM){last=0;return;}const dt=last?Math.min((now-last)/1000,.08):0;last=now;BD.L.time+=dt;
+ if(now-painted<32)return;painted=now;try{window.Backdrops.render(BD.L,1/30);}catch(e){}}
+requestAnimationFrame(frame);setInterval(tone,900);
+
+/* ---------- backdrops in their console's colour ---------- */
+const CONS=[['nes','NES','NES','#7C5F50',['nes-flow','nes-stars','nes-meta','nes-raster']],['snes','SNES','Super Nintendo','#91408C',['runway','snes-mosaic-v2','snes-lake-v2','tiles']],
+ ['gbc','GBC','Game Boy Color','#2A7D52',['gbc-attr','gbc-bands','gbc-sheen-v2','gbc-confetti-v2']],['gba','GBA','Game Boy Advance','#7648A8',['gba-corridor-v2','gba-iso']],
+ ['gamecube','GC','GameCube','#5548C8',['gc-caustics','gc-cubes-v3','gc-fur','gc-lens']],['nds','DS','Nintendo DS','#6272B8',['ds-ripples','ds-ripplefloor-v2','ds-dots','ds-flip']],
+ ['wii','Wii','Wii','#198098',['wii-pointer-v2','wii-tiles']],['3ds','3DS','Nintendo 3DS','#C0446E',['3ds-tiles','3ds-floorwave','3ds-tapwave']],
+ ['megadrive','MD','Mega Drive','#175A4F',['md-speed-v3','md-planes','md-pipe-v2']],['dreamcast','DC','Dreamcast','#B8521E',['dc-fog-v3','dc-sea-v2','dc-checker']],
+ ['playstation','PS1','PlayStation','#6B6F7E',['field','tide','frames','ps1-terrace-v2','ps1-pipe']],['playstation2','PS2','PlayStation 2','#2B5BC7',['ps2-towers','ps2-trails-v3','ps2-sea','ps2-orbs-v3']],
+ ['psp','PSP','PSP','#3D3D48',['psp-field-v2']],['playstation3','PS3','PlayStation 3','#262E7A',['ps3-sheet','ps3-wire','ps3-twin']],
+ ['arcade','ARC','Arcade','#A8372E',['arc-vector-v3','arc-bulbs-v2','arc-checker','arc-plating']],['steam','Steam','Steam','#30587F',['steam-wall-v2','steam-mesh','steam-grid-v2']]];
+function still(id){const B=window.Backdrops,v=B.VARIANTS.find(x=>x.id===id);if(!v)return null;const cv=document.createElement('canvas'),L=B.makeLayer(cv);
+ try{B.prepare(L,v,6);for(let i=0;i<10;i++){L.time=6+i/3;B.render(L,1/30);}}catch(e){return null;}return {cv,v};}
+function copyOf(src){const c=document.createElement('canvas');c.width=src.width;c.height=src.height;c.getContext('2d').drawImage(src,0,0);if(src.classList.contains('pixel'))c.style.imageRendering='pixelated';return c;}
+function drawColour(){const box=$('bdgrid'),B=window.Backdrops;if(!B){box.innerHTML='<p class="mute" style="grid-column:1/-1">The backdrop pictures did not load here.</p>';return;}
+ const rows=[['MD','#175A4F','md-speed-v3'],['DC','#B8521E','dc-fog-v3'],['PSP','#3D3D48','psp-field-v2']].map(r=>[...r,still(r[2])]),cols=[['Today',0],['New · pulled toward the colour',.6],['New · the console’s colour only',1]];
+ box.innerHTML=cols.map(c=>`<div class="bdcol"><h3>${c[0]}</h3></div>`).join('');
+ box.querySelectorAll('.bdcol').forEach((col,i)=>rows.forEach(r=>{const f=document.createElement('div');f.className='bd';
+  f.innerHTML=`<div class="pic"><div class="tint" style="background:${r[1]};opacity:${cols[i][1]}"></div><span class="mono">${r[0]}</span></div><div class="gr" style="background:${r[1]}"></div>`;
+  if(r[3])f.querySelector('.pic').prepend(copyOf(r[3].cv));col.appendChild(f);}));}
+const toLab=c=>{const [r,g,b]=c.map(v=>{v/=255;return v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4);}),f=t=>t>.008856?Math.cbrt(t):7.787*t+16/116,
+ x=f((.4124*r+.3576*g+.1805*b)/.95047),y=f(.2126*r+.7152*g+.0722*b),z=f((.0193*r+.1192*g+.9505*b)/1.08883);return [116*y-16,500*(x-y),200*(y-z)];};
+function meanOf(cv){tx.drawImage(cv,0,0,32,18);const d=tx.getImageData(0,0,32,18).data;let r=0,g=0,b=0;for(let i=0;i<d.length;i+=4){r+=d[i];g+=d[i+1];b+=d[i+2];}const n=d.length/4;return [r/n,g/n,b/n];}
+let adone=false;
+async function drawAll(){if(adone)return;const B=window.Backdrops,grid=$('agrid');if(!B){$('asum').textContent='The backdrop pictures did not load here.';return;}adone=true;$('asum').textContent='Measuring…';
+ const groups=[];
+ for(const c of CONS){const gl=toLab(rgb(c[3])),cards=[];
+  for(const id of c[4]){const s=still(id);if(!s)continue;const m=meanOf(s.cv),ml=toLab(m);cards.push({s,m,gap:Math.hypot(ml[1]-gl[1],ml[2]-gl[2])});}
+  cards.sort((a,b)=>b.gap-a.gap);groups.push({c,cards,worst:Math.max(0,...cards.map(x=>x.gap))});await new Promise(r=>setTimeout(r,0));}
+ groups.sort((a,b)=>b.worst-a.worst);const all=groups.flatMap(g=>g.cards),far=all.filter(x=>x.gap>28).length,near=all.filter(x=>x.gap<14).length;
+ $('asum').innerHTML=`<b>${far} of ${all.length}</b> sit far from their console's colour, ${all.length-far-near} drift, ${near} already match.`;
+ for(const g of groups){const sec=document.createElement('div');sec.className='acon';sec.innerHTML=`<div class="ah"><span class="sw" style="background:${g.c[3]}">${g.c[1]}</span>${g.c[2]}</div><div class="arow"></div>`;
+  for(const x of g.cards){const fig=document.createElement('figure');fig.className='ab';const hex='#'+x.m.map(q=>Math.round(q).toString(16).padStart(2,'0')).join('');
+   fig.innerHTML=`<span class="pic"></span><figcaption><span class="dot" style="background:${hex}"></span><span class="${x.gap>28?'far':''}">${Math.round(x.gap)} away</span><span>${esc(x.s.v.name)}</span></figcaption>`;
+   fig.querySelector('.pic').appendChild(x.s.cv);sec.querySelector('.arow').appendChild(fig);}
+  grid.appendChild(sec);}}
+
+/* ---------- ideas: each set is its own file beside this page (ideas-3ds.js, ideas-bg.js) ----------
+   An idea is {name, line, draw(ctx, t, c), size?: [w, h], pixel?: true, dark?: true}. draw paints one whole frame for time t (seconds) in the
+   colour c ([r, g, b]); dark asks for dark type over a light picture; pixel asks for whole-pixel scaling. */
+const NEW={bg:[74,67,184],recent:null,items:[]};
+function mountIdeas(boxId,list,isBg){const box=$(boxId);if(!box)return;box.innerHTML='';
+ if(!(list||[]).length){box.innerHTML='<p class="mute">These did not load here.</p>';return;}
+ list.forEach((idea,i)=>{const [w,h]=idea.size||[640,360],f=document.createElement('figure');f.className='nw';
+  f.innerHTML=`<div class="frame"><div class="pic"><canvas width="${w}" height="${h}"${idea.pixel?' class="pixel"':''}></canvas><span class="mono"${idea.dark?' style="color:#3A0C20;text-shadow:none"':''}${isBg?' data-bgname':''}>${isBg?'Settings':'3DS'}</span></div><div class="gr"${isBg?' data-bgstrip':''} style="background:${isBg?'#4A43B8':'#C0446E'}"></div></div><figcaption><b>${i+1}. ${esc(idea.name)}</b><span>${esc(idea.line)}</span></figcaption>`;
+  box.appendChild(f);NEW.items.push({el:f,ctx:f.querySelector('canvas').getContext('2d'),idea,isBg,drawn:false});});}
+function loadIdeas(src,cb){const s=document.createElement('script');s.src=src;s.onload=cb;s.onerror=cb;document.head.appendChild(s);}
+loadIdeas('ideas-3ds.js',()=>mountIdeas('new3ds',window.BT_IDEAS_3DS,false));
+loadIdeas('ideas-bg.js',()=>mountIdeas('newbg',window.BT_IDEAS_BG,true));
+// only what is on screen moves; everything is drawn once so nothing is ever blank
+function newFrame(now){requestAnimationFrame(newFrame);if(document.hidden)return;if(newFrame.last&&now-newFrame.last<40)return;newFrame.last=now;const t=RM?12:now/1000,vh=innerHeight;
+ for(const it of NEW.items){const r=it.el.getBoundingClientRect(),on=r.bottom>-80&&r.top<vh+80;if(!on&&it.drawn)continue;if(RM&&it.drawn)continue;
+  try{it.idea.draw(it.ctx,t,it.isBg?NEW.bg:[192,68,110]);it.drawn=true;}catch(e){it.drawn=true;}}
+ if(NEW.recent&&!RM){NEW.recent.time+=1/25;try{window.Backdrops.render(NEW.recent,1/30);}catch(e){}}}
+requestAnimationFrame(newFrame);
+document.querySelectorAll('[data-bg]').forEach(b=>b.onclick=()=>{NEW.bg=rgb(b.dataset.bg);document.querySelectorAll('[data-bg]').forEach(o=>o.setAttribute('aria-pressed',String(o===b)));
+ document.querySelectorAll('[data-bgstrip]').forEach(e=>e.style.background=b.dataset.bg);document.querySelectorAll('[data-bgname]').forEach(e=>e.textContent=b.textContent.replace(/^A /,'').replace(/^./,m=>m.toUpperCase()));
+ NEW.items.forEach(it=>{if(it.isBg)it.drawn=false;});});
+function recentBackdrop(){const B=window.Backdrops,v=B&&B.VARIANTS.find(x=>x.id==='arc-checker');if(!v)return;const cv=document.createElement('canvas'),L=B.makeLayer(cv);
+ try{B.prepare(L,v,6);B.render(L,1/30);}catch(e){return;}if(cv.classList.contains('pixel'))cv.style.imageRendering='pixelated';$('recentpic').prepend(cv);NEW.recent=L;}
+
+/* ---------- start ---------- */
+fit();addEventListener('resize',fit);
+render(1);
+if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{if(wl)fitWord(wl,wl._W,340);});
+$('amore').addEventListener('toggle',e=>{if(e.target.open)drawAll();});
+(function load(srcs){if(!srcs.length){drawColour();return;}const s=document.createElement('script');s.src=srcs[0];
+ s.onload=()=>{if(!window.Backdrops){load(srcs.slice(1));return;}stageBackdrop();drawColour();recentBackdrop();};s.onerror=()=>load(srcs.slice(1));document.head.appendChild(s);})(['backdrops.js','../handheld-mode/backdrops-motion-study/backdrops.js']);
+})();
+</script>

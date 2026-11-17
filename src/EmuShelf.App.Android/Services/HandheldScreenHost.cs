@@ -253,7 +253,8 @@ internal sealed class HandheldScreenHost
         {
             display.ForGame = _inGame;
             display.Companion.IsVisible = true;
-            if (_inGame && front.SurfaceView is { Visibility: ViewStates.Visible, Height: > 0 })
+            // Big Type (M47 B8): no slide; the Launcher has flooded to the in-game colour the companion arrives on.
+            if (_inGame && !HandheldTokens.IsBigType && front.SurfaceView is { Visibility: ViewStates.Visible, Height: > 0 })
                 _ = SlideAwayAsync(display, front, generation);
             else
                 foreach (var surface in display.Surfaces)
@@ -261,7 +262,7 @@ internal sealed class HandheldScreenHost
             global::Android.Util.Log.Info(LogTag, $"Companion up ({(display == _mainDisplay ? "main" : "second")}, game={_inGame})");
             return;
         }
-        var slide = display.ForGame;
+        var slide = display.ForGame && !HandheldTokens.IsBigType;
         display.ForGame = false;
         foreach (var surface in display.Surfaces)
             surface.SetAllowed(true);

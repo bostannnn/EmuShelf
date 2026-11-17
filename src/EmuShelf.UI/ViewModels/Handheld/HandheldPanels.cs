@@ -50,15 +50,18 @@ public sealed partial class HandheldPanelRowViewModel : ObservableObject
 
     /// <summary>The trailing text: a field's proposed value, a typed name, a resolution; empty hides it.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasValue))]
+    [NotifyPropertyChangedFor(nameof(HasValue), nameof(Trailing))]
     public partial string? Value { get; set; }
 
     public bool HasValue => !string.IsNullOrEmpty(Value);
 
     /// <summary>A line under the label (a match's system, an achievement's points); empty hides it.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasDetail))]
+    [NotifyPropertyChangedFor(nameof(HasDetail), nameof(Trailing))]
     public partial string? Detail { get; set; }
+
+    /// <summary>What the Big Type look sets at the row's right (M47 B7: type only, no second line): its value, else its line.</summary>
+    public string? Trailing => HasValue ? Value : Detail;
 
     public bool HasDetail => !string.IsNullOrEmpty(Detail);
 
@@ -67,6 +70,7 @@ public sealed partial class HandheldPanelRowViewModel : ObservableObject
 
     /// <summary>False for a row that is shown but cannot change (a value you set yourself, kept as it is).</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLocked))]
     public partial bool IsEnabled { get; set; } = true;
 
     /// <summary>The panel's main action (Apply, Start, Search): drawn in the accent.</summary>
@@ -84,7 +88,11 @@ public sealed partial class HandheldPanelRowViewModel : ObservableObject
 
     /// <summary>A locked badge (an achievement not yet earned): its picture is dimmed.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsLocked))]
     public partial bool IsDimmed { get; set; }
+
+    /// <summary>Drawn faint in the Big Type look (tokens.js <c>RowLockedOpacity</c>): a locked badge, or a row that cannot change.</summary>
+    public bool IsLocked => IsDimmed || !IsEnabled;
 
     [ObservableProperty]
     public partial bool IsFocused { get; set; }
@@ -185,6 +193,24 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
 
     public bool HasSubheading => !string.IsNullOrEmpty(Subheading);
 
+    /// <summary>The count the Big Type look sets beside the heading (M47 B7, the mock's <c>pcount</c>); null for none.</summary>
+    public virtual string? Count => null;
+
+    /// <summary>A cover the Big Type Stage sets beside the name for the focused row (cover search's candidate); null for none.</summary>
+    public virtual Bitmap? BigTypeCover => null;
+
+    /// <summary>What the Big Type Stage says about the focused row (M47 B7): from <see cref="Card"/> unless a panel says otherwise.</summary>
+    public virtual HandheldListStageText BigTypeStage
+    {
+        get
+        {
+            var card = Card;
+            return HandheldListStageText.Of(card.Eyebrow, card.Title, card.Value, card.Description, card.Status ?? Status);
+        }
+    }
+
+    public bool HasCount => !string.IsNullOrEmpty(Count);
+
     /// <summary>The line under the heading: what the panel is doing or what happened ("Looking up…", "Applied 3 fields").</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasStatus))]
@@ -273,12 +299,27 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
     {
     }
 
+    private bool _bumped;
+
+    /// <summary>The press could not do anything here (Big Type: the ring nudges, as the mock's bump).</summary>
+    protected void Bump() => _bumped = true;
+
+    /// <summary>Whether the last press bumped (the panel's own, or its keyboard's); reading it clears it.</summary>
+    internal bool TakeBump()
+    {
+        var bumped = _bumped | (Keyboard?.TakeBump() ?? false);
+        _bumped = false;
+        return bumped;
+    }
+
     protected void RaiseChanged()
     {
         if (_disposed)
             return;
-        // The hints under the keyboard follow the state too.
+        // The hints under the keyboard follow the state too, as does the count beside the heading.
         OnPropertyChanged(nameof(Hints));
+        OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(HasCount));
         Changed?.Invoke();
     }
 
@@ -296,6 +337,50 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
             Rows[i].IsFocused = i == next;
         FocusIndex = next;
         OnPropertyChanged(nameof(FocusedRow));
+        OnPropertyChanged(nameof(ListFocusIndex));
+        OnPropertyChanged(nameof(GridFocusRow));
+    }
+
+    // ---- The Big Type look's grid of pictures (M47 B7: cover search's candidates, as the mock draws them) ----
+
+    /// <summary>How many to a row the Big Type look sets the rows with pictures in (0: none, every row is a row of type).</summary>
+    public virtual int GridColumns => 0;
+
+    private bool InGrid(HandheldPanelRowViewModel row) => GridColumns > 0 && row.HasImageSlot;
+
+    /// <summary>The rows the Big Type look sets as type: all of them, or those without a picture when it has a grid.</summary>
+    public IReadOnlyList<HandheldPanelRowViewModel> ListRows => GridColumns > 0 ? Rows.Where(row => !InGrid(row)).ToList() : Rows;
+
+    /// <summary>The rows the Big Type look sets as a grid of pictures.</summary>
+    public IReadOnlyList<HandheldPanelRowViewModel> GridRows => GridColumns > 0 ? Rows.Where(InGrid).ToList() : [];
+
+    /// <summary>The focused row's row of the grid (-1 when the focus is not in it).</summary>
+    public int GridFocusRow => FocusedRow is { } row && InGrid(row) ? GridRows.ToList().IndexOf(row) / GridColumns : -1;
+
+    /// <summary>The focused row's place among <see cref="ListRows"/> (-1 when the focus is in the grid).</summary>
+    public int ListFocusIndex => FocusedRow is { } row && !InGrid(row) ? ListRows.ToList().IndexOf(row) : -1;
+
+    /// <summary>
+    /// A move in the Big Type grid, as a step through the rows (they are one list underneath): left and right along a row, up and down
+    /// a row of the grid; up from its first row to the last row of type. Null when the focus is not in the grid (the move is the
+    /// panel's own); 0 at an edge.
+    /// </summary>
+    protected int? GridStep(GamepadAction action)
+    {
+        if (GridColumns <= 0 || FocusedRow is not { } row || !InGrid(row))
+            return null;
+        var first = Rows.ToList().FindIndex(InGrid);
+        var count = Rows.Count(InGrid);
+        var at = FocusIndex - first;
+        var columns = GridColumns;
+        return action switch
+        {
+            GamepadAction.NavigateLeft => at % columns > 0 ? -1 : 0,
+            GamepadAction.NavigateRight => at % columns < columns - 1 && at + 1 < count ? 1 : 0,
+            GamepadAction.NavigateUp => at >= columns ? -columns : first > 0 ? -(at + 1) : 0,
+            GamepadAction.NavigateDown => at + columns < count ? columns : (at / columns) < ((count - 1) / columns) ? count - 1 - at : 0,
+            _ => null,
+        };
     }
 
     /// <summary>Replaces the rows (a new state of the wrapped view model) and focuses <paramref name="focus"/>.</summary>
@@ -304,6 +389,8 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
         Rows.Clear();
         foreach (var row in rows)
             Rows.Add(row);
+        OnPropertyChanged(nameof(ListRows));
+        OnPropertyChanged(nameof(GridRows));
         Focus(focus);
         OnPropertyChanged(nameof(HasEmptyText));
     }

@@ -14269,3 +14269,1103 @@ tile is pictured again with the covers and its flap peeking. It fails on the old
   and would have taken a strip of cover art. The cartridge now states 0.28, the same 4.7mm it had before.
 - **Profile:** `megadrive` is now 109 × 70 × 17mm, in `MediaShellMap` and the preview tool's copy. The label's fold
   over the top edge is sized from the printed sheet rather than the model's depth, so it did not move.
+
+## 2026-11-13 — Handheld look: the "Big Type" direction, with Colour and Round locked (prototype only)
+
+- **Owner's brief:** Handheld mode looked bland and unfinished; the target is a minimal 3DS / Cocoon feel with
+  motion on every change and very large type, starting from today's layout. Earlier catalogues of static,
+  one-layer-at-a-time options were rejected as generic.
+- **Direction chosen (owner, after a drivable mock):** "Big Type",
+  `docs/prototypes/handheld-big-type/index.html`. The focused item's name fills the Stage over that console's
+  approved backdrop; frosted pills, the name plate, gloss, gradients and tile shadows go; status, hints and counts
+  are plain type in the four corners; one selector ring serves tiles, dock apps, menu rows and keys.
+- **Locked (owner):** the Launcher's ground is the focused console's flat colour ("Colour"), and the face is
+  M PLUS Rounded 1c ("Round"). The dark and light grounds and the condensed and wide faces were dropped from the mock.
+- **Kept from the standing decisions:** the per-console backdrops, the 3D medium for a focused game, the 5×4 home
+  grid with empty slots, folders that scroll sideways three rows deep, the dock, monograms on console folders, and
+  today's Settings sections and menu actions.
+- **What this would overturn when built:** decision 16 of `HANDHELD-MODE.md` (light white-and-grey on indigo, Nunito
+  for names). Nothing is built; no app code changed. The mock's page carries the type, shape, motion and colour
+  values at Thor resolution.
+- **Before it ships:** M PLUS Rounded 1c is on Google Fonts under the SIL Open Font License; confirm the licence
+  text, bundle it, and add it to `THIRD-PARTY-NOTICES.md`. None of the motion has been measured on the Thor.
+
+## 2026-11-13 — Handheld: A on a game plays (amends decision 13, for the Big Type look)
+
+- **Decided by the owner** while planning M47: in the Big Type look, A on a game starts it. There is no Title page
+  between the press and the launch. Decision 13 of `HANDHELD-MODE.md` ("A opens the Title page; Play is a second
+  press") stands for today's look until M47 replaces it.
+- **Nothing the page did is skipped.** The build route is the one the Y sheet's Play already uses: the page opens
+  with `playWhenReady`, so it still waits for details, still asks which screen when the console's setting is Prompt
+  (with "always use this screen"), still syncs saves and still plays the launch lead.
+- **Where the page's contents go:** the emulator, last played and the disc sit on a second line under the name on the
+  Stage; achievements stay in the line above it and in the Y sheet; the disc is a row in the Y sheet that cycles, and
+  A plays the disc last chosen.
+- **Drawn in the mock** (`docs/prototypes/handheld-big-type/index.html`): DS and 3DS ask which screen; three games
+  have several discs. Not built in the app.
+
+## 2026-11-13 — M47 (Big Type): three more owner decisions before the build
+
+- **The colour table is made by hand.** All sixteen consoles get a ground colour tuned in the mock (easy to tell
+  apart, white type readable) and reviewed there before the values go into the app; not derived from
+  `GameSystem.AccentColor` by a rule.
+- **M45's open look and feel exits are closed as superseded.** H2's hands-on check of the Launcher's look and H3's
+  feel check of the folder motion would have judged what M47 replaces. Both are marked in `ROADMAP.md`.
+- **Today's Handheld look is removed when Big Type is done** (M47 B10). It is the default behind a switch during
+  the build and is then deleted. Keeping both would mean making and checking every later Handheld change twice.
+- **How the build is run:** steps go to their own sessions on Opus, one at a time; the design session starts and
+  checks them and does not build.
+- **Found on the way:** the owner's Thor is set to 60 Hz (`peak_refresh_rate` and `min_refresh_rate` both 60), and
+  the owner chose to leave it there for the R1 spike. `HANDHELD-MODE.md` records both panels at 120 Hz.
+
+## 2026-11-13 — M47 (Big Type): all fifteen moves stay; the numbers are frozen
+
+- **The owner keeps all fifteen numbered moves** of the mock. The Thor spike (M47 R1) had shown each of the three
+  costly ones fits a frame with room to spare, so nothing was dropped for cost.
+- **The reference for every value is `docs/prototypes/handheld-big-type/tokens.js`** (about 140 named values at Thor
+  resolution). The app's Handheld resource dictionary mirrors it name for name; a number changes there first.
+- **The legibility rule is a table, not a live reading.** `legibility.json` beside the mock holds ink and veil per
+  backdrop for the three text zones. 52 of 53 backdrops keep one ink in every zone at all eight moments measured, so
+  the device does not need to read the backdrop back. It was baked from the JavaScript prototypes; the GLSL ports
+  get one look on the Thor at B4, where `ps2-sea`'s button-hint ink (the one zone that changes) is also chosen.
+- **With this, every owner decision in M47 is made** (A plays, the colour table, M45's exits, the old look removed,
+  the moves). What remains before B2 is R3 (the font) and R4 (the owner's covers and the colours on the panel).
+
+## 2026-11-13 — M47 B0: how two Handheld renders are made identical, and the look switch
+
+- **Frames are compared exactly.** `FrameComparison` counts any channel difference in any pixel; there is no
+  tolerance and no threshold, because B1 must show its frames identical, not close. Everything that made two renders
+  differ is pinned in the design harness instead.
+- **What was pinned, and why.** Two renders of the set brought over from 6b49476 differed in 118 of 144 frames.
+  The wall clock (status time, "played an hour ago", dates) is a fixed `TimeProvider` that keeps real timestamps and
+  timers: freezing timestamps too would have held the folder-open Stage hold forever. The culture is en-GB. The
+  backdrop's drift ran on a private `Stopwatch` and never rests, so `HandheldEraBackdrop` now reads an internal
+  static `DriftClock` that only the harness changes, to one that stands still. The launch bar is an indeterminate
+  `ProgressBar`, a loop with no rest, so the harness draws every such bar determinate at 40%.
+- **Wait for rest, then draw the tree.** Headless Avalonia feeds its render timer real `Stopwatch` time, so there is no
+  virtual clock to pin for transitions, springs and compositor animations. Each frame is written only after both
+  screens have stopped changing for 600 ms (failing after 20 s). Even at rest the compositor's own frames differed by
+  a few edge pixels on tiles the selector had passed, while every bound, transform and shadow bitmap in the visual
+  tree was identical, so frames are drawn afresh with `RenderTargetBitmap.Render(window)` rather than taken from the
+  compositor. At rest the composition animations agree with the controls by design, and the frames show the same
+  ring, glow and backdrops. A render dropped from about 5 minutes to about 2½.
+- **One app change that draws.** The selector applies a new corner radius only when it moves more than a quarter
+  pixel, so its resting radius depended on how the frames fell. It now takes the exact radius once its spring has
+  settled: a sub-pixel difference at rest, the same on every run.
+- **The sample home places Activity itself.** Activity (M46 P4) postdates 6b49476; reconciliation put it in slot 14,
+  which made the "empty slot" frame show Activity. The sample layout now puts it there on purpose, with its own frame,
+  and the empty slot moves to 15.
+- **The look switch is `HandheldLook { Classic, BigType }`** in `EmuShelf.Core.Handheld`, saved as
+  `AppSettings.HandheldLook` (a string in settings.json, Classic when absent) and set on
+  `HandheldShellViewModel.Look` when Handheld mode starts, as `HandheldSounds` is. There is no save path and no
+  Settings row yet; B10 removes Classic (D5).
+
+## 2026-11-13 — M47 R3: M PLUS Rounded 1c ships whole
+
+- **Source:** the Medium (500), Bold (700) and Black (900) files from `google/fonts` `ofl/mplusrounded1c` at commit
+  `bc0a790` ("hotfix v1.060", 2026-11-12), checked against GitHub's blob hashes and opened with fontTools before
+  use. That folder has no `OFL.txt`; the licence text is the one Google Fonts puts in the family's download.
+- **Licence:** SIL Open Font License 1.1, unmodified standard text. It declares **no Reserved Font Name**, and its
+  copy carries no copyright line; the line is in the fonts' name table: "Copyright 2016 The Rounded M+ Project
+  Authors." The shipped `MPLUSRounded1c-OFL.txt` is that line followed by Google's text. For a subset this means:
+  a subset is a Modified Version under the OFL, and with no reserved name it could legally keep its name, provided
+  it ships with this licence and stays under it. That question does not arise, because we ship the files whole.
+- **The name inside the files is "Rounded Mplus 1c"**, not Google Fonts' display name. Avalonia finds the face only
+  by the inside name; `#M PLUS Rounded 1c` throws "Could not create glyphTypeface" rather than falling back. The
+  resource is `avares://EmuShelf.UI/Assets/Fonts/MPLUSRounded1c#Rounded Mplus 1c`, a folder with only these three
+  files so that `FontWeight` picks the file.
+- **Measured:** each weight has 8,546 glyphs and maps 8,201 characters (4,954 of them kanji). Medium 3,432,376
+  bytes, Bold 3,542,384, Black 3,635,260: 10,610,020 for three. Estimates of what that adds to the APK: about
+  4.9 MB deflated (zlib level 9), about 7.0 MB with LZ4, which is how .NET for Android compresses the assembly
+  store the fonts end up in (they are Avalonia resources inside `EmuShelf.UI.dll`). Both are estimates, not an
+  APK build. Against the ~123 MB Release APK that is roughly 4 to 6 percent. The desktop builds carry the same
+  10.6 MB inside `EmuShelf.UI.dll`, because the UI library is shared.
+- **The subset measured:** Basic Latin, Latin-1, Latin Extended-A, General Punctuation, the arrows, geometric shapes
+  and the symbols the Handheld strings use (·, …, ×, −, ≈, ≤, ✓, ▲▼◀▶●, ‹›, “”). 498 glyphs, 464 characters,
+  250,260 bytes for three (99 KB deflated, 136 KB LZ4). It drops all kana, kanji and full-width forms, Cyrillic,
+  Greek, Vietnamese and Latin Extended-B. ▾ (U+25BE, in one desktop Settings string) is not in the font either way.
+  A Latin-plus-Japanese subset saves only 17 percent (Bold 2.9 MB against 3.5 MB), so it was not pursued.
+- **Fallback, rendered through Avalonia headlessly on macOS:** a line mixing Latin, kana, kanji, one kanji the font
+  lacks (鷗) and Hangul was shaped and drawn with each font at all three weights. No glyph came out as a
+  missing-glyph box in either case; Avalonia falls back per glyph run. With the whole font everything but 鷗 and the
+  Hangul stays in this face at the asked weight. With the subset the kana fall to Apple SD Gothic Neo and the kanji
+  to PingFang SC (Chinese forms, Medium whatever the weight), so one Japanese title is drawn in three faces and two
+  weights. Android's fallback (Noto Sans CJK) is expected to behave the same way but was not checked on the device.
+- **Decision: ship whole.** Fallback would keep a subset legible, but Big Type sets the focused name across the Stage
+  at display size, where a title switching face and weight mid-line is plain to see, and Japanese titles are likely in
+  a PS1/PS2 library with imports. Five to seven megabytes is the price of the face holding for them. Not done here:
+  applying the face to any view (B2), and a way to keep the fonts out of the desktop builds if their size matters.
+
+## 2026-11-13 — M47 B1: Handheld's design tokens are a static C# class, named by role
+
+- **One home: `HandheldTokens`** (`src/EmuShelf.UI/ViewModels/Handheld/HandheldTokens.cs`), a static class of static
+  properties. XAML reads it with `{x:Static vm:HandheldTokens.Name}`, code reads the same properties. Chosen over a
+  resource dictionary that code looks up because the Handheld views already read `HandheldIcons` and
+  `HandheldViewConverters` this way; because `x:Static` compiles to a plain property read where `StaticResource` walks
+  the tree at load and code would look values up by string; because the native feeds, the motion and the converters
+  get typed, compile-checked names; and because a missing token is a build error, not a blank brush at run time.
+- **A second look without touching the views again.** Every token has a private setter and is assigned in
+  `UseClassicValues()`, which the static constructor runs. `HandheldTokens.Use(look)` assigns them all for a look and is
+  called once, in `MainViewModel` when Handheld mode starts, with `HandheldShellViewModel.Look`, before the views that
+  read the tokens are built; views read them when they are built, so a look never changes under a running Handheld
+  mode. B1 gives Big Type no values of its own (`Use(BigType)` keeps today's); B3 onward assign, after the Classic
+  values, only the tokens whose Big Type value differs. Derived tokens (the ring anchors' inner corners, the borders made
+  from a width) are computed from their base and need no second value. Code that cached a design value in a
+  `static readonly` field or a `const` now reads the token each time it is used, so it follows the look.
+- **Names by role, never by value.** Where a role is the same as one in the Big Type table (the mock's `tokens.js`) the
+  name is that table's: `TileHome`, `TileFolder`, `TileRadius`, `DockTile`, `DockRadius`, `DockGap`, `Key`, `KeyRadius`,
+  `RingStroke`, `RingRadiusTile`, `RingRadiusDock`, `RingRadiusRow`, `Ring`, `OnGround`, `Danger`, `Heading`,
+  `HeadingCount`, `SheetTitle`, `Row`, `RowValue`, `RailRow`, `Hint`, `HintGlyph`, `Facts`, `DisplayName`, `Line`,
+  `Monogram`, `FolderPitch`, `SwitchWidth`, `SwitchHeight`, `SwitchKnob`, `ProgressHeight`, `MissingTileOpacity`. Where
+  today's look has two values for one Big Type role, each gets a name of its own that says where it is
+  (`Heading` 34 for Settings and panels, `FolderHeading` 32 for a folder's name). A name starting with `Classic` exists
+  only in today's look (the indigo accent fills, white surfaces and hairlines, frosted pills, the name plate, every
+  shadow and gradient, the selector's keylines and glow) so B10 can delete them in one sweep; a type size or colour that
+  carries on in Big Type (the type on the Launcher, a row's label) is not `Classic` even where its value will change.
+  Weights are per type role (`HeadingWeight`, `RowWeight`, `CardWeight`…), because Big Type sets weight per role.
+- **One accessor for a console's colour:** `HandheldTokens.ConsoleColour(string?)` returns the parsed colour or null,
+  and `ConsoleBrush(string?)` the brush or grey, exactly the fallbacks the seven sites had (a backdrop is left out when
+  the colour does not parse; a brush is grey). It lives in `EmuShelf.UI` beside the tokens, not on `GameSystem`, because
+  `EmuShelf.Core` has no package dependencies and an Avalonia `Color` cannot live there; `GameSystem.AccentColor` stays
+  the stored text. It takes the text rather than a system so it also serves your folders' colours (a folder's source
+  carries either). The naming panel's colour chips use it too; they had `Color.Parse`, which threw on bad text.
+- **Proven by the frames, not by eye.** The 879 literals in the five views were rewritten by a script that refused any
+  replacement whose token's value differed from the literal it replaced; then the B0 design set was rendered before and
+  after and compared with no tolerance: 158 of 158 frames identical (the PNG files were byte-identical too).
+- **Left inline on purpose:** `Transparent` and `BoxShadow="none"` (an absence, not a design value); layout (margins,
+  paddings, the widths and heights of cards and pictures, grid rows and columns, most spacings), hairline and border
+  widths other than the selector's, opacities, render transforms (the 1.13 focus lift, the folder flap's peeks) and every
+  transition's duration and easing: motion is B5's, and moving layout would only rename numbers the restyle redraws.
+  The backdrops' own drawing in `HandheldEraBackdrop` (only its plain gradient moved), the cover tint read from the
+  artwork, and `EmuShelf.Rendering` with its shaders are untouched.
+
+## 2026-11-13 — M47 B2: the Handheld face and the console ground colours, behind the look switch
+
+- **The table lives on `GameSystem.GroundColor`**, authored in `KnownSystems` (Integrations) beside `Era` and `Backdrops`,
+  which are already per-system values that exist only for Handheld mode's look. A new system is then added in one place
+  with everything it needs, and `EmuShelf.Core` stays free of Avalonia (colours are `#RRGGBB` text there). The arithmetic,
+  with no dependencies, is `HandheldGround` in `EmuShelf.Core.Handheld` (WCAG contrast, the tile composited as a browser
+  does in sRGB, CIE76 in Lab with a D65 white, and `Derive`). Chosen over a second table beside `HandheldTokens`, which
+  would have split a system's definition across two projects. The mock's tokens.js stays the reference: a test reads its
+  `colour.consoles` and holds every `KnownSystems` entry to it.
+- **The accessor takes the platform, not a string.** `HandheldTokens.ConsoleColour(HandheldPlatform?)` gives the accent
+  under Classic and the ground under Big Type. `FolderColour(HandheldFolderSource?)` sends a platform's folder to it and
+  reads the stored colour of your folders, Recent and Search, which keep today's colours in both looks for now (tokens.js
+  `Recent`, `Settings` and `userFolders` are B3's). `ColourOf`/`BrushOf` read stored text and replace the string accessor,
+  so a console's accent can no longer be passed where its look colour is meant. Classic's results are the same values
+  through the same parse, which the frames confirm. Under Big Type the colour flows everywhere a console's colour did:
+  folder tiles, the folder header's dot, the Title page, the medium's accent and the Stage's era motif (only its hue is
+  read; the native animated backdrops take ids, not a colour). B4 may want the backdrop's fallback kept on the accent.
+- **A system without a ground gets its accent darkened**, all three channels scaled together in steps of one percent until
+  white holds 4.5 to 1 on it and 3 to 1 on a tile, so the hue is kept. Today none is derived: the sixteen systems the app
+  knows are the sixteen in the table. Measured with this arithmetic the approved table's closest pair is SNES and GBA at
+  18.6 (the mock's stress sheet rounds to 19), above the floor of 18.
+- **The face is set on four roots, only under Big Type.** `HandheldTokens.ApplyFace(root)` sets `FontFamily` and
+  `FontWeight` (WeightText, 500) on the Launcher, Stage, Companion and Panel views, from their constructors (view wiring),
+  and every text inherits it, sheets and menus included (they are drawn inside these views; there are no popups). Under Classic `Face` is null and the method returns without touching the
+  root, because today's views set no typeface and inherit whatever the window gives them; setting any value there, even
+  the default family, could have changed that. The 14 role weights take tokens.js's values under Big Type (headings,
+  names, monograms and the companion's figures 900; rows, labels, hints, cards and the hero's lines 700), so every text is
+  drawn from one of the three bundled files rather than relying on Avalonia's nearest-weight fallback. `FaceSource`
+  repeats App.axaml's URI; a test holds the two equal.
+- **On Android the tokens take the look before the views are built.** `HandheldScreenHost` builds the Handheld views with
+  the first `MainView`, long before Handheld mode starts and before `MainViewModel` calls `HandheldTokens.Use`. So a saved
+  Big Type look would have drawn Classic values from XAML and Big Type values from code. `SingleViewShell.Show` now calls
+  `Use` with the resolved look first; `MainViewModel` calls it again with the same look.
+- **A one-run override for the device:** `HandheldLookChoice.Override`, set on Android from the system property
+  `debug.emushelf.look` (`bigtype` or `classic`), read once in `SingleViewShell`'s constructor, before the view model can
+  start Handheld mode. It is never written to settings, and debug properties do not survive a reboot. Clear it with
+  `adb shell setprop debug.emushelf.look ""`.
+- **The design render takes a look:** `EMUSHELF_DESIGN_LOOK=BigType` (the harness's `DesignPins` calls
+  `HandheldTokens.Use` before the views are built and puts Classic back afterwards). Classic stays the default, so B0's
+  commands are unchanged. Frames go wherever `EMUSHELF_DESIGN_SNAPSHOT_DIR` says; each look needs its own directory.
+- **Found on the way:** M PLUS Rounded's ellipsis (U+2026) is three dots at mid-height, Japanese style, so a trimmed row
+  reads "Nintendo Entertainme···". B3 and B7 may want trimming that does not show it. Over adb on the Thor the first press
+  after 15 s idle only wakes the Launcher, so a wake press and the real one go in the same `adb shell` call.
+
+## 2026-11-14 — M47 B3: the Launcher at rest in the Big Type look
+
+- **Selected by the look, beside today's.** Every Big Type value the Launcher needs is a token (`HandheldTokens.Launcher.cs`:
+  `UseClassicLauncherValues` holds today's, `UseBigTypeLauncherValues` the mock's), including the layout B1 had left inline
+  (home's and a folder's margins and alignment, the ring anchors' outsets, the dock bar). Where Big Type draws something today's
+  look does not (a flat tile, the corner mark, the plain header, the dock row's corners), the view has both parts and shows one
+  by `x:Static HandheldTokens.IsClassic` / `IsBigType`; the root carries a `bigtype` class for the look's styles (the one-band
+  ring, the 1.10 and 1.14 lifts). The only Classic selector touched is the lift shadow's (`>` became a descendant selector,
+  because its tile's Classic parts now sit in a wrapper). Proven by the frames: all 158 identical to the render made before B3.
+- **The ground is one value both Launchers draw.** `HandheldShellViewModel.LauncherGround` follows the focus (a console's
+  ground for its folder and its games, Recent's slate, Settings' indigo for Settings and Activity, your folder's own colour);
+  focus on something with no colour (an empty slot, the dock, the header) keeps the last. The Avalonia Launcher draws it as a
+  flat `Ground` border with a 200 ms brush transition; the native one clears to it (`LauncherGroundCommand`, retained, a linear
+  200 ms crossfade). So a sheet or menu that hands the screen back to Avalonia shows the same colour and the same tiles. B5's
+  flood replaces both crossfades.
+- **Your folders' colours are darkened, not remapped.** Today's six chip colours (pink, orange, green, blue, purple, yellow)
+  are mostly too light for white type; under Big Type the Launcher takes each darkened by `HandheldGround.Derive` until white
+  holds the floors (yellow becomes an ochre), so the folder keeps the hue you chose. tokens.js's `userFolders` is the palette
+  naming will offer when naming moves to Big Type (B9). The Stage keeps `FolderColour` (B4 decides its colours).
+- **What a tile pictures.** A flat tile (a folder, Settings, Activity, Add games) and an empty slot look different while focused
+  (white with the colour as ink; a plus), so in Big Type their picture key carries the focus and the native Launcher pictures
+  the two tiles a move touches again. A game's cover never changes with focus. The "!" and the new folder's dot are inked in the
+  tile's own colour (its console's), not the ground of the moment as in the mock, so a picture never depends on what else is
+  focused; on a folder's games the two are the same.
+- **The native ring and lift are parameters.** `selector.frag` takes three insets and three band colours (`LauncherRingBands`;
+  `Classic` is the old constants, a test holds them); Big Type sends one white band of `RingStroke` 8 and no glow. A sprite
+  carries its own lift (`LauncherSprite.Lift`, 0 meaning today's 1.13): tiles 1.10, dock buttons 1.14, the header's anchors 1
+  (they frame, they do not lift). The ring is not scaled with the lift in Big Type (`RingLift` 1): it sits `RingOutset` 26 from
+  the tile's resting edge, as the mock's `rectOf` places it. No lift shadow, no breathing glow.
+- **The header's Back and sort have no chips but are still reachable.** Up from the top row still goes to the header zone (no
+  change in the shell): the ring then frames the folder's name (Back; A closes the folder) or the sort's value in the dock row's
+  bottom-right corner (A cycles it). B7 moves the sort into the Y menu and can drop the zone. Taps on the name and on the value
+  do what the chips did.
+- **Where the mock and the app part, and why.**
+  - The app's dock has seven buttons (All apps, five apps, the menu) where the mock draws six, and an open folder's sort can be
+    "Most played", wider than the mock's only value "Manual". At the mock's `DockGap` 24 with its corners at the grid's edge
+    (108), "Swap" touches the dock and "Last played" runs under the menu button. Big Type uses `DockGap` 16 and puts the two
+    corners at the canvas's 48 px edge. The corners' type is the mock's `.dside` (30 px, 700, 0.8, a 44 px circle with a 4 px
+    stroke), not `type.HintGlyph`'s 58, which is the Stage's.
+  - Glyphs are the app's icons (`HandheldIcons`), filled, where the mock draws thin stroked outlines; they are sized to what the
+    mock's strokes cover (36% of the tile, 40 px on a dock button), not to the mock's 50% box.
+  - A game with no cover is a flat tile with its title at the top left, as the mock's stand-in covers carry theirs (the mock has
+    no coverless tile). Covers are cropped from the top, as today, where the mock centres its square stand-ins.
+  - The header's tracking is −0.64 px, what the mock actually draws (its −0.02em is resolved on the header box's 16 px, not on
+    the name's 100), and its type is raised 14 px: Avalonia sets a 115 px line lower in its box than a browser does.
+  - An empty dock slot (fewer than five pinned apps) is the empty slot's dot; the mock has none.
+  - Move mode's overlays (the carried tile, landing places, the merge badge) keep today's look until B9.
+- **Checked on the Android emulator, not the Thor** (the owner: the Thor is not available, use the emulator). A new AVD,
+  `emushelf-b3`, from the android-35 arm64 image already installed (avdmanager only read the SDK's repository listing;
+  nothing was downloaded). Its second display is the AVD's own (`hw.display1.width=1240`, `height=1080`, density 240), a
+  presentation display; the main display is 1920×1080. `overlay_display_devices` was tried first and removed, because the
+  AVD's display came up too and two would have competed. On it the native compositors ran (no fallback), and the hand-off to a
+  sheet and back left the native frame pixel-identical. What it does not prove: Adreno's behaviour, the Thor's panels and
+  timing, and the dock row under the emulator's own navigation bar, which that display shows and the Thor does not.
+
+## 2026-11-14 — M47 B4: the Stage at rest in the Big Type look
+
+- **Selected by the look, beside today's, as B3 did.** Big Type's Stage values are tokens (`HandheldTokens.Stage.cs`: the name's box,
+  the four corners, the medium's corner, the hint glyph). `HandheldStageView` has the Big Type parts beside today's and shows one set
+  by `x:Static HandheldTokens.IsClassic` / `IsBigType`: the veils (`HandheldBigTypeVeils`), the fitted name (`HandheldBigTypeName`),
+  the label, the line and the second line, battery and clock, the hints, and a game's flat cover or medium in its corner. Today's
+  centre parts (the big folder, the flat cover, the app, Settings and Activity tiles, the glyph card) and the status, hints and
+  achievements pills sit in wrappers shown only in today's look; `HasPlate` and `ShowAchievementPill` are false under Big Type.
+  Settings' and a panel's cards, the Title page's fan-art hero, the launch card and the message toast keep today's styling (B7 and
+  later). Proven by the frames: Classic rendered before and after, 158 of 158 identical by the comparison.
+- **What the Stage says** is set on `HandheldStageViewModel` (`Label`, `Name`, `Line`, `Facts`, `IsMissing`) for every Stage in
+  either look, by `HandheldShellViewModel.BigTypeStage.cs`, as the mock's `describe` writes it: a console folder is its full name over
+  its short name, its game count, "Last played: …"; Recent is "Last played" over "Recent"; your folder "Your folder" over its name; a
+  game its console over its full title, its play time and achievements ("8 h 40 min · 6 / 20 achievements"), then its emulator, when
+  it was last played and its disc ("NetherSX2 · last played today · disc 2 of 3"); a missing game "File not found" with its name at
+  0.5; Settings and Activity "System"; the dock's apps, All apps and the menu "Dock"; an empty slot "Home" over "Empty"; the empty
+  library "Welcome" over "No games yet"; a folder's header its name over "Back" or "Sort". The emulator's name comes from the Title
+  page's details, read once per system and forgotten when Settings closes; a folder's last played game from the recently played list
+  (read only under Big Type). Neither costs today's look anything.
+- **Something with no backdrop of its own keeps the one showing** (an app, an empty slot, the dock), as the mock does; the screen is
+  cleared to the Launcher's ground (`LauncherGround`, B3) where no backdrop draws. Your folders' and Recent's pictured backdrop takes
+  the Launcher's colour for them.
+- **The name** is fitted by the spike's `BigTypeLayout` (brought over unchanged from `claude/elegant-lederberg-05c307` to
+  `EmuShelf.Rendering/Stage/BigType`) at most three lines, line height 0.9, words never broken, bottom-anchored at 80 / 240 in a
+  1360 × 680 box (1120 beside a game). Each line's text is centred in its 0.9 line box as a browser centres the face's ascent and
+  descent. **Its tracking is −0.64 px, not −0.02em:** the mock declares −0.02em on the name's box, whose own size is the page's
+  16 px, so it draws −0.32 px at half scale whatever the name's size (B3 found the same on the folder header). With −0.02em the
+  app's names came out 3% larger than the mock's.
+- **Avalonia sets a corner's line lower than a browser.** The mock gives each corner a 1.15 line box; Avalonia clips descenders
+  when a `TextBlock`'s `LineHeight` is that short, so the corners use their natural line and are moved by what their ink measured
+  against the mock's at Thor scale: the label raised 7, the clock 17 (the battery 10 more beside it), the line lowered 8, the facts 4.
+  **The hint glyph is 68 across**, not 58: tokens.js's 58 is the mock's CSS content box, and its 5 px stroke lies outside it.
+- **How the ink follows the backdrop: the native Stage applies it.** The backdrops are picked and rotated by `StageCompositor` on the
+  render thread (random first pick, a 12 s dwell, a 1.6 s crossfade, paused while the Stage rests), and the Avalonia Stage never runs a
+  shader, so the UI side cannot know which one is up without a round trip per rotation, and every rotation would picture the text
+  again. Instead the feed pictures each piece of text in white and names its zone (`StageChromeCommand.Zone`), sends the three veils
+  once as white masks (`Veil`, from `BigTypeVeil`, the mock's `SHADE` geometry) and the ground and dark ink (`StageInkCommand`). The
+  compositor looks up the backdrop that is showing in the baked table and draws the text in that zone's ink and each veil in the
+  opposite tone at the table's strength (`stage.frag` gained a tint that is off unless set, so today's look and the Launcher draw as
+  before). Through a rotation's crossfade and a console change's fade the ink and veil are mixed by the same weights as the backdrops,
+  so the text changes with the picture behind it. Where no shader runs (the pictured fallback, the Avalonia Stage) the rule's answer is
+  white ink and the resting veils, which is what the Avalonia Stage always draws.
+- **The table** is `BackdropLegibility`, beside `BackdropCatalog`, generated from `legibility.json` (53 backdrops); a test holds it to
+  the JSON zone by zone and every system's backdrop list to it. **`ps2-sea`'s hints**, the one zone the prototype could not bake
+  ("changes"), are white with the veil at 0.5, marked `Baked: false`: **for the owner to check on the Thor.** The table was baked from
+  the JavaScript prototypes, not the GLSL ports; R2's look at each console's backdrops on the device is still to do.
+- **The swapped (narrow) screen shows the 16:9 Stage whole**, letterboxed on the ground, as the mock scales its whole top screen when
+  the screens swap: the Avalonia Stage keeps its 1920 canvas under Big Type, the feed sends a 1920 canvas, and the compositor fits the
+  canvas into the surface (today's canvases always have the surface's shape, so they fill it as before). Laying the name out again for
+  1240 would have needed a design the mock does not have.
+- **The medium** keeps its renderer and pose; under Big Type its frame is centred on the case's box (right 248, top 236, 392 × 552)
+  and sized so the case fills it as it fills today's frame (640 of 820), and it pops about its own middle. A flat cover sits in the case's
+  box, rounded 12, no shadow; a game with no cover is the mock's stand-in (its title on #3A3950).
+- **Checked on the desktop's real GL** with a new preview check, `dotnet run --project tools/EmuShelf.Rendering.Preview --
+  --stage-bigtype`: white stand-ins for each zone's text over the real animated backdrops come back in the table's ink (dark over
+  `ps2-towers`; white over `ps2-trails-v3`; split over `arc-checker` and `gc-caustics`), the resting veil over the pictured fallback,
+  and the narrow screen's letterbox.
+- **Where the app and the mock still part** (headless renders, part by part): the name is within 1–5 px of the mock's (the mock fits in
+  2 px steps); the corners land on the mock's pixels; the hints are within 7 px across three. A long title the mock sets on four lines
+  ("Professor Layton and the Curious Village" at 186) is three lines and smaller here, because tokens.js says at most three. The 3D
+  case does not render headless, so the macOS frames show the flat cover in the case's box where the mock shows the case turned 24°.
+  The app's hints and lines are its own (a missing game still offers Play; no "Y to locate it"). The message toast is today's pill.
+  The Avalonia Stage on the narrow screen fills the letterbox bands with the backdrop, the native one with the ground.
+- **Text with an opacity of its own is pictured as solid blocks on Android** (found on the emulator: the battery at 0.85 and the second
+  line at 0.82 came out as filled glyph boxes, whether the opacity was on the text or in its brush; the macOS frames were right). Each
+  Big Type piece the native Stage pictures sets `RenderOptions.TextRenderingMode="Antialias"` on itself (a piece pictured alone does
+  not inherit its parent's), which draws them correctly; the opacities are carried in the brushes. The name's control is 200 px taller
+  than its box, so the native picture keeps its descenders (the box, the fit and the bottom line are unchanged).
+- **Checked on the Android emulator, not the Thor** (AVD `emushelf-b3`, as B3 left it; arm64 android-35, GLES 3.0 through the host
+  GPU; the library is nine stand-in PS2 games). The Release build installed with `adb install -r`. Classic started cleanly into Handheld
+  mode with the native compositors drawing both screens. With `debug.emushelf.look bigtype` the native Stage drew the name, the label,
+  the line and second line ("ARMSX2", read from the Title page's details), battery and clock, the outlined hints and the 3D case in its
+  corner, with no plate and no pills. **The backdrop shaders ran** (`ps2-towers` and `ps2-trails-v3` logged as they came in; `ps2-orbs-v3` seen on screen), and the
+  ink followed them as the table says: the dark ink over the towers and the orbs, white over the trails, changing as the rotation turned.
+  Recent, Settings, an empty slot and the dock drew over the pictured fallback in white. Property cleared, Classic again. What it does not
+  prove: the Thor's panels, Adreno, and the name's legibility over the other consoles' backdrops, which the emulator's library does not
+  reach; B4's exit is the owner's look on the Thor.
+
+## 2026-11-14 — M47 B5: Big Type's motion that needs no new drawing
+
+- **The maths is one place, shared.** `BigTypeMotion` (`EmuShelf.Rendering/Stage/BigType`) holds every number and curve, from tokens.js
+  `motion`/`shape` and the mock's script, as pure functions of time; `BigTypeLauncherMotion` holds the Launcher's state over time (the
+  ring, the neighbours, the bob, the hop, holding still) with no drawing; `BigTypeRollDraw` cuts a rolling text into clipped pieces. The
+  native compositors and the Avalonia Launcher both use them, and the tests (`HandheldBigTypeMotionTests`) render nothing. Today's look
+  keeps all its motion: every change is behind the look (`LauncherMotionCommand.BigType` on the native side, `HandheldTokens.IsBigType`
+  on the Avalonia side), and Classic's 158 frames are identical.
+- **The ring is a timed path, not the springs retargeted in two phases.** The mock's ring is keyframes with fixed times: from the old
+  target to the rectangle covering both by 38% of 300 ms, to the new target by 74% (squashed 10 px along its travel and 6 px across it
+  when the two targets are the same size, the mock's 5 and 3 at half scale), settling by 100%, the corner radius on CSS `ease` over the
+  whole move. Two-phase springs would need a phase switch tuned by feel to land "covers both at 38%", would never quite reach the union,
+  would overshoot it, and could not squash; the path hits each number by construction, is testable at 0, 38% and 100%, and its length is
+  fixed (300 ms) however far the ring goes. A move that comes mid-flight starts from where the ring was last drawn (breath included), so
+  a held direction never jumps. The target is read where its track has it each frame, so the ring still rides a sliding page or column.
+  A move onto another home page does not stretch across the screen: the ring lands there and pops in from 1.25× and clear (320 ms on the
+  landing curve), as the mock does (`LauncherFocusCommand.Pop`). While the selector is hidden for a folder's zoom it lands instead of
+  travelling unseen. The bump still nudges it.
+- **One ring for everything.** Tiles (radius 50), the dock (38) and the folder header's rows (32) are the same ring changing size and
+  radius on the way. The Y sheet, Settings and the panels do not have the ring yet (today they draw focused rows as cards); B7 draws
+  them as type with the ring, and the same path then applies to them with no change here.
+- **The breath and the bob live a minute, then rest.** The ring breathes 1 → 1.03 → 1 every 2.2 s (CSS ease-in-out) once it has landed;
+  the focused tile bobs 6 px over 3 s (the mock's 3 px at half scale). The mock does both forever; here they last a minute after the last
+  press and ease out over 2 s, as the Stage's backdrop rests (`StageRest`, M45 H7: a resting screen must post no frames). Handheld mode
+  opening counts as a press. **The native Launcher's cadence at rest:** for that minute it steps at 30 Hz (`NextFrameMilliseconds`, the
+  surface votes 30 Hz) with nothing else moving, and at the panel's rate only while something travels (the ring, a lift, a neighbour, a
+  hop, a roll); after it, nothing is posted until the next change. Before B5 the Big Type Launcher posted nothing at rest; this minute of
+  30 Hz is the cost of the breath and the bob, the same cadence the Stage's backdrop already keeps over that minute.
+- **The lift lands; the neighbours make room on the same curve.** The focused tile goes to `FocusScale` 1.10 (the dock 1.14) on the
+  landing curve in 380 ms (`FocusLift.ms`), native and Avalonia. Each of the up-to-eight tiles around it moves `NeighbourPush` 8 px away
+  along each axis it neighbours on (a diagonal one along both, as the mock's `--px/--py`), in the same grid and on the same home page,
+  and comes back when focus leaves for anything else (the dock, the header). The feed gives each Big Type tile its place
+  (`LauncherSprite.Cell`); the Avalonia Launcher moves each tile's container, so the push is part of the resting picture.
+- **The idle hop, and how it lives beside the drift.** 4.8 s after the last press, then every 6.5 s, a wave runs over the tiles of the
+  grid in view (home's page, or the open folder): each rises 20 px and comes back in 560 ms, 75 ms later per step of (column mod 8) +
+  row, the column counted from the left of what is on screen. Hops start only within the minute the resting motion lives (nine of them),
+  never while a folder zooms, a Title page is up or (Avalonia) a sheet or menu covers the grid. The press that counts is any pad press or
+  touch (`HandheldShellViewModel.InputArrived`, raised where the drift's timer is re-armed). **The drift and the hop do not fight**: the
+  drift (15 s, M45 H6d) changes only what the Stage shows and the hop moves only the Launcher's tiles; neither is input to the other, so
+  the drift starting does not restart the hop's wait, and a hop never wakes the drift. The hop through the name's letters is B6's.
+- **Rolling digits cut the pictures the app already has; nothing new is drawn.** The feeds send, with each picture of the clock (and
+  battery), the Stage's line (game count, play time, achievements), a folder's count and the page ("1 / 2"), where each character sits
+  (`StageText`, from the text's own layout). When a new picture of the same piece arrives, the compositor keeps the old one for the roll:
+  every part of the new picture outside the changed characters is drawn as it is; each changed character's old glyph leaves upward 1.1 em
+  in 220 ms (ease-in) and the new one rises 1.1 em in 400 ms on the landing curve after 50 ms, staggered 12 ms a cell (at most 240), each
+  under a scissor of its own cell; a cell the new text lost fades in 140 ms. Cells are compared from the left, as the mock's `roll`. The
+  spike's digit atlas was not used: it would have been new drawing, and a tabular atlas per font size; cutting the existing pictures keeps
+  the ink, the face and the tracking exactly as at rest. On the Avalonia side `HandheldRollingText` (a `TextBlock`) does the same with its
+  old and new layouts and draws exactly as a `TextBlock` at rest. It does not roll while its view is only pictured for a native screen
+  (a picture must be the text at rest) or held still. The Stage's line rolls on every focus change, as the mock's `meta` does; the clock
+  rolls once a minute, so a resting Stage now draws about 0.7 s at the panel's rate each minute instead of one frame.
+- **Holding still now reaches the Launcher.** `LauncherMotionCommand.HoldStill` (battery saver, or the animator scale at 0) under Big
+  Type: the ring and the lift land at once, the neighbours are where they go at once, nothing breathes, bobs or hops, digits swap, and the
+  Launcher posts nothing at rest. The Avalonia Launcher does the same (its root's `still` class drops the lift's transition). Today's look
+  ignores it, as before: its motion is unchanged by the task's terms, and B10 removes it.
+- **The pictured fallback takes the dark ink.** Where no backdrop shader runs (the era motif: a light field in the console's hue, which
+  the headless renders and the Avalonia Stage show), `BackdropLegibility.Fallback` is now the dark ink with a white veil at its resting
+  strength (0.28 left, 0.25 in the corners), where B4 had white ink, which read poorly on the light field. The rule for real backdrops is
+  unchanged. The Avalonia Stage's Big Type text takes `HandheldShellViewModel.StageInk` (the console's dark ink) and its veils are white;
+  the native Stage tints its white pictures as before. The stand-in card for a game with no cover keeps its white title (it sits on its own
+  dark card).
+- **The Avalonia Launcher's share.** It draws the ring's path and the pushes in its own frame loop (so a picture at rest shows them),
+  and runs the breath, the bob and the hop as compositor animations that end at rest (`HandheldComposition.Swing`), so they never reach
+  a picture for the native side or a design frame. Its lift lands on the same 380 ms curve (a `bigtype` style transition).
+- **How it was checked.** Classic: 158 of 158 design frames identical before and after (and the final build's against B4's Classic set).
+  Big Type: all 158 render; 113 differ from the render made before B5, each explained by the fallback's ink (76 top frames; the empty
+  page has no text) or the neighbours' push (36 bottom frames; the swapped screen's bottom is the Stage). **Nothing was pinned in the
+  harness**: the breath, the bob and the hop run only on the Avalonia compositor, which the harness's frames (drawn from the visual
+  tree, B0) never include, and the push and the rolls finish inside its wait for rest. A desktop GL check of the real native Launcher
+  (`--launcher-bigtype` in `tools/EmuShelf.Rendering.Preview`) reads the ring at 38% and 74%, the neighbours, a roll, the hop, the rest
+  cadence and holding still back at chosen moments. On the Android emulator (not the Thor) recordings of both displays caught each
+  motion mid-flight and the GL threads went quiet a minute after the last press; the feel needs the owner's hands on the Thor.
+- **Found on the emulator, present before B5** (the same steps on a build of `c7573b3`), left for the design session: after moving
+  from home's page 2 back to page 1 the native Launcher shows no ring and no lift on the focused slot (either look); a sheet opening
+  shows two or three white frames on the second display; the Launcher's dock-row corner type ("1 / 2", Swap) is pictured with black
+  boxes behind its glyphs, the Android fault B4 fixed on the Stage with `RenderOptions.TextRenderingMode="Antialias"` on each pictured
+  piece (it also shows in the corner's roll).
+
+## 2026-11-14 — M47 B6: the name's letters, the flood and the wipe
+
+- **The letters reach the native Stage as R1 sent them, one atlas per name, but laid out by the Avalonia name itself.**
+  `HandheldBigTypeName.Letters` takes the control's own fit (B4's `BigTypeLayout` with the name's face, size and tracking), places
+  every letter where that word's own text layout puts it (each grapheme's x from the word's layout, so kerning and the −0.64 px
+  tracking are kept), and rasterises each distinct letter once, white, into an ink-tight cell of one bitmap with grey-scale
+  antialiasing. The feed sends it as `StageNameCommand` (Big Type only) in place of B4's whole-name picture; the Stage uploads one
+  texture and draws one quad per letter in the left zone's ink (`BigTypeStageLayer`, from the spike, letters only). A headless test
+  composes the atlas at rest and holds it to the control's own drawing for a monogram, a two-line title and a short word (the same ink,
+  centres of mass within half a pixel). The spike's `BigTypeMotion` was not brought over: its letter, flood and wipe timings are now
+  in B5's class, named after tokens.js; its digit atlas was not needed (B5 rolls cut the existing pictures).
+- **Seven entrances, the mock's `ENTER` and `EXIT`.** Right and left (0.55 em along, the last letter leading when moving left), up and
+  down (0.5 em), into a folder (rising 0.95 em from the hinge, tilted 7°), out of one (dropping in from 0.7 em above, −5°), and anything
+  else, a first show, the idle drift or a touch, rising 0.7 em tilted 5°. Leaving goes the other way (0.45 em; −0.6, 0.6, −0.4 for the
+  last three). The shell records the last press's move (`LastMoveDirection`, `LastFolderOpened`, cleared at the next press);
+  `HandheldStageEntrance` maps it. **tokens.js gained the numbers the mock's script had inline** (said so here, as the rule asks):
+  `LetterIn.fromEmVertical/openEm/openTilt/backEm/backTilt/riseEm/riseTilt`, `LetterOut.openEm/backEm/riseEm/stillMs`, `Wipe.below`,
+  `IdleHop.letterDelay/letterStagger/letterRiseEm`.
+- **Where the native Stage does not run** (the desktop, the Avalonia fallback) the name changes correctly and moves the same way: the
+  Avalonia name keeps the names in flight and draws each letter with its pose from the same maths while it is on screen. It swaps (no
+  motion) while it is only pictured or held still (B5's `Rolls`). It does not hop there (the hop needs the press clock the native Stage
+  has), the Avalonia Launcher's ground keeps its 200 ms crossfade, and the Avalonia Stage's backdrop keeps today's crossfade: the flood
+  and the wipe are native only.
+- **The letters hop on the tiles' clock.** The Stage feed forwards the shell's `InputArrived` as `StageInputCommand`; the Stage hops
+  the letters from `BigTypeMotion.HopStart` (the mock: 260 ms after the tiles' wave starts, 45 ms a letter, 0.07 em, 560 ms on the hop's
+  curve), only once the name has landed. A Stage with nothing else moving asks to be woken for the next hop; a wait longer than a second
+  is not voted to Android as a frame rate (`NativeSceneSurface`: every stepped backdrop's cadence is well under a second, so today's
+  votes are unchanged).
+- **The flood** replaces `LauncherGroundCommand`'s linear fade under Big Type (`Flood` instead of `FadeMilliseconds`): each new ground is a
+  wave growing from the middle of the ring's target (the focused tile), found on the first frame it is drawn, so the focus sent in the
+  same batch after the ground is the one it grows from; it is drawn as a white quad tinted to the colour and cut to the circle, under
+  the tiles. A wave that covers the screen (640 ms, 1640 px) becomes the ground before the screen is cleared; waves started before it
+  go with it, so quick moves stack as the mock's do.
+- **The wipe is a stack of backdrops, not the crossfade's pair.** The mock lays each new backdrop's canvas over the others and removes
+  those beneath once its circle has covered the screen; quick system changes therefore show three at once. The Stage keeps up to two
+  beneath the one on top (a further change lets the oldest go). Its circle grows from 40 px below the Stage's bottom edge at the focused
+  tile's x, the Launcher's canvas centred under the Stage's (the mock's `cx + 170`): the Stage feed asks the native Launcher feed where its
+  focused element is on screen when it sends the backdrop. Swapped, the same rule gives the same x (both canvases 1920) and the circle
+  still rises from the Stage's bottom edge; the mock has no swapped wipe, so this is the owner's to judge. With no native Launcher it grows
+  from the middle.
+- **How the ink and veils change with the backdrop, and why no frame has unreadable text: per pixel, in the wipe's own circles.** During a
+  wipe the Stage draws the veils, the name's letters and every zoned text once per backdrop that shows, each pass kept inside its own
+  circle and outside every circle above it (`uClip0..2` in `stage.frag`: include or exclude circles, a one-pixel soft edge; all zero is
+  off, so today's look draws exactly as before), in that backdrop's own answer from `BackdropLegibility` and with the dark ink it was
+  drawn with. So every pixel of text is in the ink chosen for the backdrop actually behind it, from the first frame of the circle to the
+  last; there is no moment where text has switched ahead of or behind its backdrop, which a single ink mixed by the circle's progress
+  would give. The order of the ink and backdrop commands no longer matters: a backdrop that goes beneath a wipe keeps the dark ink of the
+  last frame it was drawn with. Outside a wipe it is B4's mixing, unchanged (a rotation within a system still crossfades). The desktop GL
+  check reads text across the circle's edge mid-wipe: white just inside (over `ps2-trails-v3`), the dark ink just outside (over
+  `ps2-towers`), nothing in a third colour.
+- **The backdrop's start-up cost is off the frame of the press (R1).** Under Big Type the feed sends the new backdrop at once (no 250 ms
+  settle: the wipe is timed from the flood). The compositor does no GL work for it on the frame its command lands on; on the next frame it
+  starts it (its programs are found or compiled), on the one after it draws its first step (its targets are made), and its circle starts
+  growing at 110 ms after the command or once it is ready, whichever is later, so a slow start delays the circle rather than a frame. Its
+  two full-screen pictured layers are uploaded only if they are ever drawn (a system with no animated backdrop, or one whose shaders fail),
+  one per frame. The first backdrop, with nothing on screen to wipe over, is prepared at once (so a rebuilt context's resume finds it).
+  **Measured on the Thor** (20 presses along home's first row, Recent to GBA and back, 1.5 s apart, Big Type, R1's probe in both builds):
+  before B6 (B5's commit plus the probe and nothing else) the Stage paid 17.6 to 41.2 ms on 10 of the 20 presses, about 380 ms after each
+  (after the settle, when the backdrop started and its layers went up; repeats of a backdrop included), 10 frames over 16.7 ms. With B6 the
+  frame the press lands on costs 0.3 to 0.6 ms every time; the next frame costs 13.1 to 36.6 ms only the first time a backdrop shows in a
+  run (its shaders compile: nes-raster, snes-mosaic-v2, gbc-sheen-v2, gba-iso, gbc-bands, tiles, nes-stars, nes-meta, gbc-attr,
+  snes-lake-v2), and 0.3 to 0.5 ms on every repeat; 4 frames over 16.7 ms, 11 over 8.3 (10 before). **What is left:** that first compile.
+  Compiling a system's backdrops ahead of their first show (or keeping program binaries) was not done.
+- **Holding still** (`HoldsStill`) follows the mock's reduced motion: the new name is there at once and the old one goes in 60 ms
+  (`LetterOut.stillMs`), all letters together; the flood lands at once; the new backdrop cuts in once it is ready; no letter hops.
+- **The exit, measured on the Thor, is not met; not ticked.** R1's figure is every steady frame of the motions under 5.2 ms CPU and 2.4 ms
+  GPU (worst case 0.9 and 0.7 typical). Three-line names arriving during a wipe, in Recent (its games are on different consoles, so each
+  move wipes: "Shin Megami Tensei : Persona 2, Innocent Sin" at 37 letters, "Tony Hawk's Underground 2 Remix", "Metal Gear Solid : The Twin
+  Snakes", "Bleach : Heat the Soul", "Batman : Return of the Joker"; six runs, 304 steady frames, the run's first frame left out): CPU 1.81 ms
+  typical, 5.10 p95, 18.6 worst, with frames over 5.2 in four runs, most 0.7 to 0.85 s after the press when the letters have landed (not
+  isolated; these games show the 3D case, which R1's stress names did not); GPU 1.48 typical, 2.25 p95, 2.54 worst (over the Bleach run's
+  `psp-field-v2` wipe). Monograms during a wipe along home's first row: GPU 1.47 typical, 3.25 worst. The GPU's share is plausibly the wipe
+  presenting two full-screen backdrops and drawing the text and veils once per backdrop; that was not measured apart. A name's atlas costs
+  2.9 to 10.0 ms on the UI thread (R1: 3.5 to 14.4). Whether to accept these figures or work on them is the owner's.
+- **The slow frames, found (the owner's "Find the slow frames", 2026-11-14).** The probe was made finer: with `debug.emushelf.probe` set,
+  every Stage frame over 4 ms of render-thread CPU logs each command it applied with its time, how long each part of the draw took and
+  how many quads it drew (`IProbedScene`, the 3D case's target, cover upload and render apart), and any garbage collection in between.
+  On the Thor, in the same Recent run: **the slow frames 0.6 to 1.0 s after the press were Big Type's own quads, not the 3D case.** Each
+  quad cost about 50 µs of render-thread CPU (its texture bind, about fifteen uniform calls and its draw), and those frames drew many:
+  the Stage's line rolling when its facts (play time, achievements) arrive about 0.5 s after the press, cut into 54 to 59 scissored
+  pieces (2.8 to 3.8 ms), and the name's letters, 18 to 37 quads drawn twice during a wipe (0.8 to 3.4 ms). No collection fell in any of
+  them. The 3D case's work is real but earlier and one-time: its target, cover upload and first render for a new game, 8 to 19 ms, 150
+  to 360 ms after the press (today's look does the same), as is a backdrop's first start (its shaders compile, 13 to 53 ms).
+- **The fix, the least change:** under Big Type, `StageCompositor.DrawQuad` sets a uniform only when its value differs from the one the
+  sprite program already holds, so a run of letters or roll pieces sets little more than its rectangle and texture coordinates. Nothing
+  drawn changes (the desktop GL checks read the same pixels); today's look sets every uniform for every quad as before. It halved the
+  cost per quad (about 50 to about 24 µs), which is the draw calls' own cost now.
+- **Measured again on the Thor (the same runs): the CPU limit is still not met; not ticked.** Three-line names arriving during a wipe
+  (Recent; 247 steady frames): CPU 1.58 ms typical (was 1.81), 3.91 p95 (was 5.10), 19.3 worst; GPU 1.51 typical, 2.18 p95, 7.73 worst
+  (one frame of the Bleach run; the rest of the runs at most 2.80). What is still over 5.2 ms, by cause: the 3D case's first render for a
+  new game (8.2 to 19.3 ms, once per game, 330 to 360 ms after the press); and Big Type's own drawing when a long name and a rolling line
+  meet a wipe ("Metal Gear Solid : The Twin Snakes", 0.9 s after the press: 117 roll pieces and 56 letter quads, everything drawn once per
+  backdrop showing, 6.0 and 6.9 ms). The rest of the steady frames are under 4.7 ms. The console row (20 presses) did not regress: frames
+  over 16.7 ms 2 (was 4), over 8.3 ms 9 (was 11), every one a backdrop's first start; repeats 2.4 to 3.0 ms. **Not tried, for the owner
+  to choose:** drawing a zone's text once, unclipped, when both backdrops of a wipe give it the same ink (the common case); drawing the
+  letters and roll pieces as one batch instead of a draw per quad; and the case's first render, which is today's cost.
+- **The GPU's 3.25 ms on one-line console names during a wipe** (item 5 of the brief, not this round's target): not split by part (the
+  probe's GPU timer covers a whole frame). What a wipe frame adds is visible in the figures: a monogram's few letters are very large
+  quads, drawn once per backdrop showing, over two full-screen backdrop presents and two sets of veils; outside a wipe the same names
+  cost 0.7 ms.
+- **Two more savings for Big Type's own drawing (the owner's round, 2026-11-14), both changing nothing on screen:**
+  - **A zone drawn once when every backdrop showing answers it the same way.** During a wipe, a zone's text and veil are drawn once
+    with no circle when the ink, veil colour and veil strength are equal for every visible backdrop (`StageCompositor.PassesFor`); when
+    they differ, one pass per backdrop as before. The circles share the screen out between the passes, so every pixel gets the same ink
+    either way; the one exception is the circle's soft one-pixel edge, where two half-covered passes let a little backdrop through and
+    one pass covers it fully. It also put text with no zone (the message toast) back to one uncut pass: before it was drawn inside the
+    top backdrop's circle only. The desktop GL check reads one quad for a wipe from `ps2-towers` to `nes-flow` (the same left answer) and
+    two for one to `ps2-trails-v3`, each side in its own ink, and no seam on the edge.
+  - **The letters and the roll's pieces in batches.** Under Big Type up to 48 of them go in one instanced draw (`sprite-batch.vert`,
+    `stage-batch.frag`): the vertex shader is `sprite.vert`'s arithmetic line for line, reading each quad's values from a uniform array by
+    instance; the roll's scissor becomes the same test in the fragment shader (a pixel's centre inside the same whole-pixel window); a
+    second sampler keeps the roll's old and new pictures in their drawing order. A batched roll piece's geometry is shrunk to its window
+    grown by a pixel, so nothing outside it is shaded (the first build shaded the whole line picture per piece and cost the GPU 0.3 ms a
+    frame, found by an in-run A/B and fixed). The desktop GL check draws tilted letters mid-flight and a 40-cell roll during a wipe both
+    ways: 88 quads, 0 pixels different. Today's look never batches.
+  - **They earn their keep:** Big Type's own worst frame on the Recent run went from 6.9 ms to 4.5 ms. An in-run A/B on the Thor
+    (`debug.emushelf.probe ab`: batching on for two frames and off for two, so both halves see the same backdrops' 30 Hz steps) shows
+    the batch GPU-neutral: 0.75 against 0.75 ms typical on letter frames, 1.42 against 1.47 during wipes, 1.34 against 1.34 on the
+    console row. The one-pass saving was not timed apart; it only ever removes draws.
+- **Measured again on the Thor (final build, the same Recent run, 251 steady frames of three-line names arriving during a wipe):** CPU
+  1.31 ms typical, 2.83 p95, 18.0 worst; GPU 1.42 typical, 2.14 p95, 2.87 worst. Split for the owner: **Big Type's own drawing, worst
+  4.5 ms; the 3D case's first render for a new game, worst 18.0 ms.** The press frame of each run is 1.3 to 2.4 ms. Frames over 2.4 ms of
+  GPU come in step with the backdrops' 30 Hz renders during a wipe (two backdrops render and present), not with the text. The console
+  row: 1 frame over 16.7 ms and 2 over 8.3 (each a backdrop's first start).
+- **Today's look on the same run** (`debug.emushelf.look classic`, the same presses and probe; four of its twenty presses met an edge of
+  today's folder grid and drew nothing): CPU 1.02 ms typical, 2.25 p95, 50.0 worst (a backdrop change after the settle), 9 frames over 8.3
+  and 4 over 16.7; GPU 0.74 typical, 1.42 p95, 7.40 worst, 1 frame over 2.4; the 3D case's first render 19.0 ms worst; its other steady
+  frames up to 5.1 ms. Big Type over the whole session: CPU 1.53 typical, 3.08 p95, 28.4 worst (a backdrop's first start), 6 over 8.3
+  and 3 over 16.7; GPU 1.37 typical, 2.49 p95, 7.71 worst, 54 frames over 2.4. So Big Type's worst frames are no worse than today's (its
+  worst CPU frames are fewer and shorter, its 3D first render the same), its typical frames cost a little more, and its GPU is higher
+  through a wipe.
+- **The exit is still not met; not ticked:** the 3D case's first render (18.0 ms CPU) and the GPU during a wipe (2.87 ms) are over R1's
+  5.2 and 2.4. Big Type's own drawing is under both on the CPU. Whether to accept that is the owner's decision.
+- **R1's probe is kept for the owner's measurement, behind a measurement switch, not a look.** `adb shell setprop debug.emushelf.probe 1`
+  (read at start-up; empty clears it) logs under `EmuShelfBigType` one line per run of frames by motion (`letters`, `wipe`,
+  `letters+wipe`, `flood`, `other`; `nobatch` turns Big Type's batching off and `ab` alternates it every two frames, with the backdrops' picks
+  seeded so runs compare) with intervals and render-thread CPU time (`NativeFrameProbe`), then GPU time per frame
+  (`GpuFrameTimer`, where `EXT_disjoint_timer_query` exists: the emulator has none). R1's `measure.py` reads the same lines.
+- **The page 2 → page 1 fault (both looks).** The shell marks focus on the page on screen only, so a slot left on another page keeps its
+  mark. Moving from page 1's last column onto page 2 and back onto the same slot changed nothing on that slot (it had never lost its mark),
+  so page 2's slot stayed the most recently focused anchor and `HandheldLauncherMotion.FocusedAnchor` sent the ring and the lift to it, off
+  screen. Fixed where the anchor is chosen: a home slot counts only while its page is the page on screen. Classic changes by the missing
+  highlight only: the stale mark itself was left alone, because clearing it would also drop the old page's tile out of its focused look
+  during the page's slide, which today's look shows. Seen fixed on the emulator in both looks and on the Thor in Classic (GBA, the
+  last slot of the owner's first row).
+- **The Launcher's corner type** ("Swap", "1 / 2", the sort, the folder's name and count) sets `RenderOptions.TextRenderingMode="Antialias"`
+  on each pictured piece, as B4 did on the Stage; no black boxes on the emulator or the Thor.
+- **Found, not fixed:** the Big Type design set is not deterministic from B5's commit: two renders of `ddb0696` differ in 11 frames, each
+  only on the focused ring's edge (6 to 1,215 pixels, sub-pixel), the same frames B5's saved set differs in. Classic is deterministic.
+
+## 2026-11-14 — M47 B7: the lists as type on the colour
+
+- **The lists are a view of their own, drawn only under Big Type.** `HandheldBigTypeLists` (the Start menu, the Y sheet and its
+  confirmations, Settings with its choice lists and confirmations, and the generic panel) sits in the Avalonia Launcher just under
+  the selector layer, so the one ring is drawn over it, as the mock's `z-index`. Today's cards are untouched: their layers are wrapped
+  in `IsClassic`, except that Big Type still shows today's Settings and panel layers **while they type**, because the keyboard is B9's
+  (the Stage keeps today's card for the typed text then, `HandheldStageViewModel.IsListTyping`). Classic's 158 design frames are
+  byte-identical before and after.
+- **Every row is three parts.** A slot at rest (the ring's anchor, with a `Border.ring` `RowRingOutsetX`/`RowRingOutsetY` round it, so
+  the ring sits exactly on the mock's `buildList` `_rect`), a part that arrives (the motion slides and fades it), and the row itself
+  (moves `RowFocusShift` and brightens when focused, on style transitions). So the ring is never dragged by a row sliding in, and a
+  picture at rest is the mock's at rest. Rows are `RowPitch − RowGap` high; a list longer than its window (`SheetRowsVisible`,
+  `SettingsRowsVisible`, `PanelRowsVisible`) moves by whole rows to keep the focus in view (`HandheldRowWindow`, the mock's
+  `P.scroll`, on tokens.js `Scroll`), its window clipped above and below only so a row sliding in from the side is never cut.
+- **tokens.js gained the mock's inline numbers for the lists, as the rule asks:** `launcher` `RowGap`, `RowValueGap`,
+  `RowFocusShift`, `RowRingOutsetX/Y`, the sheet's, Settings' and the panel's places (`SheetLeft` … `PanelWidth`, `SheetRowsVisible`,
+  `SettingsRowsVisible`), `shape` `SwitchStroke`, `SwitchKnobInset`, `SwitchKnobTravel`, `SwitchOnKnobScale`, `UnderSheetScale`,
+  `colour` `RowLockedFocusOpacity`, `SwitchOffOpacity`, `UnderSheetOpacity`, and `motion` `RowsIn.delay/railSlide`, `SectionIn`,
+  `CoversIn`, `HeadingIn` (the mock's `lettersIn`: 60 ms, 24 ms a letter to 360, 520 ms, 0.9 em or 0.8 on a sheet's title, 6°),
+  `StepBack`, `RowFocus`, `Switch`. One number is the app's, not the mock's: `RowGroupIndent` 48, a Settings row inside an opened one
+  (an emulator's options), which the mock does not have; it is today's indent. Round 2 added the mock's exits (`SheetOut`,
+  `SheetSwap`, `SettingsOut`, `PanelOut`) and three numbers that are not the mock's: `LabelFitMin`, `RowValueMaxShare` and
+  `CoverRowsVisible`. Under Big Type the list roles `Row`, `RowValue`,
+  `RailRow`, `SheetTitle`, `Heading`, the switch, `RingRadiusRow` (32, which also rounds the folder header's ring, as B5's decision
+  already said it should) and `Danger` take tokens.js's values; the Title page (B8's) keeps today's through two new names
+  (`TitleOptionsTitle`, `RingRadiusTitleChip`) and the typing panel's heading through `ClassicPanelHeading`.
+- **The motion is the mock's, from one class of maths.** `BigTypeListMotion` (beside `BigTypeMotion`) gives rows arriving, a
+  section's rows rising (from above when the move was up), the heading's letters (`HandheldBigTypeHeading`, which fits the heading as
+  `setHead` does, places each letter by the line's own layout and turns it about its own box), cover search's candidates rising and
+  growing, and the grid stepping back, each as the mock's Web Animation: one keyframe pair eased as a whole on its curve, held at its
+  start until its delay. The Avalonia Launcher's motion applies them on its frame clock and after every layout, so a row is posed
+  before the first frame it could be drawn in. **The ring jumps into a list and back out of it** (the mock's `open` and `back` do not
+  glide) and travels on B5's timed path between rows, breathing at rest. **The grid under a sheet or the menu steps back** to
+  `UnderSheetOpacity` and `UnderSheetScale`; under Settings and a panel it goes (opacity 0); the dock and its left corner stay, as in the
+  mock. Closing a list puts the grid back at once: the native Launcher takes the screen back then and pictures the grid at rest, and no
+  picture may be placed from a grid that is still scaled down.
+- **Rows leave as the mock's do (round 2).** A list that closes stays shown while its rows leave (`HandheldListsShown`, which the
+  lists view binds to and the Launcher's motion keeps a closed list in): a sheet's and the menu's rows go right (`SheetOut`, the mock's
+  `closeSheet`), a sheet's rows go left when another sheet takes its place (`SheetSwap`, `openSheet` over one, e.g. "Add to folder"),
+  Settings' rail and rows drop (`SettingsOut`), a panel's rows drop (`PanelOut`, at most eight staggers apart), each on the Leave curve,
+  the list going after the mock's wait; the ring is hidden meanwhile (the mock clears it). A panel's grid of covers goes at once: its
+  pictures belong to the panel's view models, which are disposed as it closes. On the Thor the native Launcher takes the screen back
+  only once the rows have gone (`HandheldNativeLauncherFeed` waits on `ListExitEnded`). The Stage changes as the list closes, not
+  after its rows have gone (the mock waits; the native Stage would have to wait on the Launcher). Held still, a closing list simply goes.
+- **The Stage while a list is open: the mock's code decided it (round 2), not the brief.** The owner approved the mock as it behaves.
+  Round 1 followed the brief (the row as the name everywhere); the design session withdrew that. Now:
+  - **The Y sheet and the Start menu** keep the name of what they were opened over (`focusSheet` lands with `keep: true`), its second
+    line too; the label becomes the kicker ("More" for an item's own sheet, "Menu" for the Start menu, the sheet's title for any other,
+    as the mock's "Add to folder"); the line is the focused row's meta or hint (a sheet row's note; a menu row's hint, or On/Off).
+  - **Settings** (`focusSet`): on the rail "Settings" over the section's name, its subtitle (the section's description) under it; on a
+    row "Settings · Section" over the row's label, its meta under it (a switch's On or Off, a value, else its description); no second
+    line, as the mock writes none.
+  - **Panels** (`focusPanel`'s `desc`): achievements, "Game · Achievements" over the achievement, whether it is unlocked under it, how
+    many are unlocked and its points under that; Activity, "Activity · Day" over the day's play time, the games under it, the week's
+    total under that; cover search, the console over the game's name, "Cover n of N" under it, where it is from under that, and the
+    game's case wearing the candidate; the scrapers keep their card's eyebrow, title, value and description.
+- **Cover search's case wears the candidate (round 2).** Under Big Type the Stage keeps the game's medium beside the name with the
+  focused candidate as its front: the candidate is lent to the Stage (`ReplaceStageArt(borrowed: true)`, never disposed by it) and
+  given back before the panel disposes its pictures as it closes. `HasMedium` takes a panel's candidate under Big Type only; a game with
+  no medium (or a GPU that cannot draw one) shows the flat candidate in the case's corner. Classic draws nothing new.
+- **Text that does not fit (round 2).** A rail name or row label is set smaller to fit its room as the mock's `setHead` fits a heading
+  (`HandheldFitText`: size × room ÷ natural width) but no smaller than `LabelFitMin` (0.75 of its size, not the mock's), then ends in an
+  ellipsis; a row's value takes at most `RowValueMaxShare` (0.45 of the row, not the mock's) and the label the rest (`HandheldRowLine`),
+  so no label is cut mid-letter or touches its switch or value. **The Stage's line and second line end before the hints** (the mock
+  sets them no width): a `StageHintGap` short of the hints' first glyph, in an ellipsis.
+- **The dock row's right corner under Settings rolls to the version (round 2, the mock's `roll(dr, '1.8.9')`)** and back to the page
+  when Settings closes; under a panel it is empty.
+- **Cover search is the mock's grid under Big Type.** Its candidates are a grid of the folder's tiles four to a row
+  (`FolderColumnsVisible`, `FolderLeft`, `FolderPitch`, `TileFolder`), its "Search for" and "Search" rows stay rows above them (the mock
+  has neither, the app needs both); left and right move along the grid and up and down a row of it (`HandheldPanelViewModel.GridStep`).
+  Today's look keeps its list and its moves.
+- **A panel's count** (`HandheldPanelViewModel.Count`) is the mock's `pcount`: unlocked of all for achievements, covers found for cover
+  search, the week or the ranking for Activity; the others have none. Its progress (`Card.Progress`) is a flat bar `ProgressHeight`
+  high between the heading and the rows, in a tile's white over the colour; the mock draws no bar, so its place is the app's.
+- **Settings has its own colour while it is open** (the mock's `focusSet` with `SETC`): `UpdateGround` gives `AppGround` under Big
+  Type while Settings is open; closing it, the focus's colour comes back. **The Avalonia Launcher now floods too**: a new ground grows
+  as a circle on B6's `Flood` timing over the old one, from the ring's target, or from the middle of the screen when a list took the
+  colour (the mock's `flood` with no tile); held still, or while the native Launcher has the screen, it simply changes. B3's 200 ms
+  crossfade is gone under Big Type.
+- **The white frames when a sheet opens, fixed (both looks).** Cause: when the Avalonia Launcher took the screen, the feed made it
+  opaque and hid the native surface in the same step, so for the two or three frames before the Avalonia surface had drawn anything
+  since it became visible the second display showed its empty, white surface. Now the native surface stays in front until the
+  Avalonia Launcher's compositor has rendered two batches since (`HandheldNativeLauncherFeed.HandOverAsync`); a hand-over overtaken by
+  another (a sheet closed at once) does nothing. Closing is unchanged. In Classic this changes only those frames: the native Launcher
+  shows instead of white, then the sheet.
+- **Found and fixed on the way: `HandheldRollingText` (B5) could keep drawing an earlier text.** When its text changed while shown it
+  laid out the old text for the roll (`CreateTextLayout(before)`) after the text block had let its cache of shaped runs go, so the
+  cache filled again with the old text and the block's next layout reused it: the Text property said one thing and the screen
+  another. Seen in the design set at B6's commit already (home page 2's Stage line said the pinned game's play time) and in B7's menu
+  frame. It now lets its layout go again after making the roll's copy. Classic's frames are unchanged.
+- **The ring-edge drift in Big Type renders (B6's finding): found and fixed (round 2).** A render of the starting commit `7c93bea`
+  differed from B6's saved render of it in 13 frames, each only on the focused ring's anti-aliased left or right edge. Cause: in
+  `HandheldLauncherMotion.OnFrame` the ring (`StepSelector`) read its target before the neighbours' push (`StepPushes`) was stepped; the
+  tile the focus lands on was a neighbour of the last one and settles back from its 8 px push for 380 ms, longer than the ring's 300 ms
+  path, so on the push's last frame the ring took the previous frame's target and then nothing moved: it rested a fraction of a pixel off
+  by however the frames fell. Under Big Type the push is now stepped first; today's look keeps its order. The harness was not changed.
+  (A comparison in round 1 wrongly showed renders identical: its check read only the alpha channel; every comparison was redone.)
+- **Found on the Thor and fixed:** a list window's clip was sized before the view had a width (the rail's long names were cut); a
+  row's long value squeezed its label to "D…" (the label now keeps its length, the value is cut); with 24 candidates cover search ran
+  under the dock (its grid now shows `CoverRowsVisible` 2 rows and scrolls a row at a time, a number added to tokens.js); a window's
+  items control clipped to its own bounds, so once it scrolled the rows coming into view were cut away; the window clips at its full
+  height, not what it held when its rows were still streaming in; and the native Stage pictured a panel's (now empty) card instead of
+  the candidate cover. In round 2 the long rail names and row labels fit (above) and the Stage's lines end before the hints.
+- **Holding still:** rows and headings are simply there, the ring lands, the grid steps back at once, the switch and the rows' focus
+  have no transitions (the root's `still` class), and the ground changes at once.
+- **The test suite's order-dependent failures, found (round 2).** `MainViewModelTests.HandheldMode_StartsInTheSavedLook` (B0) starts
+  Handheld mode with Big Type saved, which gives the process-wide tokens Big Type, and never put today's look back; it ran with the
+  parallel tests, so a test that read the look afterwards (here `HandheldGroundColourTests.TheFace_IsAppAxamlsHandheldFamily_AndTodaysLookSetsNone`,
+  in all three runs of round 2's first try; very likely round 1's sixteen unnamed failures too) failed depending on the order. It now
+  runs in `HandheldTokenLookCollection` (apart from every other test) and puts today's look back.
+- **Not built, for the owner or later steps:** Settings opens with its rows focused, as before B7 (the mock opens on the rail); the
+  Stage changes as a list closes rather than after its rows have gone.
+
+## 2026-11-15 — M47 B8: folders, the launch and the in-game companion
+
+- **Big Type only; today's look is unchanged.** Classic's 158 design frames are byte-identical before and after. Every number is
+  tokens.js's; the mock's inline ones were added there first (below), the shared maths is `BigTypeFolderMotion` and `BigTypeLaunchMotion`
+  (`EmuShelf.Rendering/Stage/BigType`), used by the native screens and the Avalonia ones alike.
+- **tokens.js gained the mock's inline numbers**, as the rule asks: `FolderOut` (push 56 a cell, toScale .55, openedScale 1.7 after 70 ms,
+  at most 6 steps, the folder showing after 370 ms: the mock's `fallAway` and `openFolder`), `FolderDeal` (fromScale .55, at most 8 steps,
+  the ring 230 ms after the folder shows), `FolderClose` and `FolderPopIn` (the mock's `closeFolder` and `popIn`), `RingPop` (B5's page
+  pop 1.25, and a folder's first game 1.3), the launch's (`Launch`: flight curve and scale, out 340 px past the top, the case's bump at
+  270 ms, the takeover at 430 ms from the case's middle 1484, 516 to 2200 px on its curve, the title from 0.8 em, the grid gone in 280 ms,
+  the companion built at 710 ms), `InGameIn`, `InGameTab`, `InGameOut`, `UnlockLine`, the bar's easing, the error's shake (−22, +18, −12),
+  `type.LaunchStatus`, `InGameTitle`, `InGameTab`, `InGameStatLabel`, `InGameRecent(When)`, `stage.LaunchTitleMaxWidth/LineHeight/Gap`
+  and an `ingame` block of the companion's places (all the mock's, doubled). The mock's frozen-numbers list names the new block (one line
+  of `index.html`; nothing it does changed). **One mapping differs from the brief's words:** tokens.js already had `FolderOut` at 250 ms
+  and 20 ms a tile, which are the mock's `fallAway` numbers (home's tiles falling away as a folder opens), not its `closeFolder` (200 ms,
+  16 ms); the mock's code wins, so `FolderOut` is the fall-away and the games dropping out on closing are the new `FolderClose`.
+- **Opening and closing a folder on the native Launcher, carried across without new pictures.** `LauncherZoomCommand` under Big Type
+  starts a folder move in `LauncherCompositor` (`LauncherCompositor.BigTypeMoves.cs`) instead of today's zoom: each sprite's pose (offset,
+  scale about its own middle, opacity) is worked out where it is drawn, from its `Cell` (B5's), the opened tile's cell, the folder's
+  first column. Home's sprites fall away from their own resting pose (lift, push) to the target, as a Web Animation from its underlying
+  transform does; at 370 ms home goes and the folder's games deal in by column + row; the folder's header shows with them. **The name's
+  letters land natively:** the folder name is now `HandheldBigTypeHeading` (B7's, fitted as `setHead`), and the feed sends its letters as
+  one atlas (`LauncherLettersCommand`, the B6 atlas builder moved to `HandheldLetterAtlas` and shared); the compositor draws them a quad
+  each on `HeadingIn` in the name's place until they have landed, then the pictured name again. **The count rolls in from nothing** when
+  the folder shows (a roll with an empty old text: B5's roll, no new drawing). **The ring** hides through the move and pops in from 1.3
+  (`BigTypeLauncherMotion.PopIn`) 230 ms after the folder shows; closing, it lands on the folder's tile 130 ms after home is back.
+  Closing: the folder's sprites (kept, as today's zoom keeps them) drop by `FolderClose`, the closer to the top left the later; at 300 ms
+  they go and home's tiles pop in around the folder's tile. Nothing of it needs the Avalonia Launcher. The Avalonia Launcher does the same
+  where it has the screen (the desktop; `HandheldLauncherMotion.Folder.cs`), posing each tile's container, with a closing folder's games
+  and header pictured where they were (as today's zoom pictures the page).
+- **Column + row are counted in the folder's window** (from its first visible column), for the deal and the drop alike. The mock counts
+  absolute columns but only ever opens a folder at column 0; a folder closed while scrolled would otherwise drop every game at once.
+- **A on a game plays (D1), through the Title page's route, which Big Type never draws.** `OpenOrPlay`: Big Type opens the page with
+  `playWhenReady` (details, the screen's question, save sync and the launch lead all as before) and `ShowsTitlePage` is false, so neither
+  Launcher nor the native feed draws the page, the Stage stays on the game (its facts are B4's second line), and its hints give way to the
+  launch's. While the page waits for its details, B lets the press go and nothing else does anything. A launch that fails closes the page
+  (there is no page to return to); the app's own status line says why.
+- **"Which screen?" is a sheet in B7's style** (the mock's `startGame`): kicker "Play", rows "Top screen", "Bottom screen", "Always the
+  top for <console>", and **one row the mock does not have, "Always the bottom for <console>"**, because today's chooser can remember
+  either screen and nothing it does may be dropped. B closes it and the launch with it (`HandheldSheetViewModel.Cancelled`). Choosing a
+  row waits for the sheet's rows to leave (`SheetOut.holdMs`, the mock's `closeSheet` before `launch`) before the launch begins, so both
+  screens start the launch together on the device.
+- **The disc is a row of the Y sheet that cycles where it is** (decision D1; the mock's cycle row): "Disc", its value "2 of 3" as its
+  note, which the Stage's line shows while it is focused; A takes the next disc, saves it as the disc the game starts on, and the sheet
+  stays (`HandheldSheetItemViewModel.KeepsOpen`). B7's sheet rows draw no value at their right (the mock's `.rv`); the value is on the
+  Stage's line only. Today's look keeps "Choose disc…".
+- **A missing file does not launch** (the mock's `startGame`): the ring bumps and the Stage's line says "Could not find the file · Y for
+  more", shaking once (`Message.shake…`, native `StageShakeCommand`), held `errorHoldMs`, or until the next press. **The text is not the
+  mock's** ("Y to locate it"): the app has no Locate yet; its Y sheet holds what it can do (remove, edit, scrape).
+- **The launch.** The shell's `Playing` (`HandheldPlayViewModel`) lives from the press until the shelf is back. Launcher: the focused tile
+  flies up and out through the hinge (`LauncherLaunchCommand.BigType`; the Avalonia Launcher the same), the ring hides, at 430 ms the ground
+  floods to the in-game colour from the tile (the shell's ground, so both Launchers and the companion agree) and the grid, its header
+  with it, goes in 280 ms (`LauncherPlayCommand`); the dock row stays, as in the mock. Stage: the case bumps at 270 ms, and at 430 ms the
+  console's colour takes the Stage over through a circle from the case, the title's letters land in it at `LaunchTitle`'s size for its
+  length and the status rolls under it. Native: `StageTakeoverCommand` (colour, the title's atlas, timed from the press) and
+  `StageTakeoverStatusCommand` (the status pictured, rolling on B5's roll), drawn over everything inside the circle (`uClip0`, B6's); the
+  Avalonia Stage the same with a clip and its own letters (`HandheldBigTypeLaunchTitle`, lines broken between words, not inside one as
+  the mock's inline letters can be). **The status comes from the app's steps:** "Starting <emulator>…" from the press, "Syncing saves…"
+  while the pre-launch save sync blocks (`SetLaunchSaveSync`), "Running in <emulator>" (with "Disc n · ") once the launch went through,
+  "Achievement unlocked · a / n" for `UnlockLine.holdMs` when the companion's set gains one. The emulator starts at `companionAtMs` (710 ms,
+  was the lead's 660) under Big Type.
+- **The harness's launching frame catches the launch at a fixed moment again: at rest.** The pending launch holds it; the frame is the
+  takeover complete, the title landed, "Starting DuckStation…", the grid gone. Two renders are byte-identical.
+- **The companion** (`HandheldCompanionView`'s `BtBody`, Big Type only): "Now playing", the title fitted to 1080, the tabs Session,
+  Achievements and Photos (left and right or the shoulders; past either end nothing; a tab's body slides in from the side moved to), the
+  session's time "m:ss" counting each second in `SessionTimer`, the total ("52 h 0 min", the play log's time before plus this session) and
+  the achievements in `InGameStat`, the figure in `InGameFigure` with the three latest unlocks, six photos of the game, the bar on its
+  curve. Its parts rise in from 0, 55 ms apart, and drop out when the game ends while the Stage's colour fades; 340 ms later the ground
+  floods back from the middle and the tiles pop in, the ring 130 ms after. It rests to 0.28 after 9 s (`InGameRest`) and the first press
+  only wakes it. On the device the companion arrives without today's slide (the Launcher has already flooded to its colour) and stays
+  until its parts have left (`SecondScreenController` ends the play before handing the display back). Its clock is now the shell's.
+- **What today's companion does that the mock has no place for, all kept and reachable:** the dock (All apps, the five pinned apps, Y
+  to change or clear a slot) sits in the dock row in the Launcher's dock style; A on Achievements opens every badge (today's grid, with its
+  filters and refresh); A on Photos opens the photo viewer (today's, with video and fetch); Y on an empty Photos tab fetches artwork; All
+  apps is today's drawer. The mock's corner "B to shelf" is **"Quit to shelf"**: in the app B does not end a game, the emulator does.
+- **Holding still** (`HoldsStill`): nothing travels and nothing waits. Opening, the folder is there with the ring; closing, home is;
+  the tile is gone, the colour and the title are there at once; the companion's parts are in place and it simply dims. The mock still
+  runs its fall-away, drop and flight under reduced motion (only its arrivals check `RM`); B7's precedent (a closing list simply goes)
+  was followed for the departures too.
+- **Found on the emulator and fixed:** a launch from the "Which screen?" sheet came while the Avalonia Launcher still had the screen
+  (the sheet's rows leaving), so the native Launcher never flew the tile; the feed now sends the launch on its next sync. **Found on the
+  Thor and fixed:** while the companion's parts left, the host was told the main display was not Handheld's, so the companion flashed on
+  the top screen; and the Achievements tab's line under the figure kept "Loading achievements…" after the set loaded.
+- **The companion's text was clipped at its descenders (found by the orchestrating session, fixed):** an Avalonia `TextBlock` clips to
+  its own box, and at the mock's 1.15 line box this face's descenders fall below it, so p, y and g were cut flat ("Now playing", the
+  title, "4 photos from this game"), on the Thor too. The mock clips none of its lines, so the companion's text no longer clips to its
+  box (`Panel#BtBody TextBlock`, the title's Viewbox); every top stays where tokens.js puts it. A rolling text's pieces are still cut to
+  their own cells while they roll; none of the companion's rolling texts (the time, the totals, the figures) has a descender. A headless
+  test renders the companion with a long title that shrinks and finds ink below each line's box.
+- **Driving the companion on the Thor:** while a game runs the pad belongs to the emulator, so the companion's tabs were checked by touch
+  (each tab is tappable); the app is told the game ended when its own window has focus again.
+- **Not built / found and not fixed:** the app's own messages (a launch that fails, a scan) still use today's toast at the top of the
+  Stage, not the line (only B8's own messages use the line); a pinned game's launch from home and the swapped screens' launch were not
+  seen on a device; the in-game companion on the 16:9 screen (a game on the bottom screen) lays the same parts on its 1920 canvas (the tabs and the
+  corner at its right edge); the mock draws no wide companion, so this is the owner's to judge.
+
+## 2026-11-15 — M47 B9: typing and moving
+
+- **Big Type only; today's look is unchanged.** Classic's 158 design frames are byte-identical before and after. Every number is
+  tokens.js's; the mock's inline ones were added there first: `launcher` `KeyColumns`, `KeySpaceWidth`, `KeyActionWidth`,
+  `KeyRingOutset`, `KeyboardHead…`, `KeyboardNote…`, `Results…`; `type.KeyboardNote`; `colour.PlaceholderOpacity`; `motion`
+  `TypedLetterIn.stagger`, `TypedLetterOut`, `TypedResize`, `TypedNameOut`, `KeysIn`, `KeyFocus`, `KeyPress`, `ResultsIn`, `KeysOut`,
+  `FolderBorn`, `Held`, `Swap`, `PutDown` (all doubled from the mock's half scale; no new group, so `index.html` is unchanged). Two
+  numbers are the app's, not the mock's, and say so in the code: the colour key's check (40, today's chip) and the invisible field's
+  height. The shared maths is `BigTypeTypingMotion` and `BigTypeMoveMotion` (`EmuShelf.Rendering/Stage/BigType`), used by the native
+  Stage and the Avalonia screens alike.
+- **Pick up and put down are the mock's trades, not today's lift.** Under Big Type a held tile trades places with whatever is in the slot
+  it moves to (across pages, by the home navigation's own page crossing), each step is remembered, A puts it down where it is (saved),
+  and B walks every step back so home is exactly as it was (nothing saved). The held tile grows to `HeldScale`, sits above its
+  neighbours, its face rocks (on the compositor, phase-continuous across trades: a trade gives the tile a new container); the ring is
+  hidden; both tiles of a trade slide to their new slots on `Swap`'s curve (B slides every moved tile back at once); put down, the face
+  squashes and the ring lands on it. Sounds: open to pick up, open for A, back for B (the mock's). The Stage is the held tile's own with
+  "Moving" as its label and "It trades places with what it passes" as its line; hints A Drop, B Put back. Today's move mode (the tile
+  lifted out, the others sliding aside, a drop that merges) is kept whole for today's look.
+- **What today's drop did that a trade cannot is on Y while a tile is held** (the mock's Y bumps there, so nothing the mock shows
+  changes): a game goes into one of your folders (its slot left empty, as today's drop into a folder) or into a new folder named on the
+  keyboard on the slot it is held over; Settings or Activity goes into one of your folders. A folder held has nothing to go into, and Y
+  bumps. Making a folder from two pins is now two steps (a new folder from one, then the other put in it); the hint row adds "Y Put in…"
+  only when there is somewhere to put it.
+- **The rock lives the resting minute.** As B5's breath and bob: the mock rocks forever; here it stops a minute after the last press, so
+  a resting screen posts no frames (M45 H7).
+- **One keyboard for every field.** Naming a folder (new, or rename and recolour), Search, Edit title, a Settings text row, the scrapers'
+  fields and cover search's "Search for" all show the mock's keyboard under Big Type: heading (its letters land), note, three rows of
+  letters each centred on the widest (which puts the mock's own rows at the mock's indents, so the mock's keys are exactly in place),
+  then Space, Delete and Done. **What the app types beyond the mock's letters** (digits, today's naming `' - &`, every symbol today's
+  text keyboard has) is on two pages of characters behind a key at the end of the third row (or RB); a field whose case is the
+  typist's (Edit title, Settings, the scrapers) has Shift at the start of that row (or LB). Both keys sit in the room the mock's
+  third row leaves, so no key of the mock's moves. Today's Cancel key is gone under Big Type: B cancels with nothing typed, as the mock's;
+  there is no touch-only way to cancel (the mock has none either).
+- **The mock's typing rule for naming and Search** (a capital at the start and after a space, lower case otherwise, no space first or
+  twice; a full word, Delete on nothing and Done on an empty name bump), at the app's limits (24 letters for a folder, 256 for a search),
+  never the mock's 12 and 16. Other fields keep their own case and length. Done on an empty folder name now bumps where today's made a
+  folder called "New folder".
+- **A rename's colours are a row of keys above the letters** (up from the top row), the app's: the mock names a folder only, in the
+  next colour. The note says where a new folder lands: "It lands on the slot you picked." (an empty slot, or a held game), or the
+  app's "It lands on the first free slot." (Add to folder… → New folder).
+- **The typed word is the Stage's name, one layer** (the mock's typeWord): only the letters after what the old and new words share drop
+  in, a deleted letter falls off the end (it travels in the new atlas, order −1, on the native Stage), the word eases to its new size
+  about its box's bottom left, the placeholder ("Name", "Search", a field's title) shows at 0.34 and never drops in, and typing beginning
+  sends the name there upward. Closing, the word leaves as any name does (from the hinge, "back"). The native Stage draws it from
+  `StageNameCommand.Typed`; the Avalonia Stage the same from `HandheldBigTypeName.IsTyped`. While naming, the Stage's subject stays the
+  same (its title is not the word), so no key reads as a new item: on the device each new item took the next backdrop of its
+  rotation (found on the emulator, fixed). A secret (a password) shows as dots, as today's field did.
+- **The Stage's line while typing** is the mock's kbMeta: "n / 24 letters"; for Search "Type part of a name", then the number of games
+  that match ("12 games": the app knows them all, where the mock's five can only say "5 or more"), or "Nothing found"; the line holds
+  the last count while a search is under way. Other fields show their own description. Hints: the mock's A Type and B Delete or Cancel,
+  plus today's Y Space and X Done (Show for Search), which the app's pad still has. X stays Done while typing, as today (the mock's X
+  swaps the screens everywhere; the app's X swaps only on the grid).
+- **Search's hits** are up to five of home's tiles above the keys, rebuilt only when the games change; up from the top row goes to the
+  nearest, left and right along them, down or B back to the nearest key; on a hit the Stage is that game's (the ground floods to its
+  console) with A Play and B Back, and A closes Search and plays it through B8's route (after the game you are on home, not back in
+  Search: the screen question and the launch are sheets and states the open panel would otherwise take the pad from). Done with matches
+  still opens every match as a folder (today's); with none, or nothing typed, it leaves Search (the mock's closeKb).
+- **Opening and closing.** The layer under goes (the grid, or the list under a Settings or panel keyboard); the keys rise in by row and
+  along it; 260 ms later the ring lands on the first key (radius 34); a focused key is white with the ground's colour as its ink at 1.08,
+  and pulses when pressed or tapped. Closing, keys and hits drop, and 290 ms later the layer under comes back; a folder made is born on
+  its slot (from nothing, turned −25°), and the ring lands on it. On the device the Avalonia Launcher draws the keyboard and move mode,
+  so the native Launcher now waits for what it does not draw before it takes the screen back (`ScreenHoldRemaining`: a list's rows or the
+  keys leaving, a tile settling after a trade or a put-down, a folder being born). The shell tells the motion what settles before it says
+  the overlay closed (the keyboard and move mode end last), or the native Launcher would take the screen at once.
+- **Today's key styles are not reused.** The Big Type keys have their own class: today's `Border.key` (100 wide) reached into them
+  through the Launcher's styles and drew Space, Delete and Done narrow (found in the first render, fixed).
+- **A hardware keyboard** still types: an invisible field sits over the heading, bound two-way to the text, and a tap there gives it the
+  keys, as today's field took them. Typing there does not move the ring to the key (the mock's kbJump), unlike a tap on a key.
+- **Holding still:** keys, hits and the word are simply there, nothing rocks, squashes or slides, a closing keyboard simply goes and a
+  folder made is simply there.
+- **Where it was checked: the emulator, not the Thor.** The Thor was not on adb for this step (no device attached, twice), so, as the
+  brief says, the device check ran on the Android emulator (`emushelf-b3`, Release without AOT, `adb install -r`, `bigtype`): pick up,
+  trades, B putting back, A putting down (and back again), naming (placeholder, letters, a deleted letter falling, the count), Search
+  (hits, a hit on the Stage, back to the keys; nothing launched), a test folder born and deleted again through the app's Y sheet (twice),
+  and today's naming and move mode with `classic`. **Found there and fixed:** the Stage's backdrop moved to the next of its rotation on
+  every key while naming (the Stage's title was the word); the native Launcher's ring travelled from where it had been before a tile was
+  picked up, and its ground flashed the old colour and flooded again after a folder was made (taking the screen back under Big Type, both
+  now land on what the Avalonia Launcher showed); a keyboard closing straight into another (naming, then Search) left forever (found in
+  a render). Colour, feel and frame times on the Thor's panels are the owner's to judge when the Thor is back.
+- **The "X Swap" corner tells the truth (the orchestrating session's review).** The Launcher's corner said "X Swap" under a keyboard while
+  the Stage said "X Done" (or Search's "X Show") and X did not swap. The shell now says when X swaps (`XSwaps`): only on the grid, a
+  folder, its header and the dock with nothing over them. A sheet (the Y sheet, "Which screen?", Put in), the Start menu, Settings and
+  setup, a panel (Search, cover search, achievements, Activity, the scrapers, Edit title) and every keyboard, a held tile, a launch or a
+  game, and Big Type's unseen Title page (B8's "A plays", which only waits) take X for something else or swallow it, and the corner goes
+  there on both Launchers (the native one drops its picture during a launch). It goes and comes back at once, as the page corner does
+  under a panel (`PlaceCorner`); held still the same. The companion draws no Swap corner, so it needed nothing. Whether X should swap while
+  typing, as the mock's does, is the owner's to decide.
+- **Found and left:** today's sounds for typing are unchanged (a key typed sounds confirm; the mock's are move for a letter and back for
+  Delete): the sounds are B10's. There is no touch-only way to cancel a keyboard (B does it). A hardware keyboard typing does not move
+  the ring. After a game played from a Search hit you are on home, not back in Search.
+
+## 2026-11-15 — M47 B10a: Big Type's own Reduce motion switch, the app's messages on the line, and the documents
+
+The first part of B10 ("Make it the look"): what does not need the owner's eyes or ears. Big Type is **not** the default, today's
+look (Classic) is **not** removed (D5) and **no sound changed**; those wait for the owner. Classic's 158 design frames are
+byte-identical before and after.
+
+- **The switch is one more reason in the one funnel.** Every Big Type move from B5 to B9 already has a held-still form chosen by
+  `HandheldShellViewModel.HoldsStill`, which reaches the Avalonia views directly and the native compositors as `StageMotionCommand`
+  and `LauncherMotionCommand`. So the switch adds no maths: `HoldsStill = device's say || (ReduceMotion && Big Type)`, recomputed the
+  moment either changes (`ApplyHoldsStill`), which is what makes it take effect at once on both screens with no restart. A game's
+  companion already up follows it too (before, it read the say only when a launch started).
+- **Words and place.** Settings → Display, after Sounds: **"Reduce motion"**, its line "everything arrives in place at once and the
+  backdrop holds still · Android's own setting does this too" (row `display.reduce-motion`). Display is where the mode's look and
+  sound already are; "Reduce motion" is the name people know from their phones. Under Big Type the Stage names the row and its line
+  says On or Off (B7's rule for a switch), so the label has to carry the meaning on its own. The mock has no such row; its Display has
+  "Idle motion", which only stops the idle hop. That is a different thing and was not built.
+- **Big Type only, and read only by Big Type.** The row is offered only when the look is Big Type (`HandheldReduceMotionSwitch`), and the
+  shell reads the saved value under Big Type only. Today's look has no row for it, and a switch a look cannot show is a switch it
+  cannot turn off, so it must not hold that look still; it also keeps Classic byte-identical. When D5 is carried out the condition goes.
+- **Saved like the Sounds switch**, as `AppSettings.HandheldReduceMotion` (off by default) in the portable `Settings/settings.json`,
+  written off the UI thread, and read when Handheld mode starts, once the tokens know the look.
+- **The edge bump had no held-still form; now it has.** Under Big Type, held still, a press into a wall no longer nudges the ring, on
+  the native Launcher (`LauncherBumpCommand` ignored) and the Avalonia one, as the mock's `bump` returns under reduced motion. Its
+  distance and timing are still today's (7% over 300 ms; the mock's is 18 px over 220 ms), listed below.
+- **The app's messages are the line under the name (the mock's `toast`).** Under Big Type, `ShowStatus`, `Announce` and an edit's notice
+  roll the Stage's line to the message and back, through the same path as B8's `ShowLineError`: a failure shakes and holds
+  `Message.errorHoldMs`; work still running (the working mark) holds until the app replaces or clears it, as the mock's `{hold: true}`;
+  anything else holds `Message.holdMs` or as long as its caller asked (the update notice's 10 s); a press moves on. While a game launches
+  or runs only a failure takes the line (the takeover says the launch's own steps). Today's toast is hidden wherever the Stage has a Big
+  Type name, and **kept where it has none** (the idle drift's fan-art hero, an empty page), so no message is ever lost. The view model's
+  `StatusMessage` is unchanged, so Gamepad mode and today's look read the same thing. No sound was added (the mock plays open for a
+  message and bump for an error): sounds wait for the owner.
+- **A long message runs to a second line** rather than ending in an ellipsis (`HasLineMessage` sets the line's `message` class:
+  wrapping, two lines at most). The app's own choice: the mock's messages all fit one line, but the app's failures do not ("Could not
+  start NetherSX2: the emulator is not installed. Choose one in Settings → Emulators."). It grows up from the line's place; its first
+  line's em box stays under the name's box (only the leading reaches past it), and the second line under it keeps its place.
+- **A folder's name keeps the mock's gap from its count.** tokens.js gained `launcher.HeaderGap` (32, the mock's `.fhead` gap of 16 at
+  half scale). Under Big Type it is the count's left margin, and the view sets the name's `MaxTextWidth` to what the count leaves, never
+  more than `HeaderNameMaxWidth`, so "Game Boy Advance" beside 106 is set smaller instead of touching it. A name that fits is unchanged.
+- **Activity's game page: one line each.** Its card's description is two lines (plays; first and last played), which in the Stage's
+  one-line second line grew up over the line ("2h" drawn on "Played 1 time"). `HandheldListStageText.Of` now gives a description of
+  several lines its first line on the line, after the value, and the rest on the second line, joined with " · ". Nothing is dropped.
+- **The design harness's Settings carries the switch under Big Type**, so the Display frames show the row (off).
+- **The documents.** `HANDHELD-MODE.md` decision 16 now describes Big Type and says it is behind `HandheldLook`, default Classic, with D5
+  not yet carried out; the original text is kept, marked superseded. The motion spec has a Big Type section (the rules, every move with
+  its tokens, what is still today's under Big Type, and holding still with both reasons) before today's, which is kept and marked as the
+  default until Big Type is made it.
+- **Swept and left** (no answer in the mock, or larger than a fix): the companion's All apps drawer, badge grid and photo viewer, and the
+  dark background behind them over the Launcher (today's look; the mock draws none of them); the idle drift's fan-art hero (today's
+  hero page); the Stage's colour "sweep" circle behind a focused dock app or the Start menu (today's app sweep); the native Stage's
+  start-up ground before the first console backdrop (today's grey gradient, on Settings, Activity, an app or an empty slot after a
+  start; small to send no backdrop, but the ink over the bare ground needs checking); the empty library (the mock's three questions and
+  a climbing count are not built; the app shows "No games yet" and Add games); Settings' "A SAVE" / "A RESCAN" values in capitals and
+  long descriptions ending in an ellipsis on the Stage (B7's rule); the panels' pictures (a scraper's preview, a badge) not shown on the
+  Stage; the edge bump's distance and timing, the screen swap (X) and the medium's sway (the mock's `MediumSway` is not used), all still
+  today's motion.
+- **Two faults the first Thor pass found, fixed (2026-11-15).** (1) **The compositor scales after the RenderTransform.** Avalonia applies a
+  composition visual's `Scale` about its `CenterPoint` after the control's own `RenderTransform` (checked headless: a 100 px box translated
+  to (500, 300) and scaled ×2 about (50, 50) drew at (950, 550)). The Avalonia ring is placed by a `TranslateTransform`, so B5's breath,
+  centred on half the ring's size, scaled it about the Launcher's top left and it rested 3% of its place away from its key (15–30 px on the
+  Thor) whenever the Avalonia Launcher had the screen; desktop frames never include compositor animations, so none showed it. The breath
+  is now about the shift plus half the size, and restarts if the ring moves while breathing. A test draws through the compositor with
+  the breath held at ×1.5. (2) **The folder name fits the room in its own measure pass.** B10a's first fix set the name's width from the
+  count's `SizeChanged`, a layout pass late, and the native feed keyed its picture by the name alone, so the Thor kept the old fit. The
+  heading now takes the room its column gives it (`FitsRoom`, folder header only, so no other heading changes), the feed keys the picture
+  and letters by the fitted size, and the heading's `FitChanged` makes the feed sync again.
+
+## 2026-11-15 — M47 B11: the narrow Stage, motion under held input, and smaller polish
+
+The owner tried Big Type on the Thor and reported: the Stage stays 16:9 when the screens are swapped; a held direction makes the
+ring lag and stretch into a long rectangle; everything should feel as smooth as possible. Fixed under Big Type only; Classic's 158
+design frames are byte-identical to the render made before any change.
+
+- **The narrow Stage is laid out for 1240 × 1080 (the app's own; the mock only scales its top screen).** B4 had shown the 16:9 Stage
+  whole, letterboxed. Now the canvas is the screen's (`btnarrow` beside Classic's `narrow`), the backdrop fills it (its middle, as
+  Classic's narrow Stage crops it), and the pieces are placed by the wide Stage's tokens and margins with five numbers of the app's own
+  in tokens.js (`type.DisplayNameNarrow`, `stage.Narrow*`): the name in a 1080 × 584 box (600 × 584 beside a game's case, so it ends
+  `NameLeft` before the case), the box's top where the wide Stage's is. **The hints keep their corner on a row of their own** (the lines
+  and the hints cannot share the bottom at this width: the second line alone runs to 740 px), so the name and its two lines stand
+  `NarrowHintsRow` (96) higher. The case's box moves to `NarrowMediumRight` 88 / `NarrowMediumTop` 200, under the clock and above the
+  lines, same size; the medium does what it did. The console's name ends `NarrowLabelGap` before the battery, set smaller to fit (down
+  to `LabelFitMin`, then an ellipsis). The launch title's lines are at most `NarrowLaunchTitleMaxWidth` wide, its sizes scaled with it,
+  and the takeover grows from the narrow case's middle (the command gained an `Origin`). The name fit's smallest size scales with a box
+  narrower than the wide Stage's narrowest (a single 34-letter word ran into the case at 56 px). Checked by a headless test over the
+  design set's longest titles, a 34-letter word, a monogram, a long console name and a two-line message (ink read back from pictures:
+  nothing overlaps, clips or runs off) and on the Thor (swapped, PS2's backdrop filling the bottom screen, a game's case in its corner).
+- **A two-line message grows down, not up** (both widths): B10's message on the line grew up into the name's descenders (Professor
+  Layton's "g" touched it). When it runs to two lines its second line takes the second line's row, which gives way while it shows. The
+  one wide frame with a long error changes for it.
+- **Legibility on the narrow crop, measured.** The veils' shapes were fractions of the canvas, so on the narrow Stage the corner patches
+  shrank under text that keeps its size (`arc-bulbs-v2`'s hints fell to 2.93): they now keep the 16:9 Stage's pixel size, anchored to
+  their own corners (`BigTypeVeil.ShapeWidth`; the wide Stage is unchanged). A new desktop GL check (`tools/EmuShelf.Rendering.Preview --
+  --stage-narrow-legibility`) draws all 53 backdrops through the real compositor with their veils on both widths at three moments and
+  reads each zone's text area as the mock's rule does (the 96th percentile against white ink, the 4th against the dark one). With the
+  table's veils three left zones fell under `legibility.Pass` on the narrow crop only or more than on the wide Stage (`arc-checker` 2.26,
+  `gc-caustics` 2.65, `ps2-sea` 2.09); the narrow Stage takes its own left veil for those three (`BackdropLegibility.NarrowLeftVeils`:
+  0.46, 0.60, 0.66; the ink is never changed). `arc-checker`'s is the strongest that keeps its white clock at 3.0 too, since the narrow
+  left veil reaches under the clock. Result: 159 of 159 narrow zones at 3.0 or more; by the same reading two wide zones are under 3.0
+  (`arc-checker` and `ps2-sea` left, 2.69 and 2.44), the table's own, left as they are (R2's look on the device is the owner's).
+- **The ring glides when a move arrives before the last one has finished (the app's own).** Cause, confirmed: `MoveRing` started each
+  move from the ring as drawn, already stretched, and `RingAt` stretched again to the union of that and the next target; a held repeat
+  (90 ms down to 38) grew it to 8,496 px in the maths. Now an interrupted move glides (`BigTypeRingGlide`): the ring's middle carries on
+  from where it is and how fast it is going on a critically damped spring that trails a steadily moving focus by `RingGlide.lagMs` (40 ms
+  of its travel, about one tile at the fastest repeat) however long the button is held; its size and corner ease to the target's and never
+  overshoot, so it keeps its own size; when no move follows it lands 300 ms after the last one, squashed on the mock's keyframes (a held
+  repeat never reaches the squash's 38%). A single press is the mock's move to the byte. A move during a page's pop glides from the ring as
+  drawn. Shared by both Launchers (the Avalonia lists, sheets, Settings, panels and keys use the same ring).
+- **The Stage under held and quick presses.** The app's once-per-move rule (M45) already keeps the Stage waiting while a direction is
+  held and updates it 140 ms after it settles: that rule stays, and the name the focus rests on lands as the mock's (never the short form).
+  **Quick taps** (a press within `LetterRun.withinMs`, 220 ms, of the one before, but slower than a held direction) used to queue a full
+  930 ms landing per tile with old names stacking on the Stage: now the name follows in a short form (all letters together from 0.4 of
+  the mock's distance in 200 ms; the name it replaces goes in 90 ms; older leaving names go at once), and the Stage's and the Launcher's
+  rolling texts swap in place instead of restarting a roll on a roll. The shell says so (`QuickChange`); the native commands carry it.
+- **Frame pacing (the cause of most of the "jagged").** Measured on the Thor with the app's probe: holding right on home, today's build
+  drew the native Launcher in pairs a millisecond apart and then missed a refresh (13 of 85 intervals over 25 ms, p95 32.5 ms; the screen
+  recording changed every 32 ms: 30 fps in effect). An animating native screen asked for its next frame at once, and posted commands
+  added frames between. Under Big Type the native screens now ask for the next frame on the next vsync (`VsyncPacer`: a Choreographer on a
+  thread of its own, so the UI thread's work cannot hold it up), time their motion at that vsync, and fold commands posted meanwhile into
+  that frame. Same press: 2 of 223 over 25 ms, p95 17.7 ms; the Stage 1–2 of ~190, p95 17.6–17.9 (was 6 of 97, p95 26.3). Classic keeps
+  its scheduling. The probe gained a "ring" run (`debug.emushelf.probe ring`) that logs the native ring and its target every frame.
+- **Smaller polish.** (1) The wall bump is the mock's: 18 px toward the wall and back in 220 ms, eased out (tokens.js `Bump`, its 9 px
+  doubled), both Launchers. (2) **The idle drift, the owner's decision (15 November 2026, "A direction also moves"):** under Big Type a
+  direction press that ends the 15 s drift also moves the focus (on the Thor the first press read as dropped); A, B, X and Y still only end
+  it, so A never starts a game from an idle screen. One named condition, `HandheldShellViewModel.DirectionWakesAndMoves`. (3) Sounds follow the mock's `sfx` calls, Sounds switch respected: a letter typed sounds move and Delete back; a wall
+  bumps; a message on the line sounds open and an error bump (work still running is silent, and the press it came with stays quiet); a
+  launch plays the mock's rising run and A on a game no longer sounds open first. The two new sounds (Bump: 180 Hz square, 50 ms; Launch:
+  C5 E5 G5 C6 triangles, 130 ms, 70 ms apart) are synthesised as today's five are, from the mock's own parameters at the same level scale.
+  (4) Settings rows show no "A SAVE" / "A RESCAN": a Big Type row takes its value as the mock sets one (`RowValue`: an action's word only
+  when it says something its label does not). (5) No bare grey Stage after a start: under Big Type a missing backdrop is not sent as the
+  plain grey picture, so the Stage shows its ground with white type until the first focus's backdrop comes (on the Thor one or two frames
+  of the Launcher's start-up ground remain before Recent's backdrop wipes in).
+- **Closed by the owner (15 November 2026):** X while the keyboard is up stays Done and Y Space, as B9 built it ("X is Done, Y is
+  Space"); the question B9 left open is closed. B11 did not touch the keyboard's hints or X.
+- **Left alone:** the backdrops themselves, the 3D medium's design, the companion's All apps / badges / photos, the idle fan-art page, the
+  empty library, making Big Type the default. **Found and not fixed:** the native name's letters drop the "i" of an "fi" ligature while
+  they move ("Nightf re"; B6's per-letter layout hit-tests inside the ligature); the Activity panel's heading shows its old period behind
+  the title for a moment; the parked native Launcher still draws about 20 frames a second while a direction is held on the other one; a
+  backdrop's first start on a console change still costs 40–57 ms on that frame (B6's, first time per backdrop); the Avalonia Launcher
+  opens and closes sheets and Settings at about 30 fps in the screen recordings (lists and keys under a held direction run at 60).
+
+## 2026-11-15 — M47 B12: the model view on LB and RB (Big Type)
+
+The owner used Big Type on the Thor and found the game's 3D medium out of place beside the big name ("3D models looks weird with
+chosen big-type style, like it is unnecessary"), then approved splitting them ("I want only model on rb/lb, not big type + model", "Yes,
+keep the small line", "I like one big-type mode and separate model - approve"). Built under Big Type only from
+`docs/prototypes/handheld-big-type/proposals.html`'s first section, whose code defines the behaviour; today's look (Classic) is unchanged.
+
+- **Two views of a game.** The name view (the default) is the big name alone, fitted to the whole `DisplayName.fitBox` (no medium, no
+  cover beside it). The model view is the medium alone in the middle of the Stage at `ModelScale` of its old size (the proposal's
+  `.case.big`: its box `ModelRight` from the right, `ModelTop` from the top, which is the middle across), its floor's shadow under it
+  (`ModelFloor…`), no big name: the line is the game's name and the second line its play time, achievements and emulator (the proposal's
+  `meta` and `meta2`). Hints: A Play, B Back, RS Turn, RB Name (no RS for a flat cover, which cannot turn); the name view's gain RB
+  Model. A key of two letters is drawn as the proposal's rounded key (`HintKey`), everywhere Big Type shows one.
+- **Home: the owner's decision (15 November 2026: "Switch the view").** LB and RB already turned home's page under both looks
+  (`TurnPage`, and the Controls table), so B12 first stopped and asked, and was first built in folders only. The owner then chose to
+  switch the view on home too: with a pinned game focused and nothing over it LB and RB switch the name and the model exactly as in a
+  folder; with anything else focused on home (a console's or a user folder, the Settings or Activity tile, an empty slot, the dock) they
+  turn the page as before, with the bump at the last page. While a pinned game is focused the page turns only from the d-pad at the
+  grid's left and right edges, which it always did from any tile; the Launcher's page count (1 / 2) is unchanged. The rule is one
+  condition, `HandheldShellViewModel.CanSwitchGameView`: under Big Type a game is focused, on home or in a folder, with nothing over it.
+  The hints on home are the folder's less B Back (B does nothing on home): A Play, Y More, RB Model; in the model view A Play, RS Turn,
+  RB Name.
+- **Where the choice lives.** Kept across home and folders: it shows whenever a game is focused and steps aside for anything that is
+  not one (a folder tile, the header, an empty slot), coming back when the focus returns to a game; a fresh start begins in the name
+  view (B12's choice, awaiting the owner: the choice is not saved). Over a sheet, the menu, Settings, a panel or a keyboard the Stage is the
+  name view (the proposal shows the model only "with nothing over it"); the Y sheet still opens from the model view though its hint is
+  gone, as the proposal's hint row has no Y.
+- **The motion is one shared state.** `BigTypeModelMotion` (pure functions of time: the rise's place and fade, the turn in and the
+  flips on the Flip curve, the showcase, the float and the shade, the swing back, the floor's shadow as pixels) and `BigTypeModelState`
+  (when each move started), kept by the native Stage (`StageCompositor.ModelView.cs`) and the Avalonia Stage
+  (`HandheldStageMotion.Model.cs`), each asked for the pose every frame. The shell posts nothing per frame: the native feed tells the
+  Stage once per change (`StageModelCommand`: rise, flip forward or back, leave) and the stick's turn as it changes
+  (`StageModelHoldCommand`); the old sway's clock does not run for the model. Every move starts from the pose on screen: a flip on a
+  flip adds half a turn to the turn still showing (kept within a whole turn), the stick takes hold of the pose it finds, letting go swings
+  back from where it was left the short way round, a leave during the rise goes back from where it got to.
+- **The proposal's numbers, doubled.** Rise: from the old corner beside the name, 380 px lower and at 0.8 of its size there, to the
+  middle over 550 ms on `cubic-bezier(.2,1.4,.3,1)`, clear to whole over 250 ms (CSS ease), turning in from −250° over 950 ms on the Flip
+  curve `cubic-bezier(.2,1.3,.3,1)`. Leaving: the same way back; the name's letters land as `LetterIn` (rising: the switch is not a move).
+  Flip: ±180° over 720 ms, the way you moved (right or down forward). Float: 6 px down to 12 up, 4.6 s each way, the shadow to 0.9 and
+  0.7 with it. Showcase every 15 s: (4°, 32°) drifting to (2°, 14°) by 36%, held to 50%, then once all the way round. Swing back:
+  620 ms. Held still: at (4°, 32°), no float or turn, every change at once, the stick still turns it and letting go puts it back at once
+  (the proposal's reduced motion). It rests like the backdrop: the first showcase turn to end a minute after the last touch is the last,
+  the float eases out over StageRest's 2 s, and a press wakes both from rest (the app's rule, "at rest nothing is posted").
+- **The turn's direction** was checked on the native renders: the renderer's yaw is the CSS rotateY the same way round, so at rest the
+  case shows its spine on the left as the proposal's does (today's beside-the-name rest showed the opening side).
+- **A wide medium is set smaller** (the app's own `ModelMaxWidth`, 720): at 1.36× the SNES cartridge reached the battery's text in the
+  Mac renders, and on the Thor, whose clock is 12-hour ("6:51 PM", wider than the design's "18:00"), the PS1 jewel case's corner touched
+  the battery too; `FitScale` takes the model's bounds (its width and depth at any turn) and scales it to fit. Keep cases and the DS and
+  3DS cards are unchanged; a jewel case is set about a sixth smaller, a cartridge more.
+- **The veil.** The proposal drops the left veil in the model view; the legibility rule (decision 16) still lays ink and veil for the
+  text that is there, so the left veil now lies behind what the left zone shows, the label and the two lines (flat to the widest of them
+  plus `LeftVeilPastName`), not a name's box. The ink and the veil's strength stay the baked left-zone answer per backdrop: it was
+  measured over the whole left zone, which contains the lines, so it is at least as strong as they need.
+- **The launch from either view (awaiting the owner).** From the model view the medium bumps as the tile arrives and the colour's circle
+  grows from its middle; from the name view there is no case, so nothing bumps and the circle grows from the middle of the name (its
+  box's middle across, its lines' middle up; `StageTakeoverCommand.Origin`).
+- **Where the old arrangement's pieces live now.** A missing file: the name view dims the name and its line says "File not found"; the
+  model view's second line says it. A game without a cover: the medium wears its blank front; with no medium, the no-cover card stands
+  in the model's place. A multi-disc game's disc: the name view's second line ("disc 1 of 3"); A asks which disc as before (B8's disc
+  row on the Launcher). The screen question on A: unchanged (the Launcher's sheet). Cover search: its case stays beside the name wearing
+  the candidate (B7), the only medium beside a name now. Search's hits and a held tile: the name view.
+- **The idle drift waits while the model shows (B12's choice, awaiting the owner).** On the Thor the drift (decision 14) took the
+  Stage 15 s after the last press, exactly when the proposal's second full turn would come, and the native Stage left the medium drawn
+  over the drift's fan art (its hero path never told the Stage the model had gone). The model view is the Stage showing itself (the
+  showcase, then its own rest after a minute), so `CanDrift` now waits while it shows; and every centre the feed sends tells a model
+  that has gone to leave.
+- **The leave goes after the name.** Held still, switching back to the name drew one frame with neither medium nor name on the Thor:
+  the model's leave reached the Stage a frame before the name's letters. The feed posts the leave after the flush's name.
+- **Kept apart from B11, then merged with it.** New files and partial classes; the shared methods gained one-line hooks only (the
+  shell's dispatch, hints, `UpdateStage`, `CanDrift` and the stick; the native feed's centre, name, veils, takeover and property switch;
+  the compositor's `Apply`, `Draw` and `Dispose`; the Avalonia Stage motion's `Attach` and the launch clip). After B11 was merged into the
+  design branch it was merged here: B11's narrow name box beside a medium now applies only to cover search (`IsNameBesideMedium`), its
+  takeover origin and B12's are one (the model, the name's middle, else B11's narrow case point), and B11's narrow layout test checks the
+  model too.
+- **The narrow Stage (the screens swapped; the app's own numbers, `NarrowModelTop` 189, `NarrowModelScale` 0.96).** B11 gives the hints a
+  row of their own there and raises the lines by it, which leaves about 640 px between the clock and the line: at 1.36× (750 px) the model
+  would not fit. On the 1240-wide Stage it is centred across, its box 189 from the top grown 0.96, so with its float and its shadow it
+  stands between the clock (its top about 172 against the clock's line box at 154) and the line (its bottom about 712 against 810); it
+  rises from B11's narrow case corner. Checked on the Mac's native Stage for the keep case, the jewel case, the SNES cartridge and the 3DS
+  card (centred, clear of every corner's text) and in the Avalonia layout test.
+- **The flip under quick presses (B11's run).** A change of game whose press came within `LetterRun.withinMs` of the one before
+  (`QuickChange`) flips in the short form, as B11's names do: from the turn still on screen, or from `LetterRun.fromShare` of a flip's
+  half turn the way you moved if less is showing, over `LetterRun.ms`; it never adds another half turn on top (no stacking) and never
+  jumps back to a whole flip (no restart). A held direction keeps the app's once-per-move rule (the Stage waits until the focus rests), and
+  the game it rests on flips whole, from the turn on screen.

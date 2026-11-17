@@ -73,6 +73,7 @@ public sealed partial class HandheldShellViewModel
         }
         if (_notice is null)
             SetStatusLine(message, _appStatusGlyph);
+        ShowOnLine(message, _appStatusGlyph, hold: null);
     }
 
     /// <summary>The last notice an edit showed (tests read it; the Stage shows <see cref="StatusMessage"/>).</summary>
@@ -106,6 +107,7 @@ public sealed partial class HandheldShellViewModel
     {
         _notice = text;
         SetStatusLine(text, glyph);
+        ShowOnLine(text, glyph, duration);
         if (_disposed)
             return;
         if (_noticeTimer is null)
@@ -129,7 +131,7 @@ public sealed partial class HandheldShellViewModel
     {
         if (Zone == HandheldZone.Dock && DockIndex < DockItems.Count && DockSheet(DockItems[DockIndex]) is { } dockSheet)
         {
-            ShowSheet(dockSheet);
+            ShowItemSheet(dockSheet);
             return;
         }
         if (Zone != HandheldZone.Grid)
@@ -140,26 +142,40 @@ public sealed partial class HandheldShellViewModel
         if (OpenFolder is { } folder)
         {
             if (folder.SelectedTile is { IsSettings: true })
-                ShowSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
+                ShowItemSheet(SettingsSheet(_layout.FindFolder(folder.Source.FolderId)));
             else if (folder.SelectedTile is { IsActivity: true })
-                ShowSheet(ActivitySheet(_layout.FindFolder(folder.Source.FolderId)));
+                ShowItemSheet(ActivitySheet(_layout.FindFolder(folder.Source.FolderId)));
             else if (folder.SelectedTile is { } tile)
-                ShowSheet(GameSheet(tile.Entry, folder));
+                ShowItemSheet(GameSheet(tile.Entry, folder));
             return;
         }
         if (SlotSheet(HomeIndex) is { } sheet)
-            ShowSheet(sheet);
+            ShowItemSheet(sheet);
     }
+
+    /// <summary>An item's own sheet (Y): the Big Type Stage's label says "More" over it, as the mock's does.</summary>
+    private void ShowItemSheet(HandheldSheetViewModel sheet)
+    {
+        sheet.Kicker = ItemSheetKicker;
+        ShowSheet(sheet);
+    }
+
+    /// <summary>The mock's kicker for an item's sheet.</summary>
+    private const string ItemSheetKicker = "More";
 
     private void ShowSheet(HandheldSheetViewModel sheet)
     {
         Sheet = sheet;
+        ListOpened = true;
+        RefreshListStage();
         UpdateHints();
     }
 
     private void CloseSheet()
     {
         Sheet = null;
+        ListOpened = false;
+        RefreshListStage();
         UpdateHints();
     }
 
@@ -169,9 +185,11 @@ public sealed partial class HandheldShellViewModel
         {
             case GamepadAction.NavigateUp when sheet.Index > 0:
                 sheet.Focus(sheet.Index - 1);
+                RefreshListStage();
                 break;
             case GamepadAction.NavigateDown when sheet.Index < sheet.Items.Count - 1:
                 sheet.Focus(sheet.Index + 1);
+                RefreshListStage();
                 break;
             case GamepadAction.NavigateUp:
             case GamepadAction.NavigateDown:
@@ -186,6 +204,7 @@ public sealed partial class HandheldShellViewModel
             case GamepadAction.Actions:
             case GamepadAction.Menu:
                 CloseSheet();
+                sheet.Cancelled?.Invoke();
                 break;
         }
         return true;
@@ -196,6 +215,12 @@ public sealed partial class HandheldShellViewModel
     {
         if (Sheet is not { } sheet || !sheet.Items.Contains(item))
             return;
+        if (item.KeepsOpen)
+        {
+            item.Run();
+            RefreshListStage();
+            return;
+        }
         CloseSheet();
         item.Run();
     }
@@ -208,7 +233,7 @@ public sealed partial class HandheldShellViewModel
         {
             return new HandheldSheetViewModel("Empty slot", $"Page {page}",
             [
-                new HandheldSheetItemViewModel("New folder here", null, () => StartNaming(isNew: true, index, [], null, -1)),
+                new HandheldSheetItemViewModel("New folder here", null, () => StartNaming(isNew: true, index, [], null, -1, NotePickedSlot)),
             ])
             {
                 Swatch = BrushOf("#A7AEC6"),
@@ -240,7 +265,7 @@ public sealed partial class HandheldShellViewModel
             HandheldFolderKind.Recent => $"Made for you · the last {HandheldText.GameCount(source.GameCount)} you played",
             _ => source.Description,
         };
-        return new HandheldSheetViewModel(source.Name, subtitle, items) { Swatch = BrushOf(source.AccentColor), SwatchText = source.Monogram,
+        return new HandheldSheetViewModel(source.Name, subtitle, items) { Swatch = HandheldTokens.FolderBrush(source), SwatchText = source.Monogram,
             SwatchGlyph = source.Kind switch
             {
                 HandheldFolderKind.User => HandheldGlyph.Star,
@@ -271,7 +296,13 @@ public sealed partial class HandheldShellViewModel
         if (title?.Details is { IsMultiDisc: true })
             items.Add(new("Choose disc…", title.DiscText, () => OpenDiscChooser(title)));
         else if (title is null && _library.DiscsOf(game) is { Numbers.Count: > 1 } discs)
-            items.Add(new("Choose disc…", $"Disc {discs.Selected} of {discs.Numbers.Count}", () => ShowSheet(DiscSheet(game))));
+        {
+            // Big Type (M47 B8, decision "A on a game plays"): the disc is a row that cycles where it is, and A plays the disc chosen.
+            if (HandheldTokens.IsBigType)
+                items.Add(DiscRow(game, discs));
+            else
+                items.Add(new("Choose disc…", $"Disc {discs.Selected} of {discs.Numbers.Count}", () => ShowSheet(DiscSheet(game))));
+        }
         if (_library.HasAchievementDetails(game))
             items.Add(new("Achievements", game.AchievementText, () => _ = OpenAchievementsAsync(game)));
         if (folder is null && title is null)
@@ -319,8 +350,7 @@ public sealed partial class HandheldShellViewModel
         ?? OpenFolder?.Items.FirstOrDefault(tile => tile.Entry.Id == gameId)?.Cover
         ?? (TitlePage?.Entry.Id == gameId ? TitlePage.Cover : null);
 
-    private static Avalonia.Media.IBrush BrushOf(string color) =>
-        Avalonia.Media.Color.TryParse(color, out var parsed) ? new Avalonia.Media.SolidColorBrush(parsed) : Avalonia.Media.Brushes.Gray;
+    private static Avalonia.Media.IBrush BrushOf(string color) => HandheldTokens.BrushOf(color);
 
     private void ConfirmDelete(string folderId)
     {
@@ -442,8 +472,11 @@ public sealed partial class HandheldShellViewModel
             ShowNotice("The home screen is full");
             return;
         }
-        StartNaming(isNew: true, index, [gameId], null, -1);
+        StartNaming(isNew: true, index, [gameId], null, -1, "It lands on the first free slot.");
     }
+
+    /// <summary>The mock's note under "Name the folder" (M47 B9): the folder lands where it was asked for.</summary>
+    internal const string NotePickedSlot = "It lands on the slot you picked.";
 
     // ---- Move mode ----
 
@@ -455,6 +488,14 @@ public sealed partial class HandheldShellViewModel
         public int Target { get; set; } = origin;
         public HandheldDropKind Drop { get; set; }
         public IReadOnlyList<HandheldSlot> Preview { get; set; } = lifted;
+
+        /// <summary>
+        /// Big Type (M47 B9, the mock's moveKey): the tile trades places with whatever is in the slot it moves to, and each step is
+        /// remembered (the slot it left) so B can walk them back. <see cref="Preview"/> is home as it now stands.
+        /// </summary>
+        public bool Trades { get; init; }
+
+        public List<int> Path { get; } = [];
     }
 
     private MoveState? _move;
@@ -469,7 +510,9 @@ public sealed partial class HandheldShellViewModel
         if (carried.IsEmpty)
             return;
         Zone = HandheldZone.Grid;
-        _move = new MoveState(carried, origin, HandheldHomeArranging.Lift(HomeSlots(), origin));
+        _move = HandheldTokens.IsBigType
+            ? new MoveState(carried, origin, HomeSlots()) { Trades = true }
+            : new MoveState(carried, origin, HandheldHomeArranging.Lift(HomeSlots(), origin));
         IsMoving = true;
         UpdateMovePreview();
     }
@@ -478,6 +521,16 @@ public sealed partial class HandheldShellViewModel
     {
         if (_move is not { } move)
             return;
+        if (move.Trades)
+        {
+            // Big Type: home as it stands is the preview; the held tile is always on a slot of its own.
+            move.Drop = HandheldDropKind.Place;
+            _home = PositionOf(move.Target);
+            BuildPages();
+            ShowPage(_home.Page);
+            UpdateFocus();
+            return;
+        }
         move.Drop = HandheldHomeArranging.Classify(move.Carried, move.Lifted[move.Target]);
         move.Preview = move.Drop == HandheldDropKind.Place
             ? HandheldHomeArranging.InsertAt(move.Lifted, move.Target, move.Carried) ?? move.Lifted
@@ -493,12 +546,23 @@ public sealed partial class HandheldShellViewModel
     {
         if (_move is not { } move || index < 0 || index >= move.Lifted.Count || index == move.Target)
             return;
+        if (move.Trades)
+        {
+            TradeTo(move, index);
+            return;
+        }
         move.Target = index;
         UpdateMovePreview();
     }
 
     private bool DispatchMoveAction(MoveState move, GamepadAction action)
     {
+        if (move.Trades && action == GamepadAction.Actions)
+        {
+            // Big Type (M47 B9): Y while holding a tile that can go into a folder puts it in one (the mock's Y bumps here).
+            OpenPutInSheet(move);
+            return true;
+        }
         switch (action)
         {
             case GamepadAction.NavigateUp:
@@ -537,6 +601,11 @@ public sealed partial class HandheldShellViewModel
     {
         if (_move is not { } move)
             return;
+        if (move.Trades)
+        {
+            PutDown(move, back: false);
+            return;
+        }
         _move = null;
         IsMoving = false;
         var target = move.Lifted[move.Target];
@@ -582,6 +651,11 @@ public sealed partial class HandheldShellViewModel
     {
         if (_move is not { } move)
             return;
+        if (move.Trades)
+        {
+            PutDown(move, back: true);
+            return;
+        }
         _move = null;
         IsMoving = false;
         _home = PositionOf(move.Origin);
@@ -670,13 +744,14 @@ public sealed partial class HandheldShellViewModel
 
     // ---- Naming and recolouring your folders ----
 
-    private void StartNaming(bool isNew, int slotIndex, IReadOnlyList<long> gameIds, string? folderId, int removePinFrom)
+    private void StartNaming(bool isNew, int slotIndex, IReadOnlyList<long> gameIds, string? folderId, int removePinFrom, string note = "")
     {
         var existing = _layout.FindFolder(folderId);
         // A new folder takes the next colour in turn, so folders made one after another look different.
         var color = existing?.Color ?? HandheldHomeLayout.FolderColors[_layout.Folders.Count % HandheldHomeLayout.FolderColors.Count];
         var naming = new HandheldNamingViewModel(isNew, existing?.Name ?? HandheldNamingViewModel.DefaultName, color, slotIndex,
-            gameIds, folderId, removePinFrom);
+            gameIds, folderId, removePinFrom) { Note = note };
+        ListOpened = true;
         naming.NameChanged += () => UpdateNamingStage(naming);
         Naming = naming;
         UpdateFocus();
@@ -702,6 +777,7 @@ public sealed partial class HandheldShellViewModel
                     {
                         GamepadAction.NavigateLeft => naming.MoveColor(-1),
                         GamepadAction.NavigateRight => naming.MoveColor(1),
+                        GamepadAction.NavigateDown when HandheldTokens.IsBigType => naming.LeaveColoursDown(),
                         GamepadAction.NavigateDown => MoveToKeys(naming),
                         _ => false,
                     }
@@ -735,6 +811,10 @@ public sealed partial class HandheldShellViewModel
             case GamepadAction.Menu:
                 FinishNaming();
                 break;
+            case GamepadAction.NextPlatform when HandheldTokens.IsBigType:
+                // The Big Type keyboard's other characters (M47 B9): RB turns the page, as the key at the end of the third row does.
+                naming.NextPage();
+                break;
         }
         UpdateHints();
         return true;
@@ -752,9 +832,16 @@ public sealed partial class HandheldShellViewModel
         if (Naming is not { } naming)
             return;
         naming.FocusKey(key);
+        key.Presses++;
+        if (key.Kind == HandheldKeyKind.Symbols)
+        {
+            naming.NextPage();
+            UpdateHints();
+            return;
+        }
         var done = key.Kind switch
         {
-            HandheldKeyKind.Character => naming.Type(key.Label),
+            HandheldKeyKind.Character => naming.Type(key.Value),
             HandheldKeyKind.Space => naming.Type(" "),
             HandheldKeyKind.Delete => naming.DeleteLast(),
             _ => true,
@@ -771,6 +858,13 @@ public sealed partial class HandheldShellViewModel
     {
         if (Naming is not { } naming)
             return;
+        // Big Type (M47 B9, the mock's kbInput): Done on an empty name bumps; nothing is made.
+        if (HandheldTokens.IsBigType && naming.Text.Trim().Length == 0)
+        {
+            Bumped?.Invoke(HandheldDirection.Right);
+            return;
+        }
+        ListOpened = false;
         Naming = null;
         if (naming.IsNew)
         {
@@ -795,6 +889,8 @@ public sealed partial class HandheldShellViewModel
             ShowNotice(elsewhere
                 ? $"Made \"{naming.Name}\" on page {(slotIndex / SlotsPerPage) + 1}"
                 : $"Made \"{naming.Name}\"");
+            if (HandheldTokens.IsBigType)
+                FolderBorn?.Invoke(slotIndex);
             return;
         }
         if (_layout.FindFolder(naming.FolderId) is { } folder)
@@ -811,6 +907,7 @@ public sealed partial class HandheldShellViewModel
     {
         if (Naming is null)
             return;
+        ListOpened = false;
         Naming = null;
         UpdateFocus();
     }
@@ -818,6 +915,13 @@ public sealed partial class HandheldShellViewModel
     /// <summary>The Stage shows the folder being named, its name following every key without replaying the pop.</summary>
     private void UpdateNamingStage(HandheldNamingViewModel naming)
     {
+        if (HandheldTokens.IsBigType && ReferenceEquals(Naming, naming))
+        {
+            // Big Type (M47 B9): the word typed is the Stage's name; the backdrop stays as it is (the mock's kbTop).
+            UpdateStage();
+            UpdateHints();
+            return;
+        }
         if (!ReferenceEquals(Naming, naming) || Stage.Kind != HandheldStageKind.Folder)
             return;
         Stage.Title = naming.Name;
@@ -832,8 +936,11 @@ public sealed partial class HandheldShellViewModel
         var count = naming.IsNew
             ? naming.GameIds.Count
             : _layout.FindFolder(naming.FolderId)?.GameIds.Count ?? 0;
-        ShowStage(HandheldStageKind.Folder, naming.Name, count == 0 ? "Your folder · empty" : $"Your folder · {HandheldText.GameCount(count)}",
-            backdrop: FolderBackdrop(naming.Color));
+        // Big Type (M47 B9): the Stage's subject stays the same while typing (the word is its name, written over it), so no key reads
+        // as a new item: on the device each new item takes the next backdrop of its rotation, and the mock's backdrop stays.
+        ShowStage(HandheldStageKind.Folder, HandheldTokens.IsBigType ? naming.BigTypeKicker : naming.Name,
+            count == 0 ? "Your folder · empty" : $"Your folder · {HandheldText.GameCount(count)}",
+            backdrop: HandheldTokens.IsBigType ? null : FolderBackdrop(naming.Color));
         Stage.Monogram = string.Empty;
         Stage.FolderGlyph = HandheldGlyph.Star;
         Stage.AccentBrush = naming.ColorBrush;
@@ -855,6 +962,15 @@ public sealed partial class HandheldShellViewModel
             _nextHints.Add(new HandheldHint("B", "Close"));
             return;
         }
+        if (_move is { Trades: true } held)
+        {
+            // The mock's moveKey hints, and Y where the tile can go into a folder (the app's, M47 B9).
+            _nextHints.Add(new HandheldHint("A", "Drop"));
+            _nextHints.Add(new HandheldHint("B", "Put back"));
+            if (CanPutIn(held))
+                _nextHints.Add(new HandheldHint("Y", "Put in…"));
+            return;
+        }
         if (_move is { } move)
         {
             _nextHints.Add(new HandheldHint("A", move.Drop switch
@@ -870,6 +986,11 @@ public sealed partial class HandheldShellViewModel
     /// <summary>What the Stage says while a tile is carried: what it is, and what A would do here.</summary>
     private void ShowMoveStage(MoveState move)
     {
+        if (move.Trades)
+        {
+            ShowHeldStage(move);
+            return;
+        }
         var target = move.Lifted[move.Target];
         var name = FolderSourceFor(move.Carried)?.Name ??
             (_pins.TryGetValue(move.Carried.GameId, out var game) ? game.Title : "Tile");

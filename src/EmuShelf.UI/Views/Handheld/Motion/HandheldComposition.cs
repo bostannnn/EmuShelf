@@ -85,6 +85,48 @@ internal static class HandheldComposition
         visual.StartAnimation("Opacity", animation);
     }
 
+    /// <summary>
+    /// A swing between <paramref name="from"/> and <paramref name="to"/> and back (CSS <c>alternate</c>), for an even number of half
+    /// cycles so it always ends on <paramref name="from"/>, the control's own resting value (M47 B5: the Big Type ring's breath, the
+    /// focused tile's bob). <paramref name="property"/> is "Scale" (about <paramref name="centre"/>) or "Offset" (displacements from the
+    /// visual's own offset when <paramref name="relativeToOffset"/>).
+    /// </summary>
+    public static void Swing(Visual control, string property, Point centre, Vector3D from, Vector3D to, double halfCycleMilliseconds,
+        int halfCycles, Easing easing, bool relativeToOffset = false)
+    {
+        if (VisualOf(control) is not { } visual)
+            return;
+        if (property == "Scale")
+            visual.CenterPoint = new Vector3D(centre.X, centre.Y, 0);
+        var rest = relativeToOffset ? visual.Offset : default;
+        var animation = visual.Compositor.CreateVector3DKeyFrameAnimation();
+        animation.InsertKeyFrame(0f, rest + from);
+        animation.InsertKeyFrame(1f, rest + to, easing);
+        animation.Duration = TimeSpan.FromMilliseconds(halfCycleMilliseconds);
+        animation.IterationBehavior = AnimationIterationBehavior.Count;
+        animation.IterationCount = Math.Max(2, halfCycles + (halfCycles % 2));
+        animation.Direction = PlaybackDirection.Alternate;
+        visual.StartAnimation(property, animation);
+    }
+
+    /// <summary>
+    /// Turns <paramref name="control"/> about <paramref name="centre"/> through <paramref name="frames"/> (degrees, linear between them)
+    /// over <paramref name="cycleMilliseconds"/>, <paramref name="cycles"/> times (M47 B9: the held tile's rock).
+    /// </summary>
+    public static void Rock(Visual control, Point centre, double cycleMilliseconds, int cycles, params (float Progress, double Degrees)[] frames)
+    {
+        if (VisualOf(control) is not { } visual)
+            return;
+        visual.CenterPoint = new Vector3D(centre.X, centre.Y, 0);
+        var animation = visual.Compositor.CreateScalarKeyFrameAnimation();
+        foreach (var (progress, degrees) in frames)
+            animation.InsertKeyFrame(progress, (float)(degrees * Math.PI / 180), new LinearEasing());
+        animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, cycleMilliseconds));
+        animation.IterationBehavior = AnimationIterationBehavior.Count;
+        animation.IterationCount = Math.Max(1, cycles);
+        visual.StartAnimation("RotationAngle", animation);
+    }
+
     private static void Run(CompositionVisual visual, string property, KeyFrameAnimation animation, double milliseconds, double delayMilliseconds)
     {
         animation.Duration = TimeSpan.FromMilliseconds(Math.Max(1, milliseconds));

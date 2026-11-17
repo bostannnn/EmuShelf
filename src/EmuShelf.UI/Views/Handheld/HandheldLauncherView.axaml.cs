@@ -57,7 +57,12 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     {
         PinnedWide = pinnedWide;
         InitializeComponent();
+        // View wiring: the look's typeface on the root, which every text here inherits (M47 B2; none in today's look).
+        HandheldTokens.ApplyFace(this);
+        // View wiring: the look's own styles (M47 B3) select on the root's class; today's look sets none.
+        this.FindControl<Panel>("Root")!.Classes.Set("bigtype", HandheldTokens.IsBigType);
         _homeLayer = this.FindControl<Control>("HomeLayer")!;
+        _pageCount = this.FindControl<Control>("BtPage")!;
         _canvas = this.FindControl<Control>("Canvas")!;
         _selectorLayer = this.FindControl<Control>("SelectorLayer")!;
         _settingsCanvas = this.FindControl<Control>("SettingsCanvas")!;
@@ -84,9 +89,13 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SheetScroller")!, () => 92);
         HandheldScrolling.KeepOnWholeRows(this.FindControl<ScrollViewer>("SettingsChoiceScroller")!, () => 92);
         _panelCanvas = this.FindControl<Control>("PanelCanvas")!;
+        _btLists = this.FindControl<HandheldBigTypeLists>("BtLists")!;
         _sheetRows = this.FindControl<ItemsControl>("SheetRows")!;
         // View wiring only: the motion follows whichever shell the view shows.
         _motion = new HandheldLauncherMotion(this);
+        _motion.AttachLists(_btLists);
+        if (HandheldTokens.IsBigType)
+            _motion.AttachGround(this.FindControl<Border>("Ground")!, this.FindControl<Border>("GroundWave")!);
         // On a platform with a native Launcher this view stays laid out but invisible, and lends it pictures.
         _feed = native is { } host ? new HandheldNativeLauncherFeed(this, _motion, host) : null;
         if (_feed is not null)
@@ -118,6 +127,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     public HandheldHomeScreenViewModel? Screen => _shell is not { } shell ? null : PinnedWide is { } wide ? shell.HomeFor(wide) : shell.Home;
 
     private readonly Control _homeLayer;
+    private readonly Control _pageCount;
     private readonly Control _canvas;
     private readonly Control _selectorLayer;
     private readonly Control _settingsCanvas;
@@ -126,6 +136,7 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
     private readonly ItemsControl _settingsThemes;
     private readonly ItemsControl _settingsChoices;
     private readonly Control _panelCanvas;
+    private readonly HandheldBigTypeLists _btLists;
     private readonly ItemsControl _sheetRows;
     private HandheldSheetViewModel? _sheet;
     private HandheldHomeScreenViewModel? _screen;
@@ -221,11 +232,13 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             return;
         _screen = screen;
         _homeLayer.DataContext = screen;
+        _pageCount.DataContext = screen;
         var width = screen?.CanvasWidth ?? HandheldShellViewModel.NarrowCanvasWidth;
         _canvas.Width = width;
         _selectorLayer.Width = width;
         _settingsCanvas.Width = width;
         _panelCanvas.Width = width;
+        _btLists.Width = width;
         _motion.SetScreen(screen);
         _feed?.SetScreen(screen);
     }
@@ -335,9 +348,11 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
             return;
         }
         // The folder header's chips and the dock act on the first tap.
-        if (IsInside(source, "BackShot") || IsInside(source, "SortShot"))
+        // (Big Type, M47 B3: the folder's name is Back and the sort's value in the dock row's corner is the sort.)
+        var sortTapped = IsInside(source, "SortShot") || IsInside(source, "BtSortShot");
+        if (sortTapped || IsInside(source, "BackShot") || IsInside(source, "BtBackShot"))
         {
-            shell.TapHeader(IsInside(source, "SortShot") ? HandheldHeaderItem.Sort : HandheldHeaderItem.Back);
+            shell.TapHeader(sortTapped ? HandheldHeaderItem.Sort : HandheldHeaderItem.Back);
             e.Handled = true;
             return;
         }
@@ -496,6 +511,12 @@ public partial class HandheldLauncherView : UserControl, IHandheldSelectorHost
         }
         if (panel.IsTyping)
         {
+            if (Find<HandheldSearchHitViewModel>(source) is { } hit)
+            {
+                shell.TapSearchHit(hit);
+                e.Handled = true;
+                return;
+            }
             if (Find<HandheldKeyViewModel>(source) is { } key)
             {
                 shell.TapPanelKey(key);

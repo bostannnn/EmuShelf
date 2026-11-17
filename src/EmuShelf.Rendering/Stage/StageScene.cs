@@ -69,6 +69,12 @@ public interface INativeScene : IDisposable
     float? NextFrameMilliseconds { get; }
 
     /// <summary>
+    /// The Big Type motions in the last frame drawn (M47 B6, R1's probe), joined by "+" ("letters", "wipe", "flood"); null when
+    /// none ran. The frame probe files the frame's times under it.
+    /// </summary>
+    string? ProbeTag => null;
+
+    /// <summary>
     /// What a rebuilt scene needs to carry on where this one was once its GL context is lost (M45 H7c): applied
     /// after the host has replayed its retained commands into the new scene. Touches no GL. Null when there is nothing
     /// to carry.
@@ -77,13 +83,27 @@ public interface INativeScene : IDisposable
 }
 
 /// <summary>
+/// A scene that can say how long each part of its last frame took (M47 B6, R1's probe made finer): only while the host's probe asks,
+/// so a frame costs nothing extra otherwise.
+/// </summary>
+public interface IProbedScene
+{
+    bool ProbeSections { get; set; }
+
+    /// <summary>The last frame's parts and their milliseconds ("medium=0.2 present=0.4 …"); null while not probing.</summary>
+    string? LastSections { get; }
+}
+
+/// <summary>
 /// A new (or no) backdrop; it crossfades over the old one. <paramref name="Animated"/> is the system's animated
 /// backdrops (M45 H7, ids into <see cref="Backdrops.BackdropCatalog"/>): when one can be drawn it replaces the
 /// pictured layers, which stay as the fallback. The same list again keeps the running backdrop going.
 /// </summary>
 /// <remarks><paramref name="Drift"/>: sent by the idle drift (M45 H6d), which is not navigation, so it never wakes a
-/// resting backdrop.</remarks>
-public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false) : StageCommand
+/// resting backdrop. <paramref name="WipeOriginX"/> (M47 B6, Big Type): where on the Stage canvas a system change's wipe grows from
+/// (<see cref="BigType.BigTypeMotion.WipeOrigin"/>); null grows it from the middle.</remarks>
+public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false,
+    float? WipeOriginX = null) : StageCommand
 {
     public override string? RetainKey => "backdrop";
 }
@@ -118,6 +138,31 @@ public sealed record StageCentreCommand(StageImage? Art, StageMedium? Medium, St
 /// arrives from its top edge.</remarks>
 public sealed record StageLaunchCommand(StageImage? Cover, bool FromAbove = false) : StageCommand;
 
+/// <summary>
+/// The launch's takeover under the Big Type look (M47 B8, the mock's <c>.launch</c>): <paramref name="Colour"/> (straight sRGB, 0 to 1)
+/// takes the Stage over through a circle from the case (<see cref="BigType.BigTypeLaunchMotion.TakeoverRadiusAt"/>), and the title's
+/// letters (<paramref name="Title"/>, white) land in it, timed from the press that launched, <paramref name="Elapsed"/> ms before the
+/// command. With <paramref name="Ending"/> the game ended: it fades. A null colour takes it away; without <paramref name="Animate"/> (a
+/// replay, holding still) it is simply there. <paramref name="Origin"/> is where the circle grows from on the canvas: null is the wide
+/// Stage's case (tokens.js <c>Launch.takeoverX / takeoverY</c>); the narrow Stage sends its own case's middle (M47 B11).
+/// </summary>
+public sealed record StageTakeoverCommand(Vector3? Colour, BigType.BigTypeLetters? Title, float Elapsed, bool Ending = false, bool Animate = true,
+    Vector2? Origin = null)
+    : StageCommand
+{
+    public override string? RetainKey => "takeover";
+    public override StageCommand ForReplay() => this with { Animate = false };
+}
+
+/// <summary>The takeover's status line (white; M47 B8): a new picture rolls the characters that changed. Null takes it away.</summary>
+public sealed record StageTakeoverStatusCommand(StageImage? Image, BigType.StageText? Text) : StageCommand
+{
+    public override string? RetainKey => "takeover-status";
+}
+
+/// <summary>An error on the Stage's line (M47 B8, the mock's <c>toast</c> with <c>error</c>): the chrome <paramref name="Key"/> shakes once.</summary>
+public sealed record StageShakeCommand(string Key) : StageCommand;
+
 /// <summary>The big folder's flap: closed, peeking or open; it glides there unless told not to.</summary>
 public sealed record StageFolderStateCommand(FolderArtState State, bool Animate) : StageCommand
 {
@@ -142,9 +187,30 @@ public sealed record StageMediumCoverCommand(TextureImage? Cover) : StageCommand
 }
 
 /// <summary>A corner pill or toast, by name; null removes it.</summary>
-public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCommand
+/// <remarks>
+/// Under the Big Type look (M47 B4) a piece of text is pictured in white and names its <paramref name="Zone"/>: the compositor
+/// draws it in that zone's ink for the backdrop that is showing (<see cref="Backdrops.BackdropLegibility"/>). A
+/// <paramref name="Veil"/> is a white mask of the veil behind a zone, drawn under the centre in the opposite tone at the
+/// zone's strength. Today's look sends neither, and its pictures are drawn as they are. <paramref name="Text"/> (M47 B5) is where a
+/// pictured text's characters sit: a new picture of the same key rolls the characters that changed (the clock, the line's counts).
+/// </remarks>
+public sealed record StageChromeCommand(string Key, StageImage? Image, Backdrops.StageInkZone Zone = Backdrops.StageInkZone.None,
+    bool Veil = false, BigType.StageText? Text = null) : StageCommand
 {
     public override string? RetainKey => "chrome:" + Key;
+
+    /// <summary>Brought by a press within a run of the one before (M47 B11): its text swaps in place rather than rolling.</summary>
+    public bool Quick { get; init; }
+}
+
+/// <summary>
+/// The Big Type look's colours for the Stage (M47 B4): the screen is cleared to <paramref name="Ground"/> (the focused item's
+/// colour, as the Launcher's), and <paramref name="Deep"/> is the dark ink (that colour mixed 74% toward #0B0A18). Its presence
+/// is what turns on the zones' ink; today's look never sends it. Straight sRGB, 0 to 1.
+/// </summary>
+public sealed record StageInkCommand(Vector3 Ground, Vector3 Deep) : StageCommand
+{
+    public override string? RetainKey => "ink";
 }
 
 /// <summary>
@@ -152,7 +218,12 @@ public sealed record StageChromeCommand(string Key, StageImage? Image) : StageCo
 /// The animated backdrop eases to a stop as it does when resting (<see cref="StageRest"/>) and no navigation wakes it
 /// until this is lifted; a system change still crossfades to the next backdrop's still frame.
 /// </summary>
-public sealed record StageMotionCommand(bool HoldStill) : StageCommand
+/// <remarks>
+/// <paramref name="BigType"/> (M47 B6): the Big Type look's motion. A system change wipes the new backdrop in through a circle
+/// instead of the crossfade (held still, it cuts once the new one is ready), the backdrop is prepared over the frames before it shows,
+/// the name's letters move and hop. Off, the Stage moves exactly as before.
+/// </remarks>
+public sealed record StageMotionCommand(bool HoldStill, bool BigType = false) : StageCommand
 {
     public override string? RetainKey => "motion";
 }
