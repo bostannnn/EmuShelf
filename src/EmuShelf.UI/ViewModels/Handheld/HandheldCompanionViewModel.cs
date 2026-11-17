@@ -130,6 +130,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         RebuildRecentUnlocks();
         RebuildPhotoDots();
         model.AchievementColumnCount = BadgeColumns;
+        InitScreens();
         if (model.IsGameRunning)
             Begin();
         UpdateFocus();
@@ -687,6 +688,8 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
             }
             Wake();
         }
+        if (HasLayer)
+            NoteScreenPress(action);
         switch (Layer)
         {
             case HandheldCompanionLayer.Achievements:
@@ -1076,6 +1079,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
 
     private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
     {
+        FollowReel(e.PropertyName);
         switch (e.PropertyName)
         {
             case nameof(SecondScreenViewModel.IsGameRunning):
@@ -1176,6 +1180,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         OnPropertyChanged(nameof(IsAchievementsLayer));
         OnPropertyChanged(nameof(IsPhotosLayer));
         OnPropertyChanged(nameof(IsDrawerLayer));
+        RaiseScreensChanged();
     }
 
     // The controller refills the list one app at a time (Clear, then Add each): follow it the same way.
@@ -1206,6 +1211,7 @@ public sealed partial class HandheldCompanionViewModel : ObservableObject, IDisp
         _disposed = true;
         Model.PropertyChanged -= OnModelChanged;
         Model.Apps.CollectionChanged -= OnAppsChanged;
+        DisposeScreens();
         StopRestTimer();
         StopSessionTimer();
         _coverLoad?.Cancel();

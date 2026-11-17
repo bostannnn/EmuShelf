@@ -195,6 +195,15 @@ public partial class HandheldStageView : UserControl
         _canvas.Width = IsNarrow ? HandheldShellViewModel.NarrowCanvasWidth : HandheldShellViewModel.WideCanvasWidth;
         _canvas.Classes.Set("narrow", IsNarrow && HandheldTokens.IsClassic);
         _canvas.Classes.Set("btnarrow", IsNarrow && HandheldTokens.IsBigType);
+        if (this.FindControl<HandheldStagePorthole>("BtPorthole") is { } porthole)
+            porthole.Narrow = IsNarrow;
+    }
+
+    // View wiring (M47 B15): a tap on a hint while All apps names its focused app here does what the hint says.
+    private void OnHintTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+    {
+        if (sender is Control { DataContext: HandheldHint hint })
+            _shell?.TapStageHint(hint);
     }
 
     private void InitializeComponent() => AvaloniaXamlLoader.Load(this);

@@ -258,6 +258,12 @@ public sealed partial class HandheldShellViewModel
         var game = frame.Game;
         if (Stage.Kind == HandheldStageKind.Hero && Stage.IsDrift && _stageGameId == game.Id)
             return;
+        // Big Type (M47 B15): the Porthole, the owner's pick from proposals-screens.html (HandheldShellViewModel.Screens.cs).
+        if (HandheldTokens.IsBigType)
+        {
+            ShowPortholeStage(frame);
+            return;
+        }
         _platforms.TryGetValue(game.SystemId, out var platform);
         var backdrop = BackdropFor(platform);
         if (frame.Tint is { } tint && backdrop is not null)

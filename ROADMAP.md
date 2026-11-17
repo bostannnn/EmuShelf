@@ -2653,7 +2653,7 @@ Problems with today's recording that this fixes (found in the 2026-11-08 review)
       belongs beside M33); timing hand-off launchers on desktop by following the child process; export
       to CSV; play-time goals or reminders.
 
-## M47 — Handheld: the Big Type look (planned; nothing built)
+## M47 — Handheld: the Big Type look (implemented through B15; device acceptance in progress)
 
 Handheld mode restyled to the direction the owner chose on 2026-11-13 (`DECISIONS.md`, "Handheld look: the Big
 Type direction"): the focused item's name fills the Stage over that console's backdrop, the Launcher takes the
@@ -3381,3 +3381,14 @@ falls back to the emulator and says so.
       installation status. The session stopped during the import check. A repeat import now reports that the games are already in the
       library. A regression test covers this case. The end-to-end Thor setup check remains open.
       Built, awaiting the owner's look.
+- [ ] **B15 — All apps, achievements, photos and idle artwork.** The selected designs from
+      `proposals-screens.html` are implemented under Big Type. All apps uses the Shelf, achievements use the Wall,
+      photos use the Reel and idle artwork uses the Porthole. The home Stage names the focused app. The idle window
+      owns its drawing copy so advancing the drift can release the original artwork. The native Stage reconciles
+      its retained window when it returns from a screen swap.
+      **Checked during integration on macOS:** all 158 Classic frames matched the shared 312a93c baseline byte
+      for byte. The 158 Big Type frames rendered, plus 34 frames of the four B15 screens. The physical Thor
+      recording from the interrupted session showed a blank lower screen when opening All apps from home.
+      A headless regression now checks the Shelf is opaque on the first layout after handing off the native Launcher.
+      **Open on the Thor:** confirm the Shelf appears and scrolls on the lower display, exercise the Wall and Reel in
+      a game, and check the Porthole through idle, wake and a screen swap. B10's default-look change awaits owner review.

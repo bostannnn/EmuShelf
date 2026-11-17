@@ -420,7 +420,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private bool DispatchGamepadActionCore(GamepadAction action)
     {
         // A move inside a list is a move too: the Big Type Stage's next name (the focused row) arrives from it (M47 B7).
-        if (IsListOpen && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft or GamepadAction.NavigateRight)
+        if ((IsListOpen || IsAllAppsOnStage) && action is GamepadAction.NavigateUp or GamepadAction.NavigateDown or GamepadAction.NavigateLeft or GamepadAction.NavigateRight)
             LastMoveDirection = ToDirection(action);
         // A game runs (the companion is the bottom screen), or the companion's All apps or badge grid is open over the
         // Launcher: it owns the pad until that ends.
@@ -1324,6 +1324,7 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         SyncTyping();
         TakeBigTypeListText();
         UpdateStageCore();
+        SyncPorthole();
         ApplyModelView();
         ApplyBigTypeListText();
         if (_lineMessage is { } message)
@@ -1344,6 +1345,9 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
             // Something opened over the Launcher without a press (the setup wizard at startup): the drift gives way.
             StopDrift(refreshStage: false);
         }
+        // Big Type (M47 B15): All apps open from home's dock names its focused app on the Stage.
+        if (ShowAllAppsStage())
+            return;
         if (Settings is { } settings)
         {
             ShowSettingsStage(settings);
@@ -1770,6 +1774,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     {
         // The drift is the Stage at rest: no hints over it (any button wakes it).
         if (IsDrifting)
+            return;
+        if (AddAllAppsHints())
             return;
         if (Settings is { } settings)
         {

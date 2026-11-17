@@ -38,25 +38,26 @@ public partial class HandheldShellViewModelTests
             companion.Dock[0].Label = "Music";
             companion.Dock[0].AccentColor = Color.Parse("#D9443B");
             shell.Companion = companion;
-            var console = shell.Stage.Backdrop;
-            Assert.NotNull(console);
-            Assert.False(console!.Sweep);
-
-            // Down to the dock, right to its first app: the mock's focusDock: the app's name over what was showing.
+            // Empty slots on the way down use Lift-off (B13). The dock app and menu
+            // keep the backdrop at the dock entrance, even after the app icon colour arrives.
             Press(shell, GamepadAction.NavigateDown, 4);
+            var dockBackdrop = shell.Stage.Backdrop;
+            Assert.NotNull(dockBackdrop);
+            Assert.Equal(new[] { "lift-off" }, dockBackdrop.Animated);
+            Assert.False(dockBackdrop.Sweep);
             Press(shell, GamepadAction.NavigateRight);
             Assert.Equal(HandheldStageKind.App, shell.Stage.Kind);
             Assert.Equal("Music", shell.Stage.Name);
             Assert.Equal("Dock", shell.Stage.Label);
-            Assert.Equal(console, shell.Stage.Backdrop);
+            Assert.Equal(dockBackdrop, shell.Stage.Backdrop);
             // Its colour arriving later changes nothing on the Stage.
             companion.Dock[0].AccentColor = Color.Parse("#3B7DD9");
-            Assert.Equal(console, shell.Stage.Backdrop);
+            Assert.Equal(dockBackdrop, shell.Stage.Backdrop);
 
             // The Start menu over it: still no circle.
             Press(shell, GamepadAction.Menu);
             Assert.True(shell.IsMenuOpen);
-            Assert.Equal(console, shell.Stage.Backdrop);
+            Assert.Equal(dockBackdrop, shell.Stage.Backdrop);
             Assert.DoesNotContain(new[] { shell.Stage.Backdrop }, backdrop => backdrop?.Sweep == true);
             shell.Dispose();
         });

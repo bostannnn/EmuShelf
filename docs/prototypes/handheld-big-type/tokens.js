@@ -158,6 +158,50 @@ window.BT_TOKENS = {
     BarTrackOpacity: 0.2,
   },
 
+  // M47 B15: the four screens the owner picked from proposals-screens.html, picked 2026-11-16 ("all apps - 2 / every achievement - 4 /
+  // photo viewer - 9 / idle artwork - 12"). That page draws both screens at half the Thor's size, so every number here is its inline
+  // number doubled. Tops are the top of each text's line box (1.15 of its size), as the page places them. Numbers marked "app's own"
+  // are not on the page (it draws no wide companion and no swapped Stage).
+  screens: {
+    // proposals-screens.html, picked 2026-11-16 · 2 Shelf (All apps), on the Launcher's 1240 x 1080 (screens-apps.js shelf()).
+    ShelfKickerLeft: 108, ShelfKickerTop: 32,            // .pk0: the line after a pin, or "All apps" / "Choose an app for slot n"
+    ShelfNameLeft: 104, ShelfNameTop: 68, ShelfName: 92, ShelfNameMaxWidth: 760,   // the focused app's name, its letters landing
+    ShelfCountRight: 108, ShelfCountTop: 88, ShelfCount: 68, ShelfCountOpacity: 0.45,   // "7 / 18" (.cnt.sm)
+    ShelfTop: 172, ShelfHeight: 816,                     // the clip the icons scroll in
+    ShelfLeft: 116, ShelfFirstTop: 28, ShelfPitchX: 212, ShelfPitchY: 196, ShelfIcon: 160, ShelfIconRadius: 0.24,  // radius: share of the icon
+    ShelfColumns: 5, ShelfRows: 4, ShelfWideColumns: 8,  // ShelfWideColumns: app's own (today's 16:9 companion has eight)
+    ShelfFocusScale: 1.12, ShelfPush: 8,                 // the focused icon grows; its eight neighbours step this far away
+    ShelfRingOutset: 24, ShelfRingRadius: 56,
+    // proposals-screens.html, picked 2026-11-16 · 4 Wall (every achievement; screens-badges.js wall()).
+    WallKickerLeft: 80, WallKickerTop: 36,               // "Achievements · 60 pts", or what a refresh is doing
+    WallFigureLeft: 76, WallFigureTop: 72, WallFigure: 100,   // "5 / 12"
+    WallFiltersRight: 80, WallFiltersTop: 116, WallFilter: 34, WallFilterGap: 28, WallFilterCountGap: 10, WallFilterRestOpacity: 0.45, WallFilterCountOpacity: 0.8,
+    WallFilterKey: 22, WallFilterKeyStroke: 4, WallFilterKeyRadius: 14, WallFilterKeyPadX: 10, WallFilterKeyPadY: 6, WallFilterKeyOpacity: 0.6,
+    WallTop: 196, WallHeight: 504,                       // the clip the badges scroll in: three whole rows
+    WallLeft: 74, WallFirstTop: 28, WallPitch: 160, WallBadge: 128, WallBadgeRadius: 0.14, WallColumns: 7, WallRows: 3,
+    WallWideColumns: 11,                                 // app's own (today's 16:9 companion has eleven)
+    WallFocusScale: 1.14, WallRingOutset: 20, WallRingRadius: 40,
+    WallLockedBrightness: 0.62,                          // a locked badge: grey, at this brightness
+    WallHardcoreEdge: 6, WallHiddenFill: 0.16, WallHiddenMark: 70,   // gold edge outside; a hidden one's ground and its "?"
+    WallNameLeft: 76, WallNameTop: 700, WallName: 80, WallNameMaxWidth: 1080,
+    WallDescLeft: 80, WallDescTop: 820, WallDesc: 36, WallDescOpacity: 0.9,
+    WallMetaTop: 876, WallMeta: 32, WallMetaOpacity: 0.6,
+    // The hints on the bottom screen while the game has the top one (screens-engine.js hintsBot), each also a touch button.
+    HintsRight: 80, HintsBottom: 48, Hint: 30, HintGap: 40, HintOpacity: 0.85,
+    HintKey: 44, HintKeyStroke: 4, HintKeyLetter: 22, HintKeyGap: 14, HintKeyWidePadX: 10, HintKeyWideRadius: 14,
+    // proposals-screens.html, picked 2026-11-16 · 9 Reel (the photo viewer; screens-photos.js reel()).
+    ReelLeft: 120, ReelTop: 80, ReelWidth: 1000, ReelHeight: 562, ReelRadius: 20,   // a fifth smaller than the screen
+    ReelPitch: 956, ReelSideScale: 0.86, ReelSideOpacity: 0.45,                      // the pictures either side
+    ReelFigureLeft: 72, ReelFigureTop: 636, ReelFigure: 224, ReelFigureMaxWidth: 652, // "2 / 6"; MaxWidth app's own: it ends ReelKindLeft - 24
+    ReelKindLeft: 748, ReelKindTop: 744, ReelKind: 40,                               // "Screenshot", "Playing muted", "Loading…"
+    ReelTitleTop: 808, ReelTitle: 32, ReelTitleOpacity: 0.6,                         // the game's title
+    ReelPlayMark: 0.22, ReelPlayMarkMax: 168, ReelVideoShade: 0.5,
+    // proposals-screens.html, picked 2026-11-16 · 12 Porthole (the idle artwork; screens-drift.js porthole()), on the Stage's 1920 x 1080.
+    PortLeft: 956, PortTop: 184, PortSize: 800, PortNameMaxWidth: 840,
+    PortNarrowLeft: 720, PortNarrowTop: 200, PortNarrowSize: 440, PortNarrowNameMaxWidth: 560,   // app's own: the screens swapped
+    PortWipeX: 1340,                                     // the backdrop's circle grows from here (the page's 670)
+  },
+
   shape: {
     TileHome: 176, TileFolder: 208, TileRadius: 30,
     DockTile: 88, DockRadius: 22,
@@ -335,6 +379,48 @@ window.BT_TOKENS = {
     // (the typed word's letters, TypedLetterIn), at most one new count every SetupCount.stepMs (the mock's sleep(260) between its
     // counts); once every folder is read the line says "All set" and home comes back doneHoldMs later (the mock's sleep(1100)).
     SetupCount: { stepMs: 260, doneHoldMs: 1100 },
+    // M47 B15: proposals-screens.html, picked 2026-11-16 (screens-engine.js and the four picked options; px doubled).
+    // A heading whose letters land from a side (the page's letters(): U from below, D from above, L / R from that side), the text before it
+    // leaving the other way (ScreenLettersOut) as a ghost. Each letter from fromEm (and tilt) over ms, delay + i x min(stagger, staggerTotal / n),
+    // the order reversed from the left.
+    ScreenLettersIn:  { ms: 520, delay: 60, stagger: 24, staggerTotal: 300, fromEmUp: 0.9, tiltUp: 6, fromEmDown: -0.7, tiltDown: -5,
+                        fromEmSide: 0.55, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    ScreenLettersOut: { ms: 170, stagger: 8, staggerMax: 90, toEmSide: 0.45, toEmVertical: 0.5, easing: 'cubic-bezier(.5, 0, .9, .5)' },
+    // A count or a line that changes rolls (the page's roll(): only the changed characters, 220 out and 400 in, 12 ms apart).
+    // The hints on the bottom screen rise in (hintsBot): rise px, ms, stagger ms apart.
+    ScreenHintsIn:    { ms: 380, rise: 24, stagger: 50, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    // A layer over the companion comes and goes as a whole (.lay transition), the companion's own parts dropping out under it and rising
+    // back after (B8's InGameOut and InGameIn).
+    ScreenLayerFade:  { ms: 280 },
+    // 2 Shelf. Opening, each icon grows from fromScale, the further from the focused one the later (stagger a cell, at most maxSteps);
+    // closing, each moves push px a cell away from the focused one, shrinking to toScale; a move grows the new one and steps its
+    // neighbours (ShelfFocus, the CSS transition); rows scroll on ShelfScroll; the focused icon bobs bob px up and back, msEach a way.
+    ShelfIn:          { ms: 440, fromScale: 0.45, stagger: 34, maxSteps: 6, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    ShelfOut:         { ms: 240, toScale: 0.55, push: 52, stagger: 18, maxSteps: 6, easing: 'cubic-bezier(.5, 0, .9, .5)' },
+    ShelfFocus:       { ms: 380, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    ShelfScroll:      { ms: 450, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
+    ShelfBob:         { msEach: 1500, px: 6 },
+    // 4 Wall. Opening, each badge grows from fromScale, (column + row) x stagger later; closing, each drops drop px, column x stagger later;
+    // a filter slides the badges it keeps to their new places (WallMove) and shrinks away the rest (WallFilterOut); a refresh's new unlock
+    // pulses from pulseFrom (Pulse, the page's pulse()).
+    WallIn:           { ms: 440, fromScale: 0.3, stagger: 38, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    WallOut:          { ms: 180, drop: 80, stagger: 12, easing: 'cubic-bezier(.5, 0, .9, .5)' },
+    WallMove:         { ms: 420, easing: 'cubic-bezier(.2, 1.2, .3, 1)' },
+    WallFilterOut:    { ms: 380, toScale: 0.3, fadeMs: 250 },
+    Pulse:            { ms: 320, from: 0.6, easing: 'cubic-bezier(.2, 1.5, .35, 1)' },
+    // 9 Reel. The row slides a picture's pitch on ReelSlide; opening, the picture grows out of its small picture on the Photos tab
+    // (PhotoOpen) and closing goes back into it (PhotoClose); a tap fades the figure and the lines (ReelChrome).
+    ReelSlide:        { ms: 500, fadeMs: 400, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
+    PhotoOpen:        { ms: 480, easing: 'cubic-bezier(.2, 1.15, .3, 1)' },
+    PhotoClose:       { ms: 260, easing: 'cubic-bezier(.5, 0, .9, .5)' },
+    ReelChrome:       { ms: 300 },
+    // 12 Porthole. The window rises through the hinge (drop px below, from fromScale) over ms on its easing, fading in over fadeMs; it floats
+    // from `from` to `to` px and back, msEach a way (CSS ease-in-out); the next game's artwork grows inside it through a circle from its
+    // bottom middle to toShare of its size (PortWipe); a press drops it back through the hinge (PortOut).
+    PortIn:           { ms: 700, drop: 1040, fromScale: 0.5, fadeMs: 300, easing: 'cubic-bezier(.2, 1.4, .3, 1)' },
+    PortOut:          { ms: 320, toScale: 0.5, fadeMs: 300, easing: 'cubic-bezier(.5, 0, .9, .5)' },
+    PortFloat:        { msEach: 5000, from: 10, to: -14 },
+    PortWipe:         { ms: 760, toShare: 1.2, easing: 'cubic-bezier(.2, .6, .2, 1)' },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

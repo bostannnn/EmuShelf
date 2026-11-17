@@ -68,8 +68,7 @@ public sealed partial class HandheldShellViewModel
     /// <summary>
     /// A focused dock slot: its app's launcher icon large (loaded at about 512 px for the top screen) on a sweep in the
     /// colour picked from that icon, or an empty slot's invitation to pin one. Under Big Type (M47 B14) no sweep: the mock's dock
-    /// entries carry no backdrop of their own, so the app's name stands over the backdrop that was showing, as All apps and the
-    /// menu's do (and so the Start menu, opened from there, never shows a dock app's circle either).
+    /// entries use the same backdrop as All apps and the menu: Lift-off at home, or the open console folder's backdrop.
     /// </summary>
     private void ShowDockAppStage(SecondScreenSlotViewModel? slot)
     {

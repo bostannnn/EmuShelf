@@ -588,6 +588,9 @@
           </Panel>
         </Border>
 
+        <!-- M47 B15: the idle artwork in its round window beside the name (proposals-screens.html option 12, the Porthole). -->
+        <vh:HandheldStagePorthole x:Name="BtPorthole" Art="{Binding Stage.PortholeArt}" />
+
         <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
                                 Text="{Binding Stage.Name}" IsVisible="{Binding Stage.ShowsBigTypeName}"
                                 TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
@@ -713,7 +716,8 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:HandheldHint">
-              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGlyphGap}">
+              <!-- M47 B15: while All apps names its focused app here, its hints are touch buttons too. -->
+              <StackPanel Orientation="Horizontal" Spacing="{x:Static vm:HandheldTokens.StageHintGlyphGap}" Background="Transparent" Tapped="OnHintTapped">
                 <!-- A key of more than one letter (RB, RS) is a rounded key (M47 B12, proposals.html's .hint i.sh). -->
                 <Border IsVisible="{Binding IsWide}" MinWidth="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}"
                         CornerRadius="{x:Static vm:HandheldTokens.StageHintKeyCorner}" Padding="{x:Static vm:HandheldTokens.StageHintKeyPadding}"
