@@ -16,7 +16,7 @@ namespace EmuShelf.App.ViewModels;
 /// opens the matches as a folder (A there opens a game's Title page); a search with no matches says so and stays open.
 /// Titles match the way Gamepad mode's search matches them (the library's title or the name shown).
 /// </summary>
-public sealed class HandheldSearchPanel : HandheldPanelViewModel
+public sealed partial class HandheldSearchPanel : HandheldPanelViewModel
 {
     /// <summary>How many covers fan out on the Stage.</summary>
     public const int FanSize = 5;
@@ -442,6 +442,7 @@ public sealed class HandheldSearchPanel : HandheldPanelViewModel
             else if (Keyboard is { } keyboard)
                 keyboard.FocusAt(0, 0);
         }
+        TakeArrivalFocus();
     }
 
     protected override void DisposeCore()

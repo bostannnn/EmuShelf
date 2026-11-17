@@ -370,7 +370,7 @@ public partial class MainViewModel
     }
 
     /// <summary>The library as Handheld mode browses it: platforms, a platform's games, covers, launching.</summary>
-    private sealed class HandheldLibrary(MainViewModel owner) : IHandheldLibrary
+    private sealed partial class HandheldLibrary(MainViewModel owner) : IHandheldLibrary
     {
         // On-disk thumbnails are this wide; a tile never decodes wider than its source.
         private const int ThumbnailWidth = CoverThumbnailNativeWidth;

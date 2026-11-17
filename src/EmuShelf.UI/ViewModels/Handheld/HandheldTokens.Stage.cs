@@ -80,6 +80,12 @@ public static partial class HandheldTokens
 
     public static double StageFacts { get; private set; }
 
+    /// <summary>
+    /// tokens.js <c>stage.LineRowsShared</c> (M47 B14, the app's own): the rows the line and the second line share under the name, a long
+    /// one running on at a whole word, each growing down: the line takes at most two, the second line the rest.
+    /// </summary>
+    public static int StageLineRowsShared { get; private set; }
+
     public static double StageFactsOpacity { get; private set; }
 
     public static Thickness StageFactsMargin { get; private set; }
@@ -315,6 +321,7 @@ public static partial class HandheldTokens
         StageLine = 42;
         StageLineMargin = new Thickness(88, 0, 0, 132);
         StageFacts = 36;
+        StageLineRowsShared = 3;
         StageFactsOpacity = 0.82;
         StageFactsMargin = new Thickness(88, 0, 0, 76);
         StageHint = 38;

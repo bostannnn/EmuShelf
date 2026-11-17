@@ -3358,3 +3358,26 @@ falls back to the emulator and says so.
       Classic's 158 design frames byte-identical to the design branch's tip; 21 Big Type frames change, all focuses without a platform
       (Settings and its pages, Activity, the Start and dock menus, the two tiles, the empty library), each now in its own colour.
       Built, awaiting the owner's look.
+- [ ] **B14 — The empty library and setup, and six leftovers.** The pieces the approved mock draws but no step built, under Big Type
+      only (choices in `DECISIONS.md` 2026-11-17 "M47 B14"). **Built:** with no games the Stage says "No games yet", A starts setup, or
+      the menu's Add games; setup is a panel as the mock's (three questions in big type: where the games are, through Add games' picker
+      and a "which system" question of its own; the emulators that will run them; RetroAchievements or not), then every folder is
+      imported while the count of games found climbs as the Stage's typed name, "All set", and home on the first console's folder;
+      nothing found and a folder that cannot be read say so, B goes back. Today's wizard stays the device's setup (first start, "Run
+      setup again"). Leftovers: no colour sweep behind a dock app or the Start menu; a panel's picture (a scraper's preview, a badge)
+      beside the name; long lines run on at a whole word over three shared rows; with nothing typed the keyboard's Delete reads Cancel
+      and leaves (touch alone); a hardware key moves the ring to its key; after a game from Search, Search comes back on the same hit.
+      Found and fixed: a Big Type panel's count was drawn over its heading (now at its right, the heading fitted beside it).
+      **Verified on macOS:** Classic byte-identical to the shared baseline at 312a93c on all 158 design frames (two renders); 22 of 158
+      Big Type frames differ from the baseline, each looked at: Activity's and cover search's headings and counts (8 + 2), Activity's
+      two tops whose long lines now run to a second row (3), the four Settings rail tops whose section descriptions now run to two
+      rows (Display's still ends at a whole word), the dock app, dock menu and the two Start menu tops (the console's backdrop, no circle),
+      the empty library's top (A starts setup), Search's empty keyboard (Cancel), and Add games' pair (setup's which-system question).
+      Frames on request: `EMUSHELF_B14_SHOTS=1` (the empty library, each question, the count, All set, nothing found). New tests:
+      `HandheldBigTypeSetupTests` (pacing against tokens.js, every question, B back, the picker cancelled, the count climbing, nothing
+      found, a failure, the menu's path, Classic), and one file per leftover. `dotnet build` and both test projects passed (App 1,791,
+      Infrastructure 1,407); one earlier App run hung with its test host idle and was stopped; the run did not identify a test.
+      **Device check:** the Android emulator opened the folder picker from Add games, accepted a GBA folder, and reported the emulator
+      installation status. The session stopped during the import check. A repeat import now reports that the games are already in the
+      library. A regression test covers this case. The end-to-end Thor setup check remains open.
+      Built, awaiting the owner's look.

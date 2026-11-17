@@ -99,7 +99,8 @@ internal sealed partial class HandheldNativeStageFeed
             [
                 ("bt-label", Find("BtLabelShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Label}", StageInkZone.Left),
                 ("bt-line", Find("BtLineShot"), s => $"{s.Stage.HasBigTypeName}|{s.HasLineMessage}|{s.Stage.Line}", StageInkZone.Left),
-                ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}|{(s.HasLineMessage ? s.Stage.Line : null)}", StageInkZone.Left),
+                // The second line moves down a row when the line runs to two (M47 B14), so it is pictured again when the line changes.
+                ("bt-facts", Find("BtFactsShot"), s => $"{s.Stage.HasBigTypeName}|{s.Stage.Facts}|{s.HasLineMessage}|{s.Stage.Line}", StageInkZone.Left),
                 ("bt-status", Find("BtStatusShot"), s => $"{s.TimeText}|{s.BatteryText}|{s.HasBattery}", StageInkZone.TopRight),
                 ("bt-hints", Find("BtHintsShot"), s => string.Join("|", s.Hints.Select(h => $"{h.Button}:{h.Label}:{h.Icon}")), StageInkZone.BottomRight),
                 message,

@@ -97,6 +97,10 @@ window.BT_TOKENS = {
     // a row of their own and the lines stand a hint row higher, so the model is centred across the narrow Stage with its box
     // NarrowModelTop from the top, grown NarrowModelScale, to stand between the clock and the lines with its float and its shadow.
     NarrowModelTop: 189, NarrowModelScale: 0.96,
+    // B14, the app's own (the mock's lines have no width and its texts all fit): a long line or second line runs on at a whole word
+    // rather than end in an ellipsis. The two share LineRowsShared rows under the name, their own two and the one free below them (all
+    // the room above the screen's edge), each growing down: the line takes at most two, the second line the rest.
+    LineRowsShared: 3,
   },
 
   // The Launcher, 1240x1080.
@@ -326,6 +330,11 @@ window.BT_TOKENS = {
     ModelShowcase: { periodMs: 15000, pitchDeg: 4, yawDeg: 32, driftAt: 0.36, holdPitchDeg: 2, holdYawDeg: 14, turnAt: 0.5,
                      driftEasing: 'cubic-bezier(.45, 0, .3, 1)', turnEasing: 'cubic-bezier(.5, 0, .25, 1)' },
     ModelSwing:    { ms: 620, easing: 'cubic-bezier(.2, 1.3, .3, 1)' },
+    // Setup (M47 B14, the mock's wizStep and wizScan, its inline numbers). A question's rows slide in as RowsIn, from the right going
+    // on and from the left going back (the mock's panelRows(±70)). Its last step types the count of games found as the Stage's name
+    // (the typed word's letters, TypedLetterIn), at most one new count every SetupCount.stepMs (the mock's sleep(260) between its
+    // counts); once every folder is read the line says "All set" and home comes back doneHoldMs later (the mock's sleep(1100)).
+    SetupCount: { stepMs: 260, doneHoldMs: 1100 },
   },
 
   // How the Stage keeps its text readable over a moving backdrop. Three zones: the left side (console name,

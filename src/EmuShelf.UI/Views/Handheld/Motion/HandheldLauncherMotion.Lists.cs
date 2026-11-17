@@ -123,7 +123,7 @@ internal sealed partial class HandheldLauncherMotion
             return new ListKey(ListKind.Settings, settings, settings.SelectedSectionIndex);
         }
         if (shell.Panel is { IsListing: true } panel)
-            return new ListKey(ListKind.Panel, panel, -1);
+            return new ListKey(ListKind.Panel, panel, panel is HandheldSetupPanel setup ? (int)setup.Step : -1);
         if (shell.IsMenuOpen)
             return new ListKey(ListKind.Menu, null, -1);
         if (shell.Sheet is { } sheet)
@@ -290,6 +290,13 @@ internal sealed partial class HandheldLauncherMotion
                 Arrive(lists.SettingsRows, rise, section: true);
                 Arrive(lists.SettingsThemes, rise, section: true);
             }
+            RequestTick();
+            return;
+        }
+        // Setup's next question (M47 B14, the mock's wizStep: panelRows(±70)): its rows slide in from the right going on, the left going back.
+        if (key.Kind == ListKind.Panel && was.Kind == ListKind.Panel && ReferenceEquals(key.Instance, was.Instance))
+        {
+            Arrive(lists.PanelRows, _shell?.LastMoveDirection == HandheldDirection.Left ? -BigTypeListMotion.RowsInSlide : BigTypeListMotion.RowsInSlide);
             RequestTick();
             return;
         }

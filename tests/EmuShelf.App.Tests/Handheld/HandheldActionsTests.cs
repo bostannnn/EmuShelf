@@ -89,7 +89,11 @@ public partial class HandheldShellViewModelTests
         }
 
         public IReadOnlyList<HandheldImportSystem> ImportSystems =>
-            Platforms.Select(platform => new HandheldImportSystem(platform.SystemId, platform.Name, platform.ShortName, platform.AccentColor)).ToList();
+            Platforms.Select(platform => new HandheldImportSystem(platform.SystemId, platform.Name, platform.ShortName, platform.AccentColor))
+                .Concat(MoreImportSystems).ToList();
+
+        /// <summary>Systems a folder can be added for beyond those with games (an empty library has none of its own).</summary>
+        public List<HandheldImportSystem> MoreImportSystems { get; } = [];
 
         public Task ImportFolderAsync(string folder, string systemId)
         {

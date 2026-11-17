@@ -668,6 +668,8 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(Text));
         OnPropertyChanged(nameof(HasText));
+        if (HandheldTokens.IsBigType)
+            HandheldBigTypeKeys.FollowText(KeyRows, HasText);
     }
 
     /// <summary>The field's mask: a secret shows dots until Y shows it ('\0' shows the text).</summary>
@@ -767,7 +769,8 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
             case HandheldKeyKind.Space when HandheldTokens.IsBigType && AutoCapital:
                 return Type(" ") ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
             case HandheldKeyKind.Delete when HandheldTokens.IsBigType:
-                return DeleteLast() ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Bumped;
+                // With nothing to delete the key reads Cancel and leaves, as B does (M47 B14: the keyboard by touch alone).
+                return DeleteLast() ? HandheldKeyOutcome.Changed : HandheldKeyOutcome.Cancel;
             case HandheldKeyKind.Symbols when HandheldTokens.IsBigType:
                 NextPage();
                 break;
@@ -930,6 +933,7 @@ public sealed partial class HandheldTextKeyboardViewModel : ObservableObject
             foreach (var bigRow in HandheldBigTypeKeys.Build(Page, shiftKey: !auto, shifted ? "abc" : "Shift",
                 ch => auto || shifted || !char.IsLetter(ch) ? ch.ToString() : char.ToLowerInvariant(ch).ToString()))
                 KeyRows.Add(bigRow);
+            HandheldBigTypeKeys.FollowText(KeyRows, HasText);
             KeyRow = Math.Clamp(KeyRow, 0, KeyRows.Count - 1);
             KeyColumn = Math.Clamp(KeyColumn, 0, KeyRows[KeyRow].Keys.Count - 1);
             UpdateFocus();

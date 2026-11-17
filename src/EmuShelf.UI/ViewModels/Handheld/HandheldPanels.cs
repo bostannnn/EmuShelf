@@ -196,8 +196,12 @@ public abstract partial class HandheldPanelViewModel : ObservableObject, IDispos
     /// <summary>The count the Big Type look sets beside the heading (M47 B7, the mock's <c>pcount</c>); null for none.</summary>
     public virtual string? Count => null;
 
-    /// <summary>A cover the Big Type Stage sets beside the name for the focused row (cover search's candidate); null for none.</summary>
-    public virtual Bitmap? BigTypeCover => null;
+    /// <summary>
+    /// A picture the Big Type Stage sets beside the name for the focused row, where a game's case stands (the mock's panels: "the case
+    /// above wears the one you are on"): cover search's candidate, and since M47 B14 the card's own picture (a scraper's preview of a
+    /// cover, fan art or a screenshot, an achievement's badge); null for none, and while typing.
+    /// </summary>
+    public virtual Bitmap? BigTypeCover => IsListing ? Card.Image : null;
 
     /// <summary>What the Big Type Stage says about the focused row (M47 B7): from <see cref="Card"/> unless a panel says otherwise.</summary>
     public virtual HandheldListStageText BigTypeStage

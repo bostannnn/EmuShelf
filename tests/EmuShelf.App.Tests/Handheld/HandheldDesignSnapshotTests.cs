@@ -1315,9 +1315,22 @@ public partial class HandheldShellViewModelTests
         DesignCloseAll(shell);
 
         RunMenuRow(shell, "Add games");
-        Assert.NotNull(shell.Sheet);
-        await DesignPairAsync(rig, "add-games-system-sheet", "Add games: after picking a folder, the which-system sheet");
-        Press(shell, GamepadAction.Cancel);
+        if (DesignLook == HandheldLook.BigType)
+        {
+            // M47 B14: under Big Type Add games is setup; its Choose a folder… is the picker, then which system, asked as a question.
+            var setup = Assert.IsType<HandheldSetupPanel>(shell.Panel);
+            Press(shell, GamepadAction.Confirm);
+            Assert.Equal(HandheldSetupStep.System, setup.Step);
+            await DesignPairAsync(rig, "add-games-system-sheet", "Add games (Big Type: setup): after picking a folder, which system they are for");
+            Press(shell, GamepadAction.Cancel, 2);
+            Assert.Null(shell.Panel);
+        }
+        else
+        {
+            Assert.NotNull(shell.Sheet);
+            await DesignPairAsync(rig, "add-games-system-sheet", "Add games: after picking a folder, the which-system sheet");
+            Press(shell, GamepadAction.Cancel);
+        }
 
         DesignOpenHome(shell, 2);
         DesignFocusFolder(shell, DesignIndexIn(shell, "Pikmin"));
