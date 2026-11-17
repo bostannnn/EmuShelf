@@ -145,7 +145,22 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
       fitted to the tile, the focused folder white with its colour as ink, one white ring
       (`RingStroke`, `RingOutset`), a folder's header as its name and count in plain type, the dock
       without a bar; the Y sheet, the Start menu, Settings and the panels as rows of type on the
-      colour under one ring, the focused row named on the Stage; one keyboard for every field.
+      colour under one ring, the focused row named on the Stage (a panel's picture, a cover or a badge,
+      beside it where a case stands); one keyboard for every field, whose Delete reads Cancel with
+      nothing typed so it can be left by touch, and whose ring follows a hardware keyboard's keys;
+      after a game played from Search, Search comes back on the same hit (M47 B14).
+    - **The empty library and setup (M47 B14):** with no games the Stage says "No games yet", A
+      starts setup, or the menu's Add games. Setup is a panel ("Setup", "1 / 4"): Where are your
+      games? (Add games' folder picker, then which system they are for, asked as a question of its
+      own), Emulators (what will run them, Found or Not installed), Achievements? (connect opens
+      Settings there when setup is done), then every folder chosen is imported while the count of
+      games found climbs as the Stage's typed name, "All set", and home lands on the first console's
+      folder. B goes back a question; a folder with no games or one that cannot be read says so. The
+      device's own setup (storage, the second screen, closing games, each system's folders and
+      emulator, saves) is today's wizard in either look, on a first start and from Settings' "Run
+      setup again".
+    - **Long text on the Stage (M47 B14):** the line and the second line run on at a whole word over
+      three rows they share (`stage.LineRowsShared`), never an ellipsis mid-word.
     - **Behind a switch until the owner makes it the default.** The look is `HandheldLook`
       (`Classic`, `BigType`) in `EmuShelf.Core`, saved as `AppSettings.HandheldLook`, **default
       `Classic`**; `debug.emushelf.look` (`bigtype` or `classic`) overrides it for one run on
@@ -310,6 +325,8 @@ comfy look so it doesn't pull your eye from the game.
     white-background icon still gets its brand colour. If an icon has no colour at all, a neutral
     slate is used.
   - Name plate: the app name, plus "Android app".
+  - *Big Type (M47 B14):* no sweep. The mock's dock entries have no backdrop of their own, so the
+    app's name stands over the console's backdrop that was showing, as All apps and the menu do.
   - **New logic:** today the dock rasterises icons at 96 px, which is too small for the top
     screen. Load them at about 512 px (adaptive icons scale cleanly), pick the colour once per app,
     and keep it alongside the dock data.
@@ -390,6 +407,7 @@ code font is a tokens.js entry.
 | In game | The companion's parts rise in, tabs slide, it rests after 9 s; at the end the parts drop, the colour fades, the ground floods back, the tiles pop in | `InGameIn`, `InGameTab`, `InGameRest`, `InGameOut`, `SessionAchievementBar`, `UnlockLine` |
 | Messages | The line under the name rolls to the message and back; an error shakes and holds longer; work still running holds until the app replaces it; a press moves on | `Message` |
 | Typing | The keys rise in, the ring lands on the first key, a key pulses when pressed; the typed word is the Stage's name: new letters drop in, a deleted one falls off, the word resizes; Search's hits arrive from above; closing, the keys drop; a folder made is born on its slot | `KeysIn`, `KeyFocus`, `KeyPress`, `TypedLetterIn`, `TypedLetterOut`, `TypedResize`, `TypedNameOut`, `ResultsIn`, `KeysOut`, `FolderBorn` |
+| Setup (M47 B14) | A question's rows slide in from the right going on, from the left going back, and its letters come the same way; on the last step the count of games found is typed as the name (its letters drop in), at most one new count every 260 ms, "All set" holds 1.1 s before home | `RowsIn`, `TypedLetterIn`, `SetupCount` |
 | Moving | A held tile grows and rocks; each direction trades places with the next slot; A puts it down with a squash, B walks every step back | `HeldScale`, `Held`, `Swap`, `PutDown` |
 | The model view (M47 B12, `proposals.html`) | LB or RB on a focused game (in a folder or pinned to home): the name's letters leave and the medium rises through the hinge from its old corner, turning in (two thirds of a turn) on the Flip curve; back again it drops out the way it came and the name lands. At rest it floats with its shadow breathing under it, holds a three-quarter turn and every 15 s turns once all the way round; it rests after a minute alone like the backdrop. Another game is one flip into its medium, the way you moved, from the turn on screen. The stick turns it from the pose it has reached; let go (or R3) it swings back. A wide medium (a jewel case, a cartridge) is set smaller to stay `ModelMaxWidth` wide. The launch's colour grows from the medium in the model view and from the name's middle in the name view | `ModelRight`, `ModelTop`, `ModelScale`, `ModelFloor…`, `ModelMaxWidth`, `ModelIn`, `ModelFlip`, `ModelFloat`, `ModelShowcase`, `ModelSwing`, `HintKey` |
 
@@ -545,7 +563,7 @@ The new work is mostly views and motion. There are four real pieces of new logic
 | Scraper | Single game, with all its states (consent, no match, applying…) | `GamepadScraperViewModel`, `GameScraperViewModel` |
 | Batch scraper | Configure, run, done | `GamepadBatchScraperViewModel` |
 | Search | Filters by title | `LibraryViewProjection` (on X today; in the Start menu here) |
-| Add games | Android folder picker, then the system chooser | `MainViewModel` import flow |
+| Add games | Android folder picker, then the system chooser (under Big Type, setup's first question and its "which system", M47 B14) | `MainViewModel` import flow |
 | Settings: Library | Show empty platforms, rescan all, change data folder, run setup again | `GamepadSettingsViewModel` |
 | Settings: Emulators | Close emulator on return (Shizuku), per-platform emulator choice, launch screen, game folders | `GamepadSettingsViewModel`, `EmulatorSettingsViewModel` |
 | Settings: Achievements | Steam profile and key, RetroAchievements account, refresh matches | same |

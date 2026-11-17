@@ -15289,3 +15289,73 @@ keep the small line", "I like one big-type mode and separate model - approve"). 
   half turn the way you moved if less is showing, over `LetterRun.ms`; it never adds another half turn on top (no stacking) and never
   jumps back to a whole flip (no restart). A held direction keeps the app's once-per-move rule (the Stage waits until the focus rests), and
   the game it rests on flips whole, from the turn on screen.
+
+## 2026-11-17 — M47 B14: the empty library and setup, and six leftovers (Big Type)
+
+The pieces the approved mock (`docs/prototypes/handheld-big-type/index.html`) already draws but no step built, and six small items
+earlier steps found and left. Under Big Type only; today's look (Classic) is unchanged. The mock's code defines the behaviour.
+
+- **The empty library (the mock's `describe` with no library).** The Stage says "Welcome", "No games yet", "A starts setup", "Or open
+  the menu and choose Add games"; A on an empty slot starts setup, as the Start menu's Add games does (the mock's `doA` and `START`). The
+  Launcher was already the mock's (the Settings tile and empty slots, the focused one a plus). **Differs from the mock:** the hints keep
+  Y More and ≡ Menu beside A Set up (the mock shows A alone), because both still work there and a hidden press is a lost one.
+- **Setup is a panel, as the mock's (`openPanel('wiz')`, `panelSpec`, `wizStep`, `wizScan`).** "Setup" with its step as the count
+  ("1 / 4"), each question in big type on the Stage ("Setup · 1 of 4" over it), the focused row's label as the line and its value under
+  it. A answers and goes on, B goes back, B on the first question closes it; the rows slide in from the right going on and the left
+  going back, and the question's letters come the same way. The questions are the mock's, each doing the app's work behind it, since the
+  mock's rows are pictures of choices the app makes elsewhere:
+  - **Where are your games?** The folders chosen so far (each with its system as its value) and "Choose a folder…", which is Add games'
+    picker. **The app's own:** the mock offers "Internal storage · Games" and "SD card · ROMs", but the app cannot read a whole storage
+    root and sort it into consoles; Add games takes a folder for one system. So after the picker the panel asks "Which system are they
+    for?" as a question of its own (still 1 of 4; the picked folder's name is the second line), the app's Add games sheet in the
+    mock's form. A folder chosen again is for the system chosen last; Y on a folder removes it (the app's own: the mock's answers cannot
+    be taken back except by B).
+  - **Emulators.** One row per emulator that will run the chosen systems' games (the one Settings and a launch would use), its value
+    the mock's "Found" or "Not installed" (Android's package check); a system with no emulator to name says "Choose one in Settings".
+    A goes on, as the mock's does: choosing is Settings' work.
+  - **Achievements?** "Connect RetroAchievements · Sign in" or "Skip for now · You can connect later". **Differs from the mock** (which
+    goes home either way): Connect opens Settings on its RetroAchievements section once setup is done, so the answer does something.
+  - **4 of 4: the count.** Every folder chosen is imported as Add games imports it (scanned for its system, remembered, reconciled,
+    metadata started), quietly: the Stage's name is the count of games found so far, typed as the keyboard's word is (its letters drop
+    in), at most one new count every `SetupCount.stepMs` (the mock's 260 ms between its counts; the latest one shown at its turn); the line
+    says "Looking through PS2". Then "All set" for `SetupCount.doneHoldMs` (the mock's 1.1 s), and home: on an empty library home lands
+    on the first console's folder (the mock's `setFocus(idx('ps2'))`), otherwise setup closes back where it was and the line says "Found
+    N new games" (the mock's `closePanel`). **The app's own (the mock never fails):** a folder with no games ends on "0 games", "No games
+    found in PS2", B Back to choose another; a folder that cannot be read says why ("Could not read PS2: …", the line in warning), B
+    Back; busy library work says so. Nothing can be pressed while folders are read (the mock's `S.busy`).
+  - The pacing is reading time, not motion: held still it is the same (the mock still waits under reduced motion); only the letters
+    land at once. Shared maths: `BigTypeSetupMotion` (tokens.js `motion.SetupCount`).
+- **What today's flow does that the mock has no place for, and where it lives.** Today's wizard (Settings in setup mode: storage access,
+  the data folder, the second screen, closing games and Shizuku, each system's folders and emulator and launch screen, saves) is the
+  device's own setup and stays as it is in either look: offered on a first start, and from Settings → General → "Run setup again"; its
+  Big Type rows are B7's. Add games' picker and "which system" are setup's first question under Big Type, and Classic's Add games is
+  unchanged. Cancelling: B on the first question (nothing imported), or B on the system question (the folder dropped).
+- **Found and fixed in passing.** A Big Type panel's count was drawn over its heading at the left (B7 set no column), so Activity's
+  period and cover search's count stood behind the title; setup's "1 / 4" made it plain. The count now sits at the heading's right, as
+  the mock's `pcount`.
+
+**The leftovers.**
+1. **No colour sweep behind a dock app or the Start menu.** The mock's dock entries carry no backdrop (`focusDock` lands with no `bd`),
+   so the app's name stands over the console's backdrop that was showing, as All apps and Menu already did; the Start menu's circle was
+   the last dock app's sweep kept, so it goes too. The Launcher's ground is unchanged (the mock floods it to a pinned app's colour; not
+   asked for here).
+2. **A panel's picture beside the name.** The mock's panels put the focused row's picture where the case stands. Cover search did; now
+   every panel's card picture takes that place (`HandheldPanelViewModel.BigTypeCover`): a scraper's preview (a cover, fan art, a
+   screenshot), an achievement's badge. Flat, not on the 3D case: only cover search knows its game's case.
+3. **Long text on the Stage.** The line and the second line run on at a whole word. **The app's own** (the mock sets no width and its
+   texts fit): they share three rows under the name (`stage.LineRowsShared`), their own two and the one free row above the screen's edge
+   (the rows are 63 and 54 px high, so there is room for one more and no more); the line takes at most two, growing down into the second
+   line's row, which moves down a row under it; under a line of one the second line grows into the free row. Neither reaches up into the
+   name (B11's rule for messages). Text past its rows ends at a whole word, never mid-word. Messages keep B10/B11's rule. A paging roll
+   was weighed and not built: the native Stage pictures each line whole, and paging it would mean re-picturing and rolling pages in
+   `BigTypeRolling`, which another session is changing.
+4. **The keyboard by touch.** With nothing typed, Delete reads Cancel and leaves without keeping anything, as B does and as the mock's
+   hint ("B Cancel") and its hardware Backspace do; with text it deletes. No new control. (The mock's keyboard offers nothing for touch:
+   its Delete bumps on empty.)
+5. **A hardware keyboard moves the ring**, as the mock's `kbJump`: a letter to its key on the keys shown, a space to Space, a letter
+   taken off to Delete; a character not on this page leaves the ring (the mock has letters only). On Search's hits a typed key brings
+   the pad back to the keys.
+6. **Back to Search after a game.** The mock keeps the keyboard under a game played from Search and lands on the hit again
+   (`endPlay`: `focusRes`). Once the launch is over (the game closed, the launch failed, or the screen question was left with B), Search
+   opens again on exactly what was typed and the hit played takes the focus as the hits arrive. A missing file no longer closes Search:
+   the line says so and the keyboard stays (the mock's `startGame`).

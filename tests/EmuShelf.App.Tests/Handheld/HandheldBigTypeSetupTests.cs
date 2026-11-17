@@ -321,6 +321,31 @@ public partial class HandheldShellViewModelTests
         });
 
         [Fact]
+        public Task AFolderWhoseGamesAreAlreadyHere_SaysSo_NotThatNoneWereFound() => BigType(async () =>
+        {
+            var library = EmptyLibrary();
+            library.SetupImport = (_, _, found) =>
+            {
+                found(9);
+                return Task.FromResult(new HandheldSetupImport(0, null));
+            };
+            var shell = await EmptyShellAsync(library);
+            Press(shell, GamepadAction.Confirm);
+            var setup = Assert.IsType<HandheldSetupPanel>(shell.Panel);
+            Press(shell, GamepadAction.Confirm);
+            Press(shell, GamepadAction.Confirm);
+            Press(shell, GamepadAction.Confirm);
+            await WaitFor(() => setup.Step == HandheldSetupStep.Emulators);
+            Press(shell, GamepadAction.Confirm);
+            Press(shell, GamepadAction.Confirm);
+            await WaitFor(() => shell.Stage.Line.StartsWith("Nothing new", StringComparison.Ordinal));
+            Assert.Equal("Nothing new in PS2: its games are already here", shell.Stage.Line);
+            Assert.False(setup.IsDone);
+            Assert.Equal("B:Back", Hints(shell));
+            shell.Dispose();
+        });
+
+        [Fact]
         public Task AFolderThatCannotBeRead_SaysWhy_AndBGoesBack() => BigType(async () =>
         {
             var library = EmptyLibrary();

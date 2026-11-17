@@ -74,6 +74,7 @@ public sealed class HandheldSetupPanel : HandheldPanelViewModel
     private bool _countPending;
     private string _countLine = string.Empty;
     private bool _countFailed;
+    private bool _anyFound;
     private readonly long _startedAt;
     private readonly CancellationTokenSource _closing = new();
 
@@ -387,6 +388,7 @@ public sealed class HandheldSetupPanel : HandheldPanelViewModel
         IsDone = false;
         _countFailed = false;
         _foundCount = 0;
+        _anyFound = false;
         _shownCount = 0;
         _countShownAt = null;
         Go(HandheldSetupStep.Counting, -1, HandheldDirection.Right);
@@ -426,7 +428,9 @@ public sealed class HandheldSetupPanel : HandheldPanelViewModel
         _working = false;
         if (added == 0)
         {
-            _countLine = $"No games found in {string.Join(", ", _folders.Select(folder => folder.Name))}";
+            // Games were found but none was new (a folder added before): they are already in the library, not missing.
+            var names = string.Join(", ", _folders.Select(folder => folder.Name));
+            _countLine = _anyFound ? $"Nothing new in {names}: its games are already here" : $"No games found in {names}";
             RaiseChanged();
             return;
         }
@@ -458,6 +462,7 @@ public sealed class HandheldSetupPanel : HandheldPanelViewModel
     private void CountArrived(int count)
     {
         _foundCount = count;
+        _anyFound |= count > 0;
         if (_countPending || IsDisposed)
             return;
         var wait = BigTypeSetupMotion.WaitBeforeCount(_countShownAt, Now);
