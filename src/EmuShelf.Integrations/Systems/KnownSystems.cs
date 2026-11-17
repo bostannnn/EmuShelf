@@ -59,7 +59,7 @@ public static class KnownSystems
         new("megadrive",    "Mega Drive / Genesis", "MD", "#3A6D74", 0.708, "Sega", Era: SystemEra.Cartridge, Backdrops: ["md-speed-v3", "md-planes", "md-pipe-v2"], GroundColor: "#175A4F"),
         // The library's default region is US, whose Dreamcast releases use square jewel-case art.
         // Loaded PAL covers replace this with their image ratio.
-        new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 1.0,   "Sega", Backdrops: ["dc-fog-v3", "dc-sea-v2", "dc-checker"], GroundColor: "#B8521E"),
+        new("dreamcast",    "Dreamcast",      "DC",  "#F07C3E", 1.0,   "Sega", Backdrops: ["dc-fog-v3", "dc-sea-v2", "dc-checker"], GroundColor: "#0E7AB5"),
 
         // ── Sony ──
         new("playstation",  "PlayStation",   "PS1", "#8A8FA3", 1.0,   "Sony", Backdrops: ["field", "tide", "frames", "ps1-terrace-v2", "ps1-pipe"], GroundColor: "#6B6F7E"),

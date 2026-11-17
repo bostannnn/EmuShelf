@@ -33,8 +33,26 @@ vec3 hsl(float h, float s, float l)
     return l - a * max(vec3(-1.0), min(min(k - 3.0, 9.0 - k), vec3(1.0)));
 }
 
+// M47 B13: a sharp Big Type frame is drawn larger than its console's size while uRes stays that size, so every shape keeps its place
+// and size and only gains detail. Its programs are compiled with BACKDROP_SHARP defined (BackdropRenderer); today's look compiles
+// without it, from exactly the text it always had. BACKDROP_PIXEL is the draw pixels per prototype pixel (1 in today's look);
+// pixelIndex(v) is the prototype's whole pixel under v (floor) in today's look, and in a sharp frame the sample's own place, so
+// gradients read per draw pixel instead of in steps of the prototype's pixels (the two agree at every prototype pixel centre).
+#ifdef BACKDROP_SHARP
+uniform float uPixel;
+#define BACKDROP_PIXEL uPixel
+#define pixelIndex(v) ((v) - 0.5)
+#else
+#define BACKDROP_PIXEL 1.0
+#define pixelIndex(v) floor(v)
+#endif
+
 // The pixel being shaded, in the prototype's coordinates (fragment shaders only).
+#ifdef BACKDROP_SHARP
+vec2 pixelTopLeft(vec4 fragCoord) { return vec2(fragCoord.x, uRes.y * uPixel - fragCoord.y) / uPixel; }
+#else
 vec2 pixelTopLeft(vec4 fragCoord) { return vec2(fragCoord.x, uRes.y - fragCoord.y); }
+#endif
 
 // A vertical gradient through three stops at 0, mid and 1 (the prototype's gClear).
 vec3 gradient3(float u, vec3 a, float mid, vec3 b, vec3 c)
@@ -202,15 +220,23 @@ bool inQuad(vec2 p, vec2 a, vec2 b, vec2 c, vec2 d)
     return inTriangle(p, a, b, c) || inTriangle(p, a, c, d);
 }
 
-// The prototype's soft disc (gDisc) coverage at a pixel centre.
+// The prototype's soft disc (gDisc) coverage at a pixel centre (in a sharp frame its soft edge is in draw pixels).
+#ifdef BACKDROP_SHARP
+float discCover(vec2 p, vec2 centre, float radius, float soft) { return clamp((radius - length(p - centre)) * uPixel / soft + 0.5, 0.0, 1.0); }
+#else
 float discCover(vec2 p, vec2 centre, float radius, float soft) { return clamp((radius - length(p - centre)) / soft + 0.5, 0.0, 1.0); }
+#endif
 
 // The prototype's thick segment (gSeg) coverage at a pixel centre.
 float segmentCover(vec2 p, vec2 a, vec2 b, float width)
 {
     vec2 ab = b - a;
     float u = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-9), 0.0, 1.0);
+#ifdef BACKDROP_SHARP
+    return clamp((width / 2.0 - length(p - a - u * ab)) * uPixel + 0.5, 0.0, 1.0);
+#else
     return clamp(width / 2.0 - length(p - a - u * ab) + 0.5, 0.0, 1.0);
+#endif
 }
 
 // The NES master-palette colours the NES backdrops use.
@@ -295,3 +321,10 @@ vec4 snappedClip(Cam k, vec3 view)
 // (0 a, 1 b, 2 c, 3 d), its texture coordinate, and its shade factor.
 int ps1Corner(int k) { return k == 0 ? 0 : k == 1 || k == 4 ? 1 : k == 5 ? 2 : 3; }
 vec2 ps1Uv(int k) { return k == 0 ? vec2(0.0, 15.0) : k == 1 || k == 4 ? vec2(0.0) : k == 5 ? vec2(15.0, 0.0) : vec2(15.0, 15.0); }
+
+#ifdef BACKDROP_SHARP
+// A one-pixel particle in a sharp frame: a round dot of one prototype pixel's area, with a draw pixel of soft edge (M47 B13).
+float sharpPointSize() { return uPixel * 1.13 + 2.0; }
+
+float sharpPointCover(vec2 pointCoord) { return clamp(uPixel * 0.564 - length(pointCoord - 0.5) * sharpPointSize() + 0.5, 0.0, 1.0); }
+#endif

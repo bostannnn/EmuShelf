@@ -61,6 +61,9 @@ public partial class HandheldShellViewModel
             MiddleFloodGround = _returningFromPlay ? ground : null;
             LauncherGround = ground;
             LauncherGroundBrush = HandheldTokens.GroundBrush(ground);
+            // The default background is drawn in the Launcher's colour (M47 B13): it follows, as one backdrop changing colour.
+            if (HandheldTokens.IsBigType && ShowsDefaultBackdrop && Stage.Backdrop!.Color != ground)
+                Stage.Backdrop = DefaultBackdrop(ground);
         }
         foreach (var item in DockItems)
             item.Ground = LauncherGroundBrush;

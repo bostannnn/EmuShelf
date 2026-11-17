@@ -66,6 +66,91 @@ internal static class BackdropPreview
         Console.WriteLine($"Wrote {specs.Count * times.Length} frames and backdrops-sheet.png to {outputDirectory}");
     }
 
+    /// <summary>
+    /// Big Type's animations (M47 B13) as the Stage shows them: each at its draw size, recoloured toward its console's ground (Recent's
+    /// for Recent's), on a 1920 × 1080 frame: `--backdrops --bigtype [--out dir] [--times …] [--only id,id] [--sharp-width w]`
+    /// (w: the Thor's <c>debug.emushelf.bdsize</c> override, 0 for the console's own size). Writes <c>owner-id-Ns.png</c> per moment.
+    /// </summary>
+    /// <param name="colourHex">`--colour #RRGGBB`: every backdrop drawn from (or recoloured toward) this colour instead of its owner's (M47 B13:
+    /// the default background in any colour it can take).</param>
+    public static void RunBigType(GL gl, string outputDirectory, float[] times, IReadOnlyCollection<string>? only, string? sharpWidth,
+        string? colourHex = null)
+    {
+        const int width = BigTypeBackdrops.StageWidth, height = BigTypeBackdrops.StageHeight;
+        if (sharpWidth is { } value)
+            BigTypeBackdrops.SharpWidthOverride = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+        Directory.CreateDirectory(outputDirectory);
+        var framebuffer = gl.GenFramebuffer();
+        var colour = gl.GenRenderbuffer();
+        gl.BindRenderbuffer(RenderbufferTarget.Renderbuffer, colour);
+        gl.RenderbufferStorage(RenderbufferTarget.Renderbuffer, InternalFormat.Rgba8, width, height);
+        gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+        gl.FramebufferRenderbuffer(FramebufferTarget.Framebuffer, FramebufferAttachment.ColorAttachment0, RenderbufferTarget.Renderbuffer, colour);
+        using var renderer = new BackdropRenderer(gl, GlslDialect.Desktop, 3, 3);
+        foreach (var (owner, backdrops) in BigTypeBackdrops.All)
+        {
+            var ground = colourHex is { } hex ? Hex(hex) : Ground(owner);
+            foreach (var entry in backdrops.Where(entry => only is null || only.Contains(entry.Id)))
+            {
+                var instance = renderer.Start(entry.Id, 0f, clockOffsetSeconds: 0f, new BackdropLook(true, ground))
+                    ?? throw new InvalidOperationException($"Backdrop '{entry.Id}' did not compile (see the trace above).");
+                var started = System.Diagnostics.Stopwatch.StartNew();
+                foreach (var time in times)
+                {
+                    var target = time * 1000f;
+                    for (var now = Math.Max(0f, target - 1000f); now <= target + 0.01f; now += BackdropCatalog.StepMilliseconds)
+                        renderer.Update(instance, now);
+                    gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+                    gl.Viewport(0, 0, width, height);
+                    gl.ClearColor(1, 0, 1, 1);
+                    gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+                    gl.Enable(EnableCap.Blend);
+                    gl.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
+                    renderer.Present(instance, 1f);
+                    gl.Disable(EnableCap.Blend);
+                    PngWriter.Write(Path.Combine(outputDirectory, $"{owner}-{entry.Id}-{time:0.#}s.png"), width, height, Read(gl, framebuffer, width, height));
+                }
+                var error = gl.GetError();
+                var timing = string.Empty;
+                if (Environment.GetEnvironmentVariable("EMUSHELF_BACKDROP_TIME") is { Length: > 0 })
+                {
+                    // A rough cost on this Mac's GPU (M47 B13): 120 steps, each drawn and shown, waited for; milliseconds per step.
+                    gl.Finish();
+                    var clock = System.Diagnostics.Stopwatch.StartNew();
+                    var from = times[^1] * 1000f;
+                    for (var step = 1; step <= 120; step++)
+                    {
+                        renderer.Update(instance, from + (step * BackdropCatalog.StepMilliseconds));
+                        gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+                        gl.Viewport(0, 0, width, height);
+                        renderer.Present(instance, 1f);
+                        gl.Finish();
+                    }
+                    timing = $"  {clock.Elapsed.TotalMilliseconds / 120:0.000} ms a step here";
+                }
+                Console.WriteLine($"  {owner,-12} {entry.Id,-16} {instance.Width}×{instance.Height} pull {entry.Pull:0.##}  {started.ElapsedMilliseconds,5} ms{timing}{(error == GLEnum.NoError ? "" : $"  GL error {error}")}");
+                renderer.Stop(instance);
+            }
+        }
+        gl.DeleteFramebuffer(framebuffer);
+        gl.DeleteRenderbuffer(colour);
+    }
+
+    /// <summary>A console's Big Type ground (KnownSystems), or Recent's (tokens.js <c>colour.Recent</c>), as sRGB from 0 to 1.</summary>
+    internal static System.Numerics.Vector3 Ground(string owner)
+    {
+        // Recent's slate; the default background in Settings' indigo (tokens.js colour.Settings), one of the colours it takes.
+        var hex = owner == BigTypeBackdrops.Recent ? "#39465F" : owner == BigTypeBackdrops.Default ? "#4A43B8"
+            : EmuShelf.Integrations.Systems.KnownSystems.All.Single(system => system.Id == owner).GroundColor!;
+        return Hex(hex);
+    }
+
+    private static System.Numerics.Vector3 Hex(string hex)
+    {
+        int Channel(int at) => Convert.ToInt32(hex.Substring(at, 2), 16);
+        return new System.Numerics.Vector3(Channel(1) / 255f, Channel(3) / 255f, Channel(5) / 255f);
+    }
+
     private static byte[] Read(GL gl, uint framebuffer, int width, int height)
     {
         var pixels = new byte[width * height * 4];

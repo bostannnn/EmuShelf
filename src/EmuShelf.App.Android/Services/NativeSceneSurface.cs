@@ -436,7 +436,7 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
             var animating = compositor.Draw(now, _width, _height);
             var drawMilliseconds = probing ? Stopwatch.GetElapsedTime(drawing).TotalMilliseconds : 0d;
             var drawnCpu = probing ? ThreadCpuMilliseconds() - threadStarted : 0d;
-            _gpuTimer?.End(compositor.ProbeTag is { } probeTag ? probeTag + suffix : animating ? "other" : null);
+            _gpuTimer?.End(compositor.ProbeTag is { } probeTag ? probeTag + suffix : animating ? "other" : FrameProbeProperty.Rest ? "rest" : null);
             CompleteFrame();
             if (probing)
             {
@@ -514,10 +514,20 @@ internal sealed class NativeSceneSurface : Java.Lang.Object, IHandheldNativeStag
 
     private void Probe(INativeScene compositor, float now, double cpuMilliseconds, double wallMilliseconds, bool animating)
     {
-        var tag = compositor.ProbeTag ?? (animating ? "other" : null);
+        // "rest" (M47 B13): the frames drawn only for the backdrop's 30 Hz steps are a run of their own, logged when it ends, with the
+        // GPU times read back then, so a backdrop's cost at rest is measured as well as through a wipe.
+        var resting = !animating && FrameProbeProperty.Rest;
+        var tag = compositor.ProbeTag ?? (animating ? "other" : resting ? "rest" : null);
         if (_probe.Frame(now, (float)cpuMilliseconds, tag, (float)wallMilliseconds) is { } line)
+        {
             global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {line}");
-        if (animating)
+            if (resting && _gpuTimer is { } drained)
+            {
+                foreach (var gpu in drained.Drain())
+                    global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {gpu}");
+            }
+        }
+        if (animating || resting)
             return;
         if (_probe.Flush() is { } last)
             global::Android.Util.Log.Info("EmuShelfBigType", $"{_name}: {last}");

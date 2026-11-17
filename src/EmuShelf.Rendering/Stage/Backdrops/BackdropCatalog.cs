@@ -66,6 +66,7 @@ public sealed record BackdropPass(
 /// <param name="Ghost">An LCD's slow pixels: how much of the previous frame lingers (0–1).</param>
 /// <param name="Persist">Phosphor / motion trails: the previous frame decays by this factor and the brighter wins.</param>
 /// <param name="Interlace">How much every other row dims, alternating each frame (the PS2's interlaced output).</param>
+/// <param name="BloomWide">The far glow's share of <paramref name="BloomAmount"/> (M47 B13: Big Type's output only; today's is 0.9).</param>
 public sealed record BackdropOutput(
     bool Smooth = false,
     int Bits = 0,
@@ -76,7 +77,8 @@ public sealed record BackdropOutput(
     float BloomAmount = 0f,
     float Ghost = 0f,
     float Persist = 0f,
-    float Interlace = 0f);
+    float Interlace = 0f,
+    float BloomWide = 0.9f);
 
 /// <summary>
 /// One animated backdrop: drawn into a frame at its console's own resolution by <see cref="Passes"/>, then shown
@@ -85,8 +87,9 @@ public sealed record BackdropOutput(
 /// </summary>
 /// <param name="Feedback">The passes draw over the backdrop's own previous frame (<c>uPrevious</c>), for frame feedback.</param>
 /// <param name="Finish">A fragment shader that turns the frame (<c>uScene</c>) into what is shown, without feeding back.</param>
+/// <param name="Include">A shader file every pass of this backdrop includes after <c>backdrop-common</c> (M47 B13: Lift-off's).</param>
 public sealed record BackdropSpec(string Id, int Width, int Height, IReadOnlyList<BackdropPass> Passes, BackdropOutput Output,
-    bool Feedback = false, string? Finish = null);
+    bool Feedback = false, string? Finish = null, string? Include = null);
 
 /// <summary>How a system's backdrops take turns (M45 H7b): one at a time, a different one each turn.</summary>
 public static class BackdropRotation
@@ -309,6 +312,35 @@ public static class BackdropCatalog
             // Three crests, 80 segments each, drawn three times (the line and its glow above and below).
             new("backdrop-psp-field-lines.vert", "backdrop-color.frag", 3 * 80 * 2 * 3, BackdropPrimitive.Lines, BackdropBlend.Additive),
         ], new BackdropOutput(Smooth: true, Ghost: 0.25f)),
+        // M47 B13: Big Type's PSP animation (the owner chose it on backdrop-review.html); today's look does not show it.
+        new("psp-ribbon", 320, 180,
+        [
+            BackdropPass.Fullscreen("backdrop-psp-ribbon-bg.frag"),
+            // Each ribbon (60 quads at 32%), then its two edges (60 stroked segments each, added), as the prototype draws them.
+            new("backdrop-psp-ribbon.vert", "backdrop-color.frag", 360, Blend: BackdropBlend.Alpha),
+            new("backdrop-psp-ribbon-edges.vert", "backdrop-psp-ribbon-edges.frag", 720, Blend: BackdropBlend.Additive),
+            new("backdrop-psp-ribbon.vert", "backdrop-color.frag", 360, Blend: BackdropBlend.Alpha, First: 360),
+            new("backdrop-psp-ribbon-edges.vert", "backdrop-psp-ribbon-edges.frag", 720, Blend: BackdropBlend.Additive, First: 720),
+        ], new BackdropOutput(Smooth: true, Ghost: 0.25f)),
+        // ---- M47 B13: Big Type's own, drawn from the colour they are given (uColour); today's look shows neither ----
+        // 3DS · Through the screen (ideas-3ds.js throughScreen): 13 walls × 4 bands × 32 quads round a screen-shaped opening.
+        new("3ds-screen", 400, 225,
+        [
+            BackdropPass.Fullscreen("backdrop-3ds-screen-sky.frag"),
+            new("backdrop-3ds-screen.vert", "backdrop-3ds-screen.frag", 13 * 4 * 32 * 6, DepthTest: true),
+        ], new BackdropOutput(Smooth: true, BloomThreshold: 190f / 255f, BloomAmount: 0.4f, BloomWide: 0.55f)),
+        // The default background · Lift-off (ideas-bg.js liftOff): the sky, the floor (a plane and 27 × 33 blocks), the beam, the
+        // floating blocks' glows, the blocks (56 cells × 6 faces), the dust (110 motes); then the veil and dither, and the bloom.
+        new("lift-off", 480, 270,
+        [
+            BackdropPass.Fullscreen("backdrop-lift-off-sky.frag"),
+            new("backdrop-lift-off-floor.vert", "backdrop-lift-off-floor.frag", 6 + (27 * 33 * 18), DepthTest: true),
+            new("fullscreen.vert", "backdrop-lift-off-beam.frag", 3, Blend: BackdropBlend.Additive),
+            new("backdrop-lift-off-glow.vert", "backdrop-lift-off-glow.frag", 56 * 6, Blend: BackdropBlend.Additive),
+            new("backdrop-lift-off-blocks.vert", "backdrop-color.frag", 56 * 36, Blend: BackdropBlend.Alpha, DepthTest: true),
+            new("backdrop-lift-off-glow.vert", "backdrop-lift-off-glow.frag", 110 * 6, Blend: BackdropBlend.Additive, First: 56 * 6),
+        ], new BackdropOutput(Smooth: true, BloomThreshold: 175f / 255f, BloomAmount: 0.5f), Finish: "backdrop-lift-off-finish.frag",
+            Include: "backdrop-lift-off-common"),
         new("ps3-sheet", 480, 270,
         [
             BackdropPass.Fullscreen("backdrop-ps3-bg.frag"),

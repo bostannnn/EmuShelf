@@ -40,6 +40,7 @@ public sealed class SingleViewShell : IPlatformShell
         HandheldLookProperty.Read();
         // R1's frame probe (M47 B6), read once at start-up so the UI side's log is ready before the first name is sent.
         _ = FrameProbeProperty.IsOn;
+        BackdropSizeProperty.Apply();
 
         InterfaceMode = new AndroidInterfaceModeService(boot.SettingsService, HasPresentationDisplay);
         Frontend = new AndroidFrontendController();

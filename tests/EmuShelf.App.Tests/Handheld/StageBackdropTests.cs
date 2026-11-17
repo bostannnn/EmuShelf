@@ -32,7 +32,10 @@ public class StageBackdropCatalogTests
     [Fact]
     public void EveryCatalogBackdrop_BelongsToASystem_AndIdsAreUnique()
     {
-        var used = KnownSystems.All.SelectMany(system => system.Backdrops ?? []).ToHashSet(StringComparer.Ordinal);
+        // Today's rotating lists, and Big Type's (M47 B13: psp-ribbon is Big Type's alone).
+        var used = KnownSystems.All.SelectMany(system => system.Backdrops ?? [])
+            .Concat(BigTypeBackdrops.All.SelectMany(row => row.Backdrops.Select(entry => entry.Id)))
+            .ToHashSet(StringComparer.Ordinal);
         Assert.Equal(BackdropCatalog.All.Count, BackdropCatalog.All.Select(spec => spec.Id).Distinct(StringComparer.Ordinal).Count());
         foreach (var spec in BackdropCatalog.All)
             Assert.Contains(spec.Id, used);
@@ -137,7 +140,8 @@ public class StageBackdropCatalogTests
     public void EverySystem_RotatesThroughTheOwnersPicks()
     {
         Assert.Equal(53, KnownSystems.All.Sum(system => system.Backdrops!.Count));
-        Assert.Equal(53, BackdropCatalog.All.Count);
+        // The 53, and Big Type's own (M47 B13): psp-ribbon, 3ds-screen and lift-off.
+        Assert.Equal(56, BackdropCatalog.All.Count);
     }
 }
 

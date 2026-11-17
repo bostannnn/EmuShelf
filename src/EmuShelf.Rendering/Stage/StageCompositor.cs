@@ -235,7 +235,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         // same point of its motion and of its turn. (Its targets were lost with the context: a trail starts afresh.)
         if (state.Animated is { } showing && showing.Id == id && showing.StartMilliseconds == resume.StartMilliseconds)
             return;
-        if (_animator.Start(id, resume.StartMilliseconds, resume.ClockOffsetSeconds) is not { } resumed)
+        if (_animator.Start(id, resume.StartMilliseconds, resume.ClockOffsetSeconds, state.Look) is not { } resumed)
             return;
         _animator.Stop(state.Animated);
         _animator.Stop(state.Previous);
@@ -430,6 +430,14 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             // A move within the same system: its backdrops keep running; only the pictured fallback changes, and goes up if drawn.
             DeleteLayers(top);
             top.Backdrop = same;
+            // M47 B13: the default background moving between two items of different colours stays one backdrop changing colour, over
+            // the Launcher's flood (at once when the device holds still). Its text's dark ink follows the ink command, as always.
+            if (command.Ground is { } ground && ground != top.Look.Ground)
+            {
+                top.Look = top.Look with { Ground = ground };
+                top.Animated?.SetGround(ground, _backdropClock, _holdStill);
+                top.Previous?.SetGround(ground, _backdropClock, _holdStill);
+            }
             return;
         }
         if (command.Backdrop is not { } next)
@@ -450,6 +458,8 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             Deep = _ink?.Deep ?? Vector3.One,
             // The middle of the canvas this Stage draws on (the narrow one's own when the screens are swapped, M47 B11).
             WipeOriginX = command.WipeOriginX ?? (_canvasWidth / 2f),
+            // M47 B13: Big Type's own animations, sizes and recolour toward the colour the command carries.
+            Look = new BackdropLook(true, command.Ground ?? Vector3.One),
         };
         if (_backdrop is { } showing && showing.Ready)
         {
@@ -491,7 +501,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             if (state.Ids is { } ids)
             {
                 _animator ??= new BackdropRenderer(_gl, _dialect, _major, _minor);
-                state.Animated = _animator.Start(BackdropRotation.Pick(ids, null, _random), _backdropClock);
+                state.Animated = _animator.Start(BackdropRotation.Pick(ids, null, _random), _backdropClock, look: state.Look);
                 if (state.Animated is { } started)
                 {
                     BackdropStarted?.Invoke(started.Id);
@@ -935,7 +945,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         if (visible.Count == 0)
         {
             var deep = _ink?.Deep ?? Vector3.One;
-            return [new InkPass(default, default, default, zone => ZoneInk(zone, [(null, 1f)], deep, IsNarrowCanvas))];
+            return [new InkPass(default, default, default, zone => ZoneInk(zone, [(null, 1f)], deep, IsNarrowCanvas, bigType: true))];
         }
         var passes = new List<InkPass>(visible.Count);
         for (var i = 0; i < visible.Count; i++)
@@ -947,7 +957,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             var showing = EntryShowing(state, clock);
             var deep = state.Deep;
             passes.Add(new InkPass(inside, above.Length > 0 ? above[0] : default, above.Length > 1 ? above[1] : default,
-                zone => ZoneInk(zone, showing, deep, IsNarrowCanvas)));
+                zone => ZoneInk(zone, showing, deep, IsNarrowCanvas, bigType: true)));
         }
         return passes;
     }
@@ -1136,15 +1146,18 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
     /// <paramref name="deep"/> with a white veil, white ink has a veil of <paramref name="deep"/>. The veil's colour is mixed by
     /// strength, so a strong veil handing over to a light one keeps its colour while it fades.
     /// </summary>
-    internal static ZoneColours ZoneInk(StageInkZone zone, IReadOnlyList<(string? Id, float Weight)> showing, Vector3 deep, bool narrow = false)
+    /// <param name="narrow">The narrow Stage's own left veils where they are stronger (M47 B11).</param>
+    /// <param name="bigType">Big Type's answers (M47 B13: its recoloured and resized animations), falling back to today's.</param>
+    internal static ZoneColours ZoneInk(StageInkZone zone, IReadOnlyList<(string? Id, float Weight)> showing, Vector3 deep, bool narrow = false,
+        bool bigType = false)
     {
         var ink = Vector3.Zero;
         var veil = Vector3.Zero;
         float strength = 0f, total = 0f;
         foreach (var (id, weight) in showing)
         {
-            // The narrow Stage's own veil where the table's falls short over its crop (M47 B11).
-            var answer = BackdropLegibility.For(id, narrow)[zone];
+            // The narrow Stage's own veil where the table's falls short over its crop (M47 B11); Big Type's own answers (M47 B13).
+            var answer = (bigType ? BackdropLegibility.ForBigType(id, narrow) : BackdropLegibility.For(id, narrow))[zone];
             ink += weight * (answer.Dark ? deep : Vector3.One);
             veil += weight * answer.Veil * (answer.Dark ? Vector3.One : deep);
             strength += weight * answer.Veil;
@@ -1280,6 +1293,9 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
 
         /// <summary>The dark ink its text is drawn in (the console's colour taken toward near-black).</summary>
         public Vector3 Deep { get; set; } = Vector3.One;
+
+        /// <summary>The look its animations are drawn for (M47 B13): Big Type's, with the colour they are recoloured toward (or drawn from).</summary>
+        public BackdropLook Look { get; set; }
     }
 
     private BackdropState Upload(StageBackdrop backdrop) => new(backdrop)
@@ -1318,7 +1334,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         }
         if (clock - showing.StartMilliseconds < BackdropRotation.DwellMilliseconds(ids.Count))
             return;
-        if (_animator!.Start(BackdropRotation.Pick(ids, showing.Id, _random), clock) is not { } next)
+        if (_animator!.Start(BackdropRotation.Pick(ids, showing.Id, _random), clock, look: state.Look) is not { } next)
             return;
         state.Previous = showing;
         state.Animated = next;

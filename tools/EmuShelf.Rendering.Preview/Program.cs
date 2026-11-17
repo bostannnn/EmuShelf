@@ -109,7 +109,19 @@ if (args.Contains("--backdrops"))
 {
     var moments = (ArgumentValue("--times") ?? "3,8,14").Split(',').Select(value => float.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
     var onlyIds = ArgumentValue("--only")?.Split(',');
-    BackdropPreview.Run(gl, ArgumentValue("--out") ?? "artifacts/backdrops", moments, onlyIds);
+    if (args.Contains("--bigtype"))
+        BackdropPreview.RunBigType(gl, ArgumentValue("--out") ?? "artifacts/backdrops-bigtype", moments, onlyIds, ArgumentValue("--sharp-width"),
+            ArgumentValue("--colour"));
+    else
+        BackdropPreview.Run(gl, ArgumentValue("--out") ?? "artifacts/backdrops", moments, onlyIds);
+    return;
+}
+
+// M47 B13, on request: one Big Type Stage frame per console and Recent, at full size, for the owner's look.
+if (args.Contains("--stage-b13"))
+{
+    Environment.ExitCode = StageBigTypeCheck.RunB13(gl, ArgumentValue("--out") ?? "artifacts/stage-b13",
+        float.Parse(ArgumentValue("--at") ?? "8", System.Globalization.CultureInfo.InvariantCulture), ArgumentValue("--sharp-width"));
     return;
 }
 
@@ -130,7 +142,7 @@ if (args.Contains("--stage-roll"))
 // Whether the baked legibility table holds over the narrow Stage's crop of every backdrop (M47 B11).
 if (args.Contains("--stage-narrow-legibility"))
 {
-    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility");
+    Environment.ExitCode = StageNarrowLegibilityCheck.Run(gl, ArgumentValue("--out") ?? "artifacts/stage-narrow-legibility", args.Contains("--bigtype"));
     return;
 }
 

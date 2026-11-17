@@ -180,11 +180,12 @@ window.BT_TOKENS = {
     InGameMix: 0.64,                       // the Launcher while a game runs
     InGameRestOpacity: 0.28,
     // One flat colour per console, tuned by hand and approved by the owner. White type holds 4.5 to 1 on each
-    // and 3 to 1 on a tile; no two are closer than 19 (CIE76).
+    // and 3 to 1 on a tile; no two are closer than 18 (CIE76): the closest are Dreamcast and Steam at 18.3, since
+    // Dreamcast became sea blue (M47 B13, the owner's choice), then SNES and GBA at 18.6.
     consoles: {
       nes: '#7C5F50', snes: '#91408C', gbc: '#2A7D52', gba: '#7648A8',
       gamecube: '#5548C8', nds: '#6272B8', wii: '#198098', '3ds': '#C0446E',
-      megadrive: '#175A4F', dreamcast: '#B8521E',
+      megadrive: '#175A4F', dreamcast: '#0E7AB5',
       playstation: '#6B6F7E', playstation2: '#2B5BC7', psp: '#3D3D48', playstation3: '#262E7A',
       arcade: '#A8372E', steam: '#30587F',
     },
@@ -342,3 +343,38 @@ window.BT_TOKENS = {
     RecheckMs: 450,
   },
 };
+
+// M47 B13: the animated backdrops the Big Type look shows (the owner's choices of 15 November 2026 on backdrop-review.html), one
+// per console and nothing rotating (the 3DS's is "Through the screen", ideas-3ds.js, chosen in part 2); Recent's own; and the
+// default background, "Lift-off" (ideas-bg.js), for everything focused without a platform other than Recent. Today's
+// look keeps its rotating lists (KnownSystems Backdrops) and the catalog's sizes. The app's BigTypeBackdrops holds the same table.
+//   owner: the console's id (colour.consoles), 'recent' (colour.Recent), or 'default' (drawn in the focused item's colour).
+//   pull: how far it is recoloured toward that colour, 0 to 1: a layer of the colour with mix-blend-mode: color at this opacity
+//         (the review page's .tint), applied in the backdrop's output pass. 0 shows it as it is; 3ds-screen and lift-off are drawn
+//         from the colour they are given, so they need none.
+//   size: the size its frame is drawn at, in pixels. upscale: 'crisp' keeps the console's own size and shows it in whole pixels
+//         (a 256-wide frame at 8, its edges cropped); 'sharp' draws it this large so no stair-steps or soft upscaling show, the
+//         largest the Thor's GPU allowed without worse frame pacing (measured, M47 B13: the largest whose worst frame
+//         through a wipe stayed within today's worst, 3.0 ms on the GPU; PS3, not in the owner's library, a cautious step).
+//   bloomThreshold: Big Type's own, 0 to 255, where it differs from the console's finish (Wii: only the pointer glows, so the
+//         background gradient no longer clips to white in a band; the owner: "make gradient more smooth").
+window.BT_TOKENS.backdrops = [
+  { owner: 'nes', id: 'nes-stars', pull: 0.7, size: [256, 144], upscale: 'crisp' },
+  { owner: 'snes', id: 'tiles', pull: 0.5, size: [320, 180], upscale: 'crisp' },
+  { owner: 'gbc', id: 'gbc-attr', pull: 0.55, size: [160, 90], upscale: 'crisp' },
+  { owner: 'gba', id: 'gba-iso', pull: 0.6, size: [240, 135], upscale: 'crisp' },
+  { owner: 'gamecube', id: 'gc-fur', pull: 0, size: [400, 225], upscale: 'sharp' },
+  { owner: 'nds', id: 'ds-dots', pull: 1, size: [256, 144], upscale: 'crisp' },
+  { owner: 'wii', id: 'wii-pointer-v2', pull: 1, size: [640, 360], upscale: 'sharp', bloomThreshold: 251 },
+  { owner: '3ds', id: '3ds-screen', pull: 0, size: [1440, 810], upscale: 'sharp' },
+  { owner: 'megadrive', id: 'md-pipe-v2', pull: 1, size: [320, 180], upscale: 'crisp' },
+  { owner: 'dreamcast', id: 'dc-sea-v2', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+  { owner: 'playstation', id: 'tide', pull: 0, size: [320, 180], upscale: 'crisp' },
+  { owner: 'playstation2', id: 'ps2-orbs-v3', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+  { owner: 'psp', id: 'psp-ribbon', pull: 0.6, size: [1920, 1080], upscale: 'sharp' },
+  { owner: 'playstation3', id: 'ps3-sheet', pull: 0, size: [1440, 810], upscale: 'sharp' },
+  { owner: 'arcade', id: 'arc-vector-v3', pull: 1, size: [320, 180], upscale: 'crisp' },
+  { owner: 'steam', id: 'steam-mesh', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+  { owner: 'recent', id: 'arc-checker', pull: 1, size: [320, 180], upscale: 'crisp' },
+  { owner: 'default', id: 'lift-off', pull: 0, size: [1920, 1080], upscale: 'sharp' },
+];

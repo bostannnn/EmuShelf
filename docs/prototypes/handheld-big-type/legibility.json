@@ -908,5 +908,336 @@
     "veil": 0.25
    }
   }
+ ],
+
+ "bigTypeAbout": "M47 B13: Big Type's own answers, for the animations it shows (the owner's choices of 15 November 2026), baked again on 2026-11-15 with the same rule and the stress sheet's method (index.html: toneStep and contrastOf over eight moments of each prototype), each prototype recoloured as Big Type shows it (the review page's tint: mix-blend-mode color toward the console's ground at the pull; Recent's checker toward Recent's colour, its dark ink from Recent's). 'console' is the console's id, or 'recent'. 'lowestContrastInTheApp' holds the same answer over the app's own frames (the GLSL ports at Big Type's draw sizes, recoloured, tools/EmuShelf.Rendering.Preview --backdrops --bigtype) at the same moments; every one is at or above the stress sheet's 3.0. Today's look keeps 'backdrops' above. Part 2 (the owner, 16 November 2026): the 3DS's three were replaced by 3ds-screen, and lift-off is the default background (console 'default'); both measured with the same rule over the ideas-3ds.js and ideas-bg.js drawings, see each one's note.",
+ "bigType": [
+  {
+   "id": "nes-stars",
+   "console": "nes",
+   "lowestContrast": 11.28,
+   "lowestContrastInTheApp": 11.16,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "tiles",
+   "console": "snes",
+   "lowestContrast": 8.62,
+   "lowestContrastInTheApp": 8.62,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gbc-attr",
+   "console": "gbc",
+   "lowestContrast": 5.25,
+   "lowestContrastInTheApp": 4.96,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gba-iso",
+   "console": "gba",
+   "lowestContrast": 6.98,
+   "lowestContrastInTheApp": 6.15,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "gc-fur",
+   "console": "gamecube",
+   "lowestContrast": 4.93,
+   "lowestContrastInTheApp": 3.99,
+   "left": {
+    "ink": "white",
+    "veil": 0.38
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.29
+   }
+  },
+  {
+   "id": "ds-dots",
+   "console": "nds",
+   "lowestContrast": 11.2,
+   "lowestContrastInTheApp": 13.01,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "wii-pointer-v2",
+   "console": "wii",
+   "lowestContrast": 12.94,
+   "lowestContrastInTheApp": 13.13,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "3ds-screen",
+   "console": "3ds",
+   "lowestContrast": 4.21,
+   "lowestContrastInTheApp": 4.11,
+   "left": {
+    "ink": "white",
+    "veil": 0.5
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.4
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.5
+   },
+   "note": "The rule changes ink between moments on the left and the hints here (the bright core against the dark walls; it reached veils of 0.54 and 0.43): a fixed white with these veils holds every text box at 4.2 or more on the prototype and 4.11 on the app's frames."
+  },
+  {
+   "id": "md-pipe-v2",
+   "console": "megadrive",
+   "lowestContrast": 4.23,
+   "lowestContrastInTheApp": 4.29,
+   "left": {
+    "ink": "dark",
+    "veil": 0.41
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.35
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "dc-sea-v2",
+   "console": "dreamcast",
+   "lowestContrast": 5.71,
+   "lowestContrastInTheApp": 5.71,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "tide",
+   "console": "playstation",
+   "lowestContrast": 5.65,
+   "lowestContrastInTheApp": 5.63,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps2-orbs-v3",
+   "console": "playstation2",
+   "lowestContrast": 7.56,
+   "lowestContrastInTheApp": 7.59,
+   "left": {
+    "ink": "dark",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "dark",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "psp-ribbon",
+   "console": "psp",
+   "lowestContrast": 10.82,
+   "lowestContrastInTheApp": 10.52,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "ps3-sheet",
+   "console": "playstation3",
+   "lowestContrast": 15.91,
+   "lowestContrastInTheApp": 15.91,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-vector-v3",
+   "console": "arcade",
+   "lowestContrast": 11.45,
+   "lowestContrastInTheApp": 9.79,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "steam-mesh",
+   "console": "steam",
+   "lowestContrast": 8.65,
+   "lowestContrastInTheApp": 8.65,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "arc-checker",
+   "console": "recent",
+   "lowestContrast": 3.51,
+   "lowestContrastInTheApp": 3.17,
+   "note": "The left veil is 0.34, not the 0.28 the stress sheet baked: measured through the real compositor over the whole name box (tools/EmuShelf.Rendering.Preview --stage-narrow-legibility --bigtype), 0.28 left it at 2.89 on the wide Stage; 0.34 gives 3.41 (3.59 on the narrow one, with its own 0.46).",
+   "left": {
+    "ink": "dark",
+    "veil": 0.34
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "dark",
+    "veil": 0.25
+   }
+  },
+  {
+   "id": "lift-off",
+   "console": "default",
+   "lowestContrast": 5.81,
+   "lowestContrastInTheApp": 6.07,
+   "left": {
+    "ink": "white",
+    "veil": 0.28
+   },
+   "topRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "bottomRight": {
+    "ink": "white",
+    "veil": 0.25
+   },
+   "note": "Drawn in whatever colour is focused, so it was baked in 72: Settings' indigo, your folders' six colours as Big Type darkens them, the sixteen console grounds and Recent's (an empty slot keeps the last), and 48 more, 24 hues at two saturations darkened by HandheldGround.Derive until white holds its floors, which is every colour a ground can be. Every one gave this answer; the lowest contrast, 5.81, is #5F74B1. On the app's frames, in Settings' indigo, two folder colours and Dreamcast's blue: 6.07 at the lowest."
+  }
  ]
 }

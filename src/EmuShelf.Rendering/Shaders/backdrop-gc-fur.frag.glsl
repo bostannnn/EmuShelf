@@ -9,7 +9,7 @@ void main()
     vec2 p = pixelTopLeft(gl_FragCoord);
     float t = uTime;
     vec3 deep = rgb(22.0, 18.0, 56.0), lilac = rgb(176.0, 164.0, 236.0);
-    vec3 colour = mix(rgb(52.0, 44.0, 120.0), rgb(104.0, 84.0, 200.0), floor(p.y) / (uRes.y - 1.0));
+    vec3 colour = mix(rgb(52.0, 44.0, 120.0), rgb(104.0, 84.0, 200.0), pixelIndex(p.y) / (uRes.y - 1.0));
     // Fibres grow up to ~13 px upward and sideways from bases on a grid starting at (-4, -4).
     float rowLow = max(-4.0, ceil((floor(p.y) - 2.0 + 4.0) / 4.0) * 4.0 - 4.0);
     for (float by0 = rowLow; by0 <= floor(p.y) + 16.0; by0 += 4.0)

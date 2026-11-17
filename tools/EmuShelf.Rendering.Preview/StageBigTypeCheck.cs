@@ -130,13 +130,111 @@ internal static class StageBigTypeCheck
         return failures == 0 ? 0 : 1;
     }
 
-    private static void Feed(StageCompositor compositor, StageInkCommand ink, string? backdropId, float canvas)
+    /// <summary>
+    /// M47 B13, on request: one Stage frame per console and Recent as Big Type draws it, at full size, for the owner to look at:
+    /// `--stage-b13 [--out dir] [--at seconds] [--sharp-width w]`. The real compositor under Big Type, the console's one animation (all
+    /// three for the 3DS) recoloured toward its ground and drawn at its Big Type size, the veils, and white stand-ins for the text in
+    /// the zone's ink; each stand-in's ink is checked against Big Type's baked answer. Writes <c>owner-id.png</c>.
+    /// </summary>
+    public static int RunB13(GL gl, string outputDirectory, float atSeconds, string? sharpWidth)
+    {
+        if (sharpWidth is { } value)
+            BigTypeBackdrops.SharpWidthOverride = int.Parse(value, System.Globalization.CultureInfo.InvariantCulture);
+        var failures = 0;
+        Directory.CreateDirectory(outputDirectory);
+        foreach (var (owner, backdrops) in BigTypeBackdrops.All)
+        {
+            var ground = BackdropPreview.Ground(owner);
+            var deep = BigTypeVeil.Deep(ground * 255f) / 255f;
+            foreach (var entry in backdrops)
+            {
+                var (framebuffer, colour) = Target(gl, Width, Height);
+                var compositor = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }) { TargetFramebuffer = framebuffer };
+                compositor.SeedBackdrops(13);
+                compositor.Apply(new StageMotionCommand(HoldStill: false, BigType: true), 0f);
+                var ink = new StageInkCommand(ground, deep);
+                Feed(compositor, ink, entry.Id, 1920f, ground);
+                // Drawn every frame up to the moment; the ink is sent again every few seconds (it counts as navigation), so the
+                // backdrop does not come to rest.
+                var end = atSeconds * 1000f;
+                for (var now = 0f; now <= end; now += 1000f / 60f)
+                {
+                    if (now % 4000f < 1000f / 60f)
+                        compositor.Apply(ink, now);
+                    compositor.Draw(now, Width, Height);
+                }
+                var frame = Read(gl, framebuffer, Width, Height);
+                PngWriter.Write(Path.Combine(outputDirectory, $"{owner}-{entry.Id}.png"), Width, Height, frame);
+                if (owner == BigTypeBackdrops.Default)
+                    failures += ColourChange(gl, compositor, framebuffer, outputDirectory, ground, end);
+                var answer = BackdropLegibility.ForBigType(entry.Id);
+                foreach (var block in Blocks)
+                {
+                    var expected = answer[block.Zone].Dark ? deep : Vector3.One;
+                    var got = Pixel(frame, Width, block.X + (block.W / 2), block.Y + (block.H / 2));
+                    var ok = Close(got, expected);
+                    Console.WriteLine($"  {(ok ? "ok  " : "FAIL")} {owner} {entry.Id}: {block.Key} in {(answer[block.Zone].Dark ? "the dark ink" : "white")} ({Hex(got)})");
+                    if (!ok)
+                        failures++;
+                }
+                gl.DeleteFramebuffer(framebuffer);
+                gl.DeleteRenderbuffer(colour);
+                compositor.Dispose();
+            }
+        }
+        BigTypeBackdrops.SharpWidthOverride = null;
+        Console.WriteLine(failures == 0 ? $"Wrote the Big Type Stage frames to {outputDirectory}." : $"{failures} ink check(s) FAILED.");
+        return failures == 0 ? 0 : 1;
+    }
+
+    /// <summary>
+    /// The default background moving to an item of another colour (M47 B13): the same list with a new ground must keep the running
+    /// backdrop (no new start) and ease its colour over the Launcher's flood. Writes the frames at 320 ms and 700 ms.
+    /// </summary>
+    private static int ColourChange(GL gl, StageCompositor compositor, uint framebuffer, string outputDirectory, Vector3 from, float at)
+    {
+        var rose = new Vector3(0xB1, 0x5A, 0x7F) / 255f; // a folder's colour as Big Type darkens it
+        var starts = 0;
+        compositor.BackdropStarted += _ => starts++;
+        var grey = new StagePixels(1, 1, [0x40, 0x40, 0x40, 255], IsBgra: false);
+        var pictured = new StageBackdrop(new StageImage(grey, 0, 0, 1920, 1080), null, null, null, Vector2.Zero, 0, 0);
+        compositor.Apply(new StageInkCommand(rose, BigTypeVeil.Deep(rose * 255f) / 255f), at);
+        compositor.Apply(new StageBackdropCommand(pictured, BigTypeBackdrops.IdsFor(BigTypeBackdrops.Default), Ground: rose), at);
+        Vector3 Mean(byte[] frame)
+        {
+            var sum = Vector3.Zero;
+            for (var y = 0; y < Height; y += 40)
+                for (var x = 960; x < Width; x += 40)
+                    sum += Pixel(frame, Width, x, y);
+            return sum / ((Height / 40) * ((Width - 960) / 40));
+        }
+        var failures = 0;
+        Vector3? before = null;
+        foreach (var after in new[] { 320f, 700f })
+        {
+            for (var now = at; now <= at + after; now += 1000f / 60f)
+                compositor.Draw(now, Width, Height);
+            var frame = Read(gl, framebuffer, Width, Height);
+            PngWriter.Write(Path.Combine(outputDirectory, $"default-lift-off-to-rose-{after:0}ms.png"), Width, Height, frame);
+            var mean = Mean(frame);
+            Console.WriteLine($"  colour change +{after:0} ms: right half's mean {Hex(mean)} (from {Hex(from)} toward {Hex(rose)})");
+            if (before is { } earlier && Vector3.Distance(mean, earlier) < 1f / 255f)
+                failures++;
+            before = mean;
+            at += after;
+        }
+        var ok = starts == 0 && failures == 0;
+        Console.WriteLine($"  {(ok ? "ok  " : "FAIL")} the default background changed colour without restarting ({starts} new start(s))");
+        return ok ? 0 : 1;
+    }
+
+    private static void Feed(StageCompositor compositor, StageInkCommand ink, string? backdropId, float canvas, Vector3? recolour = null)
     {
         var grey = new StagePixels(1, 1, [0x40, 0x40, 0x40, 255], IsBgra: false);
         var pictured = new StageBackdrop(new StageImage(grey, 0, 0, 1920, 1080), null, null, null, Vector2.Zero, 0, 0);
         compositor.Apply(new StageCanvasCommand(canvas), 0f);
         compositor.Apply(ink, 0f);
-        compositor.Apply(new StageBackdropCommand(pictured, backdropId is null ? null : [backdropId]), 0f);
+        compositor.Apply(new StageBackdropCommand(pictured, backdropId is null ? null : [backdropId], Ground: recolour), 0f);
         var flatEnd = BigTypeVeil.LeftFlatEnd(80, 1360);
         foreach (var (key, zone) in new[] { ("veil-left", StageInkZone.Left), ("veil-top-right", StageInkZone.TopRight), ("veil-bottom-right", StageInkZone.BottomRight) })
             compositor.Apply(new StageChromeCommand(key, BigTypeVeil.Mask(zone, flatEnd, canvas, 1080), zone, Veil: true), 0f);

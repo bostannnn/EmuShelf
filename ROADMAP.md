@@ -3330,4 +3330,31 @@ falls back to the emulator and says so.
       motion (off) as found, `bigtype`. The first sitting's build replaced the one installed at 18:27; another session installed its own
       build at 19:18 and 19:25 (its probe on `rest`) and again at 19:49; the second sitting installed B12's merged build at 23:51, which the
       Thor runs now.
+- [ ] **B13 — The owner's backdrop choices, under Big Type.** One animation per console (the 3DS's three replaced in part 2), recoloured toward
+      the console's ground where chosen, drawn sharp or crisp by the owner's rule; Recent's own `arc-checker`; Dreamcast's ground sea
+      blue `#0E7AB5`; Wii's gradient smoothed; `psp-ribbon` ported. (Choices and words in `DECISIONS.md` 2026-11-15 "M47 B13".)
+      **Built:** `BigTypeBackdrops` (tokens.js `backdrops`), the recolour in the output pass (`BackdropRecolour` is the tested
+      reference; the app's frames match the review page's tint within 0.0–1.4 ΔE mean, Wii 2.5 on purpose), Big Type's shader
+      variants behind defines, Big Type's legibility (`legibility.json` `bigType`: no ink or veil changed, `psp-ribbon` new, every
+      one ≥ 3.0 on the prototypes and on the app's frames), `--stage-b13` (one full-size Stage frame per console and Recent).
+      **Draw sizes measured on the Thor** (probe `rest`, `debug.emushelf.bdsize`): `gc-fur` 400 × 225, `wii-pointer-v2` 640 × 360, the
+      3DS three, `dc-sea-v2`, `ps2-orbs-v3`, `psp-ribbon`, `steam-mesh` 1920 × 1080; `ps3-sheet` 1440 × 810 unmeasured (not in the
+      library). Wipes' worst GPU frame 1.87–2.85 ms, Wii 3.19 ms against today's worst 3.0. **Verified:** Classic's 158 design frames and
+      159 desktop-GL backdrop frames byte-identical; two Big Type renders byte-identical; `dotnet build` and the full `dotnet test` three
+      times running. **Thor (2026-11-15, Release AOT, `adb install -r`, 60 Hz, no system setting changed):** every console of the
+      owner's library and Recent in its one animation and colour, text readable, NES's pixels whole 8 × 8, PSP's ribbons sharp, Wii's
+      gradient smooth; GameCube's fur still soft at the size the GPU allows. Classic as before. Home, swap, Sounds and Reduce motion as
+      found (files byte-identical), `bigtype`, this build installed. Evidence: `m47-b13-renders` in the build sessions' notes.
+      **Part 2 (2026-11-16):** the 3DS's "Through the screen" (`3ds-screen`) replaces its three under Big Type, and "Lift-off"
+      (`lift-off`) is the default background for every focus without a platform but Recent, in the Launcher's colour for it, one
+      running backdrop changing colour between such items. Both ported from `ideas-3ds.js` / `ideas-bg.js`: Through the screen reads
+      the same as the drawing (mean ΔE 0.0); Lift-off the same scene (mean ΔE 0.5–1.5; which blocks are aloft differs). Legibility
+      baked: Lift-off white at the resting veils in all 72 colours a ground can be (lowest 5.81); Through the screen a fixed white
+      (0.5, 0.4, 0.5; lowest 4.11 on the app). **Measured on the Thor** once it was back: Through the screen 1440 × 810 (worst wipe
+      frame 2.89 ms; 1920 reached 3.27), Lift-off 1920 × 1080 (2.71). Seen on the Thor (all of it, the model view over PS2's orbs
+      included), the emulator (Lift-off) and the Mac.
+      **After merging B12 (312a93c):** the model view keeps its console's backdrop; Big Type's answers hold 3.0 wide and narrow through
+      the real compositor (`--stage-narrow-legibility --bigtype`), Recent's checker's left veil raised to 0.34 for the wide Stage.
+      Classic's 158 design frames byte-identical to the design branch's tip; 21 Big Type frames change, all focuses without a platform
+      (Settings and its pages, Activity, the Start and dock menus, the two tiles, the empty library), each now in its own colour.
       Built, awaiting the owner's look.
