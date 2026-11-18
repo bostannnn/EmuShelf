@@ -178,6 +178,8 @@ public partial class MainViewModel
         {
             if (Handheld is not null)
                 return;
+            var look = HandheldLookChoice.Resolve(_settingsService?.Load().HandheldLook ?? HandheldLook.BigType);
+            HandheldTokens.Use(look);
             var handheld = new HandheldShellViewModel(new HandheldLibrary(this), _handheldDeviceStatus,
                 layoutStore: _settingsDirectory is { } settings
                     ? new FileHandheldHomeLayoutStore(Path.Combine(settings, "handheld-home.json"), _logger)
@@ -189,12 +191,10 @@ public partial class MainViewModel
                 LaunchLead = HandheldMotion.LaunchLead,
                 SoundPlayer = _handheldSoundPlayer ?? SilentHandheldSoundPlayer.Instance,
                 SoundsEnabled = _settingsService?.Load().HandheldSounds ?? true,
-                Look = HandheldLookChoice.Resolve(_settingsService?.Load().HandheldLook ?? HandheldLook.Classic),
+                Look = look,
                 SaveSounds = SaveHandheldSounds,
                 SaveReduceMotion = SaveHandheldReduceMotion,
             };
-            // The tokens take the look's values once, before the Handheld views that read them are built (M47 B1).
-            HandheldTokens.Use(handheld.Look);
             // Read once the tokens know the look: the switch holds still under Big Type only (M47 B10).
             handheld.ReduceMotion = _settingsService?.Load().HandheldReduceMotion ?? false;
             Handheld = handheld;

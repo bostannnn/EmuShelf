@@ -1,3 +1,5 @@
+using System.Numerics;
+
 namespace EmuShelf.Rendering.Stage.BigType;
 
 /// <summary>A rectangle the Big Type ring frames, on the canvas, with its corner radius.</summary>
@@ -574,6 +576,15 @@ public static class BigTypeMotion
 
     /// <summary>Whether a flood that began <paramref name="since"/> ms ago still grows.</summary>
     public static bool Flooding(float since, bool holdStill = false) => !holdStill && since < FloodMilliseconds;
+
+    // Work in surface pixels, including the half-pixel antialiased edge used by the shaders.
+    internal static bool CoversCanvas(Vector2 centre, float radius, float width, float height)
+    {
+        var farX = Math.Max(Math.Abs(centre.X), Math.Abs(width - centre.X));
+        var farY = Math.Max(Math.Abs(centre.Y), Math.Abs(height - centre.Y));
+        var solid = radius - 0.5f;
+        return solid > 0 && solid * solid >= farX * farX + farY * farY;
+    }
 
     /// <summary>The wipe's radius <paramref name="sinceGrowing"/> ms after its circle began to grow (its delay is the caller's).</summary>
     public static float WipeRadiusAt(float sinceGrowing) =>

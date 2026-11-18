@@ -342,7 +342,9 @@ public partial class HandheldShellViewModelTests
         [AvaloniaFact]
         public Task RB_InAFolder_SwitchesToTheModel_AndBack() => BigType(async () =>
         {
-            using var shell = await InFolderAsync(new FakeLibrary().WithPlatform("ps2", 6).WithPlatform("gc", 3));
+            var library = new FakeLibrary().WithPlatform("ps2", 6).WithPlatform("gc", 3);
+            using var shell = await InFolderAsync(library);
+            Assert.Empty(library.StageCoverRequests);
             var title = shell.Stage.Name;
             Assert.True(shell.CanSwitchGameView);
             Assert.False(shell.Stage.IsModelView);
@@ -355,6 +357,7 @@ public partial class HandheldShellViewModelTests
 
             Press(shell, GamepadAction.NextPlatform);
             Assert.True(shell.Stage.IsModelView);
+            Assert.Equal(shell.Stage.GameId, Assert.Single(library.StageCoverRequests));
             Assert.False(shell.Stage.ShowsBigTypeName);
             Assert.True(shell.Stage.HasModelCover); // the test library's games have no authored medium: the flat cover stands in
             Assert.Equal(title, shell.Stage.Line);
@@ -365,6 +368,7 @@ public partial class HandheldShellViewModelTests
             // LB does the same.
             Press(shell, GamepadAction.PreviousPlatform);
             Assert.False(shell.Stage.IsModelView);
+            Assert.Single(library.StageCoverRequests);
             Assert.Equal(title, shell.Stage.Name);
             Assert.NotEqual(title, shell.Stage.Line);
             Assert.Null(shell.LastMoveDirection);

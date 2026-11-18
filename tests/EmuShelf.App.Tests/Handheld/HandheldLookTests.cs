@@ -7,17 +7,17 @@ namespace EmuShelf.App.Tests.Handheld;
 public partial class HandheldShellViewModelTests
 {
     [Avalonia.Headless.XUnit.AvaloniaFact]
-    public void Look_IsTodaysLookByDefault_AndCanBeSet()
+    public void Look_DefaultsToBigType_AndCanBeSet()
     {
         var shell = new HandheldShellViewModel(new FakeLibrary());
-        Assert.Equal(HandheldLook.Classic, shell.Look);
+        Assert.Equal(HandheldLook.BigType, shell.Look);
         Assert.Equal(HandheldLook.Classic, default(HandheldLook));
 
         var changed = new List<string?>();
         shell.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
-        shell.Look = HandheldLook.BigType;
+        shell.Look = HandheldLook.Classic;
 
-        Assert.Equal(HandheldLook.BigType, shell.Look);
+        Assert.Equal(HandheldLook.Classic, shell.Look);
         Assert.Contains(nameof(HandheldShellViewModel.Look), changed);
     }
 }

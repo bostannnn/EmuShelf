@@ -22,6 +22,15 @@ namespace EmuShelf.App.Tests.Handheld;
 [Collection(nameof(HandheldTokenLookCollection))]
 public class HandheldBigTypeLettersTests
 {
+    [Fact]
+    public void ACircularTransition_CoversEveryCornerIncludingItsSoftEdge()
+    {
+        // The Stage starts its wipe below the canvas. The upper right corner is five pixels from this origin.
+        var centre = new System.Numerics.Vector2(0, 4);
+        Assert.False(BigTypeMotion.CoversCanvas(centre, 5.49f, 3, 2));
+        Assert.True(BigTypeMotion.CoversCanvas(centre, 5.5f, 3, 2));
+    }
+
     // ---- tokens.js ----
 
     [Fact]
@@ -265,6 +274,11 @@ public class HandheldBigTypeLettersTests
 
             var letters = name.Letters(default);
             Assert.NotNull(letters);
+            name.Text = "NES";
+            Assert.NotNull(name.Letters(default));
+            name.Text = text;
+            Assert.Same(letters, name.Letters(default));
+            Assert.NotSame(letters, name.Letters(new Point(10, 20)));
             Assert.Equal(text.Count(c => !char.IsWhiteSpace(c)), letters.Letters.Count);
             var composed = new float[pixelWidth * pixelHeight];
             var atlas = letters.Atlas;

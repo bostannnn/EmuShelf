@@ -46,6 +46,9 @@ public static class HandheldMotion
     /// <summary>How long the top screen waits after the last press of a held direction.</summary>
     public static readonly TimeSpan HeldDirectionSettle = TimeSpan.FromMilliseconds(140);
 
+    /// <summary>During Big Type browsing, coalesce further Stage transitions until the selector rests for this long.</summary>
+    public static readonly TimeSpan BigTypeBrowseSettle = TimeSpan.FromMilliseconds(420);
+
     /// <summary>After a folder opens the top screen shows the open folder this long, then the first game.</summary>
     public static readonly TimeSpan FolderOpenStageHold = TimeSpan.FromMilliseconds(300);
 
@@ -292,10 +295,10 @@ public sealed class HandheldHeldDirection(TimeProvider clock)
     private long? _lastPress;
 
     /// <summary>Records a navigation press and returns whether it is part of a held direction.</summary>
-    public bool Press()
+    public bool Press(TimeSpan? window = null)
     {
         var now = clock.GetTimestamp();
-        var held = _lastPress is { } last && clock.GetElapsedTime(last, now) < HandheldMotion.HeldDirectionWindow;
+        var held = _lastPress is { } last && clock.GetElapsedTime(last, now) < (window ?? HandheldMotion.HeldDirectionWindow);
         _lastPress = now;
         return held;
     }

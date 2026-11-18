@@ -20,6 +20,7 @@ public partial class HandheldShellViewModelTests
         public List<HandheldPlatform> Platforms { get; } = [];
         public Dictionary<string, List<HandheldGameEntry>> Games { get; } = new();
         public List<long> CoverRequests { get; } = [];
+        public List<long> StageCoverRequests { get; } = [];
         public List<long> PeekRequests { get; } = [];
         public List<long> Launched { get; } = [];
         public List<GameLaunchScreen> LaunchScreens { get; } = [];
@@ -83,6 +84,8 @@ public partial class HandheldShellViewModelTests
         {
             if (!fullSize && decodeWidth == HandheldShellViewModel.TileDecodeWidth)
                 CoverRequests.Add(game.Id);
+            if (fullSize && decodeWidth == HandheldShellViewModel.StageDecodeWidth)
+                StageCoverRequests.Add(game.Id);
             if (decodeWidth == HandheldShellViewModel.PeekDecodeWidth)
                 PeekRequests.Add(game.Id);
             return Task.FromResult(CoverMaker?.Invoke(game));

@@ -24,10 +24,10 @@ namespace EmuShelf.App.ViewModels;
 /// </remarks>
 public static partial class HandheldTokens
 {
-    static HandheldTokens() => UseClassicValues();
+    static HandheldTokens() => Use(HandheldLook.BigType);
 
     /// <summary>The look whose values the tokens hold.</summary>
-    public static HandheldLook Look { get; private set; } = HandheldLook.Classic;
+    public static HandheldLook Look { get; private set; }
 
     /// <summary>
     /// Gives every token its value for <paramref name="look"/>. Called when Handheld mode starts, before its views exist.

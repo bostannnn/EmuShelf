@@ -40,10 +40,9 @@ public sealed record AppSettings
     public bool HandheldSounds { get; init; } = true;
 
     /// <summary>
-    /// Handheld mode (M47): which look it draws, today's or Big Type while the restyle is built behind the switch. Not in
-    /// Settings yet; today's look unless the file says otherwise.
+    /// The handheld look. New and pre-look settings use Big Type. An explicitly saved look survives updates.
     /// </summary>
-    public HandheldLook HandheldLook { get; init; } = HandheldLook.Classic;
+    public HandheldLook HandheldLook { get; init; } = HandheldLook.BigType;
 
     /// <summary>
     /// Handheld mode (M47 B10): the app's own reduced-motion switch, beside the system's. When on, Handheld mode holds still

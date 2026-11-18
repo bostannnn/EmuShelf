@@ -3184,8 +3184,13 @@ falls back to the emulator and says so.
       with the new motion; Big Type becomes the default and D5 is carried out; `HANDHELD-MODE.md` decision 16 and the
       motion spec are rewritten to match. **Exit:** a week of normal use on the Thor with nothing that reads as the
       old look.
-      **First part built 2026-11-15 (B10a); not ticked. Waiting for the owner:** making Big Type the default, carrying out
-      D5 (removing today's look), the sounds, and the week of use. Nothing of those was done. (Choices in `DECISIONS.md`
+      **2026-11-18:** Big Type is the default for new settings and files without a saved look. Existing explicit choices
+      are respected. The four browsing performance changes were installed and measured on the Thor with Reduce motion off.
+      A second Thor run verified reuse of focused tile pictures, deferred colour changes during rapid browsing and
+      early completion of fully covered wipes. Across 284 alternating D-pad presses, app CPU fell from 45.6% to 30.7%
+      of one core and mean device GPU load from 6.1% to 1.1%. Device results are in `artifacts/thor-check/fan-fix/`.
+      The remaining B10 work is D5, sound review and the week of normal use.
+      **First part built 2026-11-15 (B10a).** (Choices in `DECISIONS.md`
       2026-11-15 "M47 B10a".) **Built, under Big Type only:** the app's own **Reduce motion** switch in Settings → Display, after
       Sounds ("everything arrives in place at once and the backdrop holds still · Android's own setting does this too"), off by
       default, saved as `AppSettings.HandheldReduceMotion` in the portable `Settings/` folder; it joins the system's say in
@@ -3391,7 +3396,7 @@ falls back to the emulator and says so.
       recording from the interrupted session showed a blank lower screen when opening All apps from home.
       A headless regression now checks the Shelf is opaque on the first layout after handing off the native Launcher.
       **Open on the Thor:** confirm the Shelf appears and scrolls on the lower display, exercise the Wall and Reel in
-      a game, and check the Porthole through idle, wake and a screen swap. B10's default-look change awaits owner review.
+      a game, and check the Porthole through idle, wake and a screen swap.
 
 - [x] **AYN Thor settings review.** Scoped the menu to controls used by the handheld launcher and
       fitted section names, labels and values to both screen sizes. Added layout coverage for the

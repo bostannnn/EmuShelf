@@ -107,6 +107,9 @@ public interface IProbedScene
 public sealed record StageBackdropCommand(StageBackdrop? Backdrop, IReadOnlyList<string>? Animated = null, bool Drift = false,
     float? WipeOriginX = null, Vector3? Ground = null) : StageCommand
 {
+    // A shader-backed scene requests these UI-rendered pixels only if the shader cannot start.
+    // Context replay can reuse a completed fallback without capturing the visual tree again.
+    public Lazy<Task<StageBackdrop>>? Fallback { get; init; }
     public override string? RetainKey => "backdrop";
 }
 
@@ -227,6 +230,7 @@ public sealed record StageInkCommand(Vector3 Ground, Vector3 Deep) : StageComman
 /// </remarks>
 public sealed record StageMotionCommand(bool HoldStill, bool BigType = false) : StageCommand
 {
+    public bool Browsing { get; init; }
     public override string? RetainKey => "motion";
 }
 

@@ -58,6 +58,16 @@ const float Bayer[16] = float[16](0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0
 
 void main()
 {
+    float opacity = uOpacity;
+    if (uClip.w > 0.5)
+    {
+        opacity *= clamp(uClip.z - distance(gl_FragCoord.xy, uClip.xy) + 0.5, 0.0, 1.0);
+        if (opacity == 0.0)
+        {
+            fragColor = vec4(0.0);
+            return;
+        }
+    }
     vec2 uv = vNdc * 0.5 + 0.5;
     uv.x = (uCrop * 0.5) + (uv.x * (1.0 - uCrop));
 #ifdef BACKDROP_BIGTYPE
@@ -119,9 +129,6 @@ void main()
         colour += texture(uBloomNear, uv).rgb * uBloom + texture(uBloomFar, uv).rgb * uBloom * 0.9;
 #endif
 
-    float opacity = uOpacity;
-    if (uClip.w > 0.5)
-        opacity *= clamp(uClip.z - distance(gl_FragCoord.xy, uClip.xy) + 0.5, 0.0, 1.0);
 #ifdef BACKDROP_BIGTYPE
     vec3 shown = min(colour, vec3(1.0));
     if (uPull > 0.0)

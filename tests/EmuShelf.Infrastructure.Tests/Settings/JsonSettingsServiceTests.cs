@@ -52,23 +52,22 @@ public class JsonSettingsServiceTests : TempAppDirectoryTestBase
     }
 
     [Fact]
-    public void HandheldLook_IsTodaysLookUntilSaved_AndRoundTrips()
+    public void HandheldLook_DefaultsToBigType_AndHonoursSavedClassic()
     {
-        // M47 B0: the look switch the Big Type restyle is built behind.
         var service = new JsonSettingsService(AppPaths);
-        Assert.Equal(HandheldLook.Classic, new AppSettings().HandheldLook);
-        Assert.Equal(HandheldLook.Classic, service.Load().HandheldLook);
+        Assert.Equal(HandheldLook.BigType, new AppSettings().HandheldLook);
+        Assert.Equal(HandheldLook.BigType, service.Load().HandheldLook);
 
-        service.Save(service.Load() with { HandheldLook = HandheldLook.BigType });
+        service.Save(service.Load() with { HandheldLook = HandheldLook.Classic });
 
-        Assert.Contains("\"HandheldLook\": \"BigType\"", File.ReadAllText(AppPaths.SettingsFilePath));
-        Assert.Equal(HandheldLook.BigType, new JsonSettingsService(AppPaths).Load().HandheldLook);
+        Assert.Contains("\"HandheldLook\": \"Classic\"", File.ReadAllText(AppPaths.SettingsFilePath));
+        Assert.Equal(HandheldLook.Classic, new JsonSettingsService(AppPaths).Load().HandheldLook);
 
-        // A settings file from before the switch existed reads as today's look.
+        // A settings file from before the switch existed uses the new default.
         File.WriteAllText(AppPaths.SettingsFilePath, """{ "HandheldSounds": false }""");
         var older = service.Load();
         Assert.False(older.HandheldSounds);
-        Assert.Equal(HandheldLook.Classic, older.HandheldLook);
+        Assert.Equal(HandheldLook.BigType, older.HandheldLook);
     }
 
     [Fact]

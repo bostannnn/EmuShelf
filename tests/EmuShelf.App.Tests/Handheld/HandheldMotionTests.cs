@@ -131,6 +131,18 @@ public class HandheldMotionTests
         held.Reset();
         Assert.False(held.Press());
     }
+
+    [Fact]
+    public void BigTypeBrowsing_GroupsSeparateTapsUntilThePause()
+    {
+        var clock = new ManualClock();
+        var held = new HandheldHeldDirection(clock);
+        Assert.False(held.Press(HandheldMotion.BigTypeBrowseSettle));
+        clock.Advance(TimeSpan.FromMilliseconds(350));
+        Assert.True(held.Press(HandheldMotion.BigTypeBrowseSettle));
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        Assert.False(held.Press(HandheldMotion.BigTypeBrowseSettle));
+    }
 }
 
 public partial class HandheldShellViewModelTests

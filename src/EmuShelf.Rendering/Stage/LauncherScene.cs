@@ -63,6 +63,7 @@ public sealed record LauncherSprite(
 {
     /// <summary>The scale this sprite lifts to while focused.</summary>
     public float LiftTo => Lift > 0f ? Lift : LauncherMotion.LiftScale;
+    public bool CacheFace { get; init; }
 }
 
 /// <summary>A home folder's flap: closed, peeking (focused) or open (its folder zooming open).</summary>

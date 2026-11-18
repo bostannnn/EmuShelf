@@ -80,6 +80,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
 
     // Battery saver or reduced motion (StageMotionCommand): the backdrop rests whatever the navigation, and starts at rest.
     private bool _holdStill;
+    private bool _browsing;
 
     private Layer? _art;
     private List<Layer> _hero = [];
@@ -181,7 +182,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
     /// The backdrop's step interval while it has something moving (an animated backdrop's 30 Hz step, or the era
     /// motif's drift); null when it is still.
     /// </summary>
-    public float? NextFrameMilliseconds => Earliest(IsBackdropResting
+    public float? NextFrameMilliseconds => _browsing ? null : Earliest(IsBackdropResting
         ? null
         : _backdrop?.Animated is not null
             ? BackdropCatalog.StepMilliseconds
@@ -205,6 +206,8 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         // A long gap (resting, a paused activity) moves the clock no more than a frame or so.
         var delta = float.IsNaN(_backdropClockReal) ? 0f : Math.Clamp(now - _backdropClockReal, 0f, 100f);
         _backdropClockReal = now;
+        if (_browsing)
+            return;
         _backdropSpeed = StageRest.Next(_backdropSpeed, delta, _holdStill || now - _lastNavigation >= StageRest.AfterMilliseconds);
         _backdropClock += delta * StageRest.Eased(_backdropSpeed);
     }
@@ -255,6 +258,12 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         switch (command)
         {
             case StageMotionCommand motion:
+                if (_browsing && !motion.Browsing)
+                {
+                    _backdropClockReal = now;
+                    _lastInput = now;
+                }
+                _browsing = motion.Browsing;
                 _holdStill = motion.HoldStill;
                 _bigType = motion.BigType;
                 // Told before the first frame (a replay, or the mode opening under battery saver): still from the start.
@@ -429,11 +438,15 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
     private void ApplyBigTypeBackdrop(StageBackdropCommand command, float now)
     {
         var ids = command.Animated is { Count: > 0 } list ? list : null;
-        if (_backdrop is { } top && top.Ids is not null && ids is not null && ids.SequenceEqual(top.Ids) && command.Backdrop is { } same)
+        if (_backdrop is { } top && top.Ids is not null && ids is not null && ids.SequenceEqual(top.Ids)
+            && (command.Backdrop is not null || command.Fallback is not null))
         {
             // A move within the same system: its backdrops keep running; only the pictured fallback changes, and goes up if drawn.
             DeleteLayers(top);
-            top.Backdrop = same;
+            top.Backdrop = command.Backdrop;
+            top.Fallback = command.Fallback;
+            if (top.Animated is null && top.Ready && top.Backdrop is null)
+                top.Step = 1; // replace the fallback for the current tint without restarting the shader
             // M47 B13: the default background moving between two items of different colours stays one backdrop changing colour, over
             // the Launcher's flood (at once when the device holds still). Its text's dark ink follows the ink command, as always.
             if (command.Ground is { } ground && ground != top.Look.Ground)
@@ -444,7 +457,7 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             }
             return;
         }
-        if (command.Backdrop is not { } next)
+        if (command.Backdrop is null && command.Fallback is null)
         {
             foreach (var state in _beneath)
                 DeleteBackdrop(state);
@@ -454,8 +467,9 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             _animatedIds = null;
             return;
         }
-        var arriving = new BackdropState(next)
+        var arriving = new BackdropState(command.Backdrop)
         {
+            Fallback = command.Fallback,
             Step = 0,
             Ids = ids,
             Queued = now,
@@ -513,20 +527,31 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
                 }
             }
             // No animated backdrop (Recent, your folders, one that did not compile): its pictures are what shows.
-            state.Under ??= new Layer(state.Backdrop.Under, Upload(state.Backdrop.Under.Pixels, repeat: false));
+            if (state.Backdrop is { } picture)
+                state.Under ??= new Layer(picture.Under, Upload(picture.Under.Pixels, repeat: false));
+            else
+                _ = state.Fallback!.Value;
             return;
         }
         if (state.Animated is { } animated)
             _animator!.Update(animated, _backdropClock);
         else
-            UploadLayers(state);
+        {
+            if (state.Backdrop is null)
+            {
+                var pending = state.Fallback!.Value;
+                if (!pending.IsCompleted)
+                    return;
+                state.Backdrop = pending.GetAwaiter().GetResult();
+            }
+            UploadLayers(state, state.Backdrop);
+        }
         state.Step = 2;
     }
 
     /// <summary>Puts a backdrop's pictured layers on the GPU (Big Type does this only when they are to be drawn).</summary>
-    private void UploadLayers(BackdropState state)
+    private void UploadLayers(BackdropState state, StageBackdrop backdrop)
     {
-        var backdrop = state.Backdrop;
         state.Under ??= new Layer(backdrop.Under, Upload(backdrop.Under.Pixels, repeat: false));
         if (state.Over is null && backdrop.Over is { } over)
             state.Over = new Layer(over, Upload(over.Pixels, repeat: false));
@@ -571,7 +596,9 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         if (float.IsNaN(state.WipeStart) || now < state.WipeStart)
             return 0f;
         var radius = BigTypeMotion.WipeRadiusAt(now - state.WipeStart);
-        return radius >= BigTypeMotion.WipeRadius ? null : radius;
+        var centre = new Vector2(state.WipeOriginX, CanvasHeight + BigTypeMotion.WipeBelow) * _fit.Scale;
+        return radius >= BigTypeMotion.WipeRadius || BigTypeMotion.CoversCanvas(centre, radius * _fit.Scale, _fit.Width, _fit.Height)
+            ? null : radius;
     }
 
     /// <summary>A circle on the canvas as the shader takes it: in the surface's pixels from the bottom-left, keeping what is inside (or outside).</summary>
@@ -1260,9 +1287,10 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
         public uint Texture { get; } = texture;
     }
 
-    private sealed class BackdropState(StageBackdrop backdrop)
+    private sealed class BackdropState(StageBackdrop? backdrop)
     {
-        public StageBackdrop Backdrop { get; set; } = backdrop;
+        public StageBackdrop? Backdrop { get; set; } = backdrop;
+        public Lazy<Task<StageBackdrop>>? Fallback { get; set; }
 
         /// <summary>The animated backdrop drawn instead of the layers, when the system has one that compiled.</summary>
         public BackdropInstance? Animated { get; set; }
@@ -1387,15 +1415,17 @@ public sealed partial class StageCompositor : INativeScene, IProbedScene
             return;
         }
         // Big Type uploads the pictured layers only when they are drawn (M47 B6).
+        if (state.Backdrop is not { } backdrop)
+            return;
         if (state.Under is null)
-            UploadLayers(state);
+            UploadLayers(state, backdrop);
         // A wipe's circle cuts the pictured layers as it cuts an animated backdrop.
         _clip0 = clip;
         // The pictured layers are 1920 wide: a narrower canvas shows their middle.
         var shift = BackdropShift;
         DrawLayer(state.Under!, opacity, 1f, 0, 0, shift);
-        var offset = DriftOffset(state.Backdrop, clock);
-        if (state.Tile != 0 && state.Backdrop.Tile is { } tile)
+        var offset = DriftOffset(backdrop, clock);
+        if (state.Tile != 0 && backdrop.Tile is { } tile)
         {
             // The tile layer slides by the offset: canvas x shows the tile at x - offset.
             var uv = new Vector4(

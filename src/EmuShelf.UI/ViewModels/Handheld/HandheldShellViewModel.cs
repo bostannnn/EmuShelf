@@ -591,7 +591,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         LastMoveDirection = direction;
         // The top screen changes once per move: a held direction waits until it settles (Motion spec).
         _stageHold = null;
-        _stageDefer = _heldDirection.Press() ? HandheldMotion.HeldDirectionSettle : null;
+        var settle = HandheldTokens.IsBigType && !HoldsStill;
+        _stageDefer = _heldDirection.Press(settle ? HandheldMotion.BigTypeBrowseSettle : null)
+            ? settle ? HandheldMotion.BigTypeBrowseSettle : HandheldMotion.HeldDirectionSettle
+            : null;
         try
         {
             MoveCore(direction);
@@ -1256,10 +1259,15 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         for (var i = 0; i < DockItems.Count; i++)
             DockItems[i].IsFocused = Zone == HandheldZone.Dock && i == DockIndex;
 
-        UpdateHomePeek();
-        UpdateGround();
-        if (StageDelay() is { } delay)
-            ScheduleStage(delay);
+        if (HandheldTokens.IsClassic)
+            UpdateHomePeek();
+        var delay = StageDelay();
+        IsBrowsingRapidly = delay == HandheldMotion.BigTypeBrowseSettle && Zone == HandheldZone.Grid &&
+            !IsLauncherOverlayOpen && !Stage.IsModelView;
+        if (!IsBrowsingRapidly)
+            UpdateGround();
+        if (delay is { } pending)
+            ScheduleStage(pending);
         else
             UpdateStage();
         UpdateHints();
@@ -1274,6 +1282,10 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     /// <summary>The Stage is waiting for a held direction to settle (or for a folder's page to land).</summary>
     public bool IsStagePending { get; private set; }
+
+    // While the ring crosses intermediate grid tiles the Stage retains its last selection.
+    [ObservableProperty]
+    public partial bool IsBrowsingRapidly { get; private set; }
 
     /// <summary>Brings the Stage up to date now. The settle timer calls it; tests call it instead of waiting.</summary>
     public void SettleStage()
@@ -1319,6 +1331,11 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
 
     private void UpdateStage()
     {
+        if (IsBrowsingRapidly)
+        {
+            IsBrowsingRapidly = false;
+            UpdateGround();
+        }
         IsStagePending = false;
         _stageTimer?.Stop();
         SyncTyping();
@@ -1540,7 +1557,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         };
         Stage.AccentBrush = HandheldTokens.FolderBrush(source);
         ApplyBigTypeFolderText(source, subtitle);
-        ApplyPeek(source, Stage);
+        if (HandheldTokens.IsClassic)
+            ApplyPeek(source, Stage);
     }
 
     private long _stageGameId = -1;
@@ -1603,7 +1621,8 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
         _medium.Recentre();
         PushMediumPose();
         UpdateMediumTimer();
-        _ = LoadStageArtAsync(game, hero: false);
+        if (!HandheldTokens.IsBigType)
+            _ = LoadStageArtAsync(game, hero: false);
     }
 
     /// <summary>

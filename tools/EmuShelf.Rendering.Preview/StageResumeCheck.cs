@@ -114,6 +114,27 @@ internal static class StageResumeCheck
         Check("…and stays still through a navigation", running.IsBackdropResting);
         running.Dispose();
 
+        using (var stage = new StageCompositor(gl, GlslDialect.Desktop, 3, 3, () => { }))
+        {
+            stage.Apply(new StageMotionCommand(true, BigType: true), 0f);
+            var pending = new TaskCompletionSource<StageBackdrop>();
+            var picture = new Lazy<Task<StageBackdrop>>(() => pending.Task);
+            var shader = new StageBackdropCommand(null, ["ps2-towers"]) { Fallback = picture };
+            stage.Apply(shader, 0f);
+            Draw(gl, stage, framebuffer, 0f);
+            Check("a working shader leaves the fallback picture unrequested", !picture.IsValueCreated);
+            stage.Apply(shader with { Animated = ["missing-test-shader"] }, 100f);
+            Draw(gl, stage, framebuffer, 116f);
+            Draw(gl, stage, framebuffer, 132f);
+            Check("a missing shader requests the picture and keeps drawing while it is pending", picture.IsValueCreated);
+            pending.SetResult(pictured);
+            Draw(gl, stage, framebuffer, 150f);
+            gl.BindFramebuffer(FramebufferTarget.Framebuffer, framebuffer);
+            var sample = new byte[4];
+            gl.ReadPixels(240, 135, 1, 1, PixelFormat.Rgba, PixelType.UnsignedByte, sample.AsSpan());
+            Check("the completed fallback reaches the screen", sample.SequenceEqual(new byte[] { 40, 40, 40, 255 }));
+        }
+
         gl.DeleteFramebuffer(framebuffer);
         gl.DeleteRenderbuffer(colour);
         Console.WriteLine(failures == 0 ? "All Stage resume checks passed." : $"{failures} Stage resume check(s) FAILED.");

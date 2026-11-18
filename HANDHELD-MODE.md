@@ -191,13 +191,12 @@ is in [docs/prototypes/handheld-mode/REVIEW.md](docs/prototypes/handheld-mode/RE
       setup again".
     - **Long text on the Stage (M47 B14):** the line and the second line run on at a whole word over
       three rows they share (`stage.LineRowsShared`), never an ellipsis mid-word.
-    - **Behind a switch until the owner makes it the default.** The look is `HandheldLook`
-      (`Classic`, `BigType`) in `EmuShelf.Core`, saved as `AppSettings.HandheldLook`, **default
-      `Classic`**; `debug.emushelf.look` (`bigtype` or `classic`) overrides it for one run on
-      Android, `EMUSHELF_DESIGN_LOOK` for the design renders. Today's look below is still what a
-      user gets unless the switch says otherwise, and it is unchanged. The owner decided (M47 D5) that
-      once Big Type is the default today's look is deleted, with no setting to choose between them;
-      that has not been done yet.
+    - **Big Type is the default** (owner, 2026-11-18). New settings and older files missing
+      `AppSettings.HandheldLook` open in Big Type. An explicit saved look still takes effect.
+      The handheld Settings menu has no look selector. Android development builds and release
+      testing can override the saved look with `debug.emushelf.look` (`bigtype` or `classic`).
+      The design renderer uses `EMUSHELF_DESIGN_LOOK`. Removal of the Classic implementation
+      is tracked under M47 D5.
 
     *Superseded (kept for the record):* the original decision 16 read "a light, airy white-and-grey
     default on EmuShelf's indigo accent, derived from the theme catalogue, with a dark variant from
@@ -417,12 +416,10 @@ and never touches its files.
 
 ## Motion spec (the heart of this mode)
 
-There are two motion specs while the look switch exists. **Big Type's** (M47, first below) is the
-one the mode is moving to; it runs only when `HandheldLook` is `BigType`. **Today's look's** (M45,
-after it) is what `Classic`, still the default, runs, unchanged; it is superseded by Big Type's and
-goes when today's look is removed (M47 D5).
+The default Big Type look uses the M47 motion spec below. The M45 spec that follows describes
+the Classic implementation retained for existing settings.
 
-### Big Type (M47, behind the look switch)
+### Big Type (M47, default)
 
 **Where the numbers live.** Every duration, distance, scale and curve is a named value in
 `docs/prototypes/handheld-big-type/tokens.js` (`motion`, `shape`), mirrored in the app: the maths
@@ -432,6 +429,13 @@ is in `EmuShelf.Rendering/Stage/BigType` (`BigTypeMotion`, `BigTypeLauncherMotio
 (`StageCompositor`, `LauncherCompositor`) and the Avalonia views, and held to tokens.js by tests.
 A number the mock does not have is marked as the app's own where it is defined. Below, a name in
 code font is a tokens.js entry.
+
+The Launcher moves the selector on every press. With motion enabled, a single browsing press
+updates the Stage immediately. Further presses within 420 ms keep moving the selector and
+defer the next Stage transition until the last selection has rested for 420 ms. During
+those repeats the Launcher keeps its current ground colour and the Stage holds its
+decorative backdrop. The landing tile then supplies the colour, title and backdrop.
+Once a circular transition covers its display, the compositor releases the outgoing layer.
 
 **Rules.**
 - **Two curves.** Anything arriving lands on `Land` (a spring-like overshoot); anything going

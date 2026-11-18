@@ -41,6 +41,10 @@ public class TestApp : Application
 
 public static class TestAppBuilder
 {
+    [System.Runtime.CompilerServices.ModuleInitializer]
+    internal static void SelectReferenceLook() =>
+        EmuShelf.App.ViewModels.HandheldTokens.Use(EmuShelf.Core.Handheld.HandheldLook.Classic);
+
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<TestApp>()
             .UseSkia()

@@ -17,6 +17,8 @@ public sealed partial class LauncherCompositor : INativeScene
 {
     private readonly GL _gl;
     private readonly GlProgram _sprites;
+    // Recently replaced tile faces already live on the GPU. The live sprites own their own textures.
+    private readonly LinkedList<(StagePixels Pixels, uint Texture)> _spareFaces = [];
     private readonly GlProgram _ring;
     private readonly uint _vao;
 
@@ -297,7 +299,6 @@ public sealed partial class LauncherCompositor : INativeScene
         _gl.BindTexture(TextureTarget.Texture2D, _white);
         _sprites.Set("uLinear", new Vector4(1, 0, 0, 1));
         _sprites.Set("uTranslate", Vector2.Zero);
-        _sprites.Set("uRect", new Vector4(0, 0, _layout.CanvasWidth, _layout.CanvasHeight));
         _sprites.Set("uScale", new Vector3(1, 0, 0));
         _sprites.Set("uOffset", Vector2.Zero);
         _sprites.Set("uGroup", new Vector3(1, 0, 0));
@@ -308,6 +309,9 @@ public sealed partial class LauncherCompositor : INativeScene
         {
             var origin = wave.Origin ??= FloodOrigin();
             var radius = BigTypeMotion.FloodRadiusAt(now - wave.Start, _bt.HoldStill);
+            var extentX = radius + 1f / sx;
+            var extentY = extentX * sx / sy;
+            _sprites.Set("uRect", new Vector4(origin.X - extentX, origin.Y - extentY, 2f * extentX, 2f * extentY));
             _sprites.Set("uTint", wave.Colour);
             _sprites.Set("uClip0", new Vector4(origin.X * sx, surfaceHeight - (origin.Y * sy), radius * sx, 1f));
             _gl.DrawArrays(PrimitiveType.TriangleStrip, 0, 4);
@@ -319,13 +323,19 @@ public sealed partial class LauncherCompositor : INativeScene
     }
 
     /// <summary>A wave that has covered the screen becomes the ground, with every wave before it (before the screen is cleared).</summary>
-    private void SettleFlood(float now)
+    private void SettleFlood(float now, float sx, float sy)
     {
         for (var i = _waves.Count - 1; i >= 0; i--)
         {
-            if (BigTypeMotion.Flooding(now - _waves[i].Start, _bt.HoldStill))
-                continue;
-            _groundTo = _waves[i].Colour;
+            var wave = _waves[i];
+            var since = now - wave.Start;
+            if (BigTypeMotion.Flooding(since, _bt.HoldStill))
+            {
+                var centre = (wave.Origin ??= FloodOrigin()) * new Vector2(sx, sy);
+                if (!BigTypeMotion.CoversCanvas(centre, BigTypeMotion.FloodRadiusAt(since) * sx, _layout.CanvasWidth * sx, _layout.CanvasHeight * sy))
+                    continue;
+            }
+            _groundTo = wave.Colour;
             _waves.RemoveRange(0, i + 1);
             break;
         }
@@ -390,9 +400,18 @@ public sealed partial class LauncherCompositor : INativeScene
             if (_bigType && !_bt.InRun && existing.Sprite.Text is { } before && sprite.Text is { } after &&
                 BigTypeMotion.Rolls(before.Text, after.Text, _bt.HoldStill))
                 existing.Roll = (existing.Texture, existing.Sprite.Image, before, now);
+            else if (existing.Sprite.CacheFace)
+            {
+                _spareFaces.AddFirst((existing.Sprite.Image.Pixels, existing.Texture));
+                if (_spareFaces.Count > 8)
+                {
+                    _gl.DeleteTexture(_spareFaces.Last!.Value.Texture);
+                    _spareFaces.RemoveLast();
+                }
+            }
             else
                 _gl.DeleteTexture(existing.Texture);
-            existing.Texture = SpriteTextures.Upload(_gl, sprite.Image.Pixels, repeat: false);
+            existing.Texture = TextureFor(sprite);
         }
         if (!ReferenceEquals(existing.Sprite.LiftShadow, sprite.LiftShadow))
         {
@@ -404,6 +423,21 @@ public sealed partial class LauncherCompositor : INativeScene
         if (sprite.Id == _focused && sprite.Liftable && existing.LiftTo > 1f && existing.LiftTo != sprite.LiftTo)
             existing.LiftTo = sprite.LiftTo;
         existing.Sprite = sprite;
+    }
+
+    private uint TextureFor(LauncherSprite sprite)
+    {
+        if (sprite.CacheFace)
+        {
+            for (var node = _spareFaces.First; node is not null; node = node.Next)
+            {
+                if (!ReferenceEquals(node.Value.Pixels, sprite.Image.Pixels))
+                    continue;
+                _spareFaces.Remove(node);
+                return node.Value.Texture;
+            }
+        }
+        return SpriteTextures.Upload(_gl, sprite.Image.Pixels, repeat: false);
     }
 
     private void ApplyFocus(LauncherFocusCommand focus, float now)
@@ -498,7 +532,9 @@ public sealed partial class LauncherCompositor : INativeScene
         _gl.Disable(EnableCap.ScissorTest);
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.One, BlendingFactor.OneMinusSrcAlpha);
-        SettleFlood(now);
+        var sx = surfaceWidth / _layout.CanvasWidth;
+        var sy = surfaceHeight / _layout.CanvasHeight;
+        SettleFlood(now, sx, sy);
         var ground = Ground();
         _gl.ClearColor(ground.X, ground.Y, ground.Z, 1f);
         _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
@@ -508,8 +544,6 @@ public sealed partial class LauncherCompositor : INativeScene
         _sprites.Set("uTexture", 0);
         _sprites.Set("uCanvas", new Vector2(_layout.CanvasWidth, _layout.CanvasHeight));
 
-        var sx = surfaceWidth / _layout.CanvasWidth;
-        var sy = surfaceHeight / _layout.CanvasHeight;
         var flooding = _waves.Count > 0 && DrawFlood(now, sx, sy, surfaceHeight);
         animating |= flooding;
         _probeTag = flooding ? "flood" : null;
@@ -914,6 +948,9 @@ public sealed partial class LauncherCompositor : INativeScene
 
     public void Dispose()
     {
+        foreach (var face in _spareFaces)
+            _gl.DeleteTexture(face.Texture);
+        _spareFaces.Clear();
         DeleteAll(_live.Values);
         DeleteAll(_closing);
         DisposeLetters();

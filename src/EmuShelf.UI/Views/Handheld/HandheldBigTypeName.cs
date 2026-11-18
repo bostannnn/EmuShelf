@@ -412,6 +412,12 @@ public sealed class HandheldBigTypeName : Control
         return letters;
     });
 
+    // Per display: the narrow and wide layouts fit text differently. The bound includes all cached RGBA atlases.
+    private const int AtlasBudget = 8 * 1024 * 1024;
+    private readonly LinkedList<(AtlasKey Key, BigTypeLetters Value)> _atlases = [];
+    private int _atlasBytes;
+    private readonly record struct AtlasKey(string Text, Size Box, Typeface Face, Point Origin, double Opacity);
+
     /// <summary>
     /// The fitted name as the native Stage draws it (M47 B6, R1's route): each distinct letter rasterised once, in white, in an ink-tight
     /// cell of one atlas, and every letter placed where this control draws it at rest, the control's top left at <paramref name="origin"/>
@@ -421,11 +427,34 @@ public sealed class HandheldBigTypeName : Control
     {
         if (Fitted is not { } name)
             return null;
+        var key = new AtlasKey(name.Text, _fittedFor!.Value.Box, name.Typeface, origin, TextOpacity);
+        if (!IsTyped)
+        {
+            for (var node = _atlases.First; node is not null; node = node.Next)
+            {
+                if (node.Value.Key != key)
+                    continue;
+                _atlases.Remove(node);
+                _atlases.AddFirst(node);
+                return node.Value.Value;
+            }
+        }
         var placed = LettersOf(name).Select(letter => new HandheldLetterAtlas.Placed(letter.Text, letter.Origin, letter.Order)).ToList();
         // A typed word's deleted letter goes with it, placed after its last letter, to fall off the end (M47 B9).
         if (_ghost is { } ghost && GhostOf(name, ghost) is { } fall)
             placed.Add(new HandheldLetterAtlas.Placed(fall.Text, fall.Origin, -1));
-        return HandheldLetterAtlas.Build(name.Text, placed, name.Typeface, name.Size, origin, (float)TextOpacity);
+        var letters = HandheldLetterAtlas.Build(name.Text, placed, name.Typeface, name.Size, origin, (float)TextOpacity);
+        if (!IsTyped && letters is not null && letters.Atlas.Data.Length <= AtlasBudget)
+        {
+            _atlases.AddFirst((key, letters));
+            _atlasBytes += letters.Atlas.Data.Length;
+            while (_atlasBytes > AtlasBudget || _atlases.Count > 16)
+            {
+                _atlasBytes -= _atlases.Last!.Value.Value.Atlas.Data.Length;
+                _atlases.RemoveLast();
+            }
+        }
+        return letters;
     }
 
     /// <summary>A small cache of each fitted name's placed letters (a name is laid out again only when its fit changes).</summary>

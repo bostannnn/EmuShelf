@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using Avalonia.Headless.XUnit;
 using EmuShelf.App.Services;
 using EmuShelf.App.ViewModels;
 using EmuShelf.Core.Handheld;
@@ -320,7 +321,7 @@ public partial class HandheldShellViewModelTests
             shell.Dispose();
         });
 
-        [Fact]
+        [AvaloniaFact]
         public Task AFolderWhoseGamesAreAlreadyHere_SaysSo_NotThatNoneWereFound() => BigType(async () =>
         {
             var library = EmptyLibrary();

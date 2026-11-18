@@ -56,6 +56,61 @@ public partial class HandheldShellViewModelTests
             Dispatcher.UIThread.RunJobs();
         }
 
+        [AvaloniaFact]
+        public Task RevisitingAConsole_ReusesBothTileFaces() => BigType(async () =>
+        {
+            var previous = HandheldNativeStage.Launcher;
+            var screen = new RecordingNativeScreen();
+            using var shell = await CreateAsync(new FakeLibrary().WithPlatform("nes", 1).WithPlatform("snes", 1));
+            HandheldNativeStage.Launcher = screen;
+            var window = new Window { Width = 1240, Height = 1080 };
+            try
+            {
+                window.Content = new HandheldLauncherView { DataContext = shell };
+                window.Show();
+                await SettleAsync();
+                StagePixels Face() => screen.Sprites("h:0:0").Single().Image.Pixels;
+                var focused = Face();
+                Press(shell, GamepadAction.NavigateRight);
+                await SettleAsync();
+                var resting = Face();
+                Assert.NotSame(focused, resting);
+                Press(shell, GamepadAction.NavigateLeft);
+                await SettleAsync();
+                Assert.Same(focused, Face());
+                Press(shell, GamepadAction.NavigateRight);
+                await SettleAsync();
+                Assert.Same(resting, Face());
+            }
+            finally
+            {
+                window.Close();
+                HandheldNativeStage.Launcher = previous;
+            }
+        });
+
+        [AvaloniaFact]
+        public Task RapidMoves_HoldTheStageUntilTheSelectorLands() => BigType(async () =>
+        {
+            var library = new FakeLibrary().WithPlatform("nes", 1).WithPlatform("snes", 1);
+            var (shell, clock) = await CreateWithClockAsync(library);
+            using (shell)
+            {
+                Assert.True(shell.DispatchGamepadAction(GamepadAction.NavigateRight));
+                Assert.False(shell.IsBrowsingRapidly);
+                var first = shell.Stage.Title;
+                clock.Advance(TimeSpan.FromMilliseconds(250));
+                Assert.True(shell.DispatchGamepadAction(GamepadAction.NavigateLeft));
+                Assert.True(shell.IsBrowsingRapidly);
+                Assert.True(shell.CurrentPage!.Slots[0].IsFocused);
+                Assert.Equal(first, shell.Stage.Title);
+                shell.SettleStage();
+                Assert.False(shell.IsBrowsingRapidly);
+                Assert.Equal("NES System", shell.Stage.Title);
+                Assert.Empty(library.PeekRequests);
+            }
+        });
+
         // ---- (1) The native feed's folder name follows the fit ----
 
         private static async Task<(HandheldShellViewModel Shell, RecordingNativeScreen Launcher, HandheldLauncherView View, Window Window)>

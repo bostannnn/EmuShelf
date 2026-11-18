@@ -185,6 +185,9 @@ internal sealed partial class HandheldNativeStageFeed
         if (IsPaused || !_active)
             return;
         _catchUpPending = true;
+        SendInk();
+        SendMotion();
+        OnInput();
         if (_stage is { } current)
             SendPorthole(current, animate: false);
         if (!_backdropSentOnce || !ReferenceEquals(_backdropSent, _stage?.Backdrop))
@@ -246,14 +249,14 @@ internal sealed partial class HandheldNativeStageFeed
     // Big Type's motion (M47 B6) goes with it: the wipe, the letters.
     private void SendMotion()
     {
-        if (_active && _shell is { } shell)
-            _host.Post(new StageMotionCommand(shell.HoldsStill, HandheldTokens.IsBigType));
+        if (_active && !IsPaused && _shell is { } shell)
+            _host.Post(new StageMotionCommand(shell.HoldsStill, HandheldTokens.IsBigType) { Browsing = shell.IsBrowsingRapidly });
     }
 
     // A press (M47 B6): the name's letters hop on the Launcher's schedule.
     private void OnInput()
     {
-        if (_active && HandheldTokens.IsBigType)
+        if (_active && !IsPaused && HandheldTokens.IsBigType && _shell is { IsBrowsingRapidly: false })
             _host.Post(new StageInputCommand());
     }
 
@@ -288,6 +291,7 @@ internal sealed partial class HandheldNativeStageFeed
                 _host.Post(new StageLaunchCommand(null));
                 break;
             case nameof(HandheldShellViewModel.HoldsStill):
+            case nameof(HandheldShellViewModel.IsBrowsingRapidly):
                 SendMotion();
                 break;
             case nameof(HandheldShellViewModel.TimeText):
@@ -493,7 +497,7 @@ internal sealed partial class HandheldNativeStageFeed
     /// <summary>The ground the native Stage clears to and the dark ink it draws with, from the Launcher's colour. Big Type only.</summary>
     private void SendInk()
     {
-        if (!_active || !HandheldTokens.IsBigType || _shell is not { } shell || _inkSent == shell.LauncherGround)
+        if (!_active || IsPaused || !HandheldTokens.IsBigType || _shell is not { } shell || _inkSent == shell.LauncherGround)
             return;
         _inkSent = shell.LauncherGround;
         var ground = shell.LauncherGround;
@@ -672,11 +676,17 @@ internal sealed partial class HandheldNativeStageFeed
         // keeps the one it has, or at a start shows its ground, the Launcher's colour, with white type, until the first one comes.
         if (HandheldTokens.IsBigType && _stage?.Backdrop is null)
             return;
-        _backdropSent = _stage?.Backdrop;
+        var backdrop = _stage?.Backdrop;
+        _backdropSent = backdrop;
         _backdropSentOnce = true;
-        _host.Post(new StageBackdropCommand(HandheldEraBackdrop.RenderLayers(_stage?.Backdrop), _stage?.Backdrop?.Animated,
-            Drift: _stage?.IsDrift == true, WipeOriginX: DriftWipeOriginX() ?? WipeOriginX(),
-            Ground: BigTypeGround(_stage?.Backdrop)));
+        var defer = HandheldTokens.IsBigType && backdrop?.Animated is { Count: > 0 };
+        var pictured = defer ? null : HandheldEraBackdrop.RenderLayers(backdrop);
+        _host.Post(new StageBackdropCommand(pictured, backdrop?.Animated,
+            Drift: _stage?.IsDrift == true, WipeOriginX: DriftWipeOriginX() ?? WipeOriginX(), Ground: BigTypeGround(backdrop))
+        {
+            Fallback = defer ? new Lazy<Task<StageBackdrop>>(async () =>
+                await Dispatcher.UIThread.InvokeAsync(() => HandheldEraBackdrop.RenderLayers(backdrop))) : null,
+        });
     }
 
     /// <summary>

@@ -15691,3 +15691,47 @@ and Show empty platforms. Both handheld looks offer interface sounds. Big Type a
 
 The settings lists keep whole rows for controller focus and scrolling. Long labels can use two lines
 inside a row. The Big Type section and value columns share the extra width when the screens are swapped.
+
+## 2026-11-18 — Big Type by default and selector performance on the Thor
+
+Big Type is the default for new settings and for settings files that predate the look field.
+Existing saved choices still apply. The Thor ran the release with Big Type saved and the
+developer override empty.
+
+- Keep the selector responsive on every press. A first press updates the Stage immediately.
+  Additional presses within 420 ms defer the next Stage change until the selector rests there.
+  The previous 150 ms threshold missed repeated taps in the measured NES/SNES route and
+  started overlapping 760 ms backdrop wipes.
+- Parked views skip ordinary input and colour updates. A screen swap refreshes the incoming view.
+  Request the fallback picture for an animated backdrop only when the shader cannot start.
+  The compositor continues drawing while the UI thread prepares that picture.
+- Reuse the fitted title's letter atlas across revisits, limited to 16 entries and 8 MiB per
+  display. Typing keeps its own rendering path so a deleted letter can finish its animation.
+  Defer the 640 px game cover until a view needs it. The game model can use its thumbnail
+  while the sharper cover loads.
+- With Reduce motion off, the two repeated console runs averaged 47% of one CPU core and
+  6.1–6.2% device GPU load, previously about 71% and 15.6–15.7%. Both parked views reported
+  zero frames over 36 console moves. In an additional 284-press run, the fan speed readout
+  reached 7,800 and its median in the last 15 seconds was 7,200. The unmapped-key control
+  peaked at 6,900 and ended with a 6,600 median. The full device comparison is in
+  `artifacts/thor-check/performance-updated/comparison.txt`.
+
+## 2026-11-18 — Tile focus and backdrop work on the Thor
+
+Big Type keeps the focused and resting pictures of flat tiles on the visible home page. The
+compositor can retrieve the eight most recently replaced tile textures. Page and layout
+changes invalidate the relevant pictures. Revisiting a console now reuses its tile face and
+skips the cover peeks that only the Classic folder flap displays.
+
+During a run of D-pad presses within 420 ms, keep the ring moving and defer the Launcher
+ground colour together with the Stage selection. Hold the Stage's decorative backdrop clock
+until the selector lands. A slow tap still plays its transition. Draw the Launcher's flood
+only within the growing circle's bounds, skip fully clipped backdrop pixels, and retire the
+outgoing picture once the furthest physical pixel is covered.
+
+With motion enabled, 36 console moves produced 125 measured Stage frames on the Thor,
+down from 467. The Launcher continued rendering the ring, and both parked views recorded
+zero frames. Over 284 console moves the fan driver reported a median of 6,900 for both
+navigation and control, with peaks of 7,500 and 7,200 respectively. The control allowed
+the idle artwork to appear. Other routes and same-screen controls are recorded in
+`artifacts/thor-check/fan-fix/comparison.txt`.

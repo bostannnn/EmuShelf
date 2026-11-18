@@ -80,6 +80,8 @@ public partial class HandheldShellViewModel
             ReleaseModelTurn();
         if (_stageGame is not { } game || game.Id != _stageGameId || Stage.Kind != HandheldStageKind.Game)
             return;
+        if (showing && _stageArtLoad is null)
+            _ = LoadStageArtAsync(game, hero: false);
         if (showing && !_modelTexts)
             ApplyModelTexts(game);
         else if (!showing && _modelTexts)

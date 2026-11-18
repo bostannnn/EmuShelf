@@ -74,6 +74,9 @@ internal sealed class HandheldNativeLauncherFeed
     private bool _launchPending;
 
     private readonly Dictionary<string, string> _sent = new(StringComparer.Ordinal);
+    // Only the visible home page keeps both appearances of a tile. A repicture invalidates their geometry.
+    private readonly Dictionary<(string Id, bool Focused), (string Key, StageImage Image)> _homeFaces = [];
+    private int? _facePage;
     private readonly Dictionary<Control, (string Id, LauncherTrack Track, float ColumnShift)> _anchors = [];
     private readonly Dictionary<(int, int, int), StageImage> _glows = [];
     private readonly HashSet<INotifyPropertyChanged> _watched = [];
@@ -220,6 +223,7 @@ internal sealed class HandheldNativeLauncherFeed
         if (IsPaused)
             return;
         _catchUpPending = true;
+        OnInput();
         _focusSent = null;
         _tracksSent = null;
         UpdateActive();
@@ -472,13 +476,13 @@ internal sealed class HandheldNativeLauncherFeed
     // Launcher has the screen too, so the native one wakes in step when it comes back.
     private void OnInput()
     {
-        if (HandheldTokens.IsBigType && !_failed)
+        if (HandheldTokens.IsBigType && !IsPaused && !_failed)
             _host.Post(new LauncherInputCommand());
     }
 
     private void OnBumped(HandheldDirection direction)
     {
-        if (!_active)
+        if (!_active || IsPaused)
             return;
         var (x, y) = direction switch
         {
@@ -568,6 +572,7 @@ internal sealed class HandheldNativeLauncherFeed
             foreach (var id in _sent.Keys)
                 _host.Post(new LauncherSpriteCommand(id, null));
             _sent.Clear();
+            _homeFaces.Clear();
             _folderStates.Clear();
             _focusSent = null;
             _tracksSent = null;
@@ -765,16 +770,17 @@ internal sealed class HandheldNativeLauncherFeed
     // A liftable piece: its wrapper is pictured; it lifts about its focusable panel's centre.
     private void Liftable(string id, string key, Control wrapper, LauncherGroup group, LauncherTrack track, float columnShift,
         HashSet<string> present, StageImage? liftShadow = null, HandheldFolderArt? folderArt = null, int z = 0, float lift = 0f,
-        LauncherCell? cell = null)
+        LauncherCell? cell = null, bool? homeFace = null)
     {
         if (wrapper is not Decorator { Child: Control panel } || !wrapper.IsVisible)
             return;
         present.Add(id);
         _anchors[panel] = (id, track, columnShift);
-        foreach (var art in wrapper.GetVisualDescendants().OfType<HandheldFolderArt>())
-            art.Classes.Set("frozen", true);
         if (_sent.TryGetValue(id, out var sent) && sent == key)
             return;
+        if (HandheldTokens.IsClassic)
+            foreach (var art in wrapper.GetVisualDescendants().OfType<HandheldFolderArt>())
+                art.Classes.Set("frozen", true);
         // A folder's art is sent as parts that glide (its flap peeks on focus): the tile is pictured without it.
         FolderArt? parts = null;
         StageImage? image;
@@ -799,9 +805,18 @@ internal sealed class HandheldNativeLauncherFeed
                 folderArt.IsVisible = true;
             }
         }
+        else if (homeFace is { } focused && _homeFaces.TryGetValue((id, focused), out var cached) && cached.Key == key)
+        {
+            image = cached.Image;
+        }
         else
         {
             image = HandheldStageShots.Shot(wrapper, _canvas);
+            if (homeFace is { } face && image is not null)
+            {
+                _homeFaces[(id, face)] = (key, image);
+                HandheldProbeLog.Write?.Invoke($"home tile {id} captured, focused={face}");
+            }
         }
         if (image is null || HandheldStageShots.ToCanvas(panel, new Point(panel.Bounds.Width / 2, panel.Bounds.Height / 2), _canvas) is not { } centre)
         {
@@ -814,7 +829,7 @@ internal sealed class HandheldNativeLauncherFeed
             : liftShadow with { X = (float)topLeft.X + columnShift - 32, Y = (float)topLeft.Y - 16 };
         _sent[id] = key;
         _host.Post(new LauncherSpriteCommand(id, new LauncherSprite(id, image, group, track, Liftable: true,
-            (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z, lift, cell)));
+            (float)centre.X + columnShift, (float)centre.Y, shadow, parts, z, lift, cell) { CacheFace = homeFace.HasValue }));
     }
 
     // A piece that could not be pictured asks for another sync: a later layout pass usually brings one anyway, but
@@ -840,6 +855,11 @@ internal sealed class HandheldNativeLauncherFeed
 
     private void SyncHome(HandheldShellViewModel shell, HandheldHomeScreenViewModel screen, HashSet<string> present)
     {
+        if (_facePage != screen.CurrentPage?.Index)
+        {
+            _homeFaces.Clear();
+            _facePage = screen.CurrentPage?.Index;
+        }
         // Slots replaced by an edit or a move-mode step are not watched any longer.
         var current = screen.Pages.SelectMany(page => page.Slots).ToHashSet();
         foreach (var gone in _watched.OfType<HandheldHomeSlotViewModel>().Where(slot => !current.Contains(slot)).ToList())
@@ -850,24 +870,26 @@ internal sealed class HandheldNativeLauncherFeed
         var folderAt = shell.OpenFolder is { } openFolder ? screen.Grid.PositionOf(openFolder.HomeIndex) : (HandheldHomePosition?)null;
         foreach (var page in screen.Pages)
         {
+            var slots = (_pageTrack.ContainerFromIndex(page.Index) as Control)?.GetVisualDescendants().OfType<ItemsControl>().FirstOrDefault();
             foreach (var slot in page.Slots)
             {
                 Watch(slot);
-                if (SlotContainer(page.Index, slot.Index) is not { } wrapper)
+                if ((slots?.ContainerFromIndex(slot.Index) as ContentPresenter)?.Child is not Control wrapper)
                     continue;
                 var id = $"h:{page.Index}:{slot.Index}";
                 var art = slot.IsFolder && HandheldTokens.IsClassic ? wrapper.GetVisualDescendants().OfType<HandheldFolderArt>().FirstOrDefault() : null;
-                var key = $"{slot.PictureKey}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}";
+                var key = HandheldTokens.IsClassic ? $"{slot.PictureKey}|{Ref(slot.PeekA)}|{Ref(slot.PeekB)}|{Ref(slot.PeekC)}" : slot.PictureKey;
                 // Big Type's flat tiles and empty slots change with focus (white with the colour as ink; a plus): their
                 // picture does too. A game's cover does not.
-                if (HandheldTokens.IsBigType && (slot.IsFlatTile || slot.IsEmpty))
+                var changesFace = HandheldTokens.IsBigType && (slot.IsFlatTile || slot.IsEmpty);
+                if (changesFace)
                     key += $"|{slot.IsFocused}";
                 // Big Type's tiles know their place, so neighbours make room and the idle hop runs along the diagonal (M47 B5).
                 LauncherCell? cell = HandheldTokens.IsBigType
                     ? new LauncherCell(LauncherGroup.Home, page.Index, slot.Index % screen.Grid.Columns, slot.Index / screen.Grid.Columns)
                     : null;
                 Liftable(id, key, wrapper, LauncherGroup.Home, LauncherTrack.Page, 0, present, folderArt: art, lift: LiftOf(HandheldTokens.FocusScale),
-                    cell: cell);
+                    cell: cell, homeFace: changesFace && page.Index == _facePage ? slot.IsFocused : null);
                 // No flap state for a tile the native side doesn't have yet (its picture waits for a retry): it would be
                 // dropped there, and this side would think it sent.
                 if (art is null || !_sent.ContainsKey(id))

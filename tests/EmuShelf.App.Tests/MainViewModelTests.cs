@@ -5646,7 +5646,7 @@ public class MainViewModelTests : IDisposable
             try
             {
                 var settings = new StubSettingsService();
-                settings.Save(settings.Load() with { HandheldReduceMotion = true });
+                settings.Save(settings.Load() with { HandheldLook = HandheldLook.Classic, HandheldReduceMotion = true });
                 var vm = tests.CreateViewModel(interfaceModeService: new RecordingInterfaceModeService(InterfaceMode.Handheld), settingsService: settings);
                 var shell = Assert.IsType<HandheldShellViewModel>(vm.Handheld);
                 Assert.Equal(HandheldLook.Classic, shell.Look);
@@ -5664,7 +5664,8 @@ public class MainViewModelTests : IDisposable
     public class SavedLook
     {
         [AvaloniaTheory]
-        [InlineData(null, HandheldLook.Classic)]
+        [InlineData(null, HandheldLook.BigType)]
+        [InlineData(HandheldLook.Classic, HandheldLook.Classic)]
         [InlineData(HandheldLook.BigType, HandheldLook.BigType)]
         public void HandheldMode_StartsInTheSavedLook(HandheldLook? saved, HandheldLook expected)
         {
