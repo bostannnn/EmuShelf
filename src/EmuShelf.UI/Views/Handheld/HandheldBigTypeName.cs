@@ -25,10 +25,19 @@ namespace EmuShelf.App.Views.Handheld;
 /// moves its letters the same way when the text changes, from <see cref="Entrance"/>, by <see cref="BigTypeMotion"/>; while it is only
 /// pictured or the device asks for stillness (<see cref="HandheldRollingText.RollsProperty"/> false) it simply swaps.
 /// </remarks>
-public sealed class HandheldBigTypeName : Control
+public sealed partial class HandheldBigTypeName : Control
 {
     public static readonly StyledProperty<string?> TextProperty =
         AvaloniaProperty.Register<HandheldBigTypeName, string?>(nameof(Text));
+
+    public static readonly StyledProperty<bool> IsGameTitleProperty =
+        AvaloniaProperty.Register<HandheldBigTypeName, bool>(nameof(IsGameTitle));
+
+    public bool IsGameTitle
+    {
+        get => GetValue(IsGameTitleProperty);
+        set => SetValue(IsGameTitleProperty, value);
+    }
 
     public static readonly StyledProperty<IBrush?> ForegroundProperty =
         AvaloniaProperty.Register<HandheldBigTypeName, IBrush?>(nameof(Foreground), Brushes.White);
@@ -51,7 +60,7 @@ public sealed class HandheldBigTypeName : Control
 
     static HandheldBigTypeName()
     {
-        AffectsRender<HandheldBigTypeName>(TextProperty, ForegroundProperty, TextOpacityProperty, BoxHeightProperty, TextElement.FontFamilyProperty);
+        AffectsRender<HandheldBigTypeName>(TextProperty, IsGameTitleProperty, IsTypedProperty, ForegroundProperty, TextOpacityProperty, BoxHeightProperty, TextElement.FontFamilyProperty);
     }
 
     public bool IsTyped
@@ -143,7 +152,7 @@ public sealed class HandheldBigTypeName : Control
     }
 
     // The last fit, kept while the text, the box and the face stay the same.
-    private (string Text, Size Box, FontFamily Family)? _fittedFor;
+    private (string Text, Size Box, FontFamily Family, bool GameTitle, string Language)? _fittedFor;
     private BigTypeName? _fitted;
 
     /// <summary>The fit for the current text and box (null with no text). Laid out on demand; tests read it.</summary>
@@ -154,11 +163,16 @@ public sealed class HandheldBigTypeName : Control
             var text = Text?.Trim() ?? string.Empty;
             var box = new Size(Bounds.Width, double.IsNaN(BoxHeight) ? Bounds.Height : Math.Min(BoxHeight, Bounds.Height));
             var family = TextElement.GetFontFamily(this);
-            if (_fittedFor is { } key && key.Text == text && key.Box == box && Equals(key.Family, family))
+            var compose = IsGameTitle && !IsTyped;
+            var language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+            var key = (text, box, family, compose, language);
+            if (_fittedFor == key)
                 return _fitted;
-            _fittedFor = (text, box, family);
+            _fittedFor = key;
+            var face = new Typeface(family, FontStyle.Normal, HandheldTokens.DisplayNameWeight);
             _fitted = text.Length == 0 || box.Width <= 0 || box.Height <= 0 ? null
-                : Fit(text, new Typeface(family, FontStyle.Normal, HandheldTokens.DisplayNameWeight), box.Width, box.Height);
+                : compose ? FitGameTitle(text, face, box.Width, box.Height, language)
+                : Fit(text, face, box.Width, box.Height);
             return _fitted;
         }
     }
@@ -236,7 +250,7 @@ public sealed class HandheldBigTypeName : Control
             return;
         // The box sits at the top of the control; anything below it is room for descenders.
         foreach (var word in name.Words)
-            Layout(word.Text, name.Typeface, name.Size, brush).Draw(context, new Point(word.X, word.Top));
+            Layout(word.Text, name.Typeface, word.Size, brush).Draw(context, new Point(word.X, word.Top));
     }
 
     /// <summary>The letters in flight, each its own layout at its place with its pose; false once nothing moves.</summary>
@@ -278,7 +292,7 @@ public sealed class HandheldBigTypeName : Control
             if (_shown is { } resting)
             {
                 foreach (var word in resting.Words)
-                    Layout(word.Text, resting.Typeface, resting.Size, brush).Draw(context, new Point(word.X, word.Top));
+                    Layout(word.Text, resting.Typeface, word.Size, brush).Draw(context, new Point(word.X, word.Top));
             }
         }
         return true;
@@ -288,13 +302,14 @@ public sealed class HandheldBigTypeName : Control
     {
         if (pose.Opacity <= 0f)
             return;
+        // The native compositor measures motion in the title's em, including for subtitle glyphs.
         var size = (float)name.Size;
         var turn = Matrix.CreateTranslation(-letter.Centre.X, -letter.Centre.Y) * Matrix.CreateRotation(pose.Degrees * Math.PI / 180) *
             Matrix.CreateTranslation(letter.Centre.X + (pose.X * size), letter.Centre.Y + (pose.Y * size));
         using (context.PushOpacity(pose.Opacity))
         using (context.PushTransform(turn))
         {
-            using var layout = Layout(letter.Text, name.Typeface, name.Size, brush);
+            using var layout = Layout(letter.Text, name.Typeface, letter.Size, brush);
             layout.Draw(context, letter.Origin);
         }
     }
@@ -361,7 +376,7 @@ public sealed class HandheldBigTypeName : Control
         using var layout = Layout(last.Text, word.Typeface, word.Size, null);
         using var glyph = Layout(ghost, word.Typeface, word.Size, null);
         var origin = new Point(last.X + layout.WidthIncludingTrailingWhitespace, last.Top);
-        return new PlacedLetter(ghost, origin, new Point(origin.X + (glyph.WidthIncludingTrailingWhitespace / 2), origin.Y + (glyph.Height / 2)), -1);
+        return new PlacedLetter(ghost, origin, new Point(origin.X + (glyph.WidthIncludingTrailingWhitespace / 2), origin.Y + (glyph.Height / 2)), -1, word.Size);
     }
 
     private static float Since(long start) => (float)Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -383,7 +398,7 @@ public sealed class HandheldBigTypeName : Control
     // ---- Letters ----
 
     /// <summary>One letter of a fitted name in the control: its text (a grapheme), where its layout is drawn, its middle, its order.</summary>
-    private readonly record struct PlacedLetter(string Text, Point Origin, Point Centre, int Order);
+    private readonly record struct PlacedLetter(string Text, Point Origin, Point Centre, int Order, double Size);
 
     private static int LetterCount(BigTypeName name) => LettersOf(name).Count;
 
@@ -395,7 +410,7 @@ public sealed class HandheldBigTypeName : Control
         var letters = new List<PlacedLetter>(name.Text.Length);
         foreach (var word in name.Words)
         {
-            using var layout = Layout(word.Text, name.Typeface, name.Size, null);
+            using var layout = Layout(word.Text, name.Typeface, word.Size, null);
             var elements = StringInfo.GetTextElementEnumerator(word.Text);
             while (elements.MoveNext())
             {
@@ -406,7 +421,7 @@ public sealed class HandheldBigTypeName : Control
                 var x = layout.HitTestTextPosition(index).X;
                 var advance = layout.HitTestTextPosition(index + text.Length).X - x;
                 var origin = new Point(word.X + x, word.Top);
-                letters.Add(new PlacedLetter(text, origin, new Point(origin.X + (advance / 2), origin.Y + (layout.Height / 2)), letters.Count));
+                letters.Add(new PlacedLetter(text, origin, new Point(origin.X + (advance / 2), origin.Y + (layout.Height / 2)), letters.Count, word.Size));
             }
         }
         return letters;
@@ -416,7 +431,7 @@ public sealed class HandheldBigTypeName : Control
     private const int AtlasBudget = 8 * 1024 * 1024;
     private readonly LinkedList<(AtlasKey Key, BigTypeLetters Value)> _atlases = [];
     private int _atlasBytes;
-    private readonly record struct AtlasKey(string Text, Size Box, Typeface Face, Point Origin, double Opacity);
+    private readonly record struct AtlasKey(string Text, Size Box, Typeface Face, Point Origin, double Opacity, bool GameTitle, string Language);
 
     /// <summary>
     /// The fitted name as the native Stage draws it (M47 B6, R1's route): each distinct letter rasterised once, in white, in an ink-tight
@@ -427,7 +442,7 @@ public sealed class HandheldBigTypeName : Control
     {
         if (Fitted is not { } name)
             return null;
-        var key = new AtlasKey(name.Text, _fittedFor!.Value.Box, name.Typeface, origin, TextOpacity);
+        var key = new AtlasKey(name.Text, _fittedFor!.Value.Box, name.Typeface, origin, TextOpacity, _fittedFor.Value.GameTitle, _fittedFor.Value.Language);
         if (!IsTyped)
         {
             for (var node = _atlases.First; node is not null; node = node.Next)
@@ -439,7 +454,7 @@ public sealed class HandheldBigTypeName : Control
                 return node.Value.Value;
             }
         }
-        var placed = LettersOf(name).Select(letter => new HandheldLetterAtlas.Placed(letter.Text, letter.Origin, letter.Order)).ToList();
+        var placed = LettersOf(name).Select(letter => new HandheldLetterAtlas.Placed(letter.Text, letter.Origin, letter.Order, letter.Size)).ToList();
         // A typed word's deleted letter goes with it, placed after its last letter, to fall off the end (M47 B9).
         if (_ghost is { } ghost && GhostOf(name, ghost) is { } fall)
             placed.Add(new HandheldLetterAtlas.Placed(fall.Text, fall.Origin, -1));
@@ -484,16 +499,23 @@ public sealed class HandheldBigTypeName : Control
         HandheldTokens.StageNameMinSize * Math.Min(1, width / HandheldTokens.StageNameWidthBesideMedium);
 
     public static BigTypeName Fit(string text, Typeface typeface, double width, double height)
+        => FitParts(text, text.Split(' ', StringSplitOptions.RemoveEmptyEntries), typeface, width, height,
+            HandheldTokens.StageNameMaxLines, StageNameMinSize(width), HandheldTokens.StageNameMaxSize);
+
+    private static BigTypeName FitParts(string text, string[] words, Typeface typeface, double width, double height,
+        int maxLines, double minSize, double maxSize)
     {
         const float reference = 100f;
-        var words = text.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var measured = words.Select(word => new BigTypeWord(word, (float)Layout(word, typeface, reference, null).WidthIncludingTrailingWhitespace, []))
-            .ToArray();
-        // A space as a browser adds it between two words: its advance and its share of the tracking.
-        var space = (float)(Layout("a a", typeface, reference, null).WidthIncludingTrailingWhitespace -
-            Layout("aa", typeface, reference, null).WidthIncludingTrailingWhitespace);
-        var fit = BigTypeLayout.Fit(measured, space, reference, (float)width, (float)height, HandheldTokens.StageNameMaxLines,
-            (float)StageNameMinSize(width), (float)HandheldTokens.StageNameMaxSize);
+        double Measure(string value)
+        {
+            using var layout = Layout(value, typeface, reference, null);
+            return layout.WidthIncludingTrailingWhitespace;
+        }
+
+        var measured = words.Select(word => new BigTypeWord(word, (float)Measure(word), [])).ToArray();
+        var space = (float)(Measure("a a") - Measure("aa"));
+        var fit = BigTypeLayout.Fit(measured, space, reference, (float)width, (float)height, maxLines,
+            (float)minSize, (float)maxSize);
         var size = fit.Size;
         var lineHeight = BigTypeLayout.LineHeight * size;
         // The content area a browser centres in the line box: the face's ascent and descent at this size.
@@ -501,20 +523,23 @@ public sealed class HandheldBigTypeName : Control
         var em = (double)metrics.DesignEmHeight;
         var ascent = -metrics.Ascent * size / em;
         var descent = metrics.Descent * size / em;
-        var probe = Layout("A", typeface, size, null);
+        using var probe = Layout("A", typeface, size, null);
         var placed = new List<BigTypeNameWord>(fit.Words.Count);
         foreach (var word in fit.Words)
         {
             var lineTop = height - ((fit.Lines - word.Line) * lineHeight);
             var baseline = lineTop + ((lineHeight - (ascent + descent)) / 2) + ascent;
-            placed.Add(new BigTypeNameWord(measured[word.Word].Text, word.X, baseline - probe.Baseline, word.Line));
+            placed.Add(new BigTypeNameWord(measured[word.Word].Text, word.X, baseline - probe.Baseline, word.Line, size));
         }
         return new BigTypeName(text, typeface, size, fit.Lines, placed);
     }
 }
 
 /// <summary>A fitted name: its face and size, its line count and each word's place in the box (the word's layout's top left).</summary>
-public sealed record BigTypeName(string Text, Typeface Typeface, double Size, int Lines, IReadOnlyList<BigTypeNameWord> Words);
+public sealed record BigTypeName(string Text, Typeface Typeface, double Size, int Lines, IReadOnlyList<BigTypeNameWord> Words)
+{
+    public double BlockHeight => Words.DistinctBy(word => word.Line).Sum(word => word.Size * BigTypeLayout.LineHeight);
+}
 
 /// <summary>One word of a fitted name: where its layout's top left goes in the box, and its line.</summary>
-public sealed record BigTypeNameWord(string Text, double X, double Top, int Line);
+public sealed record BigTypeNameWord(string Text, double X, double Top, int Line, double Size);

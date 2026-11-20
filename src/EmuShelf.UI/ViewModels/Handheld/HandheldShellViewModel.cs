@@ -1600,7 +1600,12 @@ public sealed partial class HandheldShellViewModel : ObservableObject, IDisposab
     private void ShowGameStage(HandheldGameEntry game, Bitmap? interimCover = null)
     {
         if (Stage.Kind == HandheldStageKind.Game && _stageGameId == game.Id)
+        {
+            // A sheet or a launch error can change the line while focus stays on this game.
+            if (HandheldTokens.IsBigType && !_modelTexts && _listText is null)
+                ApplyBigTypeGameText(game);
             return;
+        }
         // Game to game keeps the label up until the next one is ready, rather than flashing it blank.
         _platforms.TryGetValue(game.SystemId, out var platform);
         ShowStage(HandheldStageKind.Game, game.Title, GameSubtitle(game), keepArt: Stage.Kind == HandheldStageKind.Game,

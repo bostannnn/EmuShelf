@@ -51,6 +51,7 @@ public class HandheldBigTypeLauncherTokenTests
             Assert.Equal(Number(tokens, "DockTile"), HandheldTokens.DockTile);
             Assert.Equal(Number(tokens, "DockRadius"), HandheldTokens.DockRadius.TopLeft);
             Assert.Equal(Number(tokens, "RingStroke"), HandheldTokens.RingStroke);
+            Assert.Equal(Number(tokens, "TileRingStroke"), HandheldTokens.TileRingStroke);
             Assert.Equal(Number(tokens, "RingOutset"), -HandheldTokens.RingOutsetTile.Left);
             Assert.Equal(Number(tokens, "RingRadiusTile"), HandheldTokens.RingRadiusTile.TopLeft);
             Assert.Equal(Number(tokens, "RingRadiusTile"), HandheldTokens.RingRadiusTileFolder.TopLeft);

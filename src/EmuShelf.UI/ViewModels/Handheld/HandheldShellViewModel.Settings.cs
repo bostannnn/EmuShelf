@@ -57,7 +57,7 @@ public sealed partial class HandheldShellViewModel
             CloseMenu();
         Sheet = null;
         StopDrift(refreshStage: false);
-        var settings = new HandheldSettingsViewModel(projection);
+        var settings = new HandheldSettingsViewModel(projection, narrowLauncher: HandheldTokens.IsBigType && !IsLauncherWide);
         settings.Changed += OnSettingsChanged;
         projection.CloseRequested += saved => CloseSettings(settings, saved);
         _settingCard = null;

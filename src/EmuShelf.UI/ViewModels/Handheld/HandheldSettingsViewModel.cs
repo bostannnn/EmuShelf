@@ -53,9 +53,12 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
 {
     private bool _disposed;
 
-    public HandheldSettingsViewModel(GamepadSettingsViewModel projection)
+    public HandheldSettingsViewModel(GamepadSettingsViewModel projection, bool narrowLauncher = false)
     {
         Projection = projection;
+        IsSingleColumn = narrowLauncher && !projection.IsSetupMode;
+        if (IsSingleColumn)
+            projection.EnterRail();
         if (projection.IsSetupMode)
         {
             // The setup wizard (M45 H6d): its steps take the sections' place, each with its outcome line, and follow it.
@@ -92,7 +95,14 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
     public bool IsSetup => Projection.IsSetupMode;
 
     /// <summary>The list's heading: Settings, or Setup with where the wizard is.</summary>
-    public string Heading => IsSetup ? "Setup" : HandheldSettingsText.Name;
+    public string Heading => ShowsBreadcrumb ? SectionTitle : IsSetup ? "Setup" : HandheldSettingsText.Name;
+
+    public bool IsSingleColumn { get; }
+    public bool ShowsSections => !IsSingleColumn || Projection.IsRailFocused;
+    public bool ShowsRows => !IsSingleColumn || !Projection.IsRailFocused;
+    public bool ShowsBreadcrumb => IsSingleColumn && !Projection.IsRailFocused;
+    public int SettingsRowsColumn => IsSingleColumn ? 0 : 2;
+    public int SettingsColumnSpan => IsSingleColumn ? 3 : 1;
 
     /// <summary>The app's version, which the Big Type Launcher rolls into the dock row's corner while Settings is open (M47 B7, the mock's).</summary>
     public string Version => Projection.AboutRailStatus;
@@ -151,6 +161,9 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         }
         switch (action)
         {
+            case GamepadAction.Cancel when ShowsBreadcrumb && Projection.IsNormal:
+                Projection.EnterRail();
+                return true;
             // X swaps the screens elsewhere; Settings keeps it, as the menu and sheets do.
             case GamepadAction.Search:
             case GamepadAction.ResetRotation:
@@ -173,7 +186,11 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
         if (section.Step is { } step)
             Projection.GoToSetupStep(step);
         else
+        {
             Projection.SelectSectionCommand.Execute(section.Section);
+            if (IsSingleColumn && Projection.IsRailFocused)
+                Projection.Dispatch(GamepadAction.Confirm);
+        }
     }
 
     /// <summary>A tap on the wizard's Continue (or Finish): what Start does.</summary>
@@ -357,10 +374,11 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
             {
                 yield return new HandheldHint("A", "Open");
             }
-            else if (Projection.FocusedRow is { } row && row.CanActivate && !row.IsSaveRow)
+            else if (Projection.FocusedRow is { } row && row.CanActivate && (!row.IsSaveRow || IsSingleColumn))
             {
                 yield return new HandheldHint("A", row.Kind switch
                 {
+                    _ when row.IsSaveRow => "Save",
                     GamepadSettingsRowKind.Toggle => "Switch",
                     GamepadSettingsRowKind.Choice => "Choose",
                     GamepadSettingsRowKind.Text or GamepadSettingsRowKind.Secret => "Edit",
@@ -377,7 +395,7 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 yield return new HandheldHint(string.Empty, StartLabel, HandheldGlyph.Menu);
                 yield break;
             }
-            yield return new HandheldHint("B", "Close");
+            yield return new HandheldHint("B", ShowsBreadcrumb ? "Back" : "Close");
             // Start, drawn as the menu glyph the home hints use for it.
             yield return new HandheldHint(string.Empty, "Save", HandheldGlyph.Menu);
         }
@@ -411,7 +429,14 @@ public sealed partial class HandheldSettingsViewModel : ObservableObject, IDispo
                 OnPropertyChanged(nameof(IsConfirmFocused));
                 OnPropertyChanged(nameof(ConfirmLabel));
                 break;
+            case nameof(GamepadSettingsViewModel.IsRailFocused):
+                OnPropertyChanged(nameof(ShowsSections));
+                OnPropertyChanged(nameof(ShowsRows));
+                OnPropertyChanged(nameof(ShowsBreadcrumb));
+                OnPropertyChanged(nameof(Heading));
+                break;
             case nameof(GamepadSettingsViewModel.SectionTitle):
+                OnPropertyChanged(nameof(Heading));
                 OnPropertyChanged(nameof(SectionTitle));
                 break;
         }

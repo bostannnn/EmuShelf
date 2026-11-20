@@ -64,6 +64,8 @@ public sealed partial class HandheldSheetViewModel : ObservableObject
     /// </summary>
     public string? Kicker { get; set; }
 
+    internal HandheldGameEntry? GameDetails { get; init; }
+
     /// <summary>What B (or Back) closing the sheet also does, beyond closing it (M47 B8: the screen chooser's sheet drops its launch).</summary>
     public Action? Cancelled { get; init; }
 

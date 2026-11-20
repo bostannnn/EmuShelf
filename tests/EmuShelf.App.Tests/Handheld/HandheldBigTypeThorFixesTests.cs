@@ -69,6 +69,9 @@ public partial class HandheldShellViewModelTests
                 window.Content = new HandheldLauncherView { DataContext = shell };
                 window.Show();
                 await SettleAsync();
+                var selector = Assert.IsType<LauncherFocusCommand>(screen.Retained["focus"]).Selector!;
+                Assert.Equal(14f, selector.Bands!.Inset1);
+                Assert.Equal(230f, selector.Width);
                 StagePixels Face() => screen.Sprites("h:0:0").Single().Image.Pixels;
                 var focused = Face();
                 Press(shell, GamepadAction.NavigateRight);
@@ -141,6 +144,8 @@ public partial class HandheldShellViewModelTests
             var (shell, launcher, view, window) = await OpenNativeFolderAsync(name, games);
             try
             {
+                var selector = Assert.IsType<LauncherFocusCommand>(launcher.Retained["focus"]).Selector!;
+                Assert.Equal(14f, selector.Bands!.Inset1);
                 var heading = view.FindControl<HandheldBigTypeHeading>("BtFolderName")!;
                 var count = view.FindControl<Control>("BtFolderCount")!;
                 var header = view.FindControl<Control>("BtFolderHeader")!;
@@ -263,6 +268,7 @@ public partial class HandheldShellViewModelTests
                 Press(shell, GamepadAction.Confirm); // name a folder on an empty slot: the colours row is above the keys
                 Assert.NotNull(shell.Naming);
                 await AssertRingOnFocus(window, view, "naming, the first key");
+                Assert.Equal(new Thickness(8), view.FindControl<Border>("SelectorRing")!.BorderThickness);
                 Press(shell, GamepadAction.NavigateRight, 2);
                 await AssertRingOnFocus(window, view, "naming, E");
                 Press(shell, GamepadAction.NavigateUp);

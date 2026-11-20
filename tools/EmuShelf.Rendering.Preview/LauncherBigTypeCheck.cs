@@ -64,7 +64,7 @@ internal static class LauncherBigTypeCheck
             Check("74%: on the new tile, squashed 10 px in from each side (left band at 308)", Close(Pixel(squash, 312, 200), White) && Close(Pixel(squash, 302, 200), Ground));
             Check("74%: …and 6 px taller than the ring at rest", Close(Pixel(squash, 412, 70), White));
             var rest = Frame(1000f + 600f, "ring-rest");
-            Check("at rest: the ring's left band 26 px out from the new tile", Close(Pixel(rest, 302, 200), White));
+            Check("at rest: the ring's left band 27 px out from the new tile", Close(Pixel(rest, 302, 200), White));
             Check("at rest: the squash is gone", Close(Pixel(rest, 312, 200), Ground));
             Check("neighbours: the tile to the right stands 8 px further right", Close(Pixel(rest, 552, 200), Ground) && Close(Pixel(rest, 558, 200), Grey));
             Check("neighbours: the tile below stands 8 px lower", Close(Pixel(rest, 412, 476), Grey) && Close(Pixel(rest, 412, 482), Ground));
@@ -166,7 +166,7 @@ internal static class LauncherBigTypeCheck
             var y = Top + (row * PitchY);
             var id = $"h:0:{(row * 5) + column}";
             launcher.Apply(new LauncherSpriteCommand(id, new LauncherSprite(id, Solid(Grey, x, y, Tile, Tile), LauncherGroup.Home, LauncherTrack.Page,
-                Liftable: true, x + (Tile / 2), y + (Tile / 2), Lift: 1.10f, Cell: new LauncherCell(LauncherGroup.Home, 0, column, row))), 0f);
+                Liftable: true, x + (Tile / 2), y + (Tile / 2), Lift: 1.05f, Cell: new LauncherCell(LauncherGroup.Home, 0, column, row))), 0f);
         }
         launcher.Apply(new LauncherSpriteCommand("count", Count("12", Red)), 0f);
         launcher.Apply(new LauncherTracksCommand(0, 0, true, true), 0f);
@@ -176,10 +176,10 @@ internal static class LauncherBigTypeCheck
 
     private static LauncherFocusCommand Focus(int column, int row, bool instant)
     {
-        var x = Left + (column * PitchX) - 26f;
-        var y = Top + (row * PitchY) - 26f;
+        var x = Left + (column * PitchX) - 27f;
+        var y = Top + (row * PitchY) - 27f;
         return new LauncherFocusCommand($"h:0:{(row * 5) + column}",
-            new LauncherSelectorTarget(x, y, Tile + 52f, Tile + 52f, 50f, LauncherTrack.Page, null, LauncherRingBands.One(8f, 1f, 1f, 1f)), instant);
+            new LauncherSelectorTarget(x, y, Tile + 54f, Tile + 54f, 50f, LauncherTrack.Page, null, LauncherRingBands.One(14f, 1f, 1f, 1f)), instant);
     }
 
     // A two-character count at (1000, 900): two 40 px cells 50 tall, em 40, the picture one solid colour.

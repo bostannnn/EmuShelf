@@ -28,6 +28,15 @@
       <Setter Property="Opacity" Value="1" />
       <Setter Property="RenderTransform" Value="{x:Static vm:HandheldTokens.RowFocusTransform}" />
     </Style>
+    <Style Selector="Panel.compact-settings Panel.row:not(.locked):not(.focused)">
+      <Setter Property="Opacity" Value="0.88" />
+    </Style>
+    <Style Selector="vh|HandheldBigTypeHeading#SettingsTitlePart">
+      <Setter Property="Size" Value="{x:Static vm:HandheldTokens.Heading}" />
+    </Style>
+    <Style Selector="vh|HandheldBigTypeHeading#SettingsTitlePart.section-title">
+      <Setter Property="Size" Value="96" />
+    </Style>
     <!-- The rail's section on show stays bright while its rows have the pad. -->
     <Style Selector="Panel.row.current">
       <Setter Property="Opacity" Value="1" />
@@ -262,10 +271,16 @@
 
         <!-- The sections and their rows (hidden while a choice or a confirmation stands in for them). -->
         <Panel x:Name="SettingsBody" IsVisible="{Binding Projection.IsNormal}">
-          <vh:HandheldBigTypeHeading x:Name="SettingsTitlePart" Text="{Binding Heading}" Size="{x:Static vm:HandheldTokens.Heading}" MaxTextWidth="{x:Static vm:HandheldTokens.SettingsHeadMaxWidth}"
-                                     SpacingEm="{x:Static vm:HandheldTokens.DisplayLetterSpacing}" Margin="{x:Static vm:HandheldTokens.SettingsHeadMargin}" />
+          <StackPanel Margin="{x:Static vm:HandheldTokens.SettingsHeadMargin}" VerticalAlignment="Top">
+            <Border x:Name="SettingsBack" IsVisible="{Binding ShowsBreadcrumb}" Background="Transparent"
+                    HorizontalAlignment="Left" Padding="0,0,28,10">
+              <TextBlock Text="‹  Settings" FontSize="38" FontWeight="Bold" Foreground="{x:Static vm:HandheldTokens.OnColour}" />
+            </Border>
+            <vh:HandheldBigTypeHeading x:Name="SettingsTitlePart" Text="{Binding Heading}" Classes.section-title="{Binding ShowsBreadcrumb}"
+                                       MaxTextWidth="{x:Static vm:HandheldTokens.SettingsHeadMaxWidth}" SpacingEm="{x:Static vm:HandheldTokens.DisplayLetterSpacing}" />
+          </StackPanel>
           <Grid Margin="{x:Static vm:HandheldTokens.SettingsContentMargin}" ColumnDefinitions="{x:Static vm:HandheldTokens.SettingsColumns}" VerticalAlignment="Top">
-            <StackPanel>
+            <StackPanel IsVisible="{Binding ShowsSections}" Grid.ColumnSpan="{Binding SettingsColumnSpan}">
               <Panel Classes="rows-window" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
                 <ItemsControl x:Name="RailPart" Classes="window" ItemsSource="{Binding Sections}" vh:HandheldRowWindow.Focus="{Binding SelectedSectionIndex}"
                               vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
@@ -292,7 +307,8 @@
             </StackPanel>
 
             <!-- The rows: label at the left; at the right a switch, or the value. While the rail has the pad, none of them is lit. -->
-            <Panel Classes="rows-window" Classes.rail="{Binding Projection.IsRailFocused}" Grid.Column="2" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
+            <Panel Classes="rows-window" Classes.rail="{Binding Projection.IsRailFocused}" Classes.compact-settings="{Binding IsSingleColumn}"
+                   IsVisible="{Binding ShowsRows}" Grid.Column="{Binding SettingsRowsColumn}" Grid.ColumnSpan="{Binding SettingsColumnSpan}" MaxHeight="{x:Static vm:HandheldTokens.SettingsRowsHeight}" VerticalAlignment="Top">
               <ItemsControl x:Name="SettingsRowsPart" Classes="window" ItemsSource="{Binding Rows}" vh:HandheldRowWindow.Focus="{Binding Projection.FocusedRowIndex}"
                             vh:HandheldRowWindow.Visible="{x:Static vm:HandheldTokens.SettingsRowsVisible}" vh:HandheldRowWindow.Pitch="{x:Static vm:HandheldTokens.RowPitchSettings}">
                 <ItemsControl.ItemTemplate>

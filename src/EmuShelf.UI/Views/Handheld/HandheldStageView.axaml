@@ -591,7 +591,7 @@
         <!-- M47 B15: the idle artwork in its round window beside the name (proposals-screens.html option 12, the Porthole). -->
         <vh:HandheldStagePorthole x:Name="BtPorthole" Art="{Binding Stage.PortholeArt}" />
 
-        <vh:HandheldBigTypeName x:Name="BtName" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
+        <vh:HandheldBigTypeName x:Name="BtName" IsGameTitle="{Binding Stage.IsGame}" RenderOptions.TextRenderingMode="Antialias" IsTyped="{Binding Stage.IsTyped}" IsPlaceholder="{Binding Stage.IsPlaceholder}"
                                 Text="{Binding Stage.Name}" IsVisible="{Binding Stage.ShowsBigTypeName}"
                                 TextOpacity="{Binding Stage.NameOpacity}" Foreground="{Binding StageInk}"
                                 HorizontalAlignment="Left" VerticalAlignment="Bottom" />
@@ -725,7 +725,11 @@
                   <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"
                              HorizontalAlignment="Center" VerticalAlignment="Center" />
                 </Border>
-                <Border IsVisible="{Binding !IsWide}" Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
+                <!-- The A is cut out of the ink so the native Stage can tint the whole hint in either contrast colour. -->
+                <Path IsVisible="{Binding IsPrimary}" Fill="{Binding $parent[ItemsControl].Foreground}" Stretch="Uniform"
+                      Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" VerticalAlignment="Center"
+                      Data="F0 M32,0 A32,32 0 1 1 32,64 A32,32 0 1 1 32,0 Z M15,47 L27,16 L37,16 L49,47 L40,47 L38,41 L26,41 L24,47 Z M28,34 L36,34 L32,23 Z" />
+                <Border IsVisible="{Binding IsOutlinedCircle}" Width="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" Height="{x:Static vm:HandheldTokens.StageHintGlyphOuter}" CornerRadius="{x:Static vm:HandheldTokens.StageHintGlyphCorner}"
                         BorderThickness="{x:Static vm:HandheldTokens.StageHintGlyphStroke}" BorderBrush="{Binding $parent[ItemsControl].Foreground}" VerticalAlignment="Center">
                   <Panel>
                     <TextBlock Text="{Binding Button}" FontSize="{x:Static vm:HandheldTokens.StageHintGlyphLetter}" FontWeight="{x:Static vm:HandheldTokens.WeightDisplay}"

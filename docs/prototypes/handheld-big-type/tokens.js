@@ -25,7 +25,7 @@ window.BT_TOKENS = {
     HeadingCount:       { size: 100, weight: 900, opacity: 0.45 },  // the count beside a folder name
     PanelCount:         { size: 68,  weight: 900, opacity: 0.45 },
     SheetTitle:         { size: 80,  weight: 900 },                 // the Y menu, the keyboard's heading
-    Clock:              { size: 92,  weight: 900 },
+    Clock:              { size: 48,  weight: 900 },
     Label:              { size: 44,  weight: 700 },                 // the console name, top left
     Line:               { size: 42,  weight: 700 },                 // the line under the name; messages use it
     Facts:              { size: 36,  weight: 700, opacity: 0.82 },  // the second line: emulator, last played, disc
@@ -65,7 +65,7 @@ window.BT_TOKENS = {
   // The Stage, 1920x1080. Text sits in the four corners.
   stage: {
     LabelLeft: 88,  LabelTop: 64,
-    ClockRight: 88, ClockTop: 48,
+    ClockRight: 88, ClockTop: 64,
     NameLeft: 80,   NameBottom: 240,
     LineLeft: 88,   LineBottom: 132,
     FactsLeft: 88,  FactsBottom: 76,
@@ -206,9 +206,9 @@ window.BT_TOKENS = {
     TileHome: 176, TileFolder: 208, TileRadius: 30,
     DockTile: 88, DockRadius: 22,
     Key: 100, KeyRadius: 24,
-    RingStroke: 8, RingOutset: 26,          // from the tile's resting edge to the ring's outer edge
+    RingStroke: 8, TileRingStroke: 14, RingOutset: 27,          // from the tile's resting edge to the ring's outer edge
     RingRadiusTile: 50, RingRadiusRow: 32, RingRadiusDock: 38, RingRadiusKey: 34,
-    FocusScale: 1.10, DockFocusScale: 1.14, KeyFocusScale: 1.08, HeldScale: 1.20,
+    FocusScale: 1.05, DockFocusScale: 1.14, KeyFocusScale: 1.08, HeldScale: 1.20,
     NeighbourPush: 8,
     SwitchWidth: 84, SwitchHeight: 48, SwitchKnob: 26,
     SwitchStroke: 5, SwitchKnobInset: 6, SwitchKnobTravel: 36, SwitchOnKnobScale: 1.15,   // on: filled white, the knob in the ground's colour

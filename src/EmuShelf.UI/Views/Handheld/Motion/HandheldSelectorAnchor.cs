@@ -42,6 +42,10 @@ public static class HandheldSelectorAnchor
     public static bool GetIsFocused(Control control) => control.GetValue(IsFocusedProperty);
     public static void SetIsFocused(Control control, bool value) => control.SetValue(IsFocusedProperty, value);
 
+    internal static double BigTypeStroke(Control anchor) =>
+        anchor.Classes.Contains("home-slot") || anchor.Classes.Contains("folder-tile")
+            ? ViewModels.HandheldTokens.TileRingStroke : ViewModels.HandheldTokens.RingStroke;
+
     private static void OnAttached(object? sender, VisualTreeAttachmentEventArgs e)
     {
         if (sender is not Control control)

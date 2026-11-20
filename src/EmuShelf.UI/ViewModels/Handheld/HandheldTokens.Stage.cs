@@ -311,13 +311,13 @@ public static partial class HandheldTokens
 
         StageLabel = 44;
         StageLabelMargin = new Thickness(88, 64, 0, 0);
-        StageClock = 92;
+        StageClock = 48;
         StageBattery = 36;
         StageBatteryOpacity = 0.85;
-        StageStatusMargin = new Thickness(0, 48, 88, 0);
+        StageStatusMargin = new Thickness(0, 64, 88, 0);
         StageStatusGap = 32;
-        // The mock's 12 px under the battery, plus 10 that Avalonia's taller line leaves it low by beside the clock.
-        StageBatteryMargin = new Thickness(0, 0, 0, 22);
+        // Align the battery's smaller type with the clock's baseline.
+        StageBatteryMargin = new Thickness(0, 0, 0, 2);
         StageLine = 42;
         StageLineMargin = new Thickness(88, 0, 0, 132);
         StageFacts = 36;
@@ -336,7 +336,7 @@ public static partial class HandheldTokens
         DisplayLetterSpacingStage = -0.02;
         StageNameSpacing = -0.64;
         StageLabelRaise = 7;
-        StageClockRaise = 17;
+        StageClockRaise = 9;
         StageLineRaise = -8;
         StageFactsRaise = -4;
         StageHintRaise = 0;

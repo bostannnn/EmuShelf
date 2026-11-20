@@ -159,6 +159,8 @@ public sealed partial class HandheldShellViewModel
     {
         sheet.Kicker = ItemSheetKicker;
         ShowSheet(sheet);
+        if (sheet.GameDetails is { } game && !_emulatorNames.ContainsKey(game.SystemId))
+            _ = LoadEmulatorNameAsync(game);
     }
 
     /// <summary>The mock's kicker for an item's sheet.</summary>
@@ -315,7 +317,13 @@ public sealed partial class HandheldShellViewModel
         items.Add(new("Set cover", null, () => OpenCoverSearch(game)));
         items.Add(new("Scrape with ScreenScraper", null, () => OpenScraper(game)));
         items.Add(new("Remove from library", "Its files stay where they are", () => ConfirmRemoveFromLibrary(game)) { IsDestructive = true });
-        return new HandheldSheetViewModel(game.Title, game.SystemName, items) { Thumbnail = CoverFor(game.Id) };
+        if (HandheldTokens.IsBigType)
+            items[0].Note = GameFacts(game);
+        return new HandheldSheetViewModel(game.Title, game.SystemName, items)
+        {
+            Thumbnail = CoverFor(game.Id),
+            GameDetails = HandheldTokens.IsBigType ? game : null,
+        };
     }
 
     /// <summary>The rows that change where a game is: Add to folder…, Pin / Remove from home, Remove from this folder.</summary>

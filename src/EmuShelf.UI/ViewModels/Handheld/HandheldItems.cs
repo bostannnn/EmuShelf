@@ -1043,7 +1043,7 @@ public sealed partial class HandheldStageViewModel : ObservableObject
     [ObservableProperty]
     public partial string Line { get; set; } = string.Empty;
 
-    /// <summary>The second line: a game's emulator, when it was last played and its disc; a folder's last played game.</summary>
+    /// <summary>Secondary facts for detail views or a folder’s most recently played game.</summary>
     [ObservableProperty]
     public partial string Facts { get; set; } = string.Empty;
 
@@ -1157,6 +1157,8 @@ public sealed record HandheldHint(string Button, string Label, HandheldGlyph Ico
 
     /// <summary>A key of more than one letter (RB, RS): Big Type draws it as a rounded key, not a circle (M47 B12, proposals.html).</summary>
     public bool IsWide => Button.Length > 1;
+    public bool IsPrimary => Button == "A";
+    public bool IsOutlinedCircle => !IsWide && !IsPrimary;
 }
 
 public sealed partial class HandheldMenuItemViewModel(string label, Func<Task> invoke) : ObservableObject

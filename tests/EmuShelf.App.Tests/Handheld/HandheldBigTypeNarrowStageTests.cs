@@ -164,6 +164,54 @@ public partial class HandheldShellViewModelTests
             }
         });
 
+        [AvaloniaTheory]
+        [InlineData(false)]
+        [InlineData(true)]
+        public Task BatmanTitleAndBrowseDetailsFollowTheScreen(bool narrow) => BigType(async () =>
+        {
+            var library = new FakeLibrary().WithPlatform("nes", 1);
+            const string original = "Batman : Return of the Joker";
+            var game = library.Games["nes"][0] with
+            {
+                Title = original, SystemName = "Nintendo Entertainment System", PlayCount = 1,
+                Playtime = TimeSpan.FromMinutes(3), LastPlayedAt = DateTimeOffset.Now, AchievementText = "0/21",
+            };
+            library.Games["nes"][0] = game;
+            library.Details[game.Id] = HandheldTitleDetails.Default with { EmulatorName = "Mesen" };
+            using var shell = await CreateAsync(library);
+            if (narrow)
+                await shell.SwapScreensAsync();
+            shell.ReduceMotion = true;
+            var view = new HandheldStageView(null, pinnedNarrow: narrow) { DataContext = shell };
+            var window = new Window { Content = view, Width = narrow ? 1240 : 1920, Height = 1080 };
+            window.Show();
+            try
+            {
+                FocusHome(shell, 1);
+                Press(shell, GamepadAction.Confirm);
+                await SettleAsync();
+                var name = view.FindControl<HandheldBigTypeName>("BtName")!;
+                var fit = name.Fitted!;
+                Assert.Equal(original, fit.Text);
+                var lines = fit.Words.GroupBy(word => word.Line).Select(line => string.Join(" ", line.Select(word => word.Text)));
+                Assert.Equal(narrow ? ["Batman:", "Return", "of the Joker"] : new[] { "Batman:", "Return of the Joker" }, lines);
+                Assert.True(fit.Words[0].Size > fit.Words[^1].Size);
+                Assert.NotNull(name.Letters(default));
+                Assert.Equal("3 min played · 0/21 achievements", shell.Stage.Line);
+                Assert.Empty(shell.Stage.Facts);
+                Dump(window, narrow ? "review-title-narrow" : "review-title-wide");
+                Press(shell, GamepadAction.Actions);
+                Assert.Contains("Mesen · last played", shell.Stage.Line);
+                Press(shell, GamepadAction.Cancel);
+                Assert.Equal("3 min played · 0/21 achievements", shell.Stage.Line);
+                Assert.Empty(shell.Stage.Facts);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+
         private static async Task CheckAsync(HandheldStageView view, Grid canvas, HandheldShellViewModel shell, string what, bool besideMedium)
         {
             await SettleAsync();

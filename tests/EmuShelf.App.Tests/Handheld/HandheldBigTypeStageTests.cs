@@ -210,6 +210,20 @@ public class HandheldBigTypeStageTests
         Assert.True(title.Words[^1].Top > title.Words[0].Top);
     }
 
+    [AvaloniaTheory]
+    [InlineData("Encore !", "fr", "Encore\u202f!")]
+    [InlineData("Encore\u00a0!", "en", "Encore\u00a0!")]
+    [InlineData("Go !", "en", "Go!")]
+    [InlineData("Вперёд !", "ru", "Вперёд!")]
+    [InlineData("The End !", "fr", "The End!")]
+    public void TitleFitPreservesProtectedSpacing(string original, string language, string expected)
+    {
+        var face = new Typeface(new FontFamily(HandheldTokens.FaceSource), FontStyle.Normal, FontWeight.Black);
+        var fit = HandheldBigTypeName.FitGameTitle(original, face, 1080, 584, language);
+        Assert.Equal(expected, Assert.Single(fit.Words).Text);
+        Assert.Equal(original, fit.Text);
+    }
+
     private static double Number(string tokens, string name)
     {
         var match = Regex.Match(tokens, $@"\b{name}:\s*(?<value>-?[0-9.]+)");

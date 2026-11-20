@@ -105,7 +105,7 @@ public partial class HandheldShellViewModel
         return last is null ? string.Empty : $"Last played: {last.Title}";
     }
 
-    /// <summary>A game: its console over its title; play time and achievements; emulator, last played and disc.</summary>
+    /// <summary>A game in the browser shows its console, title, play time and achievement progress.</summary>
     private void ApplyBigTypeGameText(HandheldGameEntry game)
     {
         BtLabel = game.SystemName;
@@ -117,8 +117,6 @@ public partial class HandheldShellViewModel
         if (ModelViewDue)
         {
             ApplyModelTexts(game);
-            if (HandheldTokens.IsBigType && !_emulatorNames.ContainsKey(game.SystemId))
-                _ = LoadEmulatorNameAsync(game);
             return;
         }
         if (!game.IsAvailable)
@@ -127,12 +125,10 @@ public partial class HandheldShellViewModel
             BtFacts = string.Empty;
             return;
         }
-        var played = game.Playtime.TotalMinutes >= 1 ? HandheldText.Duration(game.Playtime)
+        var played = game.Playtime.TotalMinutes >= 1 ? $"{HandheldText.Duration(game.Playtime)} played"
             : game.PlayCount == 0 ? "Not played yet" : "Played";
         BtLine = string.IsNullOrEmpty(game.AchievementText) ? played : $"{played} · {game.AchievementText} achievements";
-        BtFacts = GameFacts(game);
-        if (HandheldTokens.IsBigType && !_emulatorNames.ContainsKey(game.SystemId))
-            _ = LoadEmulatorNameAsync(game);
+        BtFacts = string.Empty;
     }
 
     private string GameFacts(HandheldGameEntry game)
@@ -175,8 +171,14 @@ public partial class HandheldShellViewModel
         if (_disposed)
             return;
         _emulatorNames[game.SystemId] = name;
-        if (Stage.Kind is HandheldStageKind.Game or HandheldStageKind.Hero && _stageGameId == game.Id && game.IsAvailable)
-            BtFacts = StageFactsFor(game);
+        if (Sheet?.GameDetails is { } details && details.SystemId == game.SystemId)
+        {
+            Sheet.Items[0].Note = GameFacts(details);
+            RefreshListStage();
+        }
+        if (_modelTexts && Stage.Kind == HandheldStageKind.Game && _stageGame is { IsAvailable: true } current &&
+            current.Id == _stageGameId && current.SystemId == game.SystemId)
+            BtFacts = ModelFacts(current);
     }
 
     /// <summary>Settings may have changed a system's emulator: its name is read again next time.</summary>

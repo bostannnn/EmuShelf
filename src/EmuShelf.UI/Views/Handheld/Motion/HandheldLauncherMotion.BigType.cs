@@ -105,6 +105,7 @@ internal sealed partial class HandheldLauncherMotion
             return KeyboardRingWaits;
         }
         var now = BtNow;
+        _ring.BorderThickness = new Thickness(HandheldSelectorAnchor.BigTypeStroke(anchor));
         var target = new BigTypeRing((float)rect.X, (float)rect.Y, (float)rect.Width, (float)rect.Height, (float)radius);
         // A folder opening or closing, a launch, the shelf coming back: the ring waits, then pops in or lands (M47 B8).
         if (RingWaits(now))

@@ -94,6 +94,8 @@ public partial class HandheldShellViewModel
         _modelTexts = true;
         BtLine = game.Title;
         BtFacts = ModelFacts(game);
+        if (!_emulatorNames.ContainsKey(game.SystemId))
+            _ = LoadEmulatorNameAsync(game);
     }
 
     /// <summary>The model view's second line: what the name view's line says (or that the file is missing), then the emulator.</summary>
@@ -106,9 +108,6 @@ public partial class HandheldShellViewModel
         var line = string.IsNullOrEmpty(game.AchievementText) ? played : $"{played} · {game.AchievementText} achievements";
         return _emulatorNames.TryGetValue(game.SystemId, out var emulator) && !string.IsNullOrEmpty(emulator) ? $"{line} · {emulator}" : line;
     }
-
-    /// <summary>The second line for the game on the Stage, in whichever view it is.</summary>
-    private string StageFactsFor(HandheldGameEntry game) => _modelTexts ? ModelFacts(game) : GameFacts(game);
 
     /// <summary>
     /// The hints over a focused game (Big Type): the model view's own, or the name view's with RB for the model. On home B does nothing,

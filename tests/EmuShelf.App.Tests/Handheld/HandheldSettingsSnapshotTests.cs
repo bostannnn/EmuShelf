@@ -20,6 +20,41 @@ public partial class HandheldShellViewModelTests
     [Collection(nameof(HandheldTokenLookCollection))]
     public class ArtworkSettingsLayout
     {
+        [AvaloniaFact]
+        public async Task NarrowSectionBackRestoresCategoryAndDraft()
+        {
+            HandheldTokens.Use(HandheldLook.BigType);
+            try
+            {
+                var library = new FakeLibrary().WithPlatform("ps2", 1);
+                using var shell = await CreateWithSettingsAsync(library);
+                await shell.OpenSettingsAsync();
+                var settings = shell.Settings!;
+                Assert.True(settings.ShowsSections);
+                Assert.False(settings.ShowsRows);
+                var artwork = settings.Sections.Single(s => s.Section == SettingsSection.ArtworkMetadata);
+                settings.TapSection(artwork);
+                var toggle = settings.Rows.Single(row => row.Key == "metadata.web-image-search");
+                var wasOn = toggle.IsToggleOn;
+                settings.TapRow(toggle);
+                Press(shell, GamepadAction.Cancel);
+                Assert.True(artwork.IsFocused);
+                Assert.False(settings.ShowsBreadcrumb);
+                Assert.Empty(library.SettingsClosed);
+                Press(shell, GamepadAction.Confirm);
+                Assert.True(settings.ShowsBreadcrumb);
+                Assert.Equal(!wasOn, settings.Rows.Single(row => row.Key == toggle.Key).IsToggleOn);
+                var save = settings.Rows.Single(row => row.IsSaveRow);
+                settings.TapRow(save);
+                await save.SelectCommand.ExecutionTask!;
+                Assert.Equal([true], library.SettingsClosed);
+            }
+            finally
+            {
+                HandheldTokens.Use(HandheldLook.Classic);
+            }
+        }
+
         [AvaloniaTheory]
         [InlineData(HandheldLook.Classic, false)]
         [InlineData(HandheldLook.Classic, true)]
@@ -32,9 +67,18 @@ public partial class HandheldShellViewModelTests
             try
             {
                 using var shell = await CreateWithSettingsAsync(new FakeLibrary().WithPlatform("ps2", 3));
+                shell.ReduceMotion = true;
+                if (wide)
+                    await shell.SwapScreensAsync();
                 var view = new HandheldLauncherView(null, pinnedWide: wide) { DataContext = shell };
                 window = new Window { Content = view, Width = wide ? 1920 : 1240, Height = 1080 };
                 window.Show();
+                if (look == HandheldLook.BigType && !wide)
+                {
+                    await SettleAsync();
+                    Assert.Equal(new Thickness(14), view.FindControl<Border>("SelectorRing")!.BorderThickness);
+                    Dump(window, "review-launcher-home");
+                }
                 await shell.OpenSettingsAsync();
                 var settings = shell.Settings!;
                 settings.TapSection(settings.Sections.Single(s => s.Section == SettingsSection.ArtworkMetadata));
@@ -44,12 +88,21 @@ public partial class HandheldShellViewModelTests
 
                 var visibleText = view.GetVisualDescendants().OfType<TextBlock>()
                     .Where(t => t.IsEffectivelyVisible).ToArray();
-                var rail = visibleText.Single(t => t.DataContext is HandheldSettingsSectionViewModel section
+                var rail = visibleText.Where(t => t.DataContext is HandheldSettingsSectionViewModel section
                     && section.Section == SettingsSection.ArtworkMetadata && t.Text == section.Title);
                 var labels = visibleText.Where(t => t.DataContext is GamepadSettingsRowViewModel row && t.Text == row.Label);
                 Assert.Contains(labels, t => t.Text == "Fetch missing metadata");
                 Assert.Contains(labels, t => t.Text == "Password");
-                foreach (var text in labels.Append(rail))
+                if (look == HandheldLook.BigType && !wide)
+                {
+                    Assert.Empty(rail);
+                    Assert.Equal("Artwork & Metadata", settings.Heading);
+                }
+                else
+                {
+                    Assert.Single(rail);
+                }
+                foreach (var text in labels.Concat(rail))
                 {
                     var lines = text.TextLayout.TextLines;
                     Assert.DoesNotContain(lines, line => line.HasCollapsed);

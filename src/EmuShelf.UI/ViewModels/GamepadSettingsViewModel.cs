@@ -1107,7 +1107,7 @@ public partial class GamepadSettingsViewModel : ViewModelBase, IDisposable, IGam
         RebuildRows(row.Key);
     }
 
-    private void EnterRail()
+    internal void EnterRail()
     {
         if (!IsNormal)
             return;

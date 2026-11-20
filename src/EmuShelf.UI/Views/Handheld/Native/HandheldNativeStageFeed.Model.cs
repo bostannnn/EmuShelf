@@ -108,7 +108,7 @@ internal sealed partial class HandheldNativeStageFeed
         }
         if (stage.ShowsBigTypeName && _bigTypeName.Fitted is { } fitted)
         {
-            var origin = HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size, IsBigTypeNarrow);
+            var origin = HandheldTokens.NameTakeoverOrigin(fitted.BlockHeight, IsBigTypeNarrow);
             return new Vector2((float)origin.X, (float)origin.Y);
         }
         return null;

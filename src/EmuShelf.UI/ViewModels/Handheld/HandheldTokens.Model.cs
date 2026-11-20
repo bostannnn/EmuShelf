@@ -96,13 +96,13 @@ public static partial class HandheldTokens
     /// Where the launch's colour grows from in the name view (M47 B12's choice, awaiting the owner): there is no case beside the name any
     /// more, so the circle grows from the middle of the name itself, its box's middle across and its lines' middle up.
     /// </summary>
-    public static Point NameTakeoverOrigin(int lines, double size, bool narrow = false)
+    public static Point NameTakeoverOrigin(double blockHeight, bool narrow = false)
     {
         // On the narrow Stage the name stands a hint row higher, in its own box (M47 B11).
         var bottom = 1080 - StageNameBottom - (narrow ? StageNarrowHintsRow : 0);
         var height = narrow ? StageNarrowNameHeight : StageNameHeight;
         var width = narrow ? StageNarrowNameWidth : StageNameWidth;
-        var block = Math.Min(height, Math.Max(1, lines) * size * BigTypeLayout.LineHeight);
+        var block = Math.Min(height, blockHeight);
         return new Point(StageNameLeft + (width / 2), bottom - (block / 2));
     }
 }

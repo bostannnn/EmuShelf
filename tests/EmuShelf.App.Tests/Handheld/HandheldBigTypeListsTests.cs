@@ -412,27 +412,32 @@ public partial class HandheldShellViewModelTests
                 Press(shell, GamepadAction.Cancel);
                 await SettleAsync();
 
-                // Settings: the rail from SettingsLeft and the rows from SettingsRowsLeft, both from SettingsTop on their pitch.
+                // Narrow Settings shows one full-width list at a time.
                 await shell.OpenSettingsAsync();
                 await ArrivedAsync();
                 var rail = Slots(lists.FindControl<Control>("RailPart")!);
                 Assert.Equal(shell.Settings!.Sections.Count, rail.Length);
+                var contentWidth = 1240 - 2 * HandheldTokens.SettingsLeft;
                 for (var i = 0; i < rail.Length; i++)
                 {
-                    Assert.Equal(MockRing(HandheldTokens.SettingsLeft, HandheldTokens.SettingsTop, HandheldTokens.RailWidth, HandheldTokens.RowPitchSettings, i),
+                    Assert.Equal(MockRing(HandheldTokens.SettingsLeft, HandheldTokens.SettingsTop, contentWidth, HandheldTokens.RowPitchSettings, i),
                         Placed(canvas, rail[i]).Ring);
                 }
+                Assert.False(lists.FindControl<Control>("SettingsRowsPart")!.IsEffectivelyVisible);
+                Press(shell, GamepadAction.Confirm);
+                await ArrivedAsync();
+                Assert.False(lists.FindControl<Control>("RailPart")!.IsEffectivelyVisible);
                 var settingsRows = Slots(lists.FindControl<Control>("SettingsRowsPart")!);
                 Assert.NotEmpty(settingsRows);
-                Assert.Equal(MockRing(HandheldTokens.SettingsRowsLeft, HandheldTokens.SettingsTop, HandheldTokens.SettingsRowsWidth, HandheldTokens.RowPitchSettings, 0),
+                Assert.Equal(MockRing(HandheldTokens.SettingsLeft, HandheldTokens.SettingsTop, contentWidth, HandheldTokens.RowPitchSettings, 0),
                     Placed(canvas, settingsRows[0]).Ring);
                 // A row has the pad: the Stage names it, under Settings and its section; Settings has its own colour.
                 var section = shell.Settings.Sections.Single(item => item.IsSelected).Title;
                 Assert.Equal($"Settings · {section}", shell.Stage.Label);
                 Assert.Equal(shell.Settings.Projection.FocusedRow!.Label, shell.Stage.Name);
                 Assert.Equal(HandheldTokens.AppGround, shell.LauncherGround);
-                // The rail: the section, under "Settings".
-                Press(shell, GamepadAction.NavigateLeft);
+                // B brings focus back to the same category.
+                Press(shell, GamepadAction.Cancel);
                 Assert.True(shell.Settings.Projection.IsRailFocused);
                 Assert.Equal(("Settings", section), (shell.Stage.Label, shell.Stage.Name));
             }

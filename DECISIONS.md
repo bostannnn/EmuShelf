@@ -15735,3 +15735,21 @@ zero frames. Over 284 console moves the fan driver reported a median of 6,900 fo
 navigation and control, with peaks of 7,500 and 7,200 respectively. The control allowed
 the idle artwork to appear. Other routes and same-screen controls are recorded in
 `artifacts/thor-check/fan-fix/comparison.txt`.
+
+## 2026-11-20 — AYN Thor Big Type typography, focus and Settings
+
+Game title layout keeps a colon with its heading and gives the subtitle its own, smaller type.
+English articles and prepositions travel with the following word. The library retains the title
+as entered. Library entries have no title-language field, so the display uses English phrase cues and the UI language
+for ordinary punctuation spacing and honours explicit nonbreaking spaces.
+
+Home and folder tiles use a 14 px white selector, 27 px outside the resting edge, with a 105%
+focus scale. On a 176 px home tile this leaves 8.6 px of ground between the tile and selector.
+Dock items, keys and list rows use the compact 8 px stroke.
+
+The Stage clock is 48 px. A filled A marks the primary action. Play time and achievement
+progress share the browse line. More shows the emulator and last-played date on its Play row.
+
+The 1240 px Launcher opens Settings on its category list. Opening a category gives its rows
+the full width. B and the Settings breadcrumb return to the same category with its draft intact.
+The 1920 px Launcher uses the split view.

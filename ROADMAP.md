@@ -3401,3 +3401,7 @@ falls back to the emulator and says so.
 - [x] **AYN Thor settings review.** Scoped the menu to controls used by the handheld launcher and
       fitted section names, labels and values to both screen sizes. Added layout coverage for the
       expanded Artwork & Metadata page in Classic and Big Type.
+
+- [x] **AYN Thor Big Type design review, first four findings.** Fit game titles by phrase, give
+      home and folder tiles a 14 px selector, simplify the browse Stage and give narrow Settings
+      separate category and detail screens. Both Thor screen assignments have layout coverage.

@@ -242,7 +242,7 @@ internal sealed partial class HandheldStageMotion
         if (_modelStage is { IsModelView: true })
             return HandheldTokens.StageModelCentre(CanvasWidthBigType);
         if (_modelStage is { ShowsBigTypeName: true } && _view.FindControl<HandheldBigTypeName>("BtName")?.Fitted is { } fitted)
-            return HandheldTokens.NameTakeoverOrigin(fitted.Lines, fitted.Size, _isNarrow());
+            return HandheldTokens.NameTakeoverOrigin(fitted.BlockHeight, _isNarrow());
         // Anything else: B11's place (its case's corner on the narrow Stage).
         return HandheldTokens.StageTakeoverCentre(_isNarrow());
     }

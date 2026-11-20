@@ -82,6 +82,9 @@
     <Style Selector="Panel.bigtype Panel.focusable.focused">
       <Setter Property="RenderTransform" Value="scale(1.1)" />
     </Style>
+    <Style Selector="Panel.bigtype Panel.home-slot.focused, Panel.bigtype Panel.folder-tile.focused">
+      <Setter Property="RenderTransform" Value="scale(1.05)" />
+    </Style>
     <Style Selector="Panel.bigtype Panel.focusable.dock-tile.focused">
       <Setter Property="RenderTransform" Value="scale(1.14)" />
     </Style>

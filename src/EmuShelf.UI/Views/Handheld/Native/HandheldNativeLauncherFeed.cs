@@ -743,11 +743,11 @@ internal sealed class HandheldNativeLauncherFeed
     }
 
     /// <summary>The ring for the look: today's three bands, or Big Type's one white band of <c>shape.RingStroke</c>.</summary>
-    private static LauncherRingBands? RingBands()
+    private static LauncherRingBands? RingBands(Control anchor)
     {
         if (HandheldTokens.IsClassic || HandheldTokens.RingBand is not Avalonia.Media.ISolidColorBrush { Color: var band })
             return null;
-        return LauncherRingBands.One((float)HandheldTokens.RingStroke, band.R / 255f, band.G / 255f, band.B / 255f);
+        return LauncherRingBands.One((float)HandheldSelectorAnchor.BigTypeStroke(anchor), band.R / 255f, band.G / 255f, band.B / 255f);
     }
 
     private LauncherSprite Background()
@@ -1154,7 +1154,7 @@ internal sealed class HandheldNativeLauncherFeed
             return null;
         var radius = (ring?.CornerRadius.TopLeft ?? 32) * lift;
         return new LauncherSelectorTarget((float)at.X + columnShift, (float)at.Y, (float)lifted.Width, (float)lifted.Height,
-            (float)radius, track, HandheldTokens.IsClassic ? Glow(lifted.Width, lifted.Height, radius) : null, RingBands());
+            (float)radius, track, HandheldTokens.IsClassic ? Glow(lifted.Width, lifted.Height, radius) : null, RingBands(anchor));
     }
 
     private StageImage Glow(double width, double height, double radius)

@@ -470,7 +470,7 @@ internal sealed partial class HandheldNativeStageFeed
         if (!HandheldTokens.IsBigType)
             return;
         // The model view (M47 B12) has no big name: its letters leave, and land again when the name view comes back.
-        var key = $"{stage.ShowsBigTypeName}|{stage.Name}|{NameBoxWidth(stage)}|{stage.NameOpacity}|{stage.IsTyped}|{CanvasWidth}";
+        var key = $"{stage.ShowsBigTypeName}|{stage.Name}|{NameBoxWidth(stage)}|{stage.NameOpacity}|{stage.IsGame}|{stage.IsTyped}|{CanvasWidth}";
         if (key == _nameSent)
             return;
         var first = _nameSent is null;

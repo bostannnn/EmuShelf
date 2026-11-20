@@ -60,6 +60,9 @@ public static partial class HandheldTokens
 
     // ===== The ring and the lift (tokens.js shape) =====
 
+    /// <summary>Big Type home and folder selector width, in canvas pixels.</summary>
+    public const double TileRingStroke = 14;
+
     /// <summary>A tile's ring anchor: how far the ring's outer edge sits outside the tile's resting edge (<c>shape.RingOutset</c>).</summary>
     public static Thickness RingOutsetTile { get; private set; }
 
@@ -324,13 +327,13 @@ public static partial class HandheldTokens
         DockTile = 88;
         DockRadius = new CornerRadius(22);
         RingStroke = 8;
-        RingOutsetTile = new Thickness(-26);
+        RingOutsetTile = new Thickness(-27);
         RingOutsetDock = new Thickness(-18);
         RingRadiusTile = new CornerRadius(50);
         RingRadiusTileFolder = new CornerRadius(50);
         RingRadiusDock = new CornerRadius(38);
         RingLift = 1;
-        FocusScale = 1.10;
+        FocusScale = 1.05;
         DockFocusScale = 1.14;
 
         // colour
