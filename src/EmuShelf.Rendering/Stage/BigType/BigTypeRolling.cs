@@ -56,17 +56,19 @@ public static class BigTypeRollDraw
                 taken.Add((old.Cells[i].X, old.Cells[i].X + old.Cells[i].Width));
         }
         var x = newX;
+        var pictureRight = newX + newWidth;
         foreach (var (from, to) in taken.OrderBy(range => range.From))
         {
-            // The layout measures a shared edge in double precision, but the renderer stores
-            // each cell's origin and advance as separate floats. Their sum can land one float
-            // below the next origin. A scissor rounds that tiny gap out to a whole visible pixel.
-            if (from > MathF.BitIncrement(x))
-                pieces.Add(new BigTypeRollPiece(BigTypeRollSource.New, x, newY, Math.Min(from, newX + newWidth) - x, newHeight, 0f, 1f));
-            x = Math.Max(x, to);
+            // A moving cell uses every pixel its scissor touches. Reserve those whole
+            // columns before drawing static gaps, including the last glyph's fractional
+            // edge where the bitmap width was rounded up to an integer.
+            var gapEnd = Math.Min(MathF.Floor(from), pictureRight);
+            if (x < gapEnd)
+                pieces.Add(new BigTypeRollPiece(BigTypeRollSource.New, x, newY, gapEnd - x, newHeight, 0f, 1f));
+            x = Math.Max(x, MathF.Ceiling(to));
         }
-        if (x < newX + newWidth)
-            pieces.Add(new BigTypeRollPiece(BigTypeRollSource.New, x, newY, newX + newWidth - x, newHeight, 0f, 1f));
+        if (x < pictureRight)
+            pieces.Add(new BigTypeRollPiece(BigTypeRollSource.New, x, newY, pictureRight - x, newHeight, 0f, 1f));
 
         for (var i = 0; i < plan.Length; i++)
         {

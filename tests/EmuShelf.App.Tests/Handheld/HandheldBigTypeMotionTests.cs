@@ -267,11 +267,26 @@ public class HandheldBigTypeMotionTests
         var first = new StageTextCell('f', 370.65f, 0, 20.412f, 63, 42);
         var second = new StageTextCell('o', 391.062f, 0, 24.108f, 63, 42);
         Assert.Equal(MathF.BitIncrement(first.X + first.Width), second.X);
-        var left = first.X - 12;
+        var left = MathF.Floor(first.X) - 12;
         var pieces = BigTypeRollDraw.Pieces(new StageText([]), new StageText([first, second]),
             left, 0, second.X + second.Width - left, 63, 0);
         var margin = Assert.Single(pieces!);
         Assert.Equal((BigTypeRollSource.New, left, 12f), (margin.Source, margin.ClipX, margin.ClipWidth));
+    }
+
+    [Theory]
+    [InlineData(601, 0)]
+    [InlineData(605, 4)]
+    public void FinalRollingGlyph_OwnsItsLastPixelColumn(int pictureWidth, int rightMargin)
+    {
+        // The last 'e' in "a folder here" ends at 600.726. The renderer's scissor
+        // includes column 600 even though the bitmap may have padding after the glyph.
+        var last = new StageTextCell('e', 577.794f, 0, 22.932f, 63, 42);
+        var pieces = BigTypeRollDraw.Pieces(new StageText([]), new StageText([last]), 0, 0, pictureWidth, 63, 0)!;
+        Assert.Equal(577f, pieces[0].ClipWidth);
+        Assert.Equal(rightMargin == 0 ? 1 : 2, pieces.Count);
+        if (rightMargin > 0)
+            Assert.Equal((601f, (float)rightMargin), (pieces[1].ClipX, pieces[1].ClipWidth));
     }
 
     // ---- The idle hop ----
