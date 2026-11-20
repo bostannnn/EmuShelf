@@ -58,7 +58,10 @@ public static class BigTypeRollDraw
         var x = newX;
         foreach (var (from, to) in taken.OrderBy(range => range.From))
         {
-            if (from > x)
+            // The layout measures a shared edge in double precision, but the renderer stores
+            // each cell's origin and advance as separate floats. Their sum can land one float
+            // below the next origin. A scissor rounds that tiny gap out to a whole visible pixel.
+            if (from > MathF.BitIncrement(x))
                 pieces.Add(new BigTypeRollPiece(BigTypeRollSource.New, x, newY, Math.Min(from, newX + newWidth) - x, newHeight, 0f, 1f));
             x = Math.Max(x, to);
         }

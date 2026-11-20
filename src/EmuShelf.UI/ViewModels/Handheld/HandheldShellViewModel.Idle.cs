@@ -210,16 +210,16 @@ public sealed partial class HandheldShellViewModel
         var woke = IsDrifting;
         StopDrift(refreshStage: true);
         ArmIdle();
-        var now = System.Diagnostics.Stopwatch.GetTimestamp();
-        InputRun = _lastInputAt != 0 && EmuShelf.Rendering.Stage.BigType.BigTypeMotion.InRun(
-            (float)System.Diagnostics.Stopwatch.GetElapsedTime(_lastInputAt, now).TotalMilliseconds);
+        var now = _clock.GetTimestamp();
+        InputRun = _lastInputAt is { } last && EmuShelf.Rendering.Stage.BigType.BigTypeMotion.InRun(
+            (float)_clock.GetElapsedTime(last, now).TotalMilliseconds);
         _lastInputAt = now;
         _stageSettledSincePress = false;
         InputArrived?.Invoke();
         return woke;
     }
 
-    private long _lastInputAt;
+    private long? _lastInputAt;
     private bool _stageSettledSincePress;
 
     /// <summary>

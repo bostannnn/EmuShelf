@@ -257,7 +257,8 @@ public partial class HandheldShellViewModelTests
     [Avalonia.Headless.XUnit.AvaloniaFact]
     public async System.Threading.Tasks.Task InputRun_IsAHeldDirectionOrQuickTaps_NeverASinglePress()
     {
-        var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3).WithPlatform("gc", 3).WithPlatform("wii", 3));
+        var clock = new ManualClock();
+        using var shell = await CreateAsync(new FakeLibrary().WithPlatform("ps2", 3).WithPlatform("gc", 3).WithPlatform("wii", 3), clock: clock);
         Assert.False(shell.InputRun);
         Press(shell, EmuShelf.App.Services.GamepadAction.NavigateRight);
         Assert.False(shell.InputRun);
@@ -265,17 +266,16 @@ public partial class HandheldShellViewModelTests
         Assert.True(shell.InputRun);
         // A held direction: the Stage waits, and the name it settles on is never the short form.
         Assert.False(shell.QuickChange);
-        await System.Threading.Tasks.Task.Delay((int)BigTypeMotion.RunWithinMilliseconds + 60);
+        clock.Advance(TimeSpan.FromMilliseconds(BigTypeMotion.RunWithinMilliseconds + 60));
         Press(shell, EmuShelf.App.Services.GamepadAction.NavigateLeft);
         Assert.False(shell.InputRun);
         Assert.False(shell.QuickChange);
         // Quick taps, slower than a held direction (150 ms) but inside a run: the Stage follows each, in the short form.
-        await System.Threading.Tasks.Task.Delay(170);
+        clock.Advance(TimeSpan.FromMilliseconds(170));
         Assert.True(shell.DispatchGamepadAction(EmuShelf.App.Services.GamepadAction.NavigateRight));
         Assert.True(shell.InputRun);
         Assert.False(shell.IsStagePending);
         Assert.True(shell.QuickChange);
-        shell.Dispose();
     }
 }
 

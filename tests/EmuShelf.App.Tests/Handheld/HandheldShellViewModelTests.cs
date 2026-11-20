@@ -158,12 +158,12 @@ public partial class HandheldShellViewModelTests
     /// Recent after them), so these tests can count slots from the first platform. The default layout, with
     /// Recent first, has tests of its own.
     /// </summary>
-    private static async Task<HandheldShellViewModel> CreateAsync(FakeLibrary library, InMemoryHandheldHomeLayoutStore? store = null)
+    private static async Task<HandheldShellViewModel> CreateAsync(FakeLibrary library, InMemoryHandheldHomeLayoutStore? store = null, TimeProvider? clock = null)
     {
         store ??= new InMemoryHandheldHomeLayoutStore();
         if (store.Saved is null)
             store.Save(HandheldHomeLayout.FromSlots(library.Platforms.Select(platform => HandheldSlot.PlatformFolder(platform.SystemId))));
-        var shell = new HandheldShellViewModel(library, layoutStore: store);
+        var shell = new HandheldShellViewModel(library, layoutStore: store, clock: clock);
         await shell.InitializeAsync();
         return shell;
     }

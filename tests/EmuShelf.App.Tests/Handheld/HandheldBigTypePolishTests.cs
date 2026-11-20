@@ -132,23 +132,14 @@ public partial class HandheldShellViewModelTests
             window.Show();
             try
             {
-                shell.Stage.Backdrop = null;
-                for (var i = 0; i < 4; i++)
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                    await Task.Delay(20);
-                }
+                Assert.True(screen.Active);
+                Assert.NotNull(shell.Stage.Backdrop);
+                // Change the backdrop while hidden. Showing the Stage now reconciles it
+                // synchronously, without racing Classic's deferred backdrop update.
+                view.IsVisible = false;
                 screen.Posted.Clear();
                 shell.Stage.Backdrop = null;
-                // Hidden and shown again (a swap, the screen coming back): everything is sent again.
-                view.IsVisible = false;
-                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
                 view.IsVisible = true;
-                for (var i = 0; i < 4; i++)
-                {
-                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                    await Task.Delay(20);
-                }
                 return screen.Posted.OfType<EmuShelf.Rendering.Stage.StageBackdropCommand>().ToList();
             }
             finally

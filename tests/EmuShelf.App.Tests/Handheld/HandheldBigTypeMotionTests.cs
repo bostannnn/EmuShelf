@@ -259,6 +259,21 @@ public class HandheldBigTypeMotionTests
         Assert.Null(BigTypeRollDraw.Pieces(Cells("2 / 2"), Cells("2 / 2"), 96, 496, 108, 48, 0f));
     }
 
+    [Fact]
+    public void AdjacentRollingCells_DoNotExposeAColumnOfTheNewPicture()
+    {
+        // Measured edges of "fo" in "a folder". The separately rounded end of f and start
+        // of o are one float apart. A real 12 px space before the pair stays visible.
+        var first = new StageTextCell('f', 370.65f, 0, 20.412f, 63, 42);
+        var second = new StageTextCell('o', 391.062f, 0, 24.108f, 63, 42);
+        Assert.Equal(MathF.BitIncrement(first.X + first.Width), second.X);
+        var left = first.X - 12;
+        var pieces = BigTypeRollDraw.Pieces(new StageText([]), new StageText([first, second]),
+            left, 0, second.X + second.Width - left, 63, 0);
+        var margin = Assert.Single(pieces!);
+        Assert.Equal((BigTypeRollSource.New, left, 12f), (margin.Source, margin.ClipX, margin.ClipWidth));
+    }
+
     // ---- The idle hop ----
 
     [Fact]
