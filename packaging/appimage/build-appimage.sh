@@ -3,8 +3,9 @@ set -euo pipefail
 
 publish_dir=${1:?publish directory required}
 output=${2:?output AppImage required}
-appdir=$(mktemp -d)
-trap 'rm -rf "$appdir"' EXIT
+staging=$(mktemp -d)
+trap 'rm -rf "$staging"' EXIT
+appdir="$staging/AppDir"
 
 mkdir -p "$appdir/usr/bin" "$appdir/usr/lib"
 cp -a "$publish_dir/." "$appdir/usr/bin/"
@@ -15,6 +16,7 @@ cp packaging/appimage/AppRun "$appdir/AppRun"
 chmod +x "$appdir/AppRun"
 cp packaging/appimage/emushelf.desktop "$appdir/emushelf.desktop"
 cp packaging/appimage/emushelf.svg "$appdir/emushelf.svg"
+cp packaging/appimage/emushelf.png "$appdir/emushelf.png"
 
 # Bundle host shared libraries the app dlopens at runtime but the .NET runtime does not
 # ship. libicu* backs globalization; libICE/libSM are the X11 session-management libraries
@@ -31,6 +33,10 @@ for library in libicudata libicui18n libicuuc libICE libSM; do
   fi
   cp -L "$path" "$appdir/usr/lib/"
 done
+
+# The image keeps the staged Unix modes. Every user must be able to read the
+# payload and run its executables, even when dotnet publish or umask restricts them.
+chmod -R a+rX "$appdir"
 
 # appimagetool packages the self-contained publish payload, including libicu when supplied
 # by the .NET Linux runtime. AppPaths intentionally uses $APPIMAGE's parent, never $APPDIR.
